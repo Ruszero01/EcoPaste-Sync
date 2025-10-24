@@ -61,7 +61,7 @@
 
 ## 🌟 Branch Information
 
-> 📋 **This branch is based on the official EcoPaste v0.5.0 version, focusing on the development and improvement of cloud sync features.**
+> 📋 **This branch is based on the official EcoPaste v0.5.0 version, providing a temporary solution for cloud sync functionality as the official cloud sync feature has been delayed.**
 
 ### ✨ Current Features
 
@@ -78,7 +78,7 @@
 
 ### 📦 Usage Instructions
 
-This branch is primarily for users who need cross-device sync functionality. If you only need local clipboard management, we recommend using the [official main branch](https://github.com/EcoPasteHub/EcoPaste).
+This branch is primarily for users who urgently need cross-device sync functionality, serving as a temporary solution until the official cloud sync feature is released. If you only need local clipboard management, we recommend using the [official main branch](https://github.com/EcoPasteHub/EcoPaste).
 
 ---
 
