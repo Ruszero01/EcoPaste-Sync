@@ -59,23 +59,57 @@
   </picture>
 </div>
 
-## ダウンロード
+## 🌟 ブランチ情報
 
-### Windows
+> 📋 **このブランチは公式EcoPaste v0.5.0バージョンをベースにし、クラウド同期機能の開発と改善に焦点を当てています。**
 
-手動ダウンロード：[x86](https://api.ecopaste.cn/download?platform=windows-x86) | [x64](https://api.ecopaste.cn/download?platform=windows-x64) | [ARM64](https://api.ecopaste.cn/download?platform=windows-arm)
+### ✨ 現在の機能
 
-### MacOS
+- 🔄 **基本クラウド同期**：WebDAVプロトコルを通じて複数デバイス間のクリップボードデータ同期を実現
+- 🗂️ **柔軟な設定**：カスタム同期パスと同期頻度設定をサポート
+- 🔐 **データセキュリティ**：ローカル保存を主とし、クラウド同期を補助とするハイブリッドモード
 
-手動ダウンロード：[Apple Silicon](https://api.ecopaste.cn/download?platform=macos-arm) | [Intel](https://api.ecopaste.cn/download?platform=macos-x64)
+### 🚀 今後の計画
 
-HomeBrew：[クリックして確認する](https://ecopaste.cn/guide/install#%E4%BD%BF%E7%94%A8-homebrew-%E5%AE%89%E8%A3%85)
+- 📌 **選択的同期**：選択的同期をサポート（例：お気に入りのみ、特定タイプのみなど）
+- ⚡ **リアルタイム同期**：クラウドデータベースベースのリアルタイム同期機能で、複数デバイス間で即時更新
+- 🎯 **スマート同期戦略**：ネットワーク状況とデバイス状態に基づいて同期動作を自動最適化
+- 🌐 **マルチプロトコル対応**：より多くのクラウドストレージプロトコルをサポート（OneDrive、Google Driveなど）
 
-### Linux(x11)
+### 📦 使用説明
 
-手動ダウンロード：[deb](https://api.ecopaste.cn/download?platform=linux-deb) | [AppImage](https://api.ecopaste.cn/download?platform=linux-appimage) | [rpm](https://api.ecopaste.cn/download?platform=linux-rpm)
+このブランチは主にクロスデバイス同期機能を必要とするユーザー向けです。ローカルクリップボード管理機能のみが必要な場合は、[公式メインブランチ](https://github.com/EcoPasteHub/EcoPaste)の使用をお勧めします。
 
-インストールガイド：[クリックして確認する](https://ecopaste.cn/guide/install#linux)
+---
+
+## 📥 アプリケーションの入手
+
+> 💡 **このブランチはクラウド同期機能の開発に焦点を当てています。完全なアプリケーションのダウンロードについては、公式メインブランチをご覧ください。**
+
+### 🔗 公式メインブランチへアクセス
+
+- 🌐 **GitHub ホームページ**：[EcoPasteHub/EcoPaste](https://github.com/EcoPasteHub/EcoPaste)
+- 📱 **公式ダウンロード**：[Releases ページ](https://github.com/EcoPasteHub/EcoPaste/releases)
+- 📚 **ドキュメント**：[EcoPaste 公式サイト](https://ecopaste.cn/)
+
+### 🛠️ ソースからビルド（開発版）
+
+```bash
+# このブランチをクローン
+git clone -b add-sync https://github.com/EcoPasteHub/EcoPaste.git
+cd EcoPaste
+
+# 依存関係をインストール
+pnpm install
+
+# 開発モードで実行
+pnpm tauri dev
+
+# 本番バージョンをビルド
+pnpm tauri build
+```
+
+> ⚠️ **注意**：これは開発ブランチであり、実験的な機能が含まれている可能性があります。本番環境での使用は、公式の安定バージョンを選択することをお勧めします。
 
 ## 機能紹介
 
@@ -85,6 +119,9 @@ HomeBrew：[クリックして確認する](https://ecopaste.cn/guide/install#%E
 - 📋 テキスト、リッチテキスト、HTML、画像、ファイル形式のクリップボード内容をサポートできる。
 - 🔒 データはローカルに保存され、ユーザーのプライバシーを保護、データはユーザー自身が完全に管理できる。
 - 📝 メモ機能をサポートでき、簡単に分類、管理、検索が可能で作業効率を向上させる。
+- ☁️ **クラウド同期機能**：WebDAVプロトコルを通じて複数デバイス間のクリップボードデータ同期をサポートし、異なるデバイス間でのデータ一貫性を確保します。
+- 🔄 **スマート同期戦略**：手動同期と定時同期をサポートし、ネットワーク状況に応じて同期頻度を柔軟に調整できます。
+- 🛡️ **データ安全保障**：クラウド同期データは暗号化伝送を採用し、カスタム同期パスをサポートし、データの安全性と制御性を確保します。
 - ⚙️ 豊富なカスタマイズ設定で、異なるユーザーのニーズを満たす個別体験を提供できる。
 - 🤝 完善なドキュメントとコミュニティ機能をサポート、開発者と共に成長を目指す。
 - 🧩 継続的な最適化し、もっと驚きの機能があなたの発見を待っている。

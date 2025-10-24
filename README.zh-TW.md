@@ -59,23 +59,57 @@
   </picture>
 </div>
 
-## 下載
+## 🌟 分支說明
 
-### Windows
+> 📋 **本分支基於官方 EcoPaste v0.5.0 版本，專注於雲端同步功能的開發與完善。**
 
-手動下載：[x86](https://api.ecopaste.cn/download?platform=windows-x86) | [x64](https://api.ecopaste.cn/download?platform=windows-x64) | [ARM64](https://api.ecopaste.cn/download?platform=windows-arm)
+### ✨ 當前特性
 
-### MacOS
+- 🔄 **基礎雲端同步**：透過 WebDAV 協定實現剪貼板數據的多設備同步
+- 🗂️ **靈活配置**：支援自定義同步路徑和同步頻率設定
+- 🔐 **數據安全**：本地存儲為主，雲端同步為輔的混合模式
 
-手動下載：[Apple Silicon](https://api.ecopaste.cn/download?platform=macos-arm) | [Intel](https://api.ecopaste.cn/download?platform=macos-x64)
+### 🚀 未來規劃
 
-HomeBrew：[點擊查看](https://ecopaste.cn/guide/install#%E4%BD%BF%E7%94%A8-homebrew-%E5%AE%89%E8%A3%85)
+- 📌 **選擇性同步**：支援選擇性同步（如僅同步收藏內容、指定類型等）
+- ⚡ **即時同步**：基於雲端數據庫的即時同步功能，多設備間即時更新
+- 🎯 **智慧同步策略**：根據網路狀況和設備狀態自動優化同步行為
+- 🌐 **多協定支援**：支援更多雲端存儲協定（如 OneDrive、Google Drive 等）
 
-### Linux(x11)
+### 📦 使用說明
 
-手動下載：[deb](https://api.ecopaste.cn/download?platform=linux-deb) | [AppImage](https://api.ecopaste.cn/download?platform=linux-appimage) | [rpm](https://api.ecopaste.cn/download?platform=linux-rpm)
+本分支主要面向需要跨設備同步功能的用戶，如果您只需要本地剪貼板管理功能，建議使用 [官方主分支](https://github.com/EcoPasteHub/EcoPaste)。
 
-安裝指南：[點擊查看](https://ecopaste.cn/guide/install#linux)
+---
+
+## 📥 獲取應用程式
+
+> 💡 **本分支專注於雲端同步功能開發，如需下載完整應用程式，請訪問官方主分支**
+
+### 🔗 訪問官方主分支
+
+- 🌐 **GitHub 主頁**：[EcoPasteHub/EcoPaste](https://github.com/EcoPasteHub/EcoPaste)
+- 📱 **官方下載**：[Releases 頁面](https://github.com/EcoPasteHub/EcoPaste/releases)
+- 📚 **使用文檔**：[EcoPaste 官網](https://ecopaste.cn/)
+
+### 🛠️ 從源碼建構（開發版）
+
+```bash
+# 克隆本分支
+git clone -b add-sync https://github.com/EcoPasteHub/EcoPaste.git
+cd EcoPaste
+
+# 安裝依賴
+pnpm install
+
+# 開發模式運行
+pnpm tauri dev
+
+# 建構生產版本
+pnpm tauri build
+```
+
+> ⚠️ **注意**：本分支為開發分支，可能包含實驗性功能。生產使用建議選擇官方穩定版本。
 
 ## 功能介紹
 
@@ -85,6 +119,9 @@ HomeBrew：[點擊查看](https://ecopaste.cn/guide/install#%E4%BD%BF%E7%94%A8-h
 - 📋 支持純文字、富文字、HTML、圖片和檔案類型的剪貼板內容。
 - 🔒 數據本地存儲，確保用戶隱私安全，數據完全掌控在用戶手中。
 - 📝 支持備註功能，輕鬆分類、管理和檢索，讓工作更高效。
+- ☁️ **雲端同步功能**：支援透過 WebDAV 協定實現多設備間的剪貼板數據同步，確保數據在不同設備間保持一致性。
+- 🔄 **智慧同步策略**：支援手動同步和定時同步，可根據網路狀況靈活調整同步頻率。
+- 🛡️ **數據安全保障**：雲端同步數據採用加密傳輸，支援自定義同步路徑，確保數據安全可控。
 - ⚙️ 豐富的個性化設定，滿足不同用戶需求，打造專屬體驗。
 - 🤝 完善的檔案與社區支持，與開發者共同探索與成長。
 - 🧩 持續優化中，更多驚喜功能等你發現。

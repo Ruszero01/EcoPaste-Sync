@@ -59,23 +59,57 @@
   </picture>
 </div>
 
-## 下载
+## 🌟 分支说明
 
-### Windows
+> 📋 **本分支基于官方 EcoPaste v0.5.0 版本，专注于云同步功能的开发与完善。**
 
-手动下载：[x86](https://api.ecopaste.cn/download?platform=windows-x86) | [x64](https://api.ecopaste.cn/download?platform=windows-x64) | [ARM64](https://api.ecopaste.cn/download?platform=windows-arm)
+### ✨ 当前特性
 
-### MacOS
+- 🔄 **基础云同步**：通过 WebDAV 协议实现剪贴板数据的多设备同步
+- 🗂️ **灵活配置**：支持自定义同步路径和同步频率设置
+- 🔐 **数据安全**：本地存储为主，云端同步为辅的混合模式
 
-手动下载：[Apple Silicon](https://api.ecopaste.cn/download?platform=macos-arm) | [Intel](https://api.ecopaste.cn/download?platform=macos-x64)
+### 🚀 未来规划
 
-HomeBrew：[点击查看](https://ecopaste.cn/guide/install#%E4%BD%BF%E7%94%A8-homebrew-%E5%AE%89%E8%A3%85)
+- 📌 **同步内容选择**：支持选择性同步（如仅同步收藏内容、指定类型等）
+- ⚡ **实时同步**：基于云数据库的实时同步功能，多设备间即时更新
+- 🎯 **智能同步策略**：根据网络状况和设备状态自动优化同步行为
+- 🌐 **多协议支持**：支持更多云存储协议（如 OneDrive、Google Drive 等）
 
-### Linux(x11)
+### 📦 使用说明
 
-手动下载：[deb](https://api.ecopaste.cn/download?platform=linux-deb) | [AppImage](https://api.ecopaste.cn/download?platform=linux-appimage) | [rpm](https://api.ecopaste.cn/download?platform=linux-rpm)
+本分支主要面向需要跨设备同步功能的用户，如果您只需要本地剪贴板管理功能，建议使用 [官方主分支](https://github.com/EcoPasteHub/EcoPaste)。
 
-安装指南：[点击查看](https://ecopaste.cn/guide/install#linux)
+---
+
+## 📥 获取应用程序
+
+> 💡 **本分支专注于云同步功能开发，如需下载完整应用程序，请访问官方主分支**
+
+### 🔗 访问官方主分支
+
+- 🌐 **GitHub 主页**：[EcoPasteHub/EcoPaste](https://github.com/EcoPasteHub/EcoPaste)
+- 📱 **官方下载**：[Releases 页面](https://github.com/EcoPasteHub/EcoPaste/releases)
+- 📚 **使用文档**：[EcoPaste 官网](https://ecopaste.cn/)
+
+### 🛠️ 从源码构建（开发版）
+
+```bash
+# 克隆本分支
+git clone -b add-sync https://github.com/EcoPasteHub/EcoPaste.git
+cd EcoPaste
+
+# 安装依赖
+pnpm install
+
+# 开发模式运行
+pnpm tauri dev
+
+# 构建生产版本
+pnpm tauri build
+```
+
+> ⚠️ **注意**：本分支为开发分支，可能包含实验性功能。生产使用建议选择官方稳定版本。
 
 ## 功能介绍
 
@@ -85,6 +119,9 @@ HomeBrew：[点击查看](https://ecopaste.cn/guide/install#%E4%BD%BF%E7%94%A8-h
 - 📋 支持纯文本、富文本、HTML、图片和文件类型的剪贴板内容。
 - 🔒 数据本地存储，确保用户隐私安全，数据完全掌控在用户手中。
 - 📝 支持备注功能，轻松分类、管理和检索，让工作更高效。
+- ☁️ **云同步功能**：支持通过 WebDAV 协议实现多设备间的剪贴板数据同步，确保数据在不同设备间保持一致性。
+- 🔄 **智能同步策略**：支持手动同步和定时同步，可根据网络状况灵活调整同步频率。
+- 🛡️ **数据安全保障**：云同步数据采用加密传输，支持自定义同步路径，确保数据安全可控。
 - ⚙️ 丰富的个性化设置，满足不同用户需求，打造专属体验。
 - 🤝 完善的文档与社区支持，与开发者共同探索与成长。
 - 🧩 持续优化中，更多惊喜功能等你发现。

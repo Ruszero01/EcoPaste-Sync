@@ -59,23 +59,57 @@
  </picture>
 </div>
 
-## Download
+## 🌟 Branch Information
 
-### Windows
+> 📋 **This branch is based on the official EcoPaste v0.5.0 version, focusing on the development and improvement of cloud sync features.**
 
-Manual Download: [x86](https://api.ecopaste.cn/download?platform=windows-x86) | [x64](https://api.ecopaste.cn/download?platform=windows-x64) | [ARM64](https://api.ecopaste.cn/download?platform=windows-arm)
+### ✨ Current Features
 
-### MacOS
+- 🔄 **Basic Cloud Sync**: Multi-device clipboard data synchronization through WebDAV protocol
+- 🗂️ **Flexible Configuration**: Support for custom sync paths and sync frequency settings
+- 🔐 **Data Security**: Hybrid mode with local storage as primary and cloud sync as secondary
 
-Manual Download: [Apple Silicon](https://api.ecopaste.cn/download?platform=macos-arm) | [Intel](https://api.ecopaste.cn/download?platform=macos-x64)
+### 🚀 Future Plans
 
-HomeBrew: [Click here](https://ecopaste.cn/guide/install#%E4%BD%BF%E7%94%A8-homebrew-%E5%AE%89%E8%A3%85)
+- 📌 **Selective Sync**: Support for selective synchronization (e.g., only favorites, specific types)
+- ⚡ **Real-time Sync**: Real-time synchronization based on cloud database for instant updates across devices
+- 🎯 **Smart Sync Strategy**: Automatic optimization of sync behavior based on network conditions and device status
+- 🌐 **Multi-protocol Support**: Support for more cloud storage protocols (OneDrive, Google Drive, etc.)
 
-### Linux(x11)
+### 📦 Usage Instructions
 
-Manual Download: [deb](https://api.ecopaste.cn/download?platform=linux-deb) | [AppImage](https://api.ecopaste.cn/download?platform=linux-appimage) | [rpm](https://api.ecopaste.cn/download?platform=linux-rpm)
+This branch is primarily for users who need cross-device sync functionality. If you only need local clipboard management, we recommend using the [official main branch](https://github.com/EcoPasteHub/EcoPaste).
 
-Installation Guide: [Click here](https://ecopaste.cn/guide/install#linux)
+---
+
+## 📥 Get Application
+
+> 💡 **This branch focuses on cloud sync feature development. For downloading the complete application, please visit the official main branch.**
+
+### 🔗 Visit Official Main Branch
+
+- 🌐 **GitHub Homepage**: [EcoPasteHub/EcoPaste](https://github.com/EcoPasteHub/EcoPaste)
+- 📱 **Official Downloads**: [Releases Page](https://github.com/EcoPasteHub/EcoPaste/releases)
+- 📚 **Documentation**: [EcoPaste Official Website](https://ecopaste.cn/)
+
+### 🛠️ Build from Source (Development Version)
+
+```bash
+# Clone this branch
+git clone -b add-sync https://github.com/EcoPasteHub/EcoPaste.git
+cd EcoPaste
+
+# Install dependencies
+pnpm install
+
+# Run in development mode
+pnpm tauri dev
+
+# Build production version
+pnpm tauri build
+```
+
+> ⚠️ **Note**: This is a development branch and may contain experimental features. For production use, we recommend choosing the official stable version.
 
 ## Features
 
@@ -85,6 +119,9 @@ Installation Guide: [Click here](https://ecopaste.cn/guide/install#linux)
 - 📋 Supports clipboard content types like plain text, rich text, HTML, images, and files.
 - 🔒 Local data storage ensures user privacy and gives users full control over their data.
 - 📝 Notes feature allows easy categorization, management, and retrieval to boost productivity.
+- ☁️ **Cloud Sync**: Supports clipboard data synchronization across multiple devices through WebDAV protocol, ensuring data consistency across different platforms.
+- 🔄 **Smart Sync Strategy**: Supports manual sync and scheduled sync, allowing flexible adjustment of sync frequency based on network conditions.
+- 🛡️ **Data Security**: Cloud sync data uses encrypted transmission and supports custom sync paths, ensuring data security and controllability.
 - ⚙️ Rich personalization settings to meet diverse user needs and create a tailored experience.
 - 🤝 Comprehensive documentation and community support to explore and grow with developers.
 - 🧩 Continuously optimized with more exciting features waiting to be discovered.
