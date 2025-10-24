@@ -31,6 +31,19 @@ fn shared_show_window<R: Runtime>(window: &WebviewWindow<R>) {
     let _ = window.set_focus();
 }
 
+// 设置窗口位置为跟随鼠标
+pub fn set_window_follow_cursor<R: Runtime>(window: &WebviewWindow<R>) {
+    use tauri::{Manager, Position, PhysicalPosition};
+
+    if let Ok(cursor_pos) = window.app_handle().cursor_position() {
+        let pos = PhysicalPosition {
+            x: cursor_pos.x as i32,
+            y: cursor_pos.y as i32,
+        };
+        let _ = window.set_position(Position::Physical(pos));
+    }
+}
+
 // 共享隐藏窗口的方法
 fn shared_hide_window<R: Runtime>(window: &WebviewWindow<R>) {
     let _ = window.hide();

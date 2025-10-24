@@ -94,6 +94,14 @@
 				"allow-upload-sync-data",
 				"allow-download-sync-data"
 			]
+		},
+		"eco-window": {
+			"allow": [
+				"allow-show-window",
+				"allow-show-window-with-position",
+				"allow-hide-window",
+				"allow-show-taskbar-icon"
+			]
 		}
 	}
 }

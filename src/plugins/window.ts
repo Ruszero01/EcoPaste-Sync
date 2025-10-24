@@ -1,3 +1,4 @@
+import { clipboardStore } from "@/stores/clipboard";
 import type { WindowLabel } from "@/types/plugin";
 import { invoke } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
@@ -5,6 +6,7 @@ import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 const COMMAND = {
 	SHOW_WINDOW: "plugin:eco-window|show_window",
+	SHOW_WINDOW_WITH_POSITION: "plugin:eco-window|show_window_with_position",
 	HIDE_WINDOW: "plugin:eco-window|hide_window",
 	SHOW_TASKBAR_ICON: "plugin:eco-window|show_taskbar_icon",
 };
@@ -14,17 +16,37 @@ const COMMAND = {
  */
 export const showWindow = (label?: WindowLabel) => {
 	if (label) {
-		// 使用正确的LISTEN_KEY常量
+		// 直接调用 Rust 命令，不通过事件系统
+		invoke(COMMAND.SHOW_WINDOW);
+
+		// 触发回到顶部事件
 		const LISTEN_KEY = {
-			SHOW_WINDOW: "show-window",
 			ACTIVATE_BACK_TOP: "activate-back-top",
 		} as const;
-
-		emit(LISTEN_KEY.SHOW_WINDOW, label);
-		// 同时触发回到顶部事件
 		emit(LISTEN_KEY.ACTIVATE_BACK_TOP, "window-activate");
 	} else {
 		invoke(COMMAND.SHOW_WINDOW);
+	}
+};
+
+/**
+ * 显示窗口并设置位置
+ */
+export const showWindowWithPosition = (
+	position: string,
+	label?: WindowLabel,
+) => {
+	if (label) {
+		// 直接调用 Rust 命令，不通过事件系统
+		invoke(COMMAND.SHOW_WINDOW_WITH_POSITION, { position });
+
+		// 触发回到顶部事件
+		const LISTEN_KEY = {
+			ACTIVATE_BACK_TOP: "activate-back-top",
+		} as const;
+		emit(LISTEN_KEY.ACTIVATE_BACK_TOP, "window-activate");
+	} else {
+		invoke(COMMAND.SHOW_WINDOW_WITH_POSITION, { position });
 	}
 };
 
@@ -53,8 +75,15 @@ export const toggleWindowVisible = async () => {
 	if (focused) {
 		hideWindow();
 	} else {
-		// 直接调用 showWindow("main")，和托盘图标保持一致的方式
-		showWindow("main");
+		// 获取窗口位置设置
+		const windowPosition = clipboardStore.window.position;
+
+		// 根据设置显示窗口
+		if (windowPosition === "remember") {
+			showWindow("main");
+		} else {
+			showWindowWithPosition(windowPosition, "main");
+		}
 	}
 };
 

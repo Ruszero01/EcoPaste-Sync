@@ -12,6 +12,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("eco-window")
         .invoke_handler(generate_handler![
             commands::show_window,
+            commands::show_window_with_position,
             commands::hide_window,
             commands::show_taskbar_icon
         ])

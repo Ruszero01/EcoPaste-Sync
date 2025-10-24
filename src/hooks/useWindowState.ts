@@ -1,3 +1,4 @@
+import { clipboardStore } from "@/stores/clipboard";
 import { PhysicalPosition, PhysicalSize } from "@tauri-apps/api/dpi";
 import type { Event } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
@@ -58,10 +59,22 @@ export const useWindowState = () => {
 
 		const { x, y, width, height } = state;
 
-		if (x && y) {
-			appWindow.setPosition(new PhysicalPosition(x, y));
-		}
+		// 获取窗口位置设置
+		const windowPosition = clipboardStore.window.position;
 
+		// 根据设置处理窗口位置
+		if (windowPosition === "remember") {
+			// 记住位置：恢复上次的位置
+			if (x && y) {
+				appWindow.setPosition(new PhysicalPosition(x, y));
+			}
+		} else if (windowPosition === "center") {
+			// 居中显示：不恢复位置，让窗口居中
+			// 不设置位置，让Tauri使用默认的居中位置
+		}
+		// "follow" 模式：跟随鼠标，这会在显示窗口时处理
+
+		// 恢复窗口大小
 		if (width && height) {
 			appWindow.setSize(new PhysicalSize(width, height));
 		}

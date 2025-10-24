@@ -1,4 +1,4 @@
-use super::{is_main_window, shared_hide_window, shared_show_window};
+use super::{is_main_window, shared_hide_window, shared_show_window, set_window_follow_cursor};
 use crate::MAIN_WINDOW_LABEL;
 use tauri::{command, AppHandle, Runtime, WebviewWindow};
 use tauri_nspanel::ManagerExt;
@@ -12,6 +12,39 @@ pub enum MacOSPanelStatus {
 // 显示窗口
 #[command]
 pub async fn show_window<R: Runtime>(app_handle: AppHandle<R>, window: WebviewWindow<R>) {
+    if is_main_window(&window) {
+        set_macos_panel(&app_handle, &window, MacOSPanelStatus::Show);
+    } else {
+        shared_show_window(&window);
+    }
+}
+
+// 显示窗口并设置位置
+#[command]
+pub async fn show_window_with_position<R: Runtime>(
+    app_handle: AppHandle<R>,
+    window: WebviewWindow<R>,
+    position: String,
+) {
+    // 根据位置设置调整窗口位置
+    match position.as_str() {
+        "follow" => {
+            // 跟随鼠标位置
+            set_window_follow_cursor(&window);
+        }
+        "center" => {
+            // 居中显示，不设置特定位置
+            // 让窗口使用默认居中位置
+        }
+        "remember" => {
+            // 记住位置，在 restoreState 中已处理
+        }
+        _ => {
+            // 默认行为
+        }
+    }
+
+    // 然后显示窗口
     if is_main_window(&window) {
         set_macos_panel(&app_handle, &window, MacOSPanelStatus::Show);
     } else {
