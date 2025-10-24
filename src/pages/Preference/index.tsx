@@ -8,6 +8,7 @@ import { useSnapshot } from "valtio";
 import About from "./components/About";
 import Backup from "./components/Backup";
 import Clipboard from "./components/Clipboard";
+import CloudSync from "./components/CloudSync";
 import General from "./components/General";
 import History from "./components/History";
 import Shortcut from "./components/Shortcut";
@@ -77,6 +78,12 @@ const Preference = () => {
 				label: t("preference.menu.title.backup"),
 				icon: "i-lucide:database-backup",
 				content: <Backup />,
+			},
+			{
+				key: "cloud_sync",
+				label: t("preference.menu.title.cloud_sync"),
+				icon: "i-lucide:cloud-cog",
+				content: <CloudSync />,
 			},
 			{
 				key: "about",

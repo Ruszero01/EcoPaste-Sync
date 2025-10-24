@@ -306,24 +306,36 @@ export const readClipboard = async () => {
 export const onClipboardUpdate = (fn: (payload: ClipboardPayload) => void) => {
 	let lastUpdated = 0;
 	let previousPayload: ClipboardPayload;
+	let processing = false;
 
 	return listen(COMMAND.CLIPBOARD_UPDATE, async () => {
-		const payload = await readClipboard();
-
-		const { group, count } = payload;
-
-		if (group === "text" && count === 0) {
+		// 防止并发处理
+		if (processing) {
 			return;
 		}
 
-		const expired = Date.now() - lastUpdated > 200;
+		processing = true;
 
-		if (expired || !isEqual(payload, previousPayload)) {
-			fn(payload);
+		try {
+			const payload = await readClipboard();
+
+			const { group, count } = payload;
+
+			if (group === "text" && count === 0) {
+				return;
+			}
+
+			const expired = Date.now() - lastUpdated > 300; // 增加防抖时间到300ms
+
+			if (expired || !isEqual(payload, previousPayload)) {
+				fn(payload);
+			}
+
+			lastUpdated = Date.now();
+			previousPayload = payload;
+		} finally {
+			processing = false;
 		}
-
-		lastUpdated = Date.now();
-		previousPayload = payload;
 	});
 };
 

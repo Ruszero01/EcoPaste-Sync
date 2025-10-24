@@ -1,0 +1,13 @@
+"$schema" = "schemas/schema.json"
+
+[default]
+description = "Default permissions for the plugin"
+permissions = [
+    "allow-set-server-config",
+    "allow-get-server-config",
+    "allow-test-connection",
+    "allow-test-webdav-operations",
+    "allow-create-directory",
+    "allow-upload-sync-data",
+    "allow-download-sync-data",
+]

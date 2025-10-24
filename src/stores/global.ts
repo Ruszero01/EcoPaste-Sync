@@ -30,4 +30,18 @@ export const globalStore = proxy<GlobalStore>({
 	},
 
 	env: {},
+
+	cloudSync: {
+		enabled: false,
+		autoSync: false,
+		syncInterval: 60000, // 1分钟
+		lastSyncTime: 0,
+		isSyncing: false,
+		realtimeSync: {
+			enabled: false,
+			autoSyncDelay: 2000, // 2秒
+			lastSyncTime: 0,
+			isSyncing: false,
+		},
+	},
 });

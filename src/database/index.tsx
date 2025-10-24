@@ -75,11 +75,14 @@ export const executeSQL = async (query: string, values?: unknown[]) => {
 /**
  * 查找的 sql 语句
  * @param tableName 表名称
+ * @param payload 查询参数
+ * @param orderBy 排序方式，默认按时间降序
  * @returns
  */
 export const selectSQL = async <List,>(
 	tableName: TableName,
 	payload: TablePayload = {},
+	orderBy = "ORDER BY createTime DESC",
 ) => {
 	const { keys, values } = handlePayload(payload);
 
@@ -99,7 +102,7 @@ export const selectSQL = async <List,>(
 	const whereClause = clause ? `WHERE ${clause}` : "";
 
 	const list = await executeSQL(
-		`SELECT * FROM ${tableName} ${whereClause} ORDER BY createTime DESC;`,
+		`SELECT * FROM ${tableName} ${whereClause} ${orderBy};`,
 		values,
 	);
 
@@ -118,6 +121,55 @@ export const insertSQL = (tableName: TableName, payload: TablePayload) => {
 
 	return executeSQL(
 		`INSERT INTO ${tableName} (${keys}) VALUES (${refs});`,
+		values,
+	);
+};
+
+/**
+ * 去重插入的 sql 语句（先删除相同内容的记录，再插入新记录）
+ * @param tableName 表名称
+ * @param payload 插入的数据
+ * @param identifier 去重标识（默认使用 type + value）
+ */
+export const insertWithDeduplication = async (
+	tableName: TableName,
+	payload: TablePayload,
+	_identifier = "default",
+) => {
+	// 如果是 history 表，进行基于 type 和 value 的去重
+	if (tableName === "history") {
+		const { type, value, group } = payload;
+
+		// 删除相同 type 和 value 的记录
+		const deleteKeys = [];
+		const deleteValues = [];
+
+		if (type !== undefined) {
+			deleteKeys.push("type = ?");
+			deleteValues.push(type);
+		}
+		if (value !== undefined) {
+			deleteKeys.push("value = ?");
+			deleteValues.push(value);
+		}
+		if (group !== undefined) {
+			deleteKeys.push("[group] = ?");
+			deleteValues.push(group);
+		}
+
+		if (deleteKeys.length > 0) {
+			const deleteSQL = `DELETE FROM ${tableName} WHERE ${deleteKeys.join(" AND ")};`;
+			await executeSQL(deleteSQL, deleteValues);
+		}
+	}
+
+	// 插入新记录
+	const { keys, values } = handlePayload(payload);
+	const refs = map(values, () => "?");
+
+	// 使用 INSERT OR REPLACE 确保原子性操作，避免UNIQUE约束冲突
+	return executeSQL(
+		`INSERT OR REPLACE INTO ${tableName} (${keys}) VALUES (${refs});`,
 		values,
 	);
 };
@@ -181,6 +233,164 @@ const getFields = async (tableName: TableName) => {
 	const fields = await executeSQL(`PRAGMA table_info(${tableName})`);
 
 	return fields as { name: string; type: string }[];
+};
+
+/**
+ * 获取所有历史数据
+ */
+export const getHistoryData = async () => {
+	return selectSQL("history");
+};
+
+// 导入日志回调函数
+let importLogCallback: ((message: string, data?: any) => void) | null = null;
+
+export const setImportLogCallback = (
+	callback: (message: string, data?: any) => void,
+) => {
+	importLogCallback = callback;
+};
+
+const addImportLog = (message: string, data?: any) => {
+	if (importLogCallback) {
+		importLogCallback(message, data);
+	}
+};
+
+/**
+ * 设置历史数据（用于同步）
+ */
+export const setHistoryData = async (data: any[]) => {
+	addImportLog(`开始同步导入 ${data.length} 条数据（带去重）`);
+	addImportLog("导入数据样本", { sample: data.slice(0, 2) });
+
+	// 确保数据库已初始化
+	await initDatabase();
+
+	if (!db) {
+		addImportLog("❌ 数据库初始化失败");
+		throw new Error("数据库初始化失败");
+	}
+
+	// 检查数据库是否被锁定，如果是，等待一段时间
+	let retryCount = 0;
+	const maxRetries = 3;
+	const retryDelay = 1000;
+
+	while (retryCount < maxRetries) {
+		try {
+			// 尝试一个简单的查询来测试数据库是否被锁定
+			await db!.execute("SELECT 1");
+			addImportLog("✅ 数据库连接正常");
+			break;
+		} catch (error) {
+			retryCount++;
+			addImportLog(`⚠️ 数据库可能被锁定，重试 ${retryCount}/${maxRetries}`);
+			if (retryCount >= maxRetries) {
+				addImportLog("❌ 数据库锁定重试次数已达上限");
+				throw new Error(
+					`数据库被锁定: ${error instanceof Error ? error.message : String(error)}`,
+				);
+			}
+			await new Promise((resolve) => setTimeout(resolve, retryDelay));
+		}
+	}
+
+	// 使用事务确保数据一致性
+	try {
+		// 开始事务
+		await db!.execute("BEGIN TRANSACTION;");
+
+		// 清空现有数据
+		await executeSQL("DELETE FROM history;");
+		addImportLog("已清空现有数据");
+
+		// 批量插入新数据 - 使用去重插入确保数据源级别去重
+		let successCount = 0;
+		let failCount = 0;
+		const duplicateCount =
+			data.length -
+			new Set(data.map((item) => `${item.type}:${item.value}`)).size;
+
+		if (duplicateCount > 0) {
+			addImportLog(
+				`📊 检测到 ${duplicateCount} 个重复项，将在数据库层面进行去重`,
+			);
+		}
+
+		for (let i = 0; i < data.length; i++) {
+			const item = data[i];
+			let itemRetryCount = 0;
+			const maxItemRetries = 3;
+
+			while (itemRetryCount < maxItemRetries) {
+				try {
+					// 使用去重插入函数，确保相同 type 和 value 的内容只保存一条
+					await insertWithDeduplication("history", item);
+					successCount++;
+					break; // 成功插入，跳出重试循环
+				} catch (itemError) {
+					itemRetryCount++;
+
+					// 检查是否是数据库锁定错误
+					const errorMessage =
+						itemError instanceof Error ? itemError.message : String(itemError);
+					const isDatabaseLocked =
+						errorMessage.includes("database is locked") ||
+						errorMessage.includes("database is locked");
+
+					if (isDatabaseLocked && itemRetryCount < maxItemRetries) {
+						addImportLog(
+							`⚠️ 第 ${i + 1} 条数据插入时数据库锁定，重试 ${itemRetryCount}/${maxItemRetries}`,
+						);
+						await new Promise((resolve) => setTimeout(resolve, 200)); // 短暂延迟后重试
+					} else {
+						// 非锁定错误或重试次数已达上限
+						failCount++;
+						addImportLog(`❌ 插入第 ${i + 1} 条数据失败`, {
+							error: errorMessage,
+							item: `${JSON.stringify(item).substring(0, 100)}...`,
+							retries: itemRetryCount,
+						});
+						break;
+					}
+				}
+			}
+
+			// 每10条记录打印一次进度
+			if ((i + 1) % 10 === 0 || i === data.length - 1) {
+				addImportLog(
+					`插入进度: ${i + 1}/${data.length} 条数据 (成功: ${successCount}, 失败: ${failCount})`,
+				);
+			}
+		}
+
+		// 提交事务
+		await db!.execute("COMMIT;");
+		addImportLog("✅ 事务提交成功（已去重）", {
+			success: successCount,
+			failed: failCount,
+			total: data.length,
+			duplicatesRemoved: duplicateCount,
+		});
+
+		// 验证导入结果
+		const verifyResult = await executeSQL(
+			"SELECT COUNT(*) as count FROM history;",
+		);
+		addImportLog("验证数据库记录数", {
+			actual: verifyResult[0]?.count,
+			expected: data.length - duplicateCount,
+			duplicatesRemoved: duplicateCount,
+		});
+	} catch (error) {
+		// 出错时回滚
+		await db!.execute("ROLLBACK;");
+		addImportLog("❌ 导入数据失败，事务已回滚", {
+			error: error instanceof Error ? error.message : String(error),
+		});
+		throw error;
+	}
 };
 
 /**

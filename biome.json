@@ -1,5 +1,9 @@
 {
 	"$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+	"files": {
+		"ignore": ["dist/**", "node_modules/**"],
+		"maxSize": 5000000
+	},
 	"organizeImports": {
 		"enabled": true
 	},

@@ -97,6 +97,6 @@
 		"pre-commit": "npx lint-staged"
 	},
 	"lint-staged": {
-		"**.{ts,tsx,json}": ["biome check --apply --no-errors-on-unmatched"]
+		"**.{ts,tsx,json}": ["biome check --write --no-errors-on-unmatched"]
 	}
 }

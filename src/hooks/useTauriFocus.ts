@@ -13,15 +13,14 @@ export const useTauriFocus = (props: Props) => {
 	useMount(async () => {
 		const appWindow = getCurrentWebviewWindow();
 
-		const wait = isMac ? 0 : 100;
-
+		// 简单的防抖，避免快速状态变化
 		const debounced = debounce(({ payload }) => {
 			if (payload) {
 				onFocus?.();
 			} else {
 				onBlur?.();
 			}
-		}, wait);
+		}, 50); // 适中的防抖延迟
 
 		unlistenRef.current = await appWindow.onFocusChanged(debounced);
 	});

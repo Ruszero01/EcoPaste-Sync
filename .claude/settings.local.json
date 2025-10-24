@@ -1,0 +1,26 @@
+{
+	"permissions": {
+		"allow": [
+			"Bash(find:*)",
+			"Bash(node:*)",
+			"mcp__context7__resolve-library-id",
+			"mcp__context7__get-library-docs",
+			"Bash(npm run type-check:*)",
+			"Bash(npx tsc:*)",
+			"Bash(git checkout:*)",
+			"Bash(cat:*)",
+			"Bash(dos2unix:*)",
+			"Bash(npm run dev)",
+			"Bash(npm run build:*)",
+			"Bash(nslookup:*)",
+			"Bash(curl:*)",
+			"Bash(npm run lint:*)",
+			"Bash(cargo build:*)",
+			"Bash(pnpm run build:*)",
+			"Bash(git add:*)",
+			"Bash(git commit:*)"
+		],
+		"deny": [],
+		"ask": []
+	}
+}

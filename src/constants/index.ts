@@ -34,6 +34,8 @@ export const LISTEN_KEY = {
 	TOGGLE_LISTEN_CLIPBOARD: "toggle-listen-clipboard",
 	CLIPBOARD_ITEM_FAVORITE: "clipboard-item-favorite",
 	ACTIVATE_BACK_TOP: "activate-back-top",
+	REALTIME_SYNC_COMPLETED: "realtime-sync-completed",
+	REALTIME_SYNC_ERROR: "realtime-sync-error",
 };
 
 export const PRESET_SHORTCUT = {

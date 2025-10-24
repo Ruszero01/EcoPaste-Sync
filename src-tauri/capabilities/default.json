@@ -12,6 +12,7 @@
 		"core:window:allow-set-theme",
 		"core:window:deny-internal-toggle-maximize",
 		"core:window:allow-set-size",
+		"core:window:allow-set-focus",
 		{
 			"identifier": "shell:allow-execute",
 			"allow": [
@@ -56,6 +57,23 @@
 		"eco-clipboard:default",
 		"eco-ocr:default",
 		"eco-paste:default",
-		"eco-autostart:default"
+		"eco-autostart:default",
+		"eco-webdav:default",
+		{
+			"identifier": "eco-webdav:allow-upload-sync-data",
+			"allow": [
+				{
+					"cmd": "upload_sync_data"
+				}
+			]
+		},
+		{
+			"identifier": "eco-webdav:allow-download-sync-data",
+			"allow": [
+				{
+					"cmd": "download_sync_data"
+				}
+			]
+		}
 	]
 }

@@ -1,0 +1,78 @@
+{
+	"timestamp": "2025-10-23T05:29:49.840Z",
+	"server": "https://kupvouezpggo.ap-northeast-1.cloucloudrun.com/sync",
+	"summary": {
+		"totalTests": 9,
+		"passedTests": 0,
+		"failedTests": 5
+	},
+	"results": {
+		"connection": {
+			"success": false,
+			"timestamp": "2025-10-23T05:29:44.230Z",
+			"message": "连接失败",
+			"error": "Client network socket disconnected before secure TLS connection was established"
+		},
+		"webdavSupport": {
+			"success": false,
+			"timestamp": "2025-10-23T05:29:44.379Z",
+			"message": "WebDAV协议测试失败",
+			"error": "Client network socket disconnected before secure TLS connection was established"
+		},
+		"operations": {},
+		"performance": {},
+		"errors": [
+			{
+				"test": "connection",
+				"error": "Client network socket disconnected before secure TLS connection was established"
+			},
+			{
+				"test": "webdavSupport",
+				"error": "Client network socket disconnected before secure TLS connection was established"
+			},
+			{
+				"test": "directoryOperations",
+				"error": "Client network socket disconnected before secure TLS connection was established"
+			},
+			{
+				"test": "fileOperations",
+				"error": "Client network socket disconnected before secure TLS connection was established"
+			},
+			{
+				"test": "largeFileTest",
+				"error": "Client network socket disconnected before secure TLS connection was established"
+			}
+		],
+		"directoryOperations": {
+			"success": false,
+			"timestamp": "2025-10-23T05:29:44.529Z",
+			"message": "目录操作测试失败",
+			"error": "Client network socket disconnected before secure TLS connection was established"
+		},
+		"fileOperations": {
+			"success": false,
+			"timestamp": "2025-10-23T05:29:44.680Z",
+			"message": "文件操作测试失败",
+			"error": "Client network socket disconnected before secure TLS connection was established"
+		},
+		"largeFileTest": {
+			"success": false,
+			"timestamp": "2025-10-23T05:29:44.831Z",
+			"message": "大文件测试失败",
+			"error": "Client network socket disconnected before secure TLS connection was established"
+		},
+		"concurrentUpload": {
+			"success": false,
+			"timestamp": "2025-10-23T05:29:45.678Z",
+			"message": "并发上传: 0/5 成功",
+			"totalTime": "847ms",
+			"averageTime": "169ms"
+		},
+		"networkLatency": {
+			"success": false,
+			"timestamp": "2025-10-23T05:29:49.840Z",
+			"message": "网络延迟测试失败，所有请求都失败",
+			"failedRequests": 10
+		}
+	}
+}

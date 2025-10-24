@@ -1,3 +1,4 @@
+import { LISTEN_KEY } from "@/constants";
 import { HappyProvider } from "@ant-design/happy-work-theme";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { error } from "@tauri-apps/plugin-log";
@@ -41,13 +42,43 @@ const App = () => {
 	useTauriListen(LISTEN_KEY.SHOW_WINDOW, ({ payload }) => {
 		const appWindow = getCurrentWebviewWindow();
 
-		if (appWindow.label !== payload) return;
+		if (appWindow.label !== payload) {
+			return;
+		}
 
 		showWindow();
 	});
 
 	// 监听关闭数据库的事件
 	useTauriListen(LISTEN_KEY.CLOSE_DATABASE, closeDatabase);
+
+	// 监听托盘重建事件（同步后修复托盘点击事件）
+	useTauriListen("rebuild-tray", async () => {
+		try {
+			// 先检查托盘是否存在
+			const { TrayIcon } = await import("@tauri-apps/api/tray");
+			const existingTray = TrayIcon.getById("app-tray");
+
+			if (existingTray) {
+				try {
+					await existingTray.close();
+					// 等待一下确保托盘完全关闭
+					await new Promise((resolve) => setTimeout(resolve, 200));
+				} catch (closeError) {
+					console.error("App: 关闭托盘时出错", closeError);
+					// 即使关闭失败也继续，托盘可能已经无效
+				}
+			}
+
+			// 重新创建托盘
+			globalStore.app.showMenubarIcon = false;
+			setTimeout(() => {
+				globalStore.app.showMenubarIcon = true;
+			}, 100);
+		} catch (error) {
+			console.error("App: 托盘重建过程中出错", error);
+		}
+	});
 
 	// 链接跳转到系统浏览器
 	useEventListener("click", (event) => {

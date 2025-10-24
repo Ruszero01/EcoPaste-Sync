@@ -77,6 +77,8 @@ pub fn run() {
         .plugin(tauri_plugin_eco_paste::init())
         // 自定义判断是否自动启动的插件
         .plugin(tauri_plugin_eco_autostart::init())
+        // 自定义WebDAV插件
+        .plugin(tauri_plugin_eco_webdav::init())
         .on_window_event(|window, event| match event {
             // 让 app 保持在后台运行：https://tauri.app/v1/guides/features/system-tray/#preventing-the-app-from-closing
             WindowEvent::CloseRequested { api, .. } => {

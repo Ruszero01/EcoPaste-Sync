@@ -1,6 +1,8 @@
 import UnoIcon from "@/components/UnoIcon";
+import { updateSQL } from "@/database";
 import { MainContext } from "@/pages/Main";
 import type { HistoryTablePayload } from "@/types/database";
+import { formatDate } from "@/utils/dayjs";
 import { startDrag } from "@crabnebula/tauri-plugin-drag";
 import { Menu, MenuItem, type MenuItemOptions } from "@tauri-apps/api/menu";
 import { downloadDir, resolveResource } from "@tauri-apps/api/path";
@@ -9,7 +11,7 @@ import { openPath, openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { Flex, type FlexProps, message } from "antd";
 import type { HookAPI } from "antd/es/modal/useModal";
 import clsx from "clsx";
-import { find, isNil, remove } from "lodash-es";
+import { find, findIndex, isNil, remove } from "lodash-es";
 import type { DragEvent, FC, MouseEvent } from "react";
 import { useSnapshot } from "valtio";
 import Files from "./components/Files";
@@ -58,8 +60,53 @@ const Item: FC<ItemProps> = (props) => {
 	});
 
 	// 复制
-	const copy = () => {
-		return writeClipboard(data);
+	const copy = async () => {
+		await writeClipboard(data);
+
+		const index = findIndex(state.list, { id });
+
+		if (index !== -1) {
+			const createTime = formatDate();
+
+			// 获取当前的自动排序设置
+			const currentAutoSort = clipboardStore.content.autoSort;
+
+			// console.log("🔄 复制已有条目", {
+			// 	currentIndex: index,
+			// 	itemId: id,
+			// 	currentTime: createTime,
+			// 	autoSort: currentAutoSort,
+			// });
+
+			if (currentAutoSort) {
+				// 自动排序开启：移动到顶部
+				const [targetItem] = state.list.splice(index, 1);
+				state.list.unshift({ ...targetItem, createTime });
+
+				// 聚焦到移动后的条目
+				state.activeId = id;
+
+				// console.log("✅ 自动排序开启：条目已移动到顶部", {
+				// 	newIndex: 0,
+				// 	topItemId: state.list[0]?.id,
+				// });
+			} else {
+				// 自动排序关闭：保持原位置，只更新时间
+				state.list[index] = { ...state.list[index], createTime };
+
+				// 聚焦到当前条目
+				state.activeId = id;
+
+				// console.log("✅ 自动排序关闭：条目保持原位置，仅更新时间", {
+				// 	unchangedIndex: index,
+				// 	itemId: id,
+				// });
+			}
+
+			// 更新数据库
+			await updateSQL("history", { id, createTime });
+		} else {
+		}
 	};
 
 	// 粘贴纯文本
@@ -158,8 +205,36 @@ const Item: FC<ItemProps> = (props) => {
 	};
 
 	// 粘贴
-	const pasteValue = () => {
-		return pasteClipboard(data);
+	const pasteValue = async () => {
+		await pasteClipboard(data);
+
+		// 粘贴已有条目后，也触发移动到顶部并更新时间
+		const index = findIndex(state.list, { id });
+
+		if (index !== -1) {
+			const createTime = formatDate();
+
+			// console.log("🔄 粘贴已有条目，准备移动到顶部", {
+			// 	currentIndex: index,
+			// 	itemId: id,
+			// 	currentTime: createTime,
+			// });
+
+			// 从原位置移除
+			const [targetItem] = state.list.splice(index, 1);
+
+			// 移动到顶部并更新时间
+			state.list.unshift({ ...targetItem, createTime });
+
+			// 更新数据库
+			await updateSQL("history", { id, createTime });
+
+			// console.log("✅ 粘贴已有条目已移动到顶部并更新时间", {
+			// 	newIndex: 0,
+			// 	listLength: state.list.length,
+			// 	topItemId: state.list[0]?.id,
+			// });
+		}
 	};
 
 	// 选中下一个或者上一个

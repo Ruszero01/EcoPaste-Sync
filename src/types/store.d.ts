@@ -48,6 +48,21 @@ export interface GlobalStore {
 		appVersion?: string;
 		saveDataDir?: string;
 	};
+
+	// 云同步设置
+	cloudSync: {
+		enabled: boolean;
+		autoSync: boolean;
+		syncInterval: number;
+		lastSyncTime: number;
+		isSyncing: boolean;
+		realtimeSync: {
+			enabled: boolean;
+			autoSyncDelay: number;
+			lastSyncTime: number;
+			isSyncing: boolean;
+		};
+	};
 }
 
 export type ClickFeedback = "none" | "copy" | "paste";
