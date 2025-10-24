@@ -50,17 +50,19 @@ fn shared_hide_window<R: Runtime>(window: &WebviewWindow<R>) {
 }
 
 // 显示主窗口
-pub fn show_main_window(app_handle: &AppHandle) {
-    show_window_by_label(app_handle, MAIN_WINDOW_LABEL);
+#[tauri::command]
+pub async fn show_main_window<R: Runtime>(app_handle: AppHandle<R>) {
+    show_window_by_label(&app_handle, MAIN_WINDOW_LABEL);
 }
 
 // 显示偏好设置窗口
-pub fn show_preference_window(app_handle: &AppHandle) {
-    show_window_by_label(app_handle, PREFERENCE_WINDOW_LABEL);
+#[tauri::command]
+pub async fn show_preference_window<R: Runtime>(app_handle: AppHandle<R>) {
+    show_window_by_label(&app_handle, PREFERENCE_WINDOW_LABEL);
 }
 
 // 显示指定 label 的窗口
-fn show_window_by_label(app_handle: &AppHandle, label: &str) {
+fn show_window_by_label<R: Runtime>(app_handle: &AppHandle<R>, label: &str) {
     if let Some(window) = app_handle.get_webview_window(label) {
         let app_handle_clone = app_handle.clone();
 

@@ -23,7 +23,10 @@ pub fn run() {
         // 确保在 windows 和 linux 上只有一个 app 实例在运行：https://github.com/tauri-apps/plugins-workspace/tree/v2/plugins/single-instance
         .plugin(tauri_plugin_single_instance::init(
             |app_handle, _argv, _cwd| {
-                show_main_window(app_handle);
+                let app_handle = app_handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    show_main_window(app_handle).await;
+                });
             },
         ))
         // app 自启动：https://github.com/tauri-apps/tauri-plugin-autostart/tree/v2
@@ -101,7 +104,10 @@ pub fn run() {
                 return;
             }
 
-            tauri_plugin_eco_window::show_preference_window(app_handle);
+            let app_handle = app_handle.clone();
+      tauri::async_runtime::spawn(async move {
+          tauri_plugin_eco_window::show_preference_window(app_handle).await;
+      });
         }
         _ => {
             let _ = app_handle;

@@ -9,6 +9,8 @@ const COMMAND = {
 	SHOW_WINDOW_WITH_POSITION: "plugin:eco-window|show_window_with_position",
 	HIDE_WINDOW: "plugin:eco-window|hide_window",
 	SHOW_TASKBAR_ICON: "plugin:eco-window|show_taskbar_icon",
+	SHOW_MAIN_WINDOW: "plugin:eco-window|show_main_window",
+	SHOW_PREFERENCE_WINDOW: "plugin:eco-window|show_preference_window",
 };
 
 /**
@@ -16,8 +18,15 @@ const COMMAND = {
  */
 export const showWindow = (label?: WindowLabel) => {
 	if (label) {
-		// 直接调用 Rust 命令，不通过事件系统
-		invoke(COMMAND.SHOW_WINDOW);
+		// 根据标签调用相应的命令
+		if (label === "main") {
+			invoke(COMMAND.SHOW_MAIN_WINDOW);
+		} else if (label === "preference") {
+			invoke(COMMAND.SHOW_PREFERENCE_WINDOW);
+		} else {
+			// 如果没有匹配的标签，默认显示主窗口
+			invoke(COMMAND.SHOW_MAIN_WINDOW);
+		}
 
 		// 触发回到顶部事件
 		const LISTEN_KEY = {

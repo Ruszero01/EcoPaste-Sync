@@ -100,7 +100,9 @@
 				"allow-show-window",
 				"allow-show-window-with-position",
 				"allow-hide-window",
-				"allow-show-taskbar-icon"
+				"allow-show-taskbar-icon",
+				"allow-show-main-window",
+				"allow-show-preference-window"
 			]
 		}
 	}

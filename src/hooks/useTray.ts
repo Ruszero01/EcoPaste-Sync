@@ -1,3 +1,4 @@
+import { showWindow } from "@/plugins/window";
 import { emit } from "@tauri-apps/api/event";
 import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
 import { resolveResource } from "@tauri-apps/api/path";
