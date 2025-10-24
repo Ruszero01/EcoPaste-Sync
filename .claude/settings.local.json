@@ -18,7 +18,13 @@
 			"Bash(cargo build:*)",
 			"Bash(pnpm run build:*)",
 			"Bash(git add:*)",
-			"Bash(git commit:*)"
+			"Bash(git commit:*)",
+			"Bash(netstat:*)",
+			"Bash(findstr:*)",
+			"Bash(taskkill:*)",
+			"Bash(powershell:*)",
+			"Bash(pnpm build:*)",
+			"Bash(pnpm tauri build:*)"
 		],
 		"deny": [],
 		"ask": []

@@ -125,6 +125,17 @@ export class SyncEngine {
 	}
 
 	/**
+	 * 获取完整文件路径
+	 */
+	private getFullPath(fileName: string): string {
+		if (!this.config) return `/${fileName}`;
+		const basePath = this.config.path.startsWith("/")
+			? this.config.path
+			: `/${this.config.path}`;
+		return `${basePath}/${fileName}`;
+	}
+
+	/**
 	 * 添加日志
 	 */
 	private addLog(
@@ -165,15 +176,14 @@ export class SyncEngine {
 	 * 获取全量同步文件路径
 	 */
 	private getFullSyncFilePath(): string {
-		// 使用固定文件名，便于下载时查找
-		return "/EcoPaste/sync-data.json";
+		return this.getFullPath("sync-data.json");
 	}
 
 	/**
 	 * 获取元数据文件路径
 	 */
-	private getMetadataFileName(): string {
-		return "metadata.json";
+	private getMetadataFilePath(): string {
+		return this.getFullPath("metadata.json");
 	}
 
 	/**
@@ -277,11 +287,10 @@ export class SyncEngine {
 	private async findLatestSyncFile(): Promise<string | null> {
 		if (!this.config) return null;
 
-		// 优先尝试固定文件名
+		// 简化文件结构，只保留必要的文件
 		const possibleFiles = [
-			"/EcoPaste/sync-data.json", // 主要同步文件
-			"/EcoPaste/incremental.json", // 增量数据文件
-			"/EcoPaste/metadata.json", // 元数据文件
+			this.getFullPath("sync-data.json"), // 主要同步文件
+			this.getFullPath("metadata.json"), // 元数据文件
 		];
 
 		this.addLog("info", "🔍 搜索可用的同步文件", { possibleFiles });
@@ -437,7 +446,7 @@ export class SyncEngine {
 			},
 		};
 
-		const filePath = `/EcoPaste/${this.getMetadataFileName()}`;
+		const filePath = this.getMetadataFilePath();
 		await uploadSyncData(
 			this.config,
 			filePath,

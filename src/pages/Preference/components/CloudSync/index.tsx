@@ -269,16 +269,22 @@ const CloudSync = () => {
 							await validateConnectionStatus(config);
 						}
 					} else {
-						addLog("warning", "⚠️ 之前连接失败，将重新测试");
-						await validateConnectionStatus(config);
+						addLog("info", "📝 之前连接失败，将在后台尝试重新连接");
 					}
 				} else {
-					// 缓存过期或配置不匹配，重新验证连接状态
+					// 缓存过期或配置不匹配，将在后台重新验证连接状态
 					if (isDev()) {
-						addLog("info", "🔄 正在验证连接状态...");
+						addLog("info", "🔄 将在后台验证连接状态...");
 					}
-					await validateConnectionStatus(config);
 				}
+
+				// 延迟验证连接状态，避免启动时的网络问题
+				setTimeout(async () => {
+					if (isDev()) {
+						addLog("info", "🔄 后台验证连接状态...");
+					}
+					await validateConnectionStatus(config, false); // 不显示用户消息
+				}, 3000); // 延迟3秒进行连接测试
 			} else {
 				if (isDev()) {
 					addLog("info", "🌟 欢迎使用云同步功能，请配置您的WebDAV服务器信息");
@@ -297,7 +303,10 @@ const CloudSync = () => {
 	};
 
 	// 验证连接状态并初始化同步引擎
-	const validateConnectionStatus = async (config: WebDAVConfig) => {
+	const validateConnectionStatus = async (
+		config: WebDAVConfig,
+		showMessage = true,
+	) => {
 		if (!config || !config.url || !config.username || !config.password) {
 			return;
 		}
@@ -338,7 +347,9 @@ const CloudSync = () => {
 				if (isDev()) {
 					addLog("info", "🎉 云同步已就绪，可以开始使用！");
 				}
-				message.success("连接验证成功，云同步已就绪");
+				if (showMessage) {
+					message.success("连接验证成功，云同步已就绪");
+				}
 			} else {
 				setConnectionStatus("failed");
 				await saveConnectionState("failed", config);
@@ -349,7 +360,9 @@ const CloudSync = () => {
 					error: result.error_message,
 					status_code: result.status_code,
 				});
-				message.warning("连接失败，请检查网络或服务器配置");
+				if (showMessage) {
+					message.warning("连接失败，请检查网络或服务器配置");
+				}
 			}
 		} catch (testError) {
 			setConnectionStatus("failed");
@@ -359,7 +372,9 @@ const CloudSync = () => {
 				error:
 					testError instanceof Error ? testError.message : String(testError),
 			});
-			message.error("连接验证失败");
+			if (showMessage) {
+				message.error("连接验证失败");
+			}
 		}
 	};
 
@@ -945,7 +960,7 @@ const CloudSync = () => {
 									display: "flex",
 									alignItems: "center",
 									gap: "8px",
-									padding: "4px 8x",
+									padding: "2px 8px",
 									backgroundColor: "rgba(82, 196, 26, 0.05)",
 									borderRadius: "4px",
 									border: "1px solid rgba(82, 196, 26, 0.15)",

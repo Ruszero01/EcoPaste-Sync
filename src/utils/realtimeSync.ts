@@ -6,7 +6,7 @@ import {
 	uploadSyncData,
 } from "@/plugins/webdav";
 import type { HistoryTablePayload } from "@/types/database";
-import { generateDeviceId } from "@/utils/shared";
+import { calculateChecksum, generateDeviceId } from "@/utils/shared";
 import { emit } from "@tauri-apps/api/event";
 
 export type SyncInterval = 1 | 2 | 6 | 12 | 24; // 小时
@@ -38,6 +38,17 @@ class IntervalSyncEngine {
 
 	constructor() {
 		this.deviceId = generateDeviceId();
+	}
+
+	/**
+	 * 获取完整文件路径
+	 */
+	private getFullPath(fileName: string): string {
+		if (!this.webdavConfig) return `/${fileName}`;
+		const basePath = this.webdavConfig.path.startsWith("/")
+			? this.webdavConfig.path
+			: `/${this.webdavConfig.path}`;
+		return `${basePath}/${fileName}`;
 	}
 
 	/**
@@ -145,15 +156,24 @@ class IntervalSyncEngine {
 	private async uploadLocalData(): Promise<void> {
 		const localData = (await getHistoryData()) as HistoryTablePayload[];
 
-		// 创建同步数据包
+		// 创建同步数据包（使用与 syncEngine 相同的格式）
 		const syncData = {
-			deviceId: this.deviceId,
+			version: 1,
 			timestamp: Date.now(),
-			type: "full_sync",
-			data: localData,
+			deviceId: this.deviceId,
+			dataType: "full",
+			items: localData.map((item) => ({
+				...item,
+				lastModified: item.createTime || Date.now(),
+				deviceId: this.deviceId,
+				size: JSON.stringify(item).length,
+				checksum: calculateChecksum(item.value || ""),
+			})),
+			deleted: [],
+			compression: "none",
 		};
 
-		const filePath = "ecopaste-sync-full.json";
+		const filePath = this.getFullPath("sync-data.json");
 
 		await uploadSyncData(
 			this.webdavConfig!,
@@ -169,11 +189,13 @@ class IntervalSyncEngine {
 		// 下载主同步文件
 		const remoteData = await this.downloadRemoteData();
 
-		if (remoteData?.data && Array.isArray(remoteData.data)) {
+		// 适配新的数据格式
+		const remoteItems = remoteData?.items || remoteData?.data || [];
+		if (remoteItems && Array.isArray(remoteItems)) {
 			// 合并数据
 			const mergedData = this.mergeData(
 				(await getHistoryData()) as HistoryTablePayload[],
-				remoteData.data,
+				remoteItems,
 			);
 
 			// 更新本地数据库
@@ -184,7 +206,7 @@ class IntervalSyncEngine {
 			emit(LISTEN_KEY.REALTIME_SYNC_COMPLETED, {
 				type: "merge",
 				timestamp: Date.now(),
-				itemsCount: remoteData.data.length,
+				itemsCount: remoteItems.length,
 				sourceDevice: remoteData.deviceId,
 			});
 		} else {
@@ -199,7 +221,7 @@ class IntervalSyncEngine {
 		try {
 			const fileContent = await downloadSyncData(
 				this.webdavConfig!,
-				"ecopaste-sync-full.json",
+				this.getFullPath("sync-data.json"),
 			);
 			if (fileContent) {
 				return JSON.parse(fileContent as unknown as string);
