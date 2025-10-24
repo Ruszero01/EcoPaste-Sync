@@ -5,6 +5,7 @@ import {
 	downloadSyncData,
 	uploadSyncData,
 } from "@/plugins/webdav";
+import type { HistoryTablePayload } from "@/types/database";
 import { generateDeviceId } from "@/utils/shared";
 import { emit } from "@tauri-apps/api/event";
 
@@ -142,7 +143,7 @@ class IntervalSyncEngine {
 	 * 上传本地数据到云端
 	 */
 	private async uploadLocalData(): Promise<void> {
-		const localData = await getHistoryData();
+		const localData = (await getHistoryData()) as HistoryTablePayload[];
 
 		// 创建同步数据包
 		const syncData = {
@@ -171,7 +172,7 @@ class IntervalSyncEngine {
 		if (remoteData?.data && Array.isArray(remoteData.data)) {
 			// 合并数据
 			const mergedData = this.mergeData(
-				await getHistoryData(),
+				(await getHistoryData()) as HistoryTablePayload[],
 				remoteData.data,
 			);
 
