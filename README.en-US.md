@@ -65,16 +65,15 @@
 
 ### ✨ Current Features
 
-- 🔄 **Basic Cloud Sync**: Multi-device clipboard data synchronization through WebDAV protocol
-- 🗂️ **Flexible Configuration**: Support for custom sync paths and sync frequency settings
-- 🔐 **Data Security**: Hybrid mode with local storage as primary and cloud sync as secondary
+- 🔄 **WebDAV Cloud Sync**: Multi-device clipboard data synchronization through WebDAV protocol
+- 🗂️ **Smart Sync Mode**: Multiple sync strategies, including selective sync by content type, favorite status, etc.
+- 🔐 **Data Security**: Hybrid mode with local storage as primary and cloud sync as secondary, data fully controlled
+- ⚡ **Real-time Sync Engine**: Smart conflict detection and resolution, supporting bidirectional and incremental sync
 
 ### 🚀 Future Plans
 
-- 📌 **Selective Sync**: Support for selective synchronization (e.g., only favorites, specific types)
-- ⚡ **Real-time Sync**: Real-time synchronization based on cloud database for instant updates across devices
-- 🎯 **Smart Sync Strategy**: Automatic optimization of sync behavior based on network conditions and device status
-- 🌐 **Multi-protocol Support**: Support for more cloud storage protocols (OneDrive, Google Drive, etc.)
+- 📌 **Multi-protocol Cloud Storage Support**: Support for OneDrive, Google Drive, Dropbox and more cloud storage protocols
+- ⚡ **Cloud Database Real-time Sync**: Real-time synchronization based on cloud database for instant updates across devices
 
 ### 📦 Usage Instructions
 
@@ -111,24 +110,70 @@ pnpm tauri build
 
 > ⚠️ **Note**: This is a development branch and may contain experimental features. For production use, we recommend choosing the official stable version.
 
-## Features
+## Core Features
 
-- 🎉 Built with Tauri v2, lightweight and efficient, taking cross-platform experience to the next level.
-- 💻 Compatible with Windows, macOS, and Linux (X11), enabling seamless switching between devices.
-- ✨ Simple and intuitive user interface, easy to operate, zero learning curve, ready to use out of the box.
-- 📋 Supports clipboard content types like plain text, rich text, HTML, images, and files.
-- 🔒 Local data storage ensures user privacy and gives users full control over their data.
-- 📝 Notes feature allows easy categorization, management, and retrieval to boost productivity.
-- ☁️ **Cloud Sync**: Supports clipboard data synchronization across multiple devices through WebDAV protocol, ensuring data consistency across different platforms.
-- 🔄 **Smart Sync Strategy**: Supports manual sync and scheduled sync, allowing flexible adjustment of sync frequency based on network conditions.
-- 🛡️ **Data Security**: Cloud sync data uses encrypted transmission and supports custom sync paths, ensuring data security and controllability.
-- ⚙️ Rich personalization settings to meet diverse user needs and create a tailored experience.
-- 🤝 Comprehensive documentation and community support to explore and grow with developers.
-- 🧩 Continuously optimized with more exciting features waiting to be discovered.
+### 📋 Clipboard Management
+- **Multi-format Support**: Supports various clipboard formats including plain text, rich text, HTML, images, and files
+- **Smart Deduplication**: Automatically identifies duplicate content to avoid redundant storage
+- **History Recording**: Complete clipboard history with filtering by time, type, and favorite status
+- **Quick Search**: Powerful search functionality to quickly locate needed content
+- **Group Management**: Automatic grouping by content type (text, images, files, etc.)
+- **Favorites System**: Mark important content as favorites to prevent automatic cleanup
+
+### 🎨 Interface & Interaction
+- **Modern Design**: Beautiful interface based on Ant Design, supporting light/dark themes
+- **Multiple Window Modes**: Various display modes including floating and docked windows
+- **Quick Operations**: One-click copy, paste, delete and other quick operations
+- **Shortcut Support**: Global hotkeys for quick access and quick paste keys (1-9) for efficient operation
+
+### 🔧 System Integration
+- **Cross-platform Support**: Full compatibility with Windows, macOS, Linux (X11)
+- **Auto-start**: Support for automatic startup at boot with silent background operation
+- **System Tray**: Minimize to system tray without taking up taskbar space
+- **Global Hotkeys**: Customizable global hotkeys for quick access anytime
+
+### 📊 Data Management
+- **Local Database**: Reliable local storage based on SQLite
+- **Auto Cleanup**: Configurable automatic cleanup strategies for history records
+- **Data Export**: Support for data backup and export functionality
+- **Capacity Management**: Intelligent storage space management to avoid overuse
+- **Data Recovery**: Support for data recovery from backup files
+
+### ☁️ Cloud Sync Features (This Branch's Specialty)
+- **WebDAV Sync**: Multi-device data synchronization through WebDAV protocol
+- **Smart Sync Mode**: Multiple sync strategies with selective sync by content type, favorite status, etc.
+- **Conflict Resolution**: Intelligent conflict detection and automatic resolution mechanisms
+- **Bidirectional Sync**: Support for bidirectional data synchronization across multiple devices
+
+### ⚙️ Personalization Settings
+- **Theme Customization**: Light/dark themes, follow system or manual switching
+- **Language Support**: Multiple languages including Simplified Chinese, Traditional Chinese, English, Japanese
+- **Behavior Configuration**: Rich behavior options to meet different usage habits
+- **Performance Optimization**: Configurable performance parameters balancing functionality and resource usage
+- **Update Management**: Automatic update checking with incremental update support
+
+### 🔒 Privacy & Security
+- **Local First**: Data primarily stored locally with full user control
+- **Privacy Protection**: Sensitive data not uploaded, or only synced with user authorization
+- **Permission Management**: Minimum permission principle, only requesting necessary system permissions
+- **Security Audit**: Open-source transparent code accepting community security reviews
+
+## 📖 Usage Guide
+
+### Quick Start
+1. **Download & Install**: Download the appropriate installation package for your platform from the [Releases](https://github.com/EcoPasteHub/EcoPaste/releases) page
+2. **Launch Application**: First launch will automatically start monitoring clipboard
+3. **Configure Settings**: Customize behavior and appearance through preferences
+4. **Start Using**: Use hotkeys to bring up the interface and start managing your clipboard
+
+### Cloud Sync Configuration (This Branch)
+1. **Prepare WebDAV Service**: Ensure you have an available WebDAV service
+2. **Configure Connection**: Fill in server information in preferences' "Cloud Sync" section and test connection
+3. **Start Syncing**: Select appropriate sync strategy and start synchronization
 
 ## Feedback
 
-1. 🔍 First, check out the [FAQ](https://ecopaste.cn/problem/macos/damage) or browse through the existing [issues](https://github.com/EcoPasteHub/EcoPaste/issues)。
+1. 🔍 First, check out the [FAQ](https://ecopaste.cn/problem/macos/damage) or browse through the existing [issues](https://github.com/EcoPasteHub/EcoPaste/issues).
 
 2. ❓ If your issue remains unresolved, please submit a new [issue](https://github.com/EcoPasteHub/EcoPaste/issues/new/choose) with a detailed description to help us quickly identify and address the problem.
 

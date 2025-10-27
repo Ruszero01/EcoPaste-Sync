@@ -5,7 +5,7 @@
 		"name": "ayangweb",
 		"email": "ayangweb@foxmail.com"
 	},
-	"version": "0.5.0-sync-alpha",
+	"version": "0.5.0-sync-beta-1",
 	"type": "module",
 	"scripts": {
 		"dev": "run-s build:icon dev:vite",
