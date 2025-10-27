@@ -9,7 +9,11 @@ import {
 	setServerConfig,
 	testConnection,
 } from "@/plugins/webdav";
-import type { SyncResult } from "@/types/sync";
+import {
+	SYNC_MODE_PRESETS,
+	type SyncMode,
+	type SyncModeConfig,
+} from "@/types/sync.d";
 import { isDev } from "@/utils/is";
 import { type SyncInterval, realtimeSync } from "@/utils/realtimeSync";
 import { setGlobalSyncLogCallback, syncEngine } from "@/utils/syncEngine";
@@ -20,6 +24,7 @@ import {
 	LoadingOutlined,
 	ScheduleOutlined,
 } from "@ant-design/icons";
+import { emit } from "@tauri-apps/api/event";
 import { listen } from "@tauri-apps/api/event";
 import {
 	Alert,
@@ -35,6 +40,9 @@ import {
 	message,
 } from "antd";
 import { useCallback, useEffect, useRef, useState } from "react";
+// import SyncModeSelector from "./SyncModeSelector";
+// import ImmediateSyncButton from "./ImmediateSyncButton";
+import { loadSyncModeConfig, saveSyncModeConfig } from "./syncModeConfig";
 import type { LogEntry } from "./types";
 
 const { Text } = Typography;
@@ -83,6 +91,11 @@ const CloudSync = () => {
 		path: "/EcoPaste",
 		timeout: 30000, // 设置默认超时时间30秒，不在前端显示
 	});
+	const [syncModeConfig, setSyncModeConfig] = useState<SyncModeConfig>(
+		SYNC_MODE_PRESETS.lightweight,
+	);
+	const [favoritesModeEnabled, setFavoritesModeEnabled] = useState(false);
+	const [lightweightModeEnabled, setLightweightModeEnabled] = useState(true);
 	const [form] = Form.useForm();
 	const logContainerRef = useRef<HTMLDivElement>(null);
 
@@ -111,6 +124,132 @@ const CloudSync = () => {
 			console.warn("保存上次同步时间失败:", error);
 		}
 	}, []);
+
+	// 添加日志
+	const addLog = useCallback(
+		(
+			level: "info" | "success" | "warning" | "error",
+			message: string,
+			data?: any,
+		) => {
+			const newLog: LogEntry = {
+				id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+				timestamp: new Date().toLocaleString(),
+				level,
+				message,
+				data: data ? JSON.stringify(data, null, 2) : undefined,
+			};
+
+			setLogs((prev) => [...prev, newLog]);
+
+			// 同时输出到控制台
+			const consoleMessage = `[CloudSync-${level.toUpperCase()}] ${message}`;
+			switch (level) {
+				case "error":
+					console.error(consoleMessage, data);
+					break;
+				case "warning":
+					console.warn(consoleMessage, data);
+					break;
+				case "success":
+					// console.log(`%c${consoleMessage}`, "color: green", data);
+					break;
+				default:
+				// console.log(consoleMessage, data);
+			}
+		},
+		[],
+	);
+
+	// 加载同步模式配置
+	const loadSyncMode = useCallback(() => {
+		try {
+			const config = loadSyncModeConfig();
+			if (config?.mode) {
+				setSyncModeConfig(config);
+				addLog("info", "📝 已加载同步模式配置", { mode: config.mode });
+			} else {
+				console.error("加载的同步模式配置无效:", config);
+				// 使用默认配置
+				const defaultConfig = SYNC_MODE_PRESETS.lightweight;
+				setSyncModeConfig(defaultConfig);
+				addLog("warning", "⚠️ 使用默认同步模式配置", {
+					mode: defaultConfig.mode,
+				});
+			}
+		} catch (error) {
+			addLog("error", "❌ 加载同步模式配置失败", { error });
+			// 发生错误时使用默认配置
+			const defaultConfig = SYNC_MODE_PRESETS.lightweight;
+			setSyncModeConfig(defaultConfig);
+		}
+	}, [addLog]);
+
+	// 处理收藏模式开关变更
+	const handleFavoritesModeChange = (enabled: boolean) => {
+		try {
+			const currentConfig = syncModeConfig;
+			const newConfig = {
+				...currentConfig,
+				mode: (enabled ? "favorites" : "full") as SyncMode,
+				settings: {
+					...currentConfig.settings,
+					onlyFavorites: enabled,
+				},
+			};
+
+			setSyncModeConfig(newConfig);
+			const saved = saveSyncModeConfig(newConfig);
+			if (saved) {
+				addLog("info", "✅ 收藏模式配置已更新", { enabled });
+				message.success(enabled ? "已启用收藏模式" : "已关闭收藏模式");
+			} else {
+				addLog("error", "❌ 保存收藏模式配置失败");
+				message.error("保存配置失败");
+			}
+		} catch (error) {
+			addLog("error", "❌ 处理收藏模式变更失败", { error });
+			message.error("更新配置失败");
+		}
+	};
+
+	// 处理轻量同步开关变更
+	const handleLightweightModeChange = (enabled: boolean) => {
+		try {
+			const currentConfig = syncModeConfig;
+			const newConfig = {
+				...currentConfig,
+				settings: {
+					...currentConfig.settings,
+					includeImages: !enabled,
+					includeFiles: !enabled,
+				},
+			};
+
+			// 如果启用了收藏模式，且关闭了轻量模式，保持完整的文件类型支持
+			if (currentConfig.settings.onlyFavorites && !enabled) {
+				newConfig.settings.includeImages = true;
+				newConfig.settings.includeFiles = true;
+			}
+
+			setSyncModeConfig(newConfig);
+			const saved = saveSyncModeConfig(newConfig);
+			if (saved) {
+				addLog("info", "✅ 轻量同步配置已更新", {
+					enabled,
+					includeImages: newConfig.settings.includeImages,
+					includeFiles: newConfig.settings.includeFiles,
+				});
+				message.success(enabled ? "已启用轻量同步" : "已关闭轻量同步");
+			} else {
+				addLog("error", "❌ 保存轻量同步配置失败");
+				message.error("保存配置失败");
+			}
+		} catch (error) {
+			addLog("error", "❌ 处理轻量同步变更失败", { error });
+			message.error("更新配置失败");
+		}
+	};
 
 	// 初始化时加载配置
 	useEffect(() => {
@@ -146,13 +285,50 @@ const CloudSync = () => {
 			setLastSyncTime(savedLastSyncTime);
 		}
 
+		// 加载配置
 		loadServerConfig();
+		loadSyncMode();
 
 		// 清理函数
 		return () => {
 			unlisten.then((fn) => fn());
 		};
-	}, [loadLastSyncTime, saveLastSyncTime]);
+	}, [loadLastSyncTime, saveLastSyncTime, loadSyncMode, addLog]);
+
+	// 更新同步引擎的同步模式配置
+	useEffect(() => {
+		if (syncModeConfig) {
+			syncEngine.setSyncModeConfig(syncModeConfig);
+		}
+	}, [syncModeConfig]);
+
+	// 同步配置到开关状态
+	useEffect(() => {
+		if (syncModeConfig) {
+			setFavoritesModeEnabled(syncModeConfig.settings.onlyFavorites);
+			setLightweightModeEnabled(
+				!syncModeConfig.settings.includeImages &&
+					!syncModeConfig.settings.includeFiles,
+			);
+		}
+	}, [
+		syncModeConfig,
+		syncModeConfig.settings.includeImages,
+		syncModeConfig.settings.includeFiles,
+		syncModeConfig.settings.onlyFavorites,
+	]);
+
+	// 初始化开关状态
+	useEffect(() => {
+		// 根据初始syncModeConfig设置开关状态
+		if (syncModeConfig) {
+			setFavoritesModeEnabled(syncModeConfig.settings.onlyFavorites);
+			setLightweightModeEnabled(
+				!syncModeConfig.settings.includeImages &&
+					!syncModeConfig.settings.includeFiles,
+			);
+		}
+	}, [syncModeConfig]);
 
 	// 持久化连接状态
 	const saveConnectionState = async (
@@ -242,6 +418,8 @@ const CloudSync = () => {
 						// 如果之前连接成功，直接初始化同步引擎
 						try {
 							await syncEngine.initialize(config);
+							// 设置同步模式配置
+							syncEngine.setSyncModeConfig(syncModeConfig);
 
 							if (intervalSyncEnabled) {
 								realtimeSync.initialize({
@@ -331,6 +509,8 @@ const CloudSync = () => {
 
 				// 初始化同步引擎
 				await syncEngine.initialize(config);
+				// 设置同步模式配置
+				syncEngine.setSyncModeConfig(syncModeConfig);
 
 				// 如果间隔同步已启用，重新初始化它
 				if (intervalSyncEnabled) {
@@ -389,39 +569,6 @@ const CloudSync = () => {
 				error: error instanceof Error ? error.message : String(error),
 			});
 			return false;
-		}
-	};
-
-	// 添加日志
-	const addLog = (
-		level: "info" | "success" | "warning" | "error",
-		message: string,
-		data?: any,
-	) => {
-		const newLog: LogEntry = {
-			id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-			timestamp: new Date().toLocaleString(),
-			level,
-			message,
-			data: data ? JSON.stringify(data, null, 2) : undefined,
-		};
-
-		setLogs((prev) => [...prev, newLog]);
-
-		// 同时输出到控制台
-		const consoleMessage = `[CloudSync-${level.toUpperCase()}] ${message}`;
-		switch (level) {
-			case "error":
-				console.error(consoleMessage, data);
-				break;
-			case "warning":
-				console.warn(consoleMessage, data);
-				break;
-			case "success":
-				// console.log(`%c${consoleMessage}`, "color: green", data);
-				break;
-			default:
-			// console.log(consoleMessage, data);
 		}
 	};
 
@@ -502,115 +649,73 @@ const CloudSync = () => {
 		}
 	};
 
-	// 执行全量同步上传
-	const handleFullSyncUpload = async () => {
-		addLog("info", "🔍 检查同步引擎状态...", {
-			connectionStatus,
-			canSync: syncEngine.canSync(),
-			syncStatus: syncEngine.getSyncStatus(),
-		});
+	// 立即同步处理函数
+	const handleImmediateSync = async () => {
+		if (isSyncing) {
+			return;
+		}
 
-		if (!syncEngine.canSync()) {
-			message.error("同步引擎未初始化或网络不可用");
-			addLog("error", "❌ 同步引擎不可用", {
-				connectionStatus,
-				canSync: syncEngine.canSync(),
-				syncStatus: syncEngine.getSyncStatus(),
-			});
+		if (connectionStatus !== "success") {
+			message.error("请先确保网络连接正常");
 			return;
 		}
 
 		setIsSyncing(true);
-		addLog("info", "开始全量同步上传...");
+		addLog("info", "🚀 开始智能同步...");
 
 		try {
-			const result: SyncResult = await syncEngine.fullSyncUpload();
+			// 双向智能同步
+			addLog("info", "🔄 开始双向智能同步...");
+			addLog("info", "💡 同步策略：双向合并，智能冲突解决，删除同步");
 
-			if (result.success) {
-				addLog("success", "全量同步上传成功", {
-					uploaded: result.uploaded,
-					duration: `${result.duration}ms`,
+			const syncResult = await syncEngine.performBidirectionalSync();
+
+			if (syncResult.success) {
+				const timestamp = syncResult.timestamp;
+
+				// 更新同步时间
+				setLastSyncTime(timestamp);
+				saveLastSyncTime(timestamp);
+
+				// 显示成功消息
+				let successMessage = "双向同步完成";
+				if (syncResult.downloaded > 0 && syncResult.uploaded > 0) {
+					successMessage += `，下载 ${syncResult.downloaded} 条，上传 ${syncResult.uploaded} 条`;
+				} else if (syncResult.downloaded > 0) {
+					successMessage += `，下载 ${syncResult.downloaded} 条数据`;
+				} else if (syncResult.uploaded > 0) {
+					successMessage += `，上传 ${syncResult.uploaded} 条数据`;
+				} else {
+					successMessage += "，数据已是最新的";
+				}
+
+				message.success(successMessage);
+				addLog("success", "双向同步完成", {
+					uploaded: syncResult.uploaded,
+					downloaded: syncResult.downloaded,
+					conflicts: syncResult.conflicts.length,
+					duration: `${syncResult.duration}ms`,
 				});
-				setLastSyncTime(result.timestamp);
-				saveLastSyncTime(result.timestamp); // 持久化保存
-				message.success(`同步完成，上传了 ${result.uploaded} 条记录`);
+
+				// 触发界面刷新，确保列表显示最新数据
+				try {
+					emit(LISTEN_KEY.REFRESH_CLIPBOARD_LIST);
+					addLog("info", "🔄 已触发界面刷新");
+				} catch (error) {
+					addLog("warning", "⚠️ 触发界面刷新失败", {
+						error: error instanceof Error ? error.message : String(error),
+					});
+				}
 			} else {
-				addLog("error", "全量同步上传失败", {
-					errors: result.errors,
-				});
-				message.error("同步失败，请查看日志");
+				throw new Error("双向同步失败");
 			}
 		} catch (error) {
-			addLog("error", "同步过程中出现异常", {
+			addLog("error", "❌ 同步失败", {
 				error: error instanceof Error ? error.message : String(error),
 			});
-			message.error("同步出错");
+			message.error("同步出错，请查看日志");
 		} finally {
 			setIsSyncing(false);
-		}
-	};
-
-	// 执行全量同步下载
-	const handleFullSyncDownload = async () => {
-		addLog("info", "🔘 下载按钮被点击，开始处理同步下载");
-		// console.log("CloudSync Debug - handleFullSyncDownload called");
-
-		// 设置同步引擎的日志回调
-		syncEngine.setLogCallback((level, message, data) => {
-			addLog(level, message, data);
-		});
-
-		addLog("info", "🔍 检查同步引擎状态...", {
-			connectionStatus,
-			canSync: syncEngine.canSync(),
-			syncStatus: syncEngine.getSyncStatus(),
-		});
-
-		if (!syncEngine.canSync()) {
-			addLog("error", "❌ 同步引擎不可用", {
-				connectionStatus,
-				canSync: syncEngine.canSync(),
-				syncStatus: syncEngine.getSyncStatus(),
-			});
-			message.error("同步引擎未初始化或网络不可用");
-			return;
-		}
-
-		setIsSyncing(true);
-		addLog("info", "开始全量同步下载...");
-		// console.log("CloudSync Debug - isSyncing set to true, lastSyncTime:", lastSyncTime);
-
-		try {
-			addLog("info", "📡 开始调用同步引擎下载方法");
-			const result: SyncResult = await syncEngine.fullSyncDownload();
-			addLog("info", "✅ 同步引擎下载方法完成", result);
-
-			if (result.success) {
-				addLog("success", "全量同步下载成功", {
-					downloaded: result.downloaded,
-					duration: `${result.duration}ms`,
-				});
-				setLastSyncTime(result.timestamp);
-				saveLastSyncTime(result.timestamp); // 持久化保存
-				message.success(`同步完成，下载了 ${result.downloaded} 条记录`);
-			} else {
-				addLog("error", "全量同步下载失败", {
-					errors: result.errors,
-				});
-				message.error("同步失败，请查看日志");
-			}
-		} catch (error) {
-			addLog("error", "同步过程中出现异常", {
-				error: error instanceof Error ? error.message : String(error),
-			});
-			message.error("同步出错");
-		} finally {
-			setIsSyncing(false);
-			addLog(
-				"info",
-				"✅ 下载方法 finally completed, isSyncing set to false, lastSyncTime:",
-				lastSyncTime,
-			);
 		}
 	};
 
@@ -881,8 +986,26 @@ const CloudSync = () => {
 
 			{/* 同步设置 */}
 			<ProList header="同步设置">
+				{/* 收藏模式开关 */}
 				<ProSwitch
-					title="间隔同步"
+					title="收藏模式"
+					description="开启后仅同步收藏的剪贴板内容"
+					value={favoritesModeEnabled}
+					onChange={handleFavoritesModeChange}
+					disabled={connectionStatus !== "success"}
+				/>
+
+				{/* 轻量同步开关 */}
+				<ProSwitch
+					title="轻量同步"
+					description="开启后仅同步文本和富文本，不包含图片和文件"
+					value={lightweightModeEnabled}
+					onChange={handleLightweightModeChange}
+					disabled={connectionStatus !== "success"}
+				/>
+
+				<ProSwitch
+					title="自动同步"
 					description="启用后将按设定间隔自动同步剪贴板数据"
 					value={intervalSyncEnabled}
 					onChange={handleIntervalSyncToggle}
@@ -910,46 +1033,24 @@ const CloudSync = () => {
 					</List.Item>
 				)}
 
+				{/* 立即同步按钮 - 简化版本 */}
 				<List.Item>
-					{/* 使用相对定位确保右侧状态对齐到输入框右边缘 */}
 					<div style={{ position: "relative", width: "100%" }}>
-						{/* 左侧按钮组 */}
-						<Flex gap="12px" align="center" style={{ padding: "2px 0" }}>
+						{/* 左侧按钮 */}
+						<Flex align="center" style={{ padding: "2px 0" }}>
 							<Button
 								type="primary"
-								icon={<UnoIcon name="i-material-symbols:upload" />}
-								loading={isSyncing}
-								onClick={handleFullSyncUpload}
-								disabled={connectionStatus !== "success"}
 								size="middle"
-								style={{
-									display: "flex",
-									alignItems: "center",
-									justifyContent: "center",
-									gap: "0px",
-								}}
-							>
-								上传本地数据
-							</Button>
-
-							<Button
-								icon={<UnoIcon name="i-material-symbols:download" />}
+								icon={<CloudSyncOutlined />}
 								loading={isSyncing}
-								onClick={handleFullSyncDownload}
+								onClick={handleImmediateSync}
 								disabled={connectionStatus !== "success"}
-								size="middle"
-								style={{
-									display: "flex",
-									alignItems: "center",
-									justifyContent: "center",
-									gap: "0px",
-								}}
 							>
-								下载云端数据
+								立即同步
 							</Button>
 						</Flex>
 
-						{/* 同步时间信息 - 右侧对齐，带边框 */}
+						{/* 右侧同步时间显示 */}
 						{lastSyncTime > 0 && (
 							<div
 								style={{

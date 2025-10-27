@@ -1,7 +1,11 @@
 import Scrollbar from "@/components/Scrollbar";
+import { useTauriFocus } from "@/hooks/useTauriFocus";
 import type { HistoryTablePayload } from "@/types/database";
+import { useKeyPress } from "ahooks";
 import { Flex, Tag } from "antd";
 import clsx from "clsx";
+import { useContext, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { MainContext } from "../..";
 
 interface GroupItem extends Partial<HistoryTablePayload> {
@@ -10,7 +14,7 @@ interface GroupItem extends Partial<HistoryTablePayload> {
 }
 
 const Group = () => {
-	const { state } = useContext(MainContext);
+	const { state, getListCache, getListDebounced } = useContext(MainContext);
 	const { t } = useTranslation();
 	const [checked, setChecked] = useState("all");
 
@@ -69,7 +73,17 @@ const Group = () => {
 
 		setChecked(key);
 
-		Object.assign(state, { group, favorite });
+		// 确保正确更新响应式状态
+		state.group = group;
+		state.favorite = favorite;
+
+		// 强制触发列表刷新 - 清除缓存并重新加载
+		if (getListCache?.current) {
+			getListCache.current.clear();
+		}
+		if (getListDebounced) {
+			getListDebounced(50);
+		}
 	};
 
 	return (

@@ -37,8 +37,10 @@ const Preference = () => {
 	// 监听剪贴板配置项变化
 	useSubscribe(clipboardStore, () => handleStoreChanged());
 
-	// 监听快捷键切换窗口显隐
-	useRegister(toggleWindowVisible, [shortcut.preference]);
+	// 监听快捷键打开偏好设置窗口
+	useRegister(() => {
+		showWindow("preference");
+	}, [shortcut.preference]);
 
 	// 配置项变化通知其它窗口和本地存储
 	const handleStoreChanged = () => {

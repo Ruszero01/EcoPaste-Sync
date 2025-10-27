@@ -37,6 +37,8 @@ const INITIAL_STATE: State = {
 interface MainContextValue {
 	state: State;
 	getList?: (payload?: HistoryTablePayload) => Promise<void>;
+	getListCache?: React.MutableRefObject<Map<string, HistoryTablePayload[]>>;
+	getListDebounced?: (delay?: number) => Promise<void>;
 }
 
 export const MainContext = createContext<MainContextValue>({
@@ -239,6 +241,14 @@ const Main = () => {
 		lastQueryParams = "";
 		getListDebounced(50); // 使用防抖版本，减少频繁调用
 	});
+
+	// 监听搜索状态变化，自动刷新列表
+	useEffect(() => {
+		// 清除缓存并重新加载数据
+		getListCache.current.clear();
+		lastQueryParams = "";
+		getListDebounced(50);
+	}, [state.search, state.group, state.favorite]);
 
 	// 监听配置项变化
 	useTauriListen<Store>(LISTEN_KEY.STORE_CHANGED, ({ payload }) => {
@@ -465,6 +475,8 @@ const Main = () => {
 				value={{
 					state,
 					getList,
+					getListCache,
+					getListDebounced,
 				}}
 			>
 				{window.style === "float" ? <Float /> : <Dock />}
