@@ -45,7 +45,7 @@ const App = () => {
 		try {
 			// 先检查托盘是否存在
 			const { TrayIcon } = await import("@tauri-apps/api/tray");
-			const existingTray = TrayIcon.getById("app-tray");
+			const existingTray = await TrayIcon.getById("app-tray");
 
 			if (existingTray) {
 				try {

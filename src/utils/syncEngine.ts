@@ -17,10 +17,8 @@ import type {
 	SyncResult,
 } from "@/types/sync";
 import type { SyncModeConfig } from "@/types/sync.d";
-import { getSaveDatabasePath } from "@/utils/path";
 import { calculateChecksum, generateDeviceId } from "@/utils/shared";
 import { emit } from "@tauri-apps/api/event";
-import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { filterHistoryDataBySyncMode } from "./syncFilter";
 
 // 全局事件发射器
@@ -181,10 +179,10 @@ export class SyncEngine {
 		try {
 			const localData = await getHistoryData();
 			this.lastLocalSnapshot = new Map(
-				localData.map((item) => [item.id, item]),
+				(localData as any[]).map((item: any) => [item.id, item]),
 			);
 			this.addLog("info", "📸 本地数据快照已初始化", {
-				count: localData.length,
+				count: (localData as any[]).length,
 			});
 		} catch (error) {
 			this.addLog("error", "❌ 初始化本地快照失败", { error });
@@ -201,10 +199,10 @@ export class SyncEngine {
 	/**
 	 * 生成同步文件路径
 	 */
-	private getSyncFileName(): string {
-		const timestamp = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
-		return `sync-${timestamp}.json`;
-	}
+	// private getSyncFileName(): string {
+	// 	const timestamp = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+	// 	return `sync-${timestamp}.json`;
+	// }
 
 	/**
 	 * 获取全量同步文件路径
@@ -230,7 +228,9 @@ export class SyncEngine {
 	}> {
 		try {
 			const currentData = await getHistoryData();
-			const currentMap = new Map(currentData.map((item) => [item.id, item]));
+			const currentMap = new Map(
+				(currentData as any[]).map((item: any) => [item.id, item]),
+			);
 
 			const added: any[] = [];
 			const modified: any[] = [];
@@ -238,7 +238,7 @@ export class SyncEngine {
 
 			// 检查新增和修改
 			for (const [id, item] of currentMap) {
-				const lastItem = this.lastLocalSnapshot.get(id);
+				const lastItem = this.lastLocalSnapshot.get(id as string);
 				if (!lastItem) {
 					// 新增的
 					added.push(item);
@@ -256,7 +256,7 @@ export class SyncEngine {
 			}
 
 			// 更新快照
-			this.lastLocalSnapshot = currentMap;
+			this.lastLocalSnapshot = currentMap as Map<string, any>;
 
 			return { added, modified, deleted };
 		} catch (error) {
@@ -319,7 +319,14 @@ export class SyncEngine {
 
 			result.downloaded = mergedResult.downloaded;
 			result.uploaded = mergedResult.uploaded;
-			result.conflicts = mergedResult.conflicts;
+			result.conflicts = mergedResult.conflicts.map((id) => ({
+				itemId: id,
+				type: "modify" as const,
+				localVersion: {} as SyncItem,
+				remoteVersion: {} as SyncItem,
+				resolution: "merge" as const,
+				reason: "数据冲突",
+			}));
 
 			// 4. 上传合并后的数据（包含删除记录）
 			if (mergedResult.needsUpload) {
@@ -363,11 +370,13 @@ export class SyncEngine {
 		conflicts: string[];
 		deletedItems: string[];
 	}> {
-		const cloudMap = new Map(cloudData.map((item) => [item.id, item]));
+		const cloudMap = new Map(cloudData.map((item: any) => [item.id, item]));
 		const localData = await getHistoryData();
-		const localMap = new Map(localData.map((item) => [item.id, item]));
+		const localMap = new Map(
+			(localData as any[]).map((item: any) => [item.id, item]),
+		);
 
-		let _needsUpload = false;
+		// let _needsUpload = false; // 未使用的变量，注释掉
 		let downloaded = 0;
 		const conflicts: string[] = [];
 
@@ -421,7 +430,7 @@ export class SyncEngine {
 				const localItem = localMap.get(id);
 				if (localItem) {
 					const cloudTime = new Date(cloudItem.createTime).getTime();
-					const localTime = new Date(localItem.createTime).getTime();
+					const localTime = new Date((localItem as any).createTime).getTime();
 
 					if (cloudTime !== localTime) {
 						// 时间不同，需要解决冲突
@@ -447,10 +456,10 @@ export class SyncEngine {
 							);
 						} else {
 							// 本地更新，标记需要上传
-							_needsUpload = true;
+							// _needsUpload = true; // 未使用的变量，注释掉
 							this.addLog(
 								"info",
-								`✅ 本地数据更新，将同步到云端: ${localItem.type} - ${localItem.search?.substring(0, 20)}...`,
+								`✅ 本地数据更新，将同步到云端: ${(localItem as any).type} - ${(localItem as any).search?.substring(0, 20)}...`,
 							);
 						}
 					}
@@ -460,7 +469,7 @@ export class SyncEngine {
 
 		// 3. 构建最终的数据集（排除所有删除项）
 		const finalData = Array.from(localMap.values()).filter(
-			(item) => !allDeletedItems.includes(item.id),
+			(item: any) => !allDeletedItems.includes(item.id),
 		);
 
 		// 4. 保存合并后的本地数据 - 总是保存以确保数据一致性
@@ -479,18 +488,17 @@ export class SyncEngine {
 				localMap.size > 0
 					? {
 							firstId: Array.from(localMap.keys())[0],
-							firstType: Array.from(localMap.values())[0]?.type,
-							firstSearch: Array.from(localMap.values())[0]?.search?.substring(
-								0,
-								20,
-							),
+							firstType: (Array.from(localMap.values())[0] as any)?.type,
+							firstSearch: (
+								Array.from(localMap.values())[0] as any
+							)?.search?.substring(0, 20),
 						}
 					: null,
 		});
 
 		if (this.logCallback) {
 			setImportLogCallback((message, data) => {
-				this.logCallback("info", `💾 ${message}`, data);
+				this.logCallback!("info", `💾 ${message}`, data);
 			});
 		}
 
@@ -603,36 +611,38 @@ export class SyncEngine {
 			let filteredData = localData;
 			if (this.syncModeConfig) {
 				filteredData = filterHistoryDataBySyncMode(
-					localData,
+					localData as any[],
 					this.syncModeConfig,
 				);
 				this.addLog("info", "🔍 应用同步模式过滤", {
-					originalCount: localData.length,
-					filteredCount: filteredData.length,
+					originalCount: (localData as any[]).length,
+					filteredCount: (filteredData as any[]).length,
 					mode: this.syncModeConfig.mode,
 				});
 			} else {
 				this.addLog("warning", "⚠️ 未设置同步模式配置，使用全部数据");
 			}
 
-			const syncItems: SyncItem[] = filteredData.map((item) => ({
-				id: item.id,
-				type: item.type as any,
-				group: item.group as any,
-				value: item.value,
-				search: item.search,
-				count: item.count,
-				width: item.width,
-				height: item.height,
-				favorite: item.favorite,
-				createTime: item.createTime,
-				note: item.note,
-				subtype: item.subtype,
-				lastModified: Date.now(),
-				deviceId: this.deviceId,
-				size: JSON.stringify(item).length,
-				checksum: calculateChecksum(item.value),
-			}));
+			const syncItems: SyncItem[] = (filteredData as any[]).map(
+				(item: any) => ({
+					id: item.id,
+					type: item.type as any,
+					group: item.group as any,
+					value: item.value,
+					search: item.search,
+					count: item.count,
+					width: item.width,
+					height: item.height,
+					favorite: item.favorite,
+					createTime: item.createTime,
+					note: item.note,
+					subtype: item.subtype,
+					lastModified: Date.now(),
+					deviceId: this.deviceId,
+					size: JSON.stringify(item).length,
+					checksum: calculateChecksum(item.value),
+				}),
+			);
 
 			if (deletedItems.length > 0) {
 				this.addLog("info", "🗑️ 包含删除记录", { count: deletedItems.length });
@@ -845,7 +855,7 @@ export class SyncEngine {
 				// 确保数据库日志回调已设置
 				if (this.logCallback) {
 					setImportLogCallback((message, data) => {
-						this.logCallback("info", `💾 ${message}`, data);
+						this.logCallback!("info", `💾 ${message}`, data);
 					});
 				}
 
@@ -938,55 +948,55 @@ export class SyncEngine {
 	/**
 	 * 直接导入历史数据（参考备份系统逻辑）
 	 */
-	private async importHistoryDataDirect(data: any[]) {
-		this.addLog("info", "🔄 使用直接导入方式");
+	// private async importHistoryDataDirect(data: any[]) {
+	// 	this.addLog("info", "🔄 使用直接导入方式");
 
-		try {
-			// 1. 关闭数据库连接
-			this.addLog("info", "🔒 关闭数据库连接");
-			emit(LISTEN_KEY.CLOSE_DATABASE);
+	// 	try {
+	// 		// 1. 关闭数据库连接
+	// 		this.addLog("info", "🔒 关闭数据库连接");
+	// 		emit(LISTEN_KEY.CLOSE_DATABASE);
 
-			// 2. 生成 SQL 语句来重建数据库
-			const sqlStatements = [
-				"DELETE FROM history;",
-				...data.map((item) => {
-					const fields = Object.keys(item);
-					const values = Object.values(item);
-					const placeholders = values.map(() => "?").join(", ");
-					const sql = `INSERT INTO history (${fields.join(", ")}) VALUES (${placeholders});`;
-					return { sql, values };
-				}),
-			];
+	// 		// 2. 生成 SQL 语句来重建数据库
+	// 		const sqlStatements = [
+	// 			"DELETE FROM history;",
+	// 			...data.map((item) => {
+	// 				const fields = Object.keys(item);
+	// 				const values = Object.values(item);
+	// 				const placeholders = values.map(() => "?").join(", ");
+	// 				const sql = `INSERT INTO history (${fields.join(", ")}) VALUES (${placeholders});`;
+	// 				return { sql, values };
+	// 			}),
+	// 		];
 
-			this.addLog("info", `📝 生成了 ${sqlStatements.length} 条 SQL 语句`);
+	// 		this.addLog("info", `📝 生成了 ${sqlStatements.length} 条 SQL 语句`);
 
-			// 3. 将数据写入临时 SQL 文件
-			const dbPath = await getSaveDatabasePath();
-			const tempSqlPath = dbPath.replace(".db", "_temp.sql");
+	// 		// 3. 将数据写入临时 SQL 文件
+	// 		const dbPath = await getSaveDatabasePath();
+	// 		const tempSqlPath = dbPath.replace(".db", "_temp.sql");
 
-			let sqlContent = "";
-			for (const statement of sqlStatements) {
-				if (typeof statement === "string") {
-					sqlContent += `${statement}\n`;
-				} else {
-					sqlContent += `${statement.sql}\n`;
-				}
-			}
+	// 		let sqlContent = "";
+	// 		for (const statement of sqlStatements) {
+	// 			if (typeof statement === "string") {
+	// 				sqlContent += `${statement}\n`;
+	// 			} else {
+	// 				sqlContent += `${statement.sql}\n`;
+	// 			}
+	// 		}
 
-			await writeTextFile(tempSqlPath, sqlContent);
-			this.addLog("success", "✅ SQL 文件生成成功");
+	// 		await writeTextFile(tempSqlPath, sqlContent);
+	// 		this.addLog("success", "✅ SQL 文件生成成功");
 
-			// 4. 使用智能合并而不是清空重建
-			await this.mergeHistoryData(data);
+	// 		// 4. 使用智能合并而不是清空重建
+	// 		await this.mergeHistoryData(data);
 
-			this.addLog("success", "✅ 数据导入完成");
-		} catch (error) {
-			this.addLog("error", "❌ 直接导入失败", {
-				error: error instanceof Error ? error.message : String(error),
-			});
-			throw error;
-		}
-	}
+	// 		this.addLog("success", "✅ 数据导入完成");
+	// 	} catch (error) {
+	// 		this.addLog("error", "❌ 直接导入失败", {
+	// 			error: error instanceof Error ? error.message : String(error),
+	// 		});
+	// 		throw error;
+	// 	}
+	// }
 
 	/**
 	 * 获取云端数据但不替换本地数据
@@ -1050,7 +1060,7 @@ export class SyncEngine {
 			const localData = await getHistoryData();
 			this.addLog(
 				"info",
-				`📊 本地数据 ${localData.length} 条，云端数据 ${cloudItems.length} 条`,
+				`📊 本地数据 ${(localData as any[]).length} 条，云端数据 ${cloudItems.length} 条`,
 			);
 
 			// 2. 创建合并策略
@@ -1058,7 +1068,7 @@ export class SyncEngine {
 			const conflicts: string[] = [];
 
 			// 3. 首先添加本地数据
-			for (const item of localData) {
+			for (const item of localData as any[]) {
 				mergedItems.set(item.id, item);
 			}
 
@@ -1089,7 +1099,7 @@ export class SyncEngine {
 				} else {
 					// 本地和云端都有，进行冲突解决
 					const cloudTime = new Date(cloudItem.createTime).getTime();
-					const localTime = new Date(localItem.createTime).getTime();
+					const localTime = new Date((localItem as any).createTime).getTime();
 
 					if (cloudTime > localTime) {
 						// 云端数据更新，使用云端数据
@@ -1116,7 +1126,7 @@ export class SyncEngine {
 						// 本地数据更新或相同，保留本地数据
 						this.addLog(
 							"info",
-							`✅ 保留本地数据: ${localItem.type} - ${localItem.search?.substring(0, 20)}...`,
+							`✅ 保留本地数据: ${(localItem as any).type} - ${(localItem as any).search?.substring(0, 20)}...`,
 						);
 					}
 				}
@@ -1132,7 +1142,7 @@ export class SyncEngine {
 			// 设置数据库导入日志回调
 			if (this.logCallback) {
 				setImportLogCallback((message, data) => {
-					this.logCallback("info", `💾 ${message}`, data);
+					this.logCallback!("info", `💾 ${message}`, data);
 				});
 			}
 
@@ -1157,12 +1167,13 @@ export class SyncEngine {
 
 			// 获取现有数据
 			const existingData = await getHistoryData();
-			const existingMap = new Map(existingData.map((item) => [item.id, item]));
-			const newMap = new Map(newData.map((item) => [item.id, item]));
+			const existingMap = new Map(
+				(existingData as any[]).map((item: any) => [item.id, item]),
+			);
+			const newMap = new Map(newData.map((item: any) => [item.id, item]));
 
 			let addedCount = 0;
 			let updatedCount = 0;
-			const _deletedCount = 0;
 
 			// 1. 添加新数据
 			for (const [id, item] of newMap) {
@@ -1177,11 +1188,13 @@ export class SyncEngine {
 				const existingItem = existingMap.get(id);
 				if (existingItem) {
 					const newTime = new Date(newItem.createTime).getTime();
-					const existingTime = new Date(existingItem.createTime).getTime();
+					const existingTime = new Date(
+						(existingItem as any).createTime,
+					).getTime();
 
 					if (newTime !== existingTime) {
 						// 更新数据
-						await updateSQL("history", newItem, { id });
+						await updateSQL("history", newItem);
 						updatedCount++;
 					}
 				}

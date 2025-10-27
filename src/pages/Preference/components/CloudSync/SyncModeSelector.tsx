@@ -1,7 +1,7 @@
 import { SYNC_MODE_PRESETS } from "@/types/sync.d";
 import type { SyncMode, SyncModeConfig } from "@/types/sync.d";
 import { Card, Flex, List, Radio, Space, Tag, Typography } from "antd";
-import type { ChangeEvent } from "react";
+import type { RadioChangeEvent } from "antd";
 
 const { Text } = Typography;
 
@@ -115,14 +115,13 @@ const SyncModeSelector = ({
 	};
 
 	// 处理模式变更
-	const handleModeChange = (e: ChangeEvent<HTMLInputElement>) => {
+	const handleModeChange = (e: RadioChangeEvent) => {
 		const mode = e.target.value as SyncMode;
 		const newConfig = SYNC_MODE_PRESETS[mode];
 		onChange(newConfig);
 	};
 
 	const currentMode = value.mode;
-	const _modeConfig = getModeConfig(currentMode);
 
 	return (
 		<List.Item>
@@ -162,9 +161,7 @@ const SyncModeSelector = ({
 													? "全量模式"
 													: "收藏模式"}
 										</Text>
-										<Tag color={config.tagColor} size="small">
-											{config.tag}
-										</Tag>
+										<Tag color={config.tagColor}>{config.tag}</Tag>
 										<Text
 											type="secondary"
 											style={{ fontSize: "12px", flex: 1 }}

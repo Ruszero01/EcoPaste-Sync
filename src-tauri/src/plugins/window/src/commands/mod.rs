@@ -159,8 +159,8 @@ pub async fn show_preference_window<R: Runtime>(app_handle: AppHandle<R>) {
 // 显示指定 label 的窗口
 fn show_window_by_label<R: Runtime>(app_handle: &AppHandle<R>, label: &str) {
     if let Some(window) = app_handle.get_webview_window(label) {
-        let app_handle_clone = app_handle.clone();
-        let label_clone = label.to_string();
+        let _app_handle_clone = app_handle.clone();
+        let _label_clone = label.to_string();
 
         spawn(async move {
             #[cfg(target_os = "macos")]

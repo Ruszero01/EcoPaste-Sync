@@ -1,6 +1,6 @@
 import { syncEngine } from "@/utils/syncEngine";
 import { CloudSyncOutlined, ScheduleOutlined } from "@ant-design/icons";
-import { Button, Flex, Typography, message } from "antd";
+import { Button, Flex, List, Typography, message } from "antd";
 import { useState } from "react";
 
 const { Text } = Typography;
@@ -104,7 +104,7 @@ const ImmediateSyncButton = ({
 				const timestamp = uploadResult.timestamp;
 
 				// 更新同步时间
-				setLastSyncTime(timestamp);
+				// setLastSyncTime(timestamp); // 这个函数不存在，注释掉
 				saveLastSyncTime(timestamp);
 				onSyncComplete?.(timestamp);
 

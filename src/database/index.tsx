@@ -379,7 +379,7 @@ export const setHistoryData = async (data: any[]) => {
 			"SELECT COUNT(*) as count FROM history;",
 		);
 		addImportLog("验证数据库记录数", {
-			actual: verifyResult[0]?.count,
+			actual: (verifyResult as any[])[0]?.count,
 			expected: data.length - duplicateCount,
 			duplicatesRemoved: duplicateCount,
 		});

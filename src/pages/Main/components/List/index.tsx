@@ -194,7 +194,7 @@ const List = () => {
 				// 验证是否成功，如果失败则使用备用方法
 				setTimeout(() => {
 					const scrollOffset = rowVirtualizer.scrollOffset;
-					if (scrollOffset > 10) {
+					if (scrollOffset && scrollOffset > 10) {
 						// 备用方法：直接设置 scrollTop
 						if (outerRef.current) {
 							outerRef.current.scrollTop = 0;
