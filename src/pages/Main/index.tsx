@@ -6,6 +6,7 @@ import type { Store } from "@/types/store";
 import { formatDate } from "@/utils/dayjs";
 import { setSyncEventListener } from "@/utils/syncEngine";
 import { emit } from "@tauri-apps/api/event";
+import { useReactive } from "ahooks";
 import type { EventEmitter } from "ahooks/lib/useEventEmitter";
 import { find, findIndex, isNil, last, range } from "lodash-es";
 import { nanoid } from "nanoid";
@@ -399,11 +400,6 @@ const Main = () => {
 		getListCache.current.set(queryParams, uniqueItems);
 		lastQueryParams = queryParams;
 		state.list = uniqueItems;
-
-		// 只在开发环境输出调试信息
-		if (process.env.NODE_ENV === "development") {
-			// 加载剪贴板数据并去重
-		}
 	};
 
 	// 防抖版本的getList，避免频繁调用
