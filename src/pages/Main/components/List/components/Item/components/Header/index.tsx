@@ -53,10 +53,25 @@ const Header: FC<HeaderProps> = (props) => {
 				return t("clipboard.label.html");
 			case "image":
 				return t("clipboard.label.image");
-			case "files":
+			case "files": {
+				let fileCount = 0;
+				try {
+					const parsed = JSON.parse(value);
+					if (Array.isArray(parsed)) {
+						fileCount = parsed.length;
+					} else if (parsed.packageId && parsed.originalPaths) {
+						// 包模式，使用originalPaths的长度
+						fileCount = parsed.originalPaths.length;
+					}
+				} catch (error) {
+					console.warn("解析文件数量失败:", error);
+					fileCount = 1; // 默认为1个文件
+				}
+
 				return t("clipboard.label.n_files", {
-					replace: [JSON.parse(value).length],
+					replace: [fileCount],
 				});
+			}
 		}
 	};
 

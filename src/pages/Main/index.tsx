@@ -1,5 +1,6 @@
 import type { AudioRef } from "@/components/Audio";
 import Audio from "@/components/Audio";
+import { LISTEN_KEY } from "@/constants";
 import { insertWithDeduplication, updateSQL } from "@/database";
 import type { HistoryTablePayload, TablePayload } from "@/types/database";
 import type { Store } from "@/types/store";
@@ -40,6 +41,7 @@ interface MainContextValue {
 	getList?: (payload?: HistoryTablePayload) => Promise<void>;
 	getListCache?: React.MutableRefObject<Map<string, HistoryTablePayload[]>>;
 	getListDebounced?: (delay?: number) => Promise<void>;
+	forceRefreshList?: () => void;
 }
 
 export const MainContext = createContext<MainContextValue>({
@@ -57,6 +59,21 @@ const Main = () => {
 
 	useMount(() => {
 		state.$eventBus = $eventBus;
+
+		// 设置同步事件监听器 - 确保在应用启动早期设置
+		setSyncEventListener(() => {
+			// 同步事件触发时刷新界面
+			console.info("=== 同步事件触发，刷新界面 ===");
+			// 使用项目标准的刷新事件
+			try {
+				emit(LISTEN_KEY.REFRESH_CLIPBOARD_LIST);
+			} catch {
+				// 备用方案：直接调用列表刷新
+				console.info("=== 刷新事件发送失败，使用备用方案 ===");
+				getListCache.current.clear();
+				getListDebounced(50);
+			}
+		});
 
 		// 开启剪贴板监听
 		startListen();
@@ -98,16 +115,12 @@ const Main = () => {
 			const currentAutoSort = clipboardStore.content.autoSort;
 
 			if (isDuplicate && !currentAutoSort) {
-				// 自动排序关闭且发现重复项，只更新数据库中的时间戳
+				// 自动排序关闭且发现重复项，不更新时间戳，只激活
 				const latestItem = findItem;
-				// const updatedItem = { ...latestItem, createTime };
 
 				state.activeId = latestItem.id;
 
-				// 更新数据库中的时间戳
-				await updateSQL("history", { id: latestItem.id, createTime });
-
-				// 重复内容已更新时间戳（自动排序关闭）
+				// 手动排序模式下不更新数据库时间戳，保持原有位置
 			} else {
 				// 使用数据库层面的去重插入
 				try {
@@ -232,24 +245,34 @@ const Main = () => {
 
 	// 监听刷新列表
 	useTauriListen(LISTEN_KEY.REFRESH_CLIPBOARD_LIST, () => {
-		// 重置过滤条件以显示所有数据
-		state.group = undefined;
-		state.search = undefined;
-		state.favorite = undefined;
-
-		// 清除缓存并重新加载
+		// 清除缓存并重新加载（保持当前过滤条件）
 		getListCache.current.clear();
-		lastQueryParams = "";
-		getListDebounced(50); // 使用防抖版本，减少频繁调用
+		lastQueryParams = ""; // 重置查询参数以强制刷新
+		getListDebounced(50);
 	});
 
 	// 监听搜索状态变化，自动刷新列表
 	useEffect(() => {
-		// 清除缓存并重新加载数据
-		getListCache.current.clear();
-		lastQueryParams = "";
+		const currentAutoSort = clipboardStore.content.autoSort;
+
+		// 如果启用自动排序或搜索状态改变，清除缓存
+		if (currentAutoSort || state.search !== undefined) {
+			getListCache.current.clear();
+			lastQueryParams = "";
+		} else {
+			// 手动排序模式：只在group/favorite改变时保留当前顺序，不完全清除缓存
+			// 但仍需要重新加载数据，只是保持手动排序逻辑
+			getListCache.current.clear();
+			lastQueryParams = "";
+		}
+
 		getListDebounced(50);
-	}, [state.search, state.group, state.favorite]);
+	}, [
+		state.search,
+		state.group,
+		state.favorite,
+		clipboardStore.content.autoSort,
+	]);
 
 	// 监听配置项变化
 	useTauriListen<Store>(LISTEN_KEY.STORE_CHANGED, ({ payload }) => {
@@ -352,12 +375,28 @@ const Main = () => {
 	const getListCache = useRef(new Map<string, HistoryTablePayload[]>());
 	const getListDebounceTimer = useRef<NodeJS.Timeout | null>(null);
 
+	// 强制刷新列表的函数（仅更新列表，不触发其他事件）
+	const forceRefreshList = () => {
+		getListCache.current.clear();
+		lastQueryParams = "";
+		// 直接调用getList而不是使用防抖，避免延迟
+		getList();
+	};
+
 	// 获取剪切板内容（优化版本，带缓存）
 	const getList = async () => {
 		const { group, search, favorite } = state;
 
-		// 生成查询参数的字符串标识
-		const queryParams = JSON.stringify({ group, search, favorite });
+		// 获取当前的自动排序设置
+		const currentAutoSort = clipboardStore.content.autoSort;
+
+		// 生成查询参数的字符串标识（包含自动排序状态）
+		const queryParams = JSON.stringify({
+			group,
+			search,
+			favorite,
+			autoSort: currentAutoSort,
+		});
 
 		// 如果查询参数相同，使用缓存结果
 		if (
@@ -369,31 +408,50 @@ const Main = () => {
 			return;
 		}
 
-		// 数据库按时间降序排列
+		// 根据自动排序设置决定排序方式
+		// 手动排序时也保持最新在前，只是不重新排列现有条目
 		const orderBy = "ORDER BY createTime DESC";
-
 		const rawData = await selectSQL<HistoryTablePayload[]>(
 			"history",
 			{
 				group,
 				search,
 				favorite,
+				deleted: false, // 过滤已删除项
 			},
 			orderBy,
 		);
 
-		// 去重处理：对于相同 type 和 value 的内容，只保留最新的一个
+		// 智能去重处理：对于文件和图片类型，基于文件路径去重；其他类型基于 type:value
 		const uniqueItems: HistoryTablePayload[] = [];
 		const seenKeys = new Set<string>();
 
 		for (const item of rawData) {
-			const key = `${item.type}:${item.value}`;
+			let key: string;
+
+			// 对于文件和图片类型，基于文件路径去重（忽略类型差异）
+			if (item.type === "files" || item.type === "image") {
+				// 尝试从JSON中提取文件路径
+				if (item.type === "files" && item.value?.startsWith("[")) {
+					try {
+						const filePaths = JSON.parse(item.value);
+						// 使用第一个文件路径作为key，确保所有相同路径的文件使用相同的key
+						key = `file:${filePaths[0]}`;
+					} catch {
+						key = `file:${item.value}`;
+					}
+				} else {
+					key = `file:${item.value}`;
+				}
+			} else {
+				// 其他类型使用原有的 type:value 组合
+				key = `${item.type}:${item.value}`;
+			}
 
 			if (!seenKeys.has(key)) {
 				seenKeys.add(key);
 				uniqueItems.push(item);
 			}
-			// 如果是重复项，跳过不添加（因为已经在uniqueItems中有更新的版本）
 		}
 
 		// 更新缓存
@@ -413,12 +471,7 @@ const Main = () => {
 		}, delay);
 	};
 
-	// 设置同步事件监听器 - 只设置一次
-	useMount(() => {
-		setSyncEventListener(() => {
-			// 同步事件触发时刷新界面
-		});
-	});
+	// 同步事件监听器已在上面早期设置
 
 	// 检查云端数据更新（在窗口激活时）
 	const checkCloudDataOnFocus = async () => {
@@ -473,6 +526,7 @@ const Main = () => {
 					getList,
 					getListCache,
 					getListDebounced,
+					forceRefreshList,
 				}}
 			>
 				{window.style === "float" ? <Float /> : <Dock />}

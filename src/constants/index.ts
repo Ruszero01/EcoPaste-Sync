@@ -36,6 +36,7 @@ export const LISTEN_KEY = {
 	ACTIVATE_BACK_TOP: "activate-back-top",
 	REALTIME_SYNC_COMPLETED: "realtime-sync-completed",
 	REALTIME_SYNC_ERROR: "realtime-sync-error",
+	TRIGGER_MANUAL_SYNC: "trigger-manual-sync",
 };
 
 export const PRESET_SHORTCUT = {

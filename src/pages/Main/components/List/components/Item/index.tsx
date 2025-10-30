@@ -1,8 +1,10 @@
 import UnoIcon from "@/components/UnoIcon";
 import { updateSQL } from "@/database";
 import { MainContext } from "@/pages/Main";
+import { smartPasteClipboard } from "@/plugins/clipboard";
 import type { HistoryTablePayload } from "@/types/database";
 import { formatDate } from "@/utils/dayjs";
+import { joinPath } from "@/utils/path";
 import { startDrag } from "@crabnebula/tauri-plugin-drag";
 import { Menu, MenuItem, type MenuItemOptions } from "@tauri-apps/api/menu";
 import { downloadDir, resolveResource } from "@tauri-apps/api/path";
@@ -35,10 +37,25 @@ interface ContextMenuItem extends MenuItemOptions {
 const Item: FC<ItemProps> = (props) => {
 	const { index, data, className, deleteModal, openNoteModel, ...rest } = props;
 	const { id, type, value, search, group, favorite, note, subtype } = data;
-	const { state } = useContext(MainContext);
+	const { state, forceRefreshList } = useContext(MainContext);
 	const { t } = useTranslation();
 	const { env } = useSnapshot(globalStore);
 	const { content } = useSnapshot(clipboardStore);
+
+	// 辅助函数：从JSON数组格式中提取实际值
+	const getActualValue = (val: string) => {
+		if (typeof val === "string" && val.startsWith("[")) {
+			try {
+				const parsed = JSON.parse(val);
+				if (Array.isArray(parsed) && parsed.length > 0) {
+					return parsed[0]; // 返回第一个值
+				}
+			} catch (error) {
+				console.error("解析值失败:", error);
+			}
+		}
+		return val; // 返回原始值
+	};
 
 	state.$eventBus?.useSubscription((key) => {
 		if (id !== state.eventBusId) return;
@@ -61,7 +78,32 @@ const Item: FC<ItemProps> = (props) => {
 
 	// 复制
 	const copy = async () => {
-		await writeClipboard(data);
+		// 如果是按需下载的图片或文件，先自动下载
+		if (data.lazyDownload && (data.type === "image" || data.type === "files")) {
+			console.info(
+				`🔄 复制时检测到按需下载${data.type}，开始自动下载: ${data.id}`,
+			);
+
+			try {
+				// 使用smartPasteClipboard来处理按需下载和复制
+				await smartPasteClipboard(data, false);
+
+				// 检查是否需要更新数据库记录
+				const index = findIndex(state.list, { id });
+				if (index !== -1) {
+					// 重新从数据库获取最新数据，检查是否已经下载
+					// 这里我们暂时不更新界面，让后续的逻辑处理
+					console.info(`✅ 按需下载${data.type}复制成功: ${data.id}`);
+				}
+			} catch (error) {
+				console.error(`❌ 按需下载${data.type}复制失败:`, error);
+				// 如果自动下载失败，回退到普通复制
+				await writeClipboard(data);
+			}
+		} else {
+			// 非按需下载文件，直接复制
+			await writeClipboard(data);
+		}
 
 		const index = findIndex(state.list, { id });
 
@@ -111,7 +153,7 @@ const Item: FC<ItemProps> = (props) => {
 
 	// 粘贴纯文本
 	const pastePlain = () => {
-		pasteClipboard(data, true);
+		smartPasteClipboard(data, true);
 	};
 
 	// 切换收藏状态
@@ -125,14 +167,18 @@ const Item: FC<ItemProps> = (props) => {
 
 	// 打开链接至浏览器
 	const openBrowser = () => {
-		const url = value.startsWith("http") ? value : `http://${value}`;
+		const actualValue = getActualValue(value);
+		const url = actualValue.startsWith("http")
+			? actualValue
+			: `http://${actualValue}`;
 
 		openUrl(url);
 	};
 
 	// 发送邮件
 	const sendEmail = () => {
-		openUrl(`mailto:${value}`);
+		const actualValue = getActualValue(value);
+		openUrl(`mailto:${actualValue}`);
 	};
 
 	// 导出文件
@@ -141,7 +187,7 @@ const Item: FC<ItemProps> = (props) => {
 		const fileName = `${env.appName}_${id}.${extname}`;
 		const path = joinPath(await downloadDir(), fileName);
 
-		await writeTextFile(path, value);
+		await writeTextFile(path, getActualValue(value));
 
 		revealItemInDir(path);
 	};
@@ -150,7 +196,7 @@ const Item: FC<ItemProps> = (props) => {
 	const preview = () => {
 		if (type !== "image") return;
 
-		openPath(value);
+		openPath(getActualValue(value));
 	};
 
 	// 下载图片
@@ -158,7 +204,7 @@ const Item: FC<ItemProps> = (props) => {
 		const fileName = `${env.appName}_${id}.png`;
 		const path = joinPath(await downloadDir(), fileName);
 
-		await copyFile(value, path);
+		await copyFile(getActualValue(value), path);
 
 		revealItemInDir(path);
 	};
@@ -166,11 +212,10 @@ const Item: FC<ItemProps> = (props) => {
 	// 打开文件至访达
 	const openFinder = () => {
 		if (subtype === "path") {
-			revealItemInDir(value);
+			revealItemInDir(getActualValue(value));
 		} else {
-			const [file] = JSON.parse(value);
-
-			revealItemInDir(file);
+			const actualValue = getActualValue(value);
+			revealItemInDir(actualValue);
 		}
 	};
 
@@ -199,14 +244,35 @@ const Item: FC<ItemProps> = (props) => {
 			}
 		}
 
-		deleteSQL("history", data);
+		try {
+			console.info(
+				`🗑️ 准备删除条目: ${id}, type: ${data.type}, value: ${data.value?.substring(0, 50)}...`,
+			);
+			await deleteSQL("history", data);
+			console.info(`✅ 数据库删除成功: ${id}`);
 
-		remove(state.list, { id });
+			// 使用强制刷新函数，确保缓存和lastQueryParams都被正确重置
+			if (forceRefreshList) {
+				console.info("🔄 触发强制刷新（重置缓存和lastQueryParams）");
+				forceRefreshList();
+				console.info("✅ 强制刷新已执行");
+			}
+
+			// 从本地状态中移除
+			const originalLength = state.list.length;
+			remove(state.list, { id });
+			console.info(
+				`📝 本地状态更新: 从 ${originalLength} 条减少到 ${state.list.length} 条`,
+			);
+		} catch (error) {
+			console.error(`❌ 删除条目失败: ${id}`, error);
+			message.error("删除失败，请重试");
+		}
 	};
 
 	// 粘贴
 	const pasteValue = async () => {
-		await pasteClipboard(data);
+		await smartPasteClipboard(data);
 
 		// 粘贴已有条目后，也触发移动到顶部并更新时间
 		const index = findIndex(state.list, { id });

@@ -1,10 +1,17 @@
+import { systemOCR } from "@/plugins/ocr";
+import { clipboardStore } from "@/stores/clipboard";
 import type { HistoryTablePayload } from "@/types/database";
 import type { ClipboardPayload, ReadImage, WindowsOCR } from "@/types/plugin";
+import { fileContentProcessor } from "@/utils/fileContentProcessor";
+import { isColor, isEmail, isURL } from "@/utils/is";
+import { resolveImagePath } from "@/utils/path";
+import { getSaveImagePath } from "@/utils/path";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { exists } from "@tauri-apps/plugin-fs";
 import { isEmpty, isEqual } from "lodash-es";
 import { fullName, metadata } from "tauri-plugin-fs-pro-api";
+import { getServerConfig } from "./webdav";
 
 const COMMAND = {
 	START_LISTEN: "plugin:eco-clipboard|start_listen",
@@ -24,6 +31,7 @@ const COMMAND = {
 	WRITE_HTML: "plugin:eco-clipboard|write_html",
 	WRITE_RTF: "plugin:eco-clipboard|write_rtf",
 	WRITE_TEXT: "plugin:eco-clipboard|write_text",
+	PASTE: "plugin:eco-clipboard|paste",
 	CLIPBOARD_UPDATE: "plugin:eco-clipboard://clipboard_update",
 };
 
@@ -86,15 +94,110 @@ export const hasText = () => {
 };
 
 /**
- * 读取剪贴板文件
+ * 粘贴剪贴板内容
+ */
+export const paste = () => {
+	return invoke(COMMAND.PASTE);
+};
+
+/**
+ * 检测文件是否为图片
+ */
+const isImageFile = async (filePath: string): Promise<boolean> => {
+	try {
+		const ext = filePath.toLowerCase().split(".").pop() || "";
+
+		// 常见图片文件扩展名
+		const imageExtensions = [
+			"png",
+			"jpg",
+			"jpeg",
+			"gif",
+			"bmp",
+			"webp",
+			"svg",
+			"ico",
+			"tiff",
+			"tif",
+			"psd",
+			"ai",
+			"eps",
+			"raw",
+			"heic",
+			"heif",
+		];
+
+		return imageExtensions.includes(ext);
+	} catch {
+		return false;
+	}
+};
+
+/**
+ * 读取剪贴板文件（智能版本）
  */
 export const readFiles = async (): Promise<ClipboardPayload> => {
 	let files = await invoke<string[]>(COMMAND.READ_FILES);
 
-	files = files.map(decodeURI);
+	// 安全地解码文件路径，避免对Windows路径造成错误处理
+	files = files.map((filePath) => {
+		try {
+			// 只有当路径确实包含URI编码时才进行解码
+			if (filePath.includes("%")) {
+				return decodeURI(filePath);
+			}
+			return filePath;
+		} catch (error) {
+			console.warn("文件路径解码失败，使用原始路径:", filePath, error);
+			return filePath;
+		}
+	});
 
+	// 智能检测：如果只有一个文件且是图片，归类为图片类型
+	if (files.length === 1 && (await isImageFile(files[0]))) {
+		console.log(`检测到单个图片文件: ${files[0]}, 归类为图片类型`);
+
+		const { size, name } = await metadata(files[0]);
+
+		// 为截图文件生成更友好的标题
+		let search = name;
+		if (files[0].includes("\\Temp\\") || files[0].includes("\\temp\\")) {
+			// 检测是否为截图软件生成的临时文件
+			const isScreenshot =
+				files[0].toLowerCase().includes("screenshot") ||
+				files[0].toLowerCase().includes("snip") ||
+				files[0].toLowerCase().includes("capture") ||
+				files[0].toLowerCase().includes("pixpin") ||
+				files[0].toLowerCase().includes("snipaste");
+
+			if (isScreenshot) {
+				// 为截图文件生成友好的标题
+				const now = new Date();
+				const timeStr = now
+					.toLocaleString("zh-CN", {
+						month: "2-digit",
+						day: "2-digit",
+						hour: "2-digit",
+						minute: "2-digit",
+					})
+					.replace(/\//g, "-")
+					.replace(/:/g, ":");
+				search = `截图 ${timeStr}`;
+			}
+		}
+
+		// 返回图片类型的payload
+		return {
+			count: size,
+			search,
+			value: files[0],
+			group: "image",
+			subtype: "image",
+		};
+	}
+
+	// 多个文件或非图片文件，保持原有files类型
 	let count = 0;
-
 	const names = [];
 
 	for await (const path of files) {
@@ -278,7 +381,14 @@ export const readClipboard = async () => {
 	if (has.files) {
 		const filesPayload = await readFiles();
 
-		payload = { ...filesPayload, type: "files" };
+		// 智能检测文件类型已在readFiles中处理
+		// 如果是单个图片文件，readFiles会返回image类型的payload
+		// 如果是多个文件或非图片文件，会返回files类型的payload
+		if (filesPayload.group === "image") {
+			payload = { ...filesPayload, type: "image" };
+		} else {
+			payload = { ...filesPayload, type: "files" };
+		}
 	} else if (has.image && !has.text) {
 		const imagePayload = await readImage();
 
@@ -415,5 +525,114 @@ export const getClipboardSubtype = async (data: ClipboardPayload) => {
 		}
 	} catch {
 		return;
+	}
+};
+
+/**
+ * 智能粘贴剪贴板数据（支持懒下载文件）
+ */
+export const smartPasteClipboard = async (
+	data?: HistoryTablePayload,
+	plain = false,
+) => {
+	if (!data) return;
+
+	const { type, value, lazyDownload } = data;
+
+	// 如果不是按需下载文件，直接使用原有逻辑
+	if (!lazyDownload || (type !== "image" && type !== "files")) {
+		return pasteClipboard(data, plain);
+	}
+
+	try {
+		// 获取WebDAV配置
+		const webdavConfig = await getServerConfig();
+		if (!webdavConfig) {
+			console.warn("WebDAV配置未设置，无法下载文件");
+			return pasteClipboard(data, plain);
+		}
+
+		// 转换为SyncItem格式
+		const syncItem = {
+			id: data.id,
+			type: type as any,
+			group: data.group as any,
+			value: value,
+			search: data.search,
+			count: data.count,
+			width: data.width,
+			height: data.height,
+			favorite: data.favorite,
+			createTime: data.createTime,
+			note: data.note,
+			subtype: data.subtype,
+			lastModified: Date.now(),
+			deviceId: "local",
+			lazyDownload: lazyDownload,
+			fileSize: data.fileSize,
+			fileType: data.fileType,
+		} as any;
+
+		console.log(`开始按需下载${type}文件: ${data.id}`);
+
+		// 根据类型处理按需下载
+		let processedValue: string | null = null;
+
+		if (type === "image") {
+			processedValue = await fileContentProcessor.processImageContent(
+				syncItem,
+				webdavConfig,
+				(progress) => {
+					console.log(`图片下载进度: ${progress}%`);
+				},
+			);
+		} else if (type === "files") {
+			processedValue = await fileContentProcessor.processFilesContent(
+				syncItem,
+				webdavConfig,
+				(progress) => {
+					console.log(`文件下载进度: ${progress}%`);
+				},
+			);
+		}
+
+		if (processedValue) {
+			// 下载成功，使用下载后的文件路径
+			const updatedData = {
+				...data,
+				value: processedValue,
+				lazyDownload: false,
+			};
+			console.log("文件下载成功，开始粘贴");
+
+			// 更新数据库记录，移除lazyDownload标记并更新value
+			try {
+				const { updateSQL } = await import("@/database");
+				await updateSQL("history", {
+					id: data.id,
+					value: processedValue,
+					lazyDownload: false,
+				});
+				console.log("✅ 数据库记录已更新，移除按需下载标记");
+
+				// 触发界面刷新事件
+				const { emit } = await import("@tauri-apps/api/event");
+				const { LISTEN_KEY } = await import("@/constants");
+				emit(LISTEN_KEY.REFRESH_CLIPBOARD_LIST);
+				console.log("✅ 界面刷新事件已触发");
+			} catch (updateError) {
+				console.error("❌ 更新数据库记录失败:", updateError);
+			}
+
+			return pasteClipboard(updatedData, plain);
+		} else {
+			// 下载失败，回退到原有逻辑
+			console.warn("文件下载失败，使用原有数据");
+			return pasteClipboard(data, plain);
+		}
+	} catch (error) {
+		console.error("智能粘贴过程中出错:", error);
+		// 出错时回退到原有逻辑
+		return pasteClipboard(data, plain);
 	}
 };

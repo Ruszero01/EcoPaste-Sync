@@ -6,79 +6,12 @@ import { TrayIcon, type TrayIconOptions } from "@tauri-apps/api/tray";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { exit, relaunch } from "@tauri-apps/plugin-process";
 
+// 全局标志，确保托盘只创建一次
+let isTrayCreated = false;
+
 export const useTray = () => {
 	const [startListen, { toggle }] = useBoolean(true);
 	const { t } = useTranslation();
-
-	// 修复托盘点击事件的函数
-	const fixTrayClick = async () => {
-		try {
-			const tray = await getTrayById();
-			if (tray) {
-				try {
-					// 关闭当前托盘并重新创建来重置事件
-					await tray.close();
-					await new Promise((resolve) => setTimeout(resolve, 200)); // 增加等待时间
-				} catch (_closeError) {
-					// 修复托盘点击事件时出错
-					// 即使关闭失败也继续，托盘可能已经无效
-				}
-			} else {
-			}
-		} catch (_error) {
-			// 修复托盘点击事件过程中出错
-		}
-	};
-
-	// 强制关闭所有托盘图标
-	const closeAllTrays = async () => {
-		try {
-			const tray = await getTrayById();
-			if (tray) {
-				try {
-					await tray.close();
-					await new Promise((resolve) => setTimeout(resolve, 300));
-				} catch (_closeError) {
-					// 关闭托盘图标时出错
-					// 即使关闭失败也继续，托盘可能已经无效
-				}
-			} else {
-			}
-		} catch (_error) {
-			// 关闭托盘过程中出错
-		}
-	};
-
-	// 监听是否显示菜单栏图标
-	useSubscribeKey(globalStore.app, "showMenubarIcon", async (value) => {
-		try {
-			// 如果设置为显示，先强制关闭所有现有托盘
-			if (value) {
-				await closeAllTrays();
-			}
-
-			const tray = await getTrayById();
-
-			if (tray) {
-				if (value) {
-					// 这里不应该到达，因为我们已经强制关闭了
-				} else {
-					// 关闭托盘来隐藏
-					try {
-						await tray.close();
-					} catch (_closeError) {
-						// 关闭托盘图标时出错
-					}
-				}
-			} else if (value) {
-				// 托盘不存在且需要显示，创建新托盘
-				await new Promise((resolve) => setTimeout(resolve, 300)); // 确保旧托盘完全关闭
-				createTray();
-			}
-		} catch (_error) {
-			// 处理 showMenubarIcon 变更时出错
-		}
-	});
 
 	// 监听语言变更
 	useSubscribeKey(globalStore.appearance, "language", () => {
@@ -98,16 +31,24 @@ export const useTray = () => {
 
 	// 创建托盘
 	const createTray = async () => {
-		// 开始创建托盘图标
+		// 全局检查：如果已经创建过，直接返回
+		if (isTrayCreated) {
+			return;
+		}
 
 		if (!globalStore.app.showMenubarIcon) {
 			return;
 		}
 
-		const tray = await getTrayById();
-
-		if (tray) {
-			return;
+		// 检查是否已存在托盘（不强制关闭）
+		try {
+			const existingTray = await getTrayById();
+			if (existingTray) {
+				isTrayCreated = true; // 标记为已创建
+				return existingTray; // 返回现有托盘
+			}
+		} catch (error) {
+			// 检查失败，继续创建新托盘
 		}
 
 		const { appName, appVersion } = globalStore.env;
@@ -126,7 +67,6 @@ export const useTray = () => {
 			menuOnLeftClick: isMac,
 			action: (event) => {
 				// 托盘事件触发
-
 				if (isMac) return;
 
 				if (event.type === "Click" && event.button === "Left") {
@@ -136,6 +76,7 @@ export const useTray = () => {
 		};
 
 		const newTray = await TrayIcon.new(options);
+		isTrayCreated = true; // 标记为已创建
 		return newTray;
 	};
 
@@ -200,7 +141,6 @@ export const useTray = () => {
 
 	return {
 		createTray,
-		fixTrayClick,
-		closeAllTrays,
+		updateTrayMenu,
 	};
 };

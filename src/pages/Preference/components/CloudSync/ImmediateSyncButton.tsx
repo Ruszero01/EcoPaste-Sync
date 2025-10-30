@@ -1,3 +1,5 @@
+import { LISTEN_KEY } from "@/constants";
+import { useTauriListen } from "@/hooks";
 import { syncEngine } from "@/utils/syncEngine";
 import { CloudSyncOutlined, ScheduleOutlined } from "@ant-design/icons";
 import { Button, Flex, List, Typography, message } from "antd";
@@ -72,6 +74,18 @@ const ImmediateSyncButton = ({
 		onLog?.(level, message, data);
 	};
 
+	// 监听间隔同步触发事件
+	useTauriListen(LISTEN_KEY.TRIGGER_MANUAL_SYNC, (event) => {
+		console.info("🎯 收到间隔同步触发事件:", event.payload);
+
+		// 只有在间隔同步触发时才执行
+		if (event.payload?.type === "interval_trigger") {
+			addLog("info", "⏰ 间隔同步自动触发立即同步");
+			// 调用同步处理函数
+			handleImmediateSync();
+		}
+	});
+
 	// 立即同步处理函数
 	const handleImmediateSync = async () => {
 		if (localIsSyncing || isSyncing) {
@@ -88,34 +102,44 @@ const ImmediateSyncButton = ({
 		addLog("info", "🚀 开始智能同步...");
 
 		try {
-			// 1. 先下载云端数据（如果有）
-			addLog("info", "📥 第一步：下载云端数据...");
-			const downloadResult = await syncEngine.fullSyncDownload();
+			// 使用统一的同步引擎方法
+			addLog("info", "🔄 使用统一的同步方法进行双向同步...");
+			const syncResult = await syncEngine.performBidirectionalSync();
 
-			if (!downloadResult.success) {
-				addLog("warning", "⚠️ 下载云端数据失败，将直接上传本地数据");
-			}
-
-			// 2. 再上传合并后的数据
-			addLog("info", "📤 第二步：上传合并后的数据...");
-			const uploadResult = await syncEngine.fullSyncUpload();
-
-			if (uploadResult.success) {
-				const timestamp = uploadResult.timestamp;
+			if (syncResult.success) {
+				const timestamp = syncResult.timestamp;
 
 				// 更新同步时间
-				// setLastSyncTime(timestamp); // 这个函数不存在，注释掉
 				saveLastSyncTime(timestamp);
 				onSyncComplete?.(timestamp);
 
 				// 显示成功消息
-				message.success(`同步完成，共处理 ${uploadResult.uploaded} 条数据`);
+				let successMessage = "同步完成";
+				if (syncResult.downloaded > 0 && syncResult.uploaded > 0) {
+					successMessage += `，下载 ${syncResult.downloaded} 条，上传 ${syncResult.uploaded} 条`;
+				} else if (syncResult.downloaded > 0) {
+					successMessage += `，下载 ${syncResult.downloaded} 条`;
+				} else if (syncResult.uploaded > 0) {
+					successMessage += `，上传 ${syncResult.uploaded} 条`;
+				}
+
+				message.success(successMessage);
 				addLog("success", "✅ 智能同步完成", {
-					uploaded: uploadResult.uploaded,
-					duration: `${uploadResult.duration}ms`,
+					uploaded: syncResult.uploaded,
+					downloaded: syncResult.downloaded,
+					duration: `${syncResult.duration}ms`,
+				});
+
+				// 添加详细的调试信息
+				addLog("info", "🔥 调试：同步流程详情", {
+					使用的同步方法: "performBidirectionalSync",
+					上传数量: syncResult.uploaded,
+					下载数量: syncResult.downloaded,
+					同步时间: new Date(syncResult.timestamp).toISOString(),
+					同步状态: "成功",
 				});
 			} else {
-				throw new Error("上传失败");
+				throw new Error(syncResult.errors?.join(", ") || "同步失败");
 			}
 		} catch (error) {
 			addLog("error", "❌ 同步失败", {

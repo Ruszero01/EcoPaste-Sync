@@ -62,6 +62,17 @@ export interface GlobalStore {
 			lastSyncTime: number;
 			isSyncing: boolean;
 		};
+		// 文件同步设置
+		fileSync: {
+			enabled: boolean;
+			lightweightMode: boolean;
+			maxFileSize: number;
+			supportedTypes: {
+				images: boolean;
+				documents: boolean;
+				text: boolean;
+			};
+		};
 	};
 }
 

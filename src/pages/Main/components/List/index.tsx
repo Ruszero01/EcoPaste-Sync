@@ -1,5 +1,6 @@
 import Scrollbar from "@/components/Scrollbar";
 import { MainContext } from "@/pages/Main";
+import { resolveImagePath } from "@/utils/path";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { FloatButton, Modal } from "antd";
 import { findIndex } from "lodash-es";
@@ -223,7 +224,15 @@ const List = () => {
 						const data = state.list[index];
 						let { type, value } = data;
 
-						value = type !== "image" ? value : resolveImagePath(value);
+						// 检查是否为临时文件路径（截图软件生成的文件）
+						const isTempFile =
+							value.includes("\\Temp\\") || value.includes("\\temp\\");
+						value =
+							type !== "image"
+								? value
+								: isTempFile
+									? value
+									: resolveImagePath(value);
 
 						return (
 							<Item

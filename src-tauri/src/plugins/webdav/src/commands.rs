@@ -514,10 +514,21 @@ async fn upload_file(config: &WebDAVConfig, file_path: &str, content: String) ->
 
     let auth_header = build_auth_header(&config.username, &config.password);
 
+    // 根据文件扩展名设置适当的Content-Type
+    let content_type = if file_path.ends_with(".json") {
+        "application/json; charset=utf-8"
+    } else if file_path.ends_with(".seg") {
+        "application/octet-stream"
+    } else if file_path.ends_with(".zip") {
+        "application/zip"
+    } else {
+        "application/octet-stream"
+    };
+
     let response = client
         .put(&full_path)
         .header("Authorization", auth_header)
-        .header("Content-Type", "application/json; charset=utf-8")
+        .header("Content-Type", content_type)
         .header("User-Agent", "EcoPaste-WebDAV/1.0")
         .header("Overwrite", "T") // 允许覆盖现有文件
         .body(content.clone())
@@ -620,6 +631,45 @@ pub async fn create_directory(config: WebDAVConfig, dir_path: String) -> Result<
     create_webdav_directory(&config, &dir_path)
         .await
         .map_err(|e| e.to_string())
+}
+
+#[command]
+pub async fn delete_file(config: WebDAVConfig, file_path: String) -> Result<bool, String> {
+    delete_webdav_file(&config, &file_path)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+async fn delete_webdav_file(config: &WebDAVConfig, file_path: &str) -> Result<bool> {
+    let base_url = config.url.trim_end_matches('/');
+    let full_path = if file_path.starts_with('/') {
+        format!("{}{}", base_url, file_path)
+    } else {
+        format!("{}/{}", base_url, file_path)
+    };
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_millis(config.timeout))
+        .build()?;
+
+    let auth_header = build_auth_header(&config.username, &config.password);
+
+    let response = client
+        .delete(&full_path)
+        .header("Authorization", auth_header)
+        .header("User-Agent", "EcoPaste-WebDAV/1.0")
+        .send()
+        .await?;
+
+    let status = response.status();
+
+    // 200 OK 或 204 No Content 表示成功删除
+    // 404 Not Found 表示文件不存在（也算成功）
+    if status.is_success() || status.as_u16() == 204 || status.as_u16() == 404 {
+        Ok(true)
+    } else {
+        Err(anyhow::anyhow!("删除文件失败: HTTP {}", status))
+    }
 }
 
 async fn create_webdav_directory(config: &WebDAVConfig, dir_path: &str) -> Result<bool> {

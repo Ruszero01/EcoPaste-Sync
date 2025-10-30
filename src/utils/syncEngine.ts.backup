@@ -6,20 +6,22 @@ import {
 	uploadSyncData,
 } from "@/plugins/webdav";
 import { globalStore } from "@/stores/global";
+import { nanoid } from "nanoid";
 import type {
 	SyncData,
 	SyncItem,
 	SyncMetadata,
 	SyncResult,
 } from "@/types/sync";
-import { filePackageManager } from "@/utils/filePackageManager";
 import {
 	calculateChecksum as calculateStringChecksum,
 	generateDeviceId,
 } from "@/utils/shared";
 import { emit } from "@tauri-apps/api/event";
 import { fileContentProcessor } from "./fileContentProcessor";
-import { fileSegmentManager } from "./fileSegmentManager";
+import { resolveImagePath } from "./path";
+import { zipFileManager } from "./zipFileManager";
+import { zipImageSyncService } from "@/services/zipImageSyncService";
 
 // 全局事件发射器
 let syncEventEmitter: (() => void) | null = null;
@@ -44,7 +46,9 @@ const setDefaultSyncListener = () => {
 	if (!syncEventEmitter) {
 		syncEventEmitter = () => {
 			// 默认监听器，什么都不做，只是防止报错
+			addGlobalLog("info", "📡 使用默认同步事件监听器");
 		};
+		addGlobalLog("info", "📡 已设置默认同步事件监听器");
 	}
 };
 
@@ -89,9 +93,18 @@ const addGlobalLog = (
 export const setSyncEventListener = (listener: () => void) => {
 	// 检查是否是相同的监听器，避免不必要的重复设置
 	if (syncEventEmitter === listener) {
+		addGlobalLog("info", "📡 同步事件监听器已存在，跳过重复设置");
 		return;
 	}
 
+	if (syncEventEmitter) {
+		addGlobalLog(
+			"warning",
+			"⚠️ 检测到重复的同步事件监听器设置，将覆盖之前的监听器",
+		);
+	} else {
+		addGlobalLog("info", "📡 设置同步事件监听器");
+	}
 	syncEventEmitter = listener;
 };
 
@@ -99,8 +112,14 @@ export const setSyncEventListener = (listener: () => void) => {
  * 触发同步事件
  */
 const triggerSyncEvent = () => {
+	addGlobalLog("info", "🔄 准备触发同步事件", {
+		hasListener: !!syncEventEmitter,
+	});
 	if (syncEventEmitter) {
+		addGlobalLog("success", "✅ 执行同步事件监听器");
 		syncEventEmitter();
+	} else {
+		addGlobalLog("warning", "⚠️ 没有设置同步事件监听器");
 	}
 };
 
@@ -112,14 +131,17 @@ export class SyncEngine {
 	private lastLocalSnapshot: Map<string, any> = new Map(); // 用于跟踪本地变更
 	private syncModeConfig: any = null; // 添加同步模式配置
 	private isInitialized = false; // 添加初始化状态标记
-	// 只使用分段文件存储模式
 
 	/**
 	 * 检查项目是否应该包含在轻量模式同步中
 	 */
 	private shouldIncludeItem(item: any): boolean {
-		// 如果没有同步配置，包含所有项目
-		if (!this.syncModeConfig || !this.syncModeConfig.settings) {
+		// 如果没有启用轻量模式，包含所有项目
+		if (
+			!this.syncModeConfig ||
+			!this.syncModeConfig.settings ||
+			!this.syncModeConfig.settings.lightweightMode
+		) {
 			return true;
 		}
 
@@ -129,17 +151,20 @@ export class SyncEngine {
 		if (settings.onlyFavorites) {
 			const isFavorite = item.favorite === true || item.favorite === 1;
 			if (!isFavorite) {
+				this.addLog("info", `🚫 轻量模式-收藏模式: 跳过非收藏项 ${item.type}`);
 				return false;
 			}
-		}
+			}
 
 		// 检查图片类型
 		if (item.type === "image" && !settings.includeImages) {
+			this.addLog("info", `🚫 轻量模式-图片过滤: 跳过图片项`);
 			return false;
 		}
 
 		// 检查文件类型
 		if (item.type === "files" && !settings.includeFiles) {
+			this.addLog("info", `🚫 轻量模式-文件过滤: 跳过文件项`);
 			return false;
 		}
 
@@ -152,6 +177,9 @@ export class SyncEngine {
 				data?: any,
 		  ) => void)
 		| null = null;
+
+	// 添加文件处理器
+	private fileProcessor = new FileContentProcessor();
 
 	constructor() {
 		this.deviceId = generateDeviceId();
@@ -177,7 +205,6 @@ export class SyncEngine {
 	 */
 	setSyncModeConfig(config: any) {
 		this.syncModeConfig = config;
-
 		// 简化日志，只在配置真正变化时输出
 	}
 
@@ -224,6 +251,12 @@ export class SyncEngine {
 		if (this.logCallback) {
 			this.logCallback(level, message, data);
 		}
+		// 同时输出到控制台用于调试
+		const timestamp = new Date().toISOString();
+		console.log(
+			`[${timestamp}] [${level.toUpperCase()}] ${message}`,
+			data || "",
+		);
 	}
 
 	/**
@@ -238,18 +271,47 @@ export class SyncEngine {
 				this.config.path === config.path;
 
 			if (isSameConfig) {
+				this.addLog("info", "🔄 同步引擎已初始化，配置未变化，跳过重复初始化");
 				return true;
+			} else {
+				this.addLog("info", "🔄 检测到配置变化，重新初始化同步引擎");
 			}
 		}
+
+		this.addLog("info", "🚀 开始初始化同步引擎");
+
+		// 详细调试配置传递
+		this.addLog("info", `🔍 接收到的配置参数:`, {
+			hasConfig: !!config,
+			configKeys: config ? Object.keys(config) : 'null',
+			url: config?.url,
+			username: config?.username,
+			hasPassword: !!config?.password,
+			path: config?.path
+		});
+
+		this.addLog("info", `⚙️ WebDAV配置: ${config?.url || 'undefined'}`);
 
 		this.config = config;
 		this.isOnline = true;
 
+		// 调试：立即验证配置是否设置成功
+		this.addLog("info", `🔍 配置设置验证: ${this.config ? '成功' : '失败'} - ${this.config?.url || 'undefined'}`);
+
+		// 设置ZIP文件管理器的WebDAV配置
+		zipFileManager.setWebDAVConfig(config);
+		this.addLog("info", "✅ ZIP文件管理器配置已设置");
+
 		// 初始化本地数据快照
 		await this.initializeLocalSnapshot();
+		this.addLog("info", "✅ 本地数据快照初始化完成");
+
+		// 调试：再次验证配置是否仍然存在
+		this.addLog("info", `🔍 初始化后配置验证: ${this.config ? '存在' : '丢失'} - ${this.config?.url}`);
 
 		// 标记为已初始化
 		this.isInitialized = true;
+		this.addLog("info", "✅ 同步引擎初始化完成");
 
 		return true;
 	}
@@ -263,6 +325,9 @@ export class SyncEngine {
 			this.lastLocalSnapshot = new Map(
 				(localData as any[]).map((item: any) => [item.id, item]),
 			);
+			this.addLog("info", "📸 本地数据快照已初始化", {
+				count: (localData as any[]).length,
+			});
 		} catch (error) {
 			this.addLog("error", "❌ 初始化本地快照失败", { error });
 		}
@@ -367,351 +432,27 @@ export class SyncEngine {
 		};
 
 		try {
-			const remoteData = await this.downloadRemoteData();
+			this.addLog("info", "🚀 开始简化同步流程");
 
-			let localDataEmpty = false;
-			const localRawData = await getHistoryData();
-			if (!localRawData || (localRawData as any[]).length === 0) {
-				localDataEmpty = true;
-			}
+			// 1. 根据同步模式配置获取并过滤本地数据
+			this.addLog("info", "📊 准备本地同步数据...");
+			const syncData = await this.convertLocalToSyncDataWithDeleted();
 
-			// 验证本地数据的内容
-			console.log("📊 同步开始时数据统计", {
-				云端数据量: remoteData?.items?.length || 0,
-				云端删除记录量: remoteData?.deleted?.length || 0,
-				本地数据量: (localRawData as any[])?.length || 0,
-				本地是否为空: localDataEmpty,
-				云端删除记录: remoteData?.deleted || [],
+			this.addLog("info", "📋 本地数据准备完成", {
+				原始数据量: syncData.items.length,
+				删除记录: syncData.deleted.length,
+				同步模式: this.syncModeConfig?.mode || "unknown",
+				设备ID: this.deviceId,
 			});
 
-			// 手动检测删除项目（避免快照自动更新的问题）
-			const deletedItems: string[] = [];
+			// 2. 下载远程数据并处理图片文件同步
+			this.addLog("info", "🔄 开始下载远程数据并处理图片同步");
+			await this.downloadRemoteDataAndProcessImages();
+			this.addLog("info", "✅ 图片同步处理完成");
 
-			// 确保快照已正确初始化（用于删除检测）
-			if (!localDataEmpty && this.lastLocalSnapshot.size === 0) {
-				console.log("🔍 重新初始化快照用于删除检测");
-				const localData = await getHistoryData();
-				this.lastLocalSnapshot = new Map(
-					(localData as any[]).map((item: any) => [item.id, item]),
-				);
-			}
-
-			// 防止重复删除的保护机制
-			// 获取当前云端删除记录，避免重复处理
-			const existingRemoteDeleted = new Set<string>();
-			if (remoteData && remoteData.deleted) {
-				remoteData.deleted.forEach((id) => existingRemoteDeleted.add(id));
-			}
-
-			// 只有在本地有数据且本地快照已初始化时才检测删除
-			console.log("🔍 删除检测条件检查", {
-				localDataEmpty,
-				snapshotSize: this.lastLocalSnapshot.size,
-				condition: !localDataEmpty && this.lastLocalSnapshot.size > 0,
-			});
-
-			if (!localDataEmpty && this.lastLocalSnapshot.size > 0) {
-				try {
-					const currentData = await getHistoryData();
-					const currentMap = new Map(
-						(currentData as any[]).map((item: any) => [item.id, item]),
-					);
-
-					// 获取云端已有的删除记录，避免重复计数
-					const remoteDeletedSet = new Set(remoteData?.deleted || []);
-
-					// 检查删除（基于快照和当前数据的比较）
-					console.log("🔍 开始删除检测", {
-						snapshotIds: Array.from(this.lastLocalSnapshot.keys()),
-						currentIds: Array.from(currentMap.keys()),
-						remoteDeleted: Array.from(remoteDeletedSet),
-					});
-
-					for (const [id] of this.lastLocalSnapshot) {
-						if (!currentMap.has(id) && !remoteDeletedSet.has(id)) {
-							// 只添加不在云端删除记录中的删除项
-							console.log(`🔍 发现删除项: ${id}`);
-							deletedItems.push(id);
-						}
-					}
-
-					// 手动更新快照（在检测完删除后）
-					this.lastLocalSnapshot = currentMap as Map<string, any>;
-
-					if (deletedItems.length > 0) {
-						console.log("🔍 检测到本地删除记录", {
-							删除数量: deletedItems.length,
-							删除的ID: deletedItems,
-						});
-					}
-
-					console.log("📊 删除检测后数据统计", {
-						本地删除数量: deletedItems.length,
-						本地删除ID: deletedItems,
-						快照大小: this.lastLocalSnapshot.size,
-					});
-				} catch (error) {
-					this.addLog("error", "❌ 检测本地删除失败", {
-						error: error instanceof Error ? error.message : String(error),
-					});
-				}
-			}
-
-			// 记录同步前的本地数据ID，用于计算真正的新增数据
-			const beforeSyncLocalIds = new Set();
-			if (!localDataEmpty) {
-				const localRawData = await getHistoryData();
-				((localRawData as any[]) || []).forEach((item) =>
-					beforeSyncLocalIds.add(item.id),
-				);
-			}
-
-			// 如果云端有数据且本地为空，先下载云端数据，然后处理删除记录
-			if (remoteData && localDataEmpty) {
-				await this.mergeCloudDataToLocal(remoteData);
-				result.downloaded = remoteData.items.length;
-
-				// 本地为空时，重新生成同步数据（基于云端数据）
-				const syncData =
-					await this.convertLocalToSyncDataWithDeleted(deletedItems);
-
-				// 检查是否有删除记录需要上传
-				if (deletedItems.length > 0) {
-					// 有删除记录，需要上传
-					const filePath = this.getFullSyncFilePath();
-					const uploadResult = await uploadSyncData(
-						this.config,
-						filePath,
-						JSON.stringify(syncData, null, 2),
-					);
-
-					if (uploadResult.success) {
-						result.uploaded = 0; // 没有新增数据，只有删除
-						(result as any).deletedItems = deletedItems.length;
-						result.success = true;
-						this.lastSyncTime = Date.now();
-
-						// 更新元数据
-						await this.updateMetadata();
-
-						// 触发界面刷新
-						try {
-							emit(LISTEN_KEY.REFRESH_CLIPBOARD_LIST);
-						} catch (error) {
-							result.errors.push("界面刷新失败");
-						}
-					} else {
-						result.errors.push("删除记录上传失败");
-					}
-				} else {
-					// 没有删除记录，不需要上传
-					result.uploaded = 0;
-					(result as any).deletedItems = 0;
-					result.success = true;
-					this.lastSyncTime = Date.now();
-
-					// 更新元数据
-					await this.updateMetadata();
-
-					// 触发界面刷新
-					try {
-						emit(LISTEN_KEY.REFRESH_CLIPBOARD_LIST);
-					} catch (error) {
-						result.errors.push("界面刷新失败");
-					}
-				}
-
-				return result;
-			}
-			// 如果云端和本地都有数据，进行智能合并
-			else if (remoteData && !localDataEmpty) {
-				try {
-					await this.mergeCloudDataToLocal(remoteData);
-					result.downloaded = remoteData.items.filter(
-						(item) => !beforeSyncLocalIds.has(item.id),
-					).length;
-				} catch (mergeError) {
-					console.error("❌ 数据合并失败，尝试重新下载云端数据", mergeError);
-
-					// 重新下载最新的云端数据（可能是缓存问题）
-					console.log("🔄 重新下载云端最新数据以确保删除状态同步");
-					const latestRemoteData = await this.downloadRemoteData();
-					if (latestRemoteData) {
-						remoteData = latestRemoteData;
-						console.log("🔄 已获取最新云端数据", {
-							云端数据量: remoteData.items.length,
-							云端删除记录量: remoteData.deleted?.length || 0,
-						});
-
-						// 重试合并
-						await this.mergeCloudDataToLocal(remoteData);
-						result.downloaded = remoteData.items.filter(
-							(item) => !beforeSyncLocalIds.has(item.id),
-						).length;
-					} else {
-						throw new Error("重新下载云端数据失败");
-					}
-				}
-			}
-
-			// 处理图片文件同步（在删除记录处理之后）
-			await this.downloadRemoteDataAndProcessImages(deletedItems);
-
-			// 重新生成包含删除记录的同步数据（在合并云端数据之后）
-			const syncData =
-				await this.convertLocalToSyncDataWithDeleted(deletedItems);
-
-			// 调试信息：检查生成的同步数据
-			console.log("🔍 同步数据生成调试", {
-				syncDataItems: syncData.items.length,
-				syncDataDeleted: syncData.deleted.length,
-				syncDataItemsSample: syncData.items.slice(0, 2).map((item) => ({
-					id: item.id,
-					type: item.type,
-					value: item.value?.substring(0, 50),
-				})),
-			});
-
-			// 计算真正需要上传的数据（新增或更新）
-			const actuallyChangedItems = syncData.items.filter((item) => {
-				// 如果本地数据库重置，刚下载的数据不应该被计入上传
-				if (localDataEmpty && remoteData) {
-					return !remoteData.items.some(
-						(remoteItem) => remoteItem.id === item.id,
-					);
-				}
-
-				// 正常情况：检查云端是否已有相同数据
-				if (remoteData) {
-					const existingRemoteItem = remoteData.items.find(
-						(remoteItem) => remoteItem.id === item.id,
-					);
-					if (existingRemoteItem) {
-						// 云端有相同ID的数据，检查内容是否相同
-						// 多重比较策略：校验和 > 内容 > 修改时间
-						const checksumsMatch =
-							existingRemoteItem.checksum === item.checksum;
-						const contentMatch =
-							existingRemoteItem.value === item.value &&
-							existingRemoteItem.type === item.type &&
-							existingRemoteItem.search === item.search;
-						const timestampsMatch =
-							existingRemoteItem.lastModified === item.lastModified;
-
-						if (checksumsMatch || contentMatch) {
-							console.log("🔄 跳过上传：内容相同", {
-								itemId: item.id,
-								checksumsMatch,
-								contentMatch,
-								timestampsMatch,
-								localChecksum: item.checksum,
-								remoteChecksum: existingRemoteItem.checksum,
-							});
-							return false; // 内容相同，不需要上传
-						} else {
-							console.log("📝 需要上传：内容不同", {
-								itemId: item.id,
-								checksumsMatch,
-								contentMatch,
-								timestampsMatch,
-								localChecksum: item.checksum,
-								remoteChecksum: existingRemoteItem.checksum,
-								localValue: item.value?.substring(0, 50),
-								remoteValue: existingRemoteItem.value?.substring(0, 50),
-							});
-							return true; // 内容不同，需要上传
-						}
-					}
-				}
-
-				// 云端没有对应数据，需要上传
-				console.log("📝 需要上传：云端没有对应数据", {
-					itemId: item.id,
-					lastModified: item.lastModified,
-				});
-				return true;
-			});
-
-			// 获取同步前已存在的云端数据ID集合，用于区分新增和更新
-			const remoteDataIds = new Set();
-			if (remoteData) {
-				remoteData.items.forEach((item) => remoteDataIds.add(item.id));
-			}
-
-			// 调试信息
-			console.log("🔍 同步数据统计调试:", {
-				syncDataItems: syncData.items.length,
-				actuallyChangedItems: actuallyChangedItems.length,
-				localDataEmpty,
-				remoteDataItems: remoteData?.items.length || 0,
-				remoteDataIds: remoteDataIds.size,
-			});
-
-			// 检查是否需要跳过上传
-			console.log("🔍 进入跳过逻辑检查", {
-				actuallyChangedItems: actuallyChangedItems.length,
-				deletedItems: deletedItems.length,
-				condition:
-					actuallyChangedItems.length === 0 && deletedItems.length === 0,
-			});
-
-			if (actuallyChangedItems.length === 0 && deletedItems.length === 0) {
-				console.log("🔍 跳过上传，本地数据未变更");
-
-				try {
-					result.uploaded = 0;
-					result.downloaded = 0; // 跳过上传时没有下载新数据
-					result.success = true;
-					result.duration = Date.now() - startTime;
-
-					console.log("🔍 跳过同步返回结果调试", {
-						success: result.success,
-						uploaded: result.uploaded,
-						downloaded: result.downloaded,
-						errors: result.errors,
-						duration: result.duration,
-					});
-
-					// 仍然需要触发界面刷新
-					try {
-						emit(LISTEN_KEY.REFRESH_CLIPBOARD_LIST);
-						console.log("✅ 界面刷新成功");
-					} catch (error) {
-						result.errors.push("界面刷新失败");
-						console.log("🔍 界面刷新失败，错误已记录", result.errors);
-					}
-
-					console.log("✅ 双向同步完成（无变更）");
-					console.log("🔍 最终返回的result", result);
-					return result;
-				} catch (error) {
-					console.error("❌ 跳过逻辑内部发生异常:", error);
-					result.success = false;
-					result.errors.push(
-						`跳过逻辑异常: ${error instanceof Error ? error.message : String(error)}`,
-					);
-					return result;
-				}
-			}
-
-			// 上传合并后的本地数据
+			// 3. 上传本地数据（统一同步方法）
+			this.addLog("info", "☁️ 开始上传同步数据...");
 			const filePath = this.getFullSyncFilePath();
-
-			// 调试：上传前的详细信息
-			console.log("🔍 准备上传调试", {
-				filePath,
-				syncDataSize: JSON.stringify(syncData).length,
-				syncDataItems: syncData.items.length,
-				syncDataDeleted: syncData.deleted.length,
-				syncDataStructure: {
-					version: syncData.version,
-					timestamp: syncData.timestamp,
-					deviceId: syncData.deviceId,
-					dataType: syncData.dataType,
-					itemsCount: syncData.items.length,
-					deletedCount: syncData.deleted.length,
-				},
-			});
 
 			const uploadResult = await uploadSyncData(
 				this.config,
@@ -719,101 +460,39 @@ export class SyncEngine {
 				JSON.stringify(syncData, null, 2),
 			);
 
-			// 调试：上传结果
-			console.log("🔍 上传结果调试", {
-				success: uploadResult.success,
-				errorMessage: uploadResult.error_message,
-				errorCode: uploadResult.error_code,
-				statusCode: uploadResult.status_code,
-			});
-
 			if (uploadResult.success) {
-				console.log("✅ 上传成功，开始后续处理");
-
-				// 区分新增和更新的数量
-				const newItems = actuallyChangedItems.filter(
-					(item) => !remoteDataIds.has(item.id),
-				).length;
-				const updatedItems = actuallyChangedItems.filter((item) =>
-					remoteDataIds.has(item.id),
-				).length;
-
-				console.log("📊 同步结果统计", {
-					actuallyChangedItems: actuallyChangedItems.length,
-					newItems,
-					updatedItems,
-					deletedItems: deletedItems.length,
-					totalUploaded: newItems + updatedItems,
-					remoteDataIds: remoteDataIds.size,
-				});
-
-				// 如果有删除记录，需要从云端真正删除对应的条目
-				if (deletedItems.length > 0) {
-					console.log("🗑️ 开始处理云端删除记录", deletedItems);
-					try {
-						await this.removeDeletedItemsFromCloud(deletedItems);
-						console.log("✅ 云端删除记录处理完成");
-					} catch (deleteError) {
-						console.error("❌ 云端删除记录处理失败", deleteError);
-						result.errors.push(
-							`云端删除失败: ${deleteError instanceof Error ? deleteError.message : String(deleteError)}`,
-						);
-						// 不抛出错误，继续执行
-					}
-				}
-
-				// 将新增和更新的数量分别存储在 result 中
-				result.uploaded = newItems + updatedItems;
-				// 扩展结果对象以包含详细信息
-				(result as any).newItems = newItems;
-				(result as any).updatedItems = updatedItems;
-				(result as any).deletedItems = deletedItems.length;
+				result.uploaded = syncData.items.length;
 				result.success = true;
 				this.lastSyncTime = Date.now();
 
-				console.log("✅ 同步结果已设置成功状态");
+				// 明确记录实际同步的项目数量
+				this.addLog("success", "✅ 同步完成", {
+					同步项目数量: syncData.items.length,
+					删除记录数量: syncData.deleted.length,
+					文件路径: filePath,
+					同步耗时: `${Date.now() - startTime}ms`,
+				});
 
-				// 更新元数据
-				try {
-					console.log("🔄 开始更新元数据");
-					await this.updateMetadata();
-					console.log("✅ 元数据更新完成");
-				} catch (metadataError) {
-					console.error("❌ 元数据更新失败", metadataError);
-					result.errors.push(
-						`元数据更新失败: ${metadataError instanceof Error ? metadataError.message : String(metadataError)}`,
-					);
-					// 不影响整体成功状态
-				}
+				// 3. 更新元数据
+				await this.updateMetadata();
 
-				// 直接触发界面刷新
+				// 4. 直接触发界面刷新
+				this.addLog("info", "🔄 触发界面刷新");
 				try {
-					console.log("🔄 开始触发界面刷新");
 					emit(LISTEN_KEY.REFRESH_CLIPBOARD_LIST);
-					console.log("✅ 界面刷新触发完成");
+					this.addLog("success", "✅ 界面刷新成功");
 				} catch (error) {
-					console.error("❌ 界面刷新失败", error);
+					this.addLog("error", "❌ 界面刷新失败", {
+						error: error instanceof Error ? error.message : String(error),
+					});
 					result.errors.push("界面刷新失败");
 				}
-
-				console.log("✅ 上传成功分支处理完成，最终结果:", {
-					success: result.success,
-					uploaded: result.uploaded,
-					errors: result.errors,
-				});
 			} else {
 				const errorMsg = uploadResult.error_message || "上传失败";
 				result.errors.push(errorMsg);
-
-				// 详细的上传失败调试信息
-				console.error("❌ 上传失败详细调试", {
-					errorMessage: uploadResult.error_message,
-					errorCode: uploadResult.error_code,
-					statusCode: uploadResult.status_code,
-					syncDataSize: JSON.stringify(syncData).length,
-					syncDataItemsCount: syncData.items.length,
-					actuallyChangedItemsCount: actuallyChangedItems.length,
-					filePath: this.getFullSyncFilePath(),
+				this.addLog("error", "❌ 同步上传失败", {
+					error: errorMsg,
+					文件路径: filePath,
 				});
 
 				// 即使上传失败也尝试刷新界面
@@ -824,10 +503,14 @@ export class SyncEngine {
 				}
 			}
 		} catch (error) {
-			console.error("❌ 同步过程中发生异常", error);
 			const errorMessage =
 				error instanceof Error ? error.message : String(error);
-			result.errors.push(`同步异常: ${errorMessage}`);
+			result.errors.push(errorMessage);
+
+			this.addLog("error", "❌ 同步过程异常", {
+				error: errorMessage,
+				stack: error instanceof Error ? error.stack : undefined,
+			});
 
 			// 异常时也尝试刷新界面
 			try {
@@ -839,12 +522,12 @@ export class SyncEngine {
 
 		result.duration = Date.now() - startTime;
 
-		console.log("🔍 最终返回同步结果", {
-			success: result.success,
-			uploaded: result.uploaded,
-			downloaded: result.downloaded,
-			errors: result.errors,
-			duration: result.duration,
+		this.addLog("info", "🏁 同步流程结束", {
+			成功状态: result.success,
+			上传数量: result.uploaded,
+			下载数量: result.downloaded,
+			错误数量: result.errors.length,
+			总耗时: `${result.duration}ms`,
 		});
 
 		return result;
@@ -1234,17 +917,23 @@ export class SyncEngine {
 			const localData = await getHistoryData();
 			const syncItems: SyncItem[] = [];
 
-			this.addLog("info", "🚀 开始转换本地数据为同步格式");
+			console.log("=== 数据转换开始 ===", { 本地数据量: localData.length, 同步模式: this.syncModeConfig?.mode });
 
-			// 调试：检查 getHistoryData 返回的数据
-			console.log("🔍 getHistoryData 返回数据调试", {
-				返回数据量: localData.length,
-				数据样本: localData.slice(0, 2).map((item) => ({
-					id: item.id,
-					type: item.type,
-					value: item.value?.substring(0, 50),
-					deleted: item.deleted,
-				})),
+			this.addLog("info", "🚀 开始转换本地数据为同步格式", {
+				本地数据数量: localData.length,
+				WebDAV配置状态: !!this.config,
+				syncModeConfig状态: !!this.syncModeConfig,
+			});
+
+			// 记录当前同步模式配置
+			this.addLog("info", "🔧 当前同步模式配置", {
+				模式: this.syncModeConfig?.mode,
+				包含图片: this.syncModeConfig?.settings?.includeImages,
+				包含文件: this.syncModeConfig?.settings?.includeFiles,
+				收藏模式: this.syncModeConfig?.settings?.onlyFavorites,
+				轻量模式:
+					!this.syncModeConfig?.settings?.includeImages &&
+					!this.syncModeConfig?.settings?.includeFiles,
 			});
 
 			// 使用与界面相同的去重逻辑：对于相同 type 和 value 的内容，只保留最新的一个
@@ -1353,13 +1042,47 @@ export class SyncEngine {
 			}
 
 			for (const item of filteredItems) {
+				// 关键调试：只在文件类型时输出详细信息
+				if (item.type === "image" || item.type === "files") {
+					console.log("=== 文件项目检测 ===", {
+						type: item.type,
+						search: item.search?.substring(0, 50),
+						isFileContentItem: this.isFileContentItem(item)
+					});
+				}
+
+				this.addLog(
+					"info",
+					`🔍 处理项目: ${item.type} - ${item.search?.substring(0, 30)}...`,
+					{
+						项目ID: item.id,
+						项目类型: item.type,
+						是否文件项: this.isFileContentItem(item),
+						是否文本项: this.isTextContentItem(item),
+					},
+				);
+
 				// 检查是否需要文件同步 - 数据已经在前面过滤过了，这里直接处理
 				if (this.isFileContentItem(item)) {
+					console.log("=== 开始文件同步处理 ===", { type: item.type, id: item.id });
+					this.addLog("info", "📁 检测到文件内容项，开始处理文件同步", {
+						项目ID: item.id,
+						项目类型: item.type,
+						搜索内容: item.search?.substring(0, 50),
+					});
+
 					try {
 						const processedItem = await this.processFileSyncItem(item);
 						if (processedItem) {
 							syncItems.push(processedItem);
+							this.addLog("success", `✅ 文件同步处理成功: ${item.type}`, {
+								项目ID: item.id,
+								文件路径: processedItem.value,
+								文件大小: processedItem.size,
+							});
 							continue;
+						} else {
+							this.addLog("error", `❌ 文件同步处理失败: ${item.type}`);
 						}
 					} catch (processError) {
 						this.addLog("error", `❌ 文件同步处理异常: ${item.type}`, {
@@ -1375,27 +1098,12 @@ export class SyncEngine {
 				// 同步文本、富文本等内容
 				if (this.isTextContentItem(item)) {
 					syncItems.push(this.convertToSyncItem(item));
-				}
-			}
-
-			// 刷新批处理队列，确保所有剩余的小文件都被上传
-			if (this.config) {
-				fileSegmentManager.setWebDAVConfig(this.config);
-				try {
-					const remainingSegments = await fileSegmentManager.flushBatch(
-						this.config,
-					);
-					if (remainingSegments.length > 0) {
-						this.addLog(
-							"success",
-							`🚀 批处理队列刷新完成，上传了 ${remainingSegments.length} 个剩余分段`,
-						);
-					}
-				} catch (flushError) {
-					this.addLog(
-						"error",
-						`❌ 批处理队列刷新失败: ${flushError instanceof Error ? flushError.message : String(flushError)}`,
-					);
+					this.addLog("info", `📝 文本内容项已添加: ${item.type}`);
+				} else {
+					this.addLog("warning", `⚠️ 未知项目类型跳过: ${item.type}`, {
+						项目ID: item.id,
+						项目类型: item.type,
+					});
 				}
 			}
 
@@ -1410,6 +1118,17 @@ export class SyncEngine {
 				最终同步: syncItems.length,
 				删除记录: deletedItems.length,
 			});
+
+			// 完成分段管理器的当前分段，确保所有文件被打包上传
+			try {
+				await fileSegmentManager.finalizeCurrentSegment(this.config);
+				this.addLog("success", "✅ 分段管理器已完成，文件分段已上传到云端");
+			} catch (segmentError) {
+				// 分段管理器完成失败，记录错误但继续同步
+				this.addLog("error", "❌ 分段管理器完成失败", {
+					error: segmentError instanceof Error ? segmentError.message : String(segmentError),
+				});
+			}
 
 			return {
 				version: 1,
@@ -1431,6 +1150,9 @@ export class SyncEngine {
 	 * 全量同步上传
 	 */
 	async fullSyncUpload(): Promise<SyncResult> {
+		// 调试：在方法开始时检查配置状态
+		this.addLog("info", `🔍 fullSyncUpload开始时配置检查: ${this.config ? '存在' : '丢失'} - ${this.config?.endpoint || 'undefined'}`);
+
 		if (!this.config) {
 			throw new Error("WebDAV配置未初始化");
 		}
@@ -1450,8 +1172,20 @@ export class SyncEngine {
 			// 1. 获取本地数据
 			const syncData = await this.convertLocalToSyncDataWithDeleted();
 
-			// 直接上传文件（使用用户配置的目录）
+			// 详细分析每个项目的类型
+			const typeStats = { text: 0, image: 0, files: 0, html: 0, rtf: 0, other: 0 };
+			syncData.items.forEach(item => {
+				if (typeStats.hasOwnProperty(item.type)) {
+					typeStats[item.type as keyof typeof typeStats]++;
+				} else {
+					typeStats.other++;
+				}
+			});
+			console.log("=== 类型统计 ===", typeStats);
+
+			// 2. 直接上传文件（使用用户配置的目录）
 			const filePath = this.getFullSyncFilePath();
+			this.addLog("info", "☁️ 开始上传全量同步文件", { filePath });
 
 			const uploadResult = await uploadSyncData(
 				this.config,
@@ -1463,26 +1197,43 @@ export class SyncEngine {
 				result.uploaded = syncData.items.length;
 				result.success = true;
 
-				// 更新元数据
+				// 明确记录实际上传的项目数量
+				this.addLog(
+					"success",
+					`✅ 全量同步上传完成，同步了 ${syncData.items.length} 个项目`,
+				);
+
+				// 3. 更新元数据
 				await this.updateMetadata();
 				this.lastSyncTime = Date.now();
 
-				// 触发界面刷新事件
+				// 4. 触发界面刷新事件
+				this.addLog("info", "🔄 触发界面刷新事件");
 				triggerSyncEvent();
 
-				// 使用项目原有的刷新事件
+				// 5. 使用项目原有的刷新事件
+				this.addLog("info", "📢 发送项目标准刷新事件");
 				try {
 					emit(LISTEN_KEY.REFRESH_CLIPBOARD_LIST);
+					this.addLog("success", "✅ 项目标准刷新事件发送成功");
 				} catch (error) {
-					result.errors.push("界面刷新失败");
+					this.addLog("error", "❌ 项目标准刷新事件发送失败", {
+						error: error instanceof Error ? error.message : String(error),
+					});
 				}
 			} else {
 				result.errors.push(uploadResult.error_message || "上传失败");
 				// 即使上传失败也触发界面刷新
 				try {
 					emit(LISTEN_KEY.REFRESH_CLIPBOARD_LIST);
+					this.addLog("info", "📢 上传失败后触发界面刷新");
 				} catch (refreshError) {
-					this.addLog("error", "❌ 触发界面刷新失败");
+					this.addLog("error", "❌ 触发界面刷新失败", {
+						error:
+							refreshError instanceof Error
+								? refreshError.message
+								: String(refreshError),
+					});
 				}
 			}
 		} catch (error) {
@@ -1492,8 +1243,14 @@ export class SyncEngine {
 			// 同步异常时也触发界面刷新
 			try {
 				emit(LISTEN_KEY.REFRESH_CLIPBOARD_LIST);
+				this.addLog("info", "📢 同步异常后触发界面刷新");
 			} catch (refreshError) {
-				this.addLog("error", "❌ 触发界面刷新失败");
+				this.addLog("error", "❌ 触发界面刷新失败", {
+					error:
+						refreshError instanceof Error
+							? refreshError.message
+							: String(refreshError),
+				});
 			}
 		}
 
@@ -1596,32 +1353,82 @@ export class SyncEngine {
 						subtype: item.subtype,
 					};
 
-					// 处理图片文件恢复（ZIP格式）
+					// 处理图片文件恢复
 					if (
 						item.type === "image" &&
 						item.value &&
-						!item.value.startsWith("http") &&
-						item._syncType === "zip_files"
+						!item.value.startsWith("http")
 					) {
-						// ZIP文件格式暂不在下载时恢复，会在按需下载时处理
-						this.addLog(
-							"info",
-							`🖼️ ZIP图片文件，将在按需下载时恢复: ${item.search?.substring(0, 20)}...`,
-						);
+						if (item._syncType === "segmented_files" && item._segmentReferences) {
+							// 新的分段存储格式
+							const restoredValue = await this.restoreFilesArrayFromSegments(item);
+							if (restoredValue) {
+								try {
+									const restoredFiles = JSON.parse(restoredValue);
+									if (restoredFiles.length > 0) {
+										localItem.value = restoredFiles[0].data;
+									}
+								} catch (parseError) {
+									this.addLog("error", "分段图片解析失败", { error: parseError });
+								}
+							}
+						} else if (item._syncType === "file_content") {
+							// 旧的文件格式（兼容性）
+							const restoredPath = await this.restoreFileFromWebDAV(
+								item.value,
+								`images/${item.id}`,
+							);
+							if (restoredPath) {
+								localItem.value = restoredPath;
+							}
+						}
 					}
 
-					// 处理文件数组恢复（ZIP格式）
+					// 处理文件数组恢复
 					if (
 						item.type === "files" &&
 						item.files &&
-						Array.isArray(item.files) &&
-						item._syncType === "zip_files"
+						Array.isArray(item.files)
 					) {
-						// ZIP文件格式暂不在下载时恢复，会在按需下载时处理
-						this.addLog(
-							"info",
-							`📁 ZIP文件数组，将在按需下载时恢复: ${item.search?.substring(0, 20)}...`,
-						);
+						// 检查是否是新的分段存储格式
+						if (item._syncType === "segmented_files" && item._segmentReferences) {
+							const restoredValue = await this.restoreFilesArrayFromSegments(item);
+							if (restoredValue) {
+								try {
+									const restoredFiles = JSON.parse(restoredValue);
+									localItem.files = restoredFiles;
+								} catch (parseError) {
+									this.addLog("error", "分段文件解析失败", { error: parseError });
+									// 保留原始文件信息
+									localItem.files = item.files;
+								}
+							} else {
+								// 恢复失败，保留原始文件信息
+								localItem.files = item.files;
+							}
+						} else {
+							// 传统文件恢复逻辑
+							const restoredFiles = [];
+							for (const file of item.files) {
+								if (file.data && file._syncType === "file_content") {
+									const restoredPath = await this.restoreFileFromWebDAV(
+										file.data,
+										`files/${item.id}/${file.name}`,
+									);
+									if (restoredPath) {
+										restoredFiles.push({
+											...file,
+											data: restoredPath,
+										});
+									} else {
+										restoredFiles.push(file);
+									}
+								} else {
+									restoredFiles.push(file);
+								}
+							}
+							localItem.files = restoredFiles;
+						}
 					}
 
 					localData.push(localItem);
@@ -2007,128 +1814,46 @@ export class SyncEngine {
 		try {
 			this.addLog("info", `🔄 开始智能合并 ${newData.length} 条数据`);
 
+			// 获取现有数据
+			const existingData = await getHistoryData();
+			const existingMap = new Map(
+				(existingData as any[]).map((item: any) => [item.id, item]),
+			);
+			const newMap = new Map(newData.map((item: any) => [item.id, item]));
+
 			let addedCount = 0;
 			let updatedCount = 0;
-			let skippedCount = 0;
 
-			// 直接使用 insertForSync 的统一去重逻辑
-			// insertForSync 会自动检查 type + value 的重复并进行智能合并
-			for (const item of newData) {
-				try {
-					// 防护检查：确保item不为空且包含必要字段
-					if (!item || typeof item !== "object") {
-						this.addLog("warning", `⚠️ 跳过无效数据项: ${JSON.stringify(item)}`);
-						skippedCount++;
-						continue;
-					}
-
-					// 防护检查：确保必要字段存在
-					if (!item.type || !item.value) {
-						this.addLog(
-							"warning",
-							`⚠️ 跳过缺少必要字段的数据项: type=${item.type}, value=${!!item.value}`,
-						);
-						skippedCount++;
-						continue;
-					}
-
+			// 1. 添加新数据
+			for (const [id, item] of newMap) {
+				if (!existingMap.has(id)) {
 					// 处理按需下载项目的数据恢复
 					const processedItem = await this.processLazyDownloadItem(item);
+					await this.insertForSync("history", processedItem);
+					addedCount++;
+				}
+			}
 
-					// 再次防护检查处理后的数据
-					if (!processedItem || !processedItem.type || !processedItem.value) {
-						this.addLog(
-							"warning",
-							`⚠️ 跳过处理后无效的数据项: ${processedItem?.type}`,
-						);
-						skippedCount++;
-						continue;
+			// 2. 更新现有数据（如果时间戳不同）
+			for (const [id, newItem] of newMap) {
+				const existingItem = existingMap.get(id);
+				if (existingItem) {
+					const newTime = new Date(newItem.createTime).getTime();
+					const existingTime = new Date(
+						(existingItem as any).createTime,
+					).getTime();
+
+					if (newTime !== existingTime) {
+						// 处理按需下载项目的数据恢复
+						const processedItem = await this.processLazyDownloadItem(newItem);
+						// 更新数据，但保留重要字段如收藏状态
+						const updateItem = {
+							...processedItem,
+							favorite: (existingItem as any).favorite, // 保留原有的收藏状态
+						};
+						await updateSQL("history", updateItem);
+						updatedCount++;
 					}
-
-					// 检查是否已存在相同 type + value 的记录（排除已删除的）
-					const { selectSQL } = await import("@/database");
-					const existingRecords = (await selectSQL("history", {
-						type: processedItem.type,
-						value: processedItem.value,
-						deleted: 0, // 只查找未删除的记录
-					})) as any[];
-
-					if (existingRecords && existingRecords.length > 0) {
-						// 如果存在，检查是否需要更新
-						const existing = existingRecords[0];
-
-						// 防护检查：确保existing有createTime字段
-						if (!existing.createTime) {
-							this.addLog(
-								"warning",
-								`⚠️ 现有记录缺少createTime字段，跳过更新: ${processedItem.type}`,
-							);
-							skippedCount++;
-							continue;
-						}
-
-						// 防护检查：确保processedItem有createTime字段
-						if (!processedItem.createTime) {
-							this.addLog(
-								"warning",
-								`⚠️ 新记录缺少createTime字段，跳过更新: ${processedItem.type}`,
-							);
-							skippedCount++;
-							continue;
-						}
-
-						const newTime = new Date(processedItem.createTime).getTime();
-						const existingTime = new Date(existing.createTime).getTime();
-
-						// 防护检查：确保时间戳有效
-						if (isNaN(newTime) || isNaN(existingTime)) {
-							this.addLog(
-								"warning",
-								`⚠️ 时间戳无效，跳过更新: ${processedItem.type}`,
-							);
-							skippedCount++;
-							continue;
-						}
-
-						// 只有当时间戳不同或收藏状态不同时才更新
-						const favoriteChanged =
-							existing.favorite !== processedItem.favorite;
-						const timeChanged = newTime !== existingTime;
-
-						if (favoriteChanged || timeChanged) {
-							// 智能合并策略
-							const updateItem = {
-								...processedItem,
-								id: existing.id, // 保持现有ID
-								favorite: this.resolveFavoriteStatus(existing, processedItem),
-								count: Math.max(existing.count || 0, processedItem.count || 0),
-								createTime: existing.createTime, // 保持原有创建时间
-							};
-							await updateSQL("history", updateItem);
-							updatedCount++;
-							this.addLog("info", `🔄 更新现有记录: ${processedItem.type}`);
-						} else {
-							skippedCount++;
-							this.addLog("info", `⏭️ 跳过重复记录: ${processedItem.type}`);
-						}
-					} else {
-						// 不存在，插入新记录
-						await this.insertForSync("history", processedItem);
-						addedCount++;
-					}
-				} catch (itemError) {
-					this.addLog(
-						"error",
-						`❌ 处理单条记录失败: ${item?.type || "unknown"}`,
-						{
-							error:
-								itemError instanceof Error
-									? itemError.message
-									: String(itemError),
-							item: item ? JSON.stringify(item).substring(0, 200) : "null",
-						},
-					);
-					skippedCount++;
 				}
 			}
 
@@ -2137,7 +1862,7 @@ export class SyncEngine {
 
 			this.addLog(
 				"success",
-				`✅ 智能合并完成：新增 ${addedCount} 条，更新 ${updatedCount} 条，跳过重复 ${skippedCount} 条`,
+				`✅ 智能合并完成：新增 ${addedCount} 条，更新 ${updatedCount} 条`,
 			);
 		} catch (error) {
 			this.addLog("error", "❌ 智能合并失败", {
@@ -2164,75 +1889,43 @@ export class SyncEngine {
 					`🔄 处理按需下载项目: ${item.type} - ${item.search?.substring(0, 20)}...`,
 				);
 
-				try {
-					// 转换为SyncItem格式
-					const syncItem: SyncItem = {
-						id: item.id || "",
-						type: item.type || "unknown",
-						group: item.group,
-						value: item.value || "",
-						search: item.search || "",
-						count: item.count || 0,
-						width: item.width,
-						height: item.height,
-						favorite: item.favorite || false,
-						createTime: item.createTime || new Date().toISOString(),
-						note: item.note || "",
-						subtype: item.subtype || "",
-						lazyDownload: item.lazyDownload || false,
-						fileSize: item.fileSize || 0,
-						fileType: item.fileType || "",
-					} as SyncItem;
+				// 转换为SyncItem格式
+				const syncItem: SyncItem = {
+					id: item.id,
+					type: item.type,
+					group: item.group,
+					value: item.value,
+					search: item.search,
+					count: item.count,
+					width: item.width,
+					height: item.height,
+					favorite: item.favorite,
+					createTime: item.createTime,
+					note: item.note,
+					subtype: item.subtype,
+					lazyDownload: item.lazyDownload,
+					fileSize: item.fileSize,
+					fileType: item.fileType,
+				} as SyncItem;
 
-					// 安全获取文件状态信息
-					let fileStatus;
-					try {
-						fileStatus = fileContentProcessor.getFileStatus(syncItem);
-					} catch (fileStatusError) {
-						this.addLog(
-							"warning",
-							`⚠️ 获取文件状态失败，跳过处理: ${item.type}`,
-							{
-								error:
-									fileStatusError instanceof Error
-										? fileStatusError.message
-										: String(fileStatusError),
-							},
-						);
-						return item; // 返回原始项目
-					}
+				// 获取文件状态信息
+				const fileStatus = fileContentProcessor.getFileStatus(syncItem);
 
-					this.addLog("info", "📊 文件状态信息", {
-						isLazyDownload: fileStatus?.isLazyDownload || false,
-						isAvailable: fileStatus?.isAvailable || false,
-						fileSize: fileStatus?.fileSize || 0,
-						fileType: fileStatus?.fileType || "",
-					});
+				this.addLog("info", "📊 文件状态信息", {
+					isLazyDownload: fileStatus.isLazyDownload,
+					isAvailable: fileStatus.isAvailable,
+					fileSize: fileStatus.fileSize,
+					fileType: fileStatus.fileType,
+				});
 
-					// 如果文件不可用且是按需下载，保留原始value（WebDAV路径）
-					// 这样在用户需要时可以触发下载
-					if (fileStatus?.isLazyDownload && !fileStatus?.isAvailable) {
-						this.addLog(
-							"info",
-							`📥 按需下载文件暂未缓存，保留云端引用: ${item.value}`,
-						);
-						return item; // 保持原始value不变
-					}
-				} catch (processError) {
-					this.addLog("error", `❌ 处理文件项目失败: ${item.type}`, {
-						error:
-							processError instanceof Error
-								? processError.message
-								: String(processError),
-						itemId: item.id,
-					});
-					// 失败时返回原始项目，但确保基本字段存在
-					return {
-						...item,
-						id: item.id || "",
-						type: item.type || "unknown",
-						value: item.value || "",
-					};
+				// 如果文件不可用且是按需下载，保留原始value（WebDAV路径）
+				// 这样在用户需要时可以触发下载
+				if (fileStatus.isLazyDownload && !fileStatus.isAvailable) {
+					this.addLog(
+						"info",
+						`📥 按需下载文件暂未缓存，保留云端引用: ${item.value}`,
+					);
+					return item; // 保持原始value不变
 				}
 			}
 
@@ -2249,7 +1942,17 @@ export class SyncEngine {
 
 	// 判断是否为文件内容项
 	private isFileContentItem(item: any): boolean {
-		return item.type === "image" || item.type === "files";
+		const isFile = item.type === "image" || item.type === "files";
+
+		if (isFile) {
+			this.addLog("info", `🎯 检测到文件内容项: ${item.type}`, {
+				itemId: item.id,
+				itemType: item.type,
+				search: item.search?.substring(0, 30),
+				value: item.value?.substring(0, 50),
+			});
+		}
+		return isFile;
 	}
 
 	// 判断是否为文本内容项
@@ -2272,7 +1975,7 @@ export class SyncEngine {
 			createTime: item.createTime,
 			note: item.note,
 			subtype: item.subtype,
-			lastModified: item.lastModified || Date.now(),
+			lastModified: Date.now(),
 			deviceId: this.deviceId,
 			size: JSON.stringify(item).length,
 			checksum: calculateStringChecksum(item.value),
@@ -2288,7 +1991,7 @@ export class SyncEngine {
 			);
 
 			if (item.type === "image") {
-				return await this.processImageFile(item);
+				return await this.processImageFileZip(item);
 			}
 			if (item.type === "files") {
 				return await this.processFilesArray(item);
@@ -2301,68 +2004,26 @@ export class SyncEngine {
 		}
 	}
 
-	// 处理图片文件（使用文件包存储）
-	private async processImageFile(item: any): Promise<SyncItem | null> {
+	// 处理图片文件（使用ZIP压缩包存储）
+	private async processImageFileZip(item: any): Promise<SyncItem | null> {
 		try {
-			// 检查是否已经是包模式
-			let imagePath = item.value;
+			this.addLog(
+				"info",
+				`🖼️ 开始处理图片文件（ZIP存储）: ${item.type} - ${item.search?.substring(0, 30)}...`,
+			);
 
-			// 处理可能的数组格式路径
-			if (typeof imagePath === "string" && imagePath.startsWith("[")) {
-				try {
-					const parsed = JSON.parse(imagePath);
-					if (Array.isArray(parsed) && parsed.length > 0) {
-						// 如果是数组格式，取第一个有效的文件路径
-						imagePath =
-							parsed.find(
-								(item) =>
-									typeof item === "string" &&
-									(item.includes(":") ||
-										item.includes("/") ||
-										item.includes("\\")),
-							) || parsed[0];
-					}
-				} catch (error) {
-					console.error("解析图片路径数组失败:", error);
-				}
-			}
-
-			if (typeof imagePath === "string" && imagePath.startsWith("{")) {
-				try {
-					const packageInfo = JSON.parse(imagePath);
-					if (packageInfo.packageId && packageInfo.originalPaths) {
-						// 已经是包模式，直接返回
-						const syncItem: SyncItem = {
-							id: item.id,
-							type: item.type,
-							group: item.group,
-							value: imagePath,
-							search: item.search,
-							count: item.count,
-							width: item.width,
-							height: item.height,
-							favorite: item.favorite,
-							createTime: item.createTime,
-							note: item.note,
-							subtype: item.subtype,
-							lastModified: item.lastModified || Date.now(),
-							deviceId: "local",
-							_syncType: "package_files",
-							fileSize: packageInfo.size,
-							fileType: "image",
-						};
-						return syncItem;
-					}
-				} catch (parseError) {
-					this.addLog("warning", "解析包信息失败，按常规图片处理", {
-						error: parseError,
-					});
-				}
-			}
+			// 修复：直接使用原始文件路径，避免错误的路径拼接
+			const imagePath = item.value;
+			this.addLog("info", `📂 使用原始图片路径: ${imagePath}`);
 
 			// 检查文件大小
 			const fileSize = await this.getFileSize(imagePath);
-			const maxFileSize = 50 * 1024 * 1024; // 50MB限制
+			const maxFileSize = 10 * 1024 * 1024; // 10MB限制
+
+			this.addLog(
+				"info",
+				`📏 图片文件大小: ${(fileSize / 1024 / 1024).toFixed(2)}MB, 限制: 10MB`,
+			);
 
 			if (fileSize > maxFileSize) {
 				this.addLog(
@@ -2372,45 +2033,33 @@ export class SyncEngine {
 				return this.convertToSyncItem(item);
 			}
 
-			if (!this.config) {
-				this.addLog("error", "WebDAV配置未设置，无法处理图片文件");
-				return this.convertToSyncItem(item);
-			}
+			// 压缩图片
+			this.addLog("info", `🗜️ 开始压缩图片...`);
+			const compressedData = await fileContentProcessor.compressImage(imagePath);
+			this.addLog("success", `图片压缩成功，压缩后大小: ${(compressedData.byteLength / 1024).toFixed(2)}KB`);
 
-			// 设置文件包管理器的配置
-			filePackageManager.setWebDAVConfig(this.config);
-			if (this.syncModeConfig) {
-				filePackageManager.setSyncModeConfig(this.syncModeConfig);
-			}
-
-			// 确保imagePath是字符串数组格式
-			let paths: string[];
-			if (Array.isArray(imagePath)) {
-				// 如果imagePath已经是数组，直接使用
-				paths = imagePath;
-			} else {
-				// 如果imagePath是字符串，包装成数组
-				paths = [imagePath];
-			}
-
-			// 使用文件包管理器进行打包上传
-			const packageInfo = await filePackageManager.packageAndUploadFiles(
-				item.id,
+			// 添加到ZIP文件管理器
+			const result = await zipFileManager.addFile(
+				imagePath,
+				compressedData,
 				item.type,
-				paths,
-				this.config,
+				this.config!,
 			);
 
-			if (!packageInfo) {
-				this.addLog("error", `图片文件打包失败: ${imagePath}`);
-				return this.convertToSyncItem(item);
-			}
+			this.addLog("success", `图片已添加到ZIP包: ${imagePath} -> ${result.zipName}`);
 
+			// 创建包含ZIP信息的同步项
 			const syncItem: SyncItem = {
 				id: item.id,
 				type: item.type,
 				group: item.group,
-				value: JSON.stringify(packageInfo),
+				value: JSON.stringify([{
+					originalPath: imagePath,
+					fileInfo: result.fileInfo,
+					zipName: result.zipName,
+					originalSize: fileSize,
+					compressedSize: compressedData.byteLength,
+				}]),
 				search: item.search,
 				count: item.count,
 				width: item.width,
@@ -2419,38 +2068,145 @@ export class SyncEngine {
 				createTime: item.createTime,
 				note: item.note,
 				subtype: item.subtype,
-				_syncType: "package_files", // 标记为文件包模式
-				fileSize: packageInfo.size,
-				fileType: "image",
+				_syncType: "zip_files", // 标记为ZIP文件模式
 			};
+
+			this.addLog("success", `✅ ZIP图片文件处理成功: ${imagePath}`);
 			return syncItem;
 		} catch (error) {
-			this.addLog("error", `❌ 图片文件包处理失败: ${item.value}`, {
+			this.addLog("error", `❌ ZIP图片文件处理失败: ${item.value}`, {
 				error: error instanceof Error ? error.message : String(error),
 			});
 			return this.convertToSyncItem(item); // 失败时回退到普通模式
 		}
 	}
+		try {
+			this.addLog(
+				"info",
+				`🖼️ 开始处理图片文件（分段存储）: ${item.type} - ${item.search?.substring(0, 30)}...`,
+			);
 
-	// 处理文件数组（使用文件包存储）
+			// 修复：直接使用原始文件路径，避免错误的路径拼接
+			const imagePath = item.value;
+			this.addLog("info", `📂 使用原始图片路径: ${imagePath}`);
+
+			// 检查文件大小
+			const fileSize = await this.getFileSize(imagePath);
+			const maxFileSize = 10 * 1024 * 1024; // 10MB限制
+
+			this.addLog(
+				"info",
+				`📏 图片文件大小: ${(fileSize / 1024 / 1024).toFixed(2)}MB, 限制: 10MB`,
+			);
+
+			if (fileSize > maxFileSize) {
+				this.addLog(
+					"warning",
+					`图片文件过大跳过同步: ${imagePath} (${(fileSize / 1024 / 1024).toFixed(2)}MB)`,
+				);
+				return this.convertToSyncItem(item);
+			}
+
+			// 压缩图片内容
+			this.addLog("info", "🗜️ 开始压缩图片...");
+			let compressedContent: ArrayBuffer;
+			try {
+				compressedContent = await this.fileProcessor.compressImage(imagePath);
+				this.addLog(
+					"success",
+					`图片压缩成功，压缩后大小: ${(compressedContent.byteLength / 1024).toFixed(2)}KB`,
+				);
+			} catch (compressError) {
+				this.addLog("error", "图片压缩失败，尝试使用原始文件", {
+					error: compressError,
+				});
+				const { readFile } = await import("@tauri-apps/plugin-fs");
+				compressedContent = await readFile(imagePath);
+			}
+
+			// 使用分段管理器处理单个图片文件
+			const fileName = imagePath.split(/[\\/]/).pop() || "image";
+			const fileType = this.getFileType(imagePath);
+
+			const segmentResult = await fileSegmentManager.addFile(
+				imagePath,
+				compressedContent,
+				fileType,
+				this.config,
+			);
+
+			this.addLog(
+				"success",
+				`图片已添加到分段: ${imagePath} -> ${segmentResult.segmentId}`,
+			);
+
+			// 构建分段引用信息
+			const segmentReferences = [{
+				originalPath: imagePath,
+				segmentId: segmentResult.segmentId,
+				fileIndex: segmentResult.fileIndex,
+				originalSize: fileSize,
+				compressedSize: compressedContent.byteLength,
+			}];
+
+			// 返回分段存储的同步项
+			const syncItem = {
+				...this.convertToSyncItem(item),
+				value: JSON.stringify(segmentReferences), // 存储分段引用而非直接路径
+				_syncType: "segmented_files", // 使用相同的分段存储标识
+				_segmentReferences: segmentReferences, // 保留完整信息用于恢复
+				lazyDownload: true,
+				fileSize: fileSize,
+				fileType: "image",
+			} as SyncItem;
+
+			this.addLog("success", `图片文件处理完成: ${imagePath}`);
+			return syncItem;
+		} catch (error) {
+			this.addLog("error", "图片文件分段处理失败，回退到基本同步", {
+				error: error instanceof Error ? error.message : String(error),
+				item: { type: item.type, search: item.search?.substring(0, 30) },
+			});
+			return this.convertToSyncItem(item);
+		}
+	}
+
+	// 处理文件数组（分段存储版本）
 	private async processFilesArray(item: any): Promise<SyncItem | null> {
 		try {
+			this.addLog(
+				"info",
+				`🚀 开始处理文件数组（分段存储）: ${item.type} - ${item.search?.substring(0, 30)}...`,
+			);
+			this.addLog("info", `🔍 配置状态检查: ${this.config ? '已配置' : '未配置'}`);
+			this.addLog("info", `📦 item.value内容: ${item.value?.substring(0, 100)}...`);
+
 			let filePaths: string[];
 			try {
 				filePaths = JSON.parse(item.value);
+				this.addLog("info", `解析到 ${filePaths.length} 个文件路径`);
 			} catch (parseError) {
 				this.addLog("error", "文件路径JSON解析失败", { error: parseError });
 				return this.convertToSyncItem(item);
 			}
 
-			// 过滤和验证文件
-			const validFilePaths: string[] = [];
-			const maxFileSize = 50 * 1024 * 1024; // 50MB限制
-			let totalSize = 0;
+			const maxFileSize = 10 * 1024 * 1024; // 10MB限制
+			const segmentFiles: Array<{
+				originalPath: string;
+				segmentId: string;
+				fileIndex: any;
+				originalSize: number;
+				compressedSize: number;
+			}> = [];
 
-			for (const filePath of filePaths) {
+			// 处理每个文件
+			for (let i = 0; i < filePaths.length; i++) {
+				const filePath = filePaths[i];
+				this.addLog("info", `处理文件 ${i + 1}/${filePaths.length}: ${filePath}`);
+
 				// 检查文件类型
 				if (!this.isSupportedFileType(filePath)) {
+					this.addLog("info", `不支持的文件类型，跳过: ${filePath}`);
 					continue;
 				}
 
@@ -2467,62 +2223,84 @@ export class SyncEngine {
 				// 检查文件类型是否支持
 				const fileType = this.getFileType(filePath);
 				if (!globalStore.cloudSync.fileSync.supportedTypes[fileType]) {
+					this.addLog("info", `${fileType}类型未开启同步，跳过: ${filePath}`);
 					continue;
 				}
 
-				validFilePaths.push(filePath);
-				totalSize += fileSize;
+				// 压缩文件
+				this.addLog("info", `开始压缩文件: ${filePath}`);
+				let compressedContent: ArrayBuffer;
+				try {
+					compressedContent = await this.fileProcessor.compressFile(filePath);
+					this.addLog("success", `文件压缩成功: ${filePath}`);
+				} catch (compressError) {
+					this.addLog("error", "文件压缩失败，尝试使用原始文件", {
+						error: compressError,
+						filePath,
+					});
+					const { readFile } = await import("@tauri-apps/plugin-fs");
+					compressedContent = await readFile(filePath);
+				}
+
+				// 使用分段管理器添加文件
+				const segmentResult = await fileSegmentManager.addFile(
+					filePath,
+					compressedContent,
+					fileType,
+					this.config,
+				);
+
+				segmentFiles.push({
+					originalPath: filePath,
+					segmentId: segmentResult.segmentId,
+					fileIndex: segmentResult.fileIndex,
+					originalSize: fileSize,
+					compressedSize: compressedContent.byteLength,
+				});
+
+				this.addLog(
+					"success",
+					`文件已添加到分段: ${filePath} -> ${segmentResult.segmentId}`,
+				);
 			}
 
-			if (validFilePaths.length === 0) {
-				this.addLog("warning", "没有有效文件，回退到基本同步");
+			if (segmentFiles.length === 0) {
+				this.addLog("warning", "没有成功处理的文件，回退到基本同步");
 				return this.convertToSyncItem(item);
 			}
 
-			if (!this.config) {
-				this.addLog("error", "WebDAV配置未设置，无法处理文件数组");
-				return this.convertToSyncItem(item);
-			}
-
-			// 设置文件包管理器的配置
-			filePackageManager.setWebDAVConfig(this.config);
-			if (this.syncModeConfig) {
-				filePackageManager.setSyncModeConfig(this.syncModeConfig);
-			}
-
-			// 使用文件包管理器进行打包上传
-			const packageInfo = await filePackageManager.packageAndUploadFiles(
-				item.id,
-				item.type,
-				validFilePaths,
-				this.config,
+			this.addLog(
+				"success",
+				`文件数组处理完成，成功处理 ${segmentFiles.length} 个文件`,
 			);
 
-			if (!packageInfo) {
-				this.addLog("error", "文件数组打包失败");
-				return this.convertToSyncItem(item);
-			}
+			// 完成分段管理器的当前分段
+			await fileSegmentManager.finalizeCurrentSegment(this.config);
 
-			const syncItem: SyncItem = {
-				id: item.id,
-				type: item.type,
-				group: item.group,
-				value: JSON.stringify(packageInfo),
-				search: item.search,
-				count: item.count,
-				width: item.width,
-				height: item.height,
-				favorite: item.favorite,
-				createTime: item.createTime,
-				note: item.note,
-				subtype: item.subtype,
-				_syncType: "package_files", // 标记为文件包模式
-				fileSize: totalSize,
+			// 完成ZIP文件管理器的当前ZIP包
+			await zipFileManager.finalizeCurrentZip(this.config);
+
+			// 构建分段引用信息
+			const segmentReferences = segmentFiles.map((f) => ({
+				originalPath: f.originalPath,
+				segmentId: f.segmentId,
+				fileIndex: f.fileIndex,
+				originalSize: f.originalSize,
+				compressedSize: f.compressedSize,
+			}));
+
+			// 返回分段存储的同步项
+			return {
+				...this.convertToSyncItem(item),
+				value: JSON.stringify(segmentReferences), // 存储分段引用而非直接路径
+				_syncType: "segmented_files", // 新的同步类型标识
+				_segmentReferences: segmentReferences, // 保留完整信息用于恢复
+				lazyDownload: true,
+				fileSize: segmentFiles.reduce((total, f) => total + f.originalSize, 0),
 				fileType: "files",
-			};
-			return syncItem;
+			} as SyncItem;
 		} catch (error) {
-			this.addLog("error", "文件数组包处理失败，回退到基本同步", {
+			this.addLog("error", "文件数组分段处理失败，回退到基本同步", {
 				error: error instanceof Error ? error.message : String(error),
 				item: { type: item.type, search: item.search?.substring(0, 30) },
 			});
@@ -2615,23 +2393,70 @@ export class SyncEngine {
 	// 获取文件大小
 	private async getFileSize(filePath: string): Promise<number> {
 		try {
+			this.addLog("info", `获取文件大小: ${filePath}`);
 			const { lstat } = await import("@tauri-apps/plugin-fs");
 			const stat = await lstat(filePath);
-			return stat.size || 0;
+			const size = stat.size || 0;
+			this.addLog(
+				"info",
+				`文件大小: ${filePath} - ${(size / 1024).toFixed(2)}KB`,
+			);
+			return size;
 		} catch (error) {
+			this.addLog("warning", `无法获取文件大小: ${filePath}`, {
+				error: error instanceof Error ? error.message : String(error),
+			});
 			return 0;
 		}
 	}
 
-	/**
-	 * 读取图片文件
-	 */
-	private async readImageFile(filePath: string): Promise<ArrayBuffer | null> {
+	
+	// 从WebDAV恢复文件
+	private async restoreFileFromWebDAV(
+		base64Data: string,
+		webdavPath: string,
+	): Promise<string | null> {
 		try {
-			const { readFile } = await import("@tauri-apps/plugin-fs");
-			const fileData = await readFile(filePath);
-			return fileData.buffer;
+			this.addLog("info", `🔄 开始恢复文件: ${webdavPath}`);
+
+			// 将Base64数据转换回ArrayBuffer
+			const compressedData = this.fileProcessor.base64ToArrayBuffer(base64Data);
+
+			// 从路径中提取文件名
+			const fileName = webdavPath.split("/").pop() || "restored_file";
+
+			// 解压文件
+			const decompressedData = await this.fileProcessor.decompressFile(
+				compressedData,
+				fileName,
+			);
+
+			// 生成临时文件路径
+			const { appDataDir, join } = await import("@tauri-apps/api/path");
+			const tempDir = await join(await appDataDir(), "temp", "sync_files");
+
+			// 确保目录存在
+			const { mkdir } = await import("@tauri-apps/plugin-fs");
+			try {
+				await mkdir(tempDir, { recursive: true });
+			} catch {
+				// 目录可能已存在，忽略错误
+			}
+
+			// 创建唯一文件名
+			const timestamp = Date.now();
+			const randomSuffix = Math.random().toString(36).substring(2, 8);
+			const uniqueFileName = `${timestamp}_${randomSuffix}_${fileName}`;
+			const tempFilePath = await join(tempDir, uniqueFileName);
+
+			// 写入文件
+			const { writeFile } = await import("@tauri-apps/plugin-fs");
+			await writeFile(tempFilePath, new Uint8Array(decompressedData));
+
+			this.addLog("success", `✅ 文件恢复成功: ${tempFilePath}`);
+			return tempFilePath;
 		} catch (error) {
+			this.addLog("error", `❌ 文件恢复失败: ${webdavPath}`, { error });
 			return null;
 		}
 	}
@@ -2648,7 +2473,6 @@ export class SyncEngine {
 
 			// 检查是否存在相同 type 和 value 的记录
 			const { selectSQL } = await import("@/database");
-
 			const existingRecords = (await selectSQL("history", {
 				type: item.type,
 				value: item.value,
@@ -2682,9 +2506,9 @@ export class SyncEngine {
 				await updateSQL("history", updateItem);
 				this.addLog("info", `更新现有同步数据: ${item.type}`);
 			} else {
-				// 如果不存在，使用同步专用的去重插入函数
-				const { insertWithDeduplicationForSync } = await import("@/database");
-				await insertWithDeduplicationForSync(tableName as any, item);
+				// 如果不存在，直接插入
+				const { insertWithDeduplication } = await import("@/database");
+				await insertWithDeduplication(tableName as any, item);
 				this.addLog(
 					"info",
 					`插入新同步数据: ${item.type} (收藏: ${item.favorite})`,
@@ -2746,6 +2570,143 @@ export class SyncEngine {
 	}
 
 	/**
+	 * 从分段存储恢复文件数组
+	 */
+	private async restoreFilesArrayFromSegments(syncItem: SyncItem): Promise<string | null> {
+		try {
+			if (syncItem._syncType !== "segmented_files") {
+				this.addLog("warning", "非分段存储的文件项，跳过恢复");
+				return null;
+			}
+
+			const segmentReferences = syncItem._segmentReferences;
+			if (!segmentReferences || !Array.isArray(segmentReferences)) {
+				this.addLog("error", "分段引用信息无效");
+				return null;
+			}
+
+			this.addLog("info", `开始从 ${segmentReferences.length} 个分段恢复文件`);
+
+			const restoredFiles: Array<{ name: string; data: string }> = [];
+
+			for (const ref of segmentReferences) {
+				this.addLog("info", `恢复文件: ${ref.originalPath} 从分段: ${ref.segmentId}`);
+
+				// 从分段获取文件数据
+				const fileData = await fileSegmentManager.getFileFromSegment(
+					ref.segmentId,
+					ref.fileIndex,
+					this.config,
+				);
+
+				if (!fileData) {
+					this.addLog("error", `从分段恢复文件失败: ${ref.originalPath}`);
+					continue;
+				}
+
+				// 解压文件
+				const decompressedData = await this.decompressFileData(
+					fileData,
+					ref.fileIndex.fileName,
+				);
+
+				// 保存到本地
+				const localPath = await this.saveFileToLocal(
+					decompressedData,
+					ref.fileIndex.fileName,
+				);
+
+				restoredFiles.push({
+					name: ref.fileIndex.fileName,
+					data: localPath,
+				});
+
+				this.addLog("success", `文件恢复成功: ${ref.originalPath} -> ${localPath}`);
+			}
+
+			if (restoredFiles.length === 0) {
+				this.addLog("error", "没有成功恢复的文件");
+				return null;
+			}
+
+			this.addLog(
+				"success",
+				`文件数组恢复完成，成功恢复 ${restoredFiles.length} 个文件`,
+			);
+			return JSON.stringify(restoredFiles);
+		} catch (error) {
+			this.addLog("error", "文件数组恢复失败", {
+				error: error instanceof Error ? error.message : String(error),
+			});
+			return null;
+		}
+	}
+
+	/**
+	 * 解压文件数据
+	 */
+	private async decompressFileData(
+		compressedData: ArrayBuffer,
+		fileName: string,
+	): Promise<ArrayBuffer> {
+		try {
+			const { default: JSZip } = await import("jszip");
+			const zip = new JSZip();
+			const zipContent = await zip.loadAsync(compressedData);
+
+			// 获取文件
+			const firstFile = Object.values(zipContent.files)[0];
+			if (firstFile && !firstFile.dir) {
+				return await firstFile.async("arraybuffer");
+			}
+
+			throw new Error("ZIP文件中没有找到有效内容");
+		} catch (error) {
+			this.addLog("warning", "文件解压失败，返回原始数据", { error });
+			return compressedData;
+		}
+	}
+
+	/**
+	 * 保存文件到本地
+	 */
+	private async saveFileToLocal(
+		fileData: ArrayBuffer,
+		fileName: string,
+	): Promise<string> {
+		try {
+			const { downloadDir } = await import("@tauri-apps/api/path");
+			const { join } = await import("@tauri-apps/api/path");
+			const { writeFile, mkdir } = await import("@tauri-apps/plugin-fs");
+
+			const downloadsPath = await downloadDir();
+			const ecoPasteDir = join(downloadsPath, "EcoPaste");
+			const filesDir = join(ecoPasteDir, "files");
+
+			// 创建目录
+			try {
+				await mkdir(filesDir, { recursive: true });
+			} catch {
+				// 目录可能已存在
+			}
+
+			// 生成唯一文件名
+			const timestamp = Date.now();
+			const randomSuffix = Math.random().toString(36).substring(2, 8);
+			const uniqueFileName = `${timestamp}_${randomSuffix}_${fileName}`;
+			const filePath = join(filesDir, uniqueFileName);
+
+			// 保存文件
+			await writeFile(filePath, new Uint8Array(fileData));
+
+			return filePath;
+		} catch (error) {
+			this.addLog("error", "保存文件失败", { error });
+			throw error;
+		}
+	}
+
+	/**
 	 * 检查是否可以同步
 	 */
 	canSync(): boolean {
@@ -2784,577 +2745,205 @@ export class SyncEngine {
 	/**
 	 * 处理ZIP图片文件同步
 	 */
-
-	// 处理分段图片文件同步
-	private async processPackageFilesSync(
+	private async processZipImageFilesSync(
 		remoteItems: SyncItem[],
-		localItems: any[],
+		localItems: SyncItem[],
 	): Promise<void> {
 		try {
-			console.log("📦 开始处理文件包同步");
-			console.log("🔍 调试：云端总数据量:", remoteItems.length);
-			console.log(
-				"🔍 调试：前5个云端数据:",
-				remoteItems.slice(0, 5).map((item) => ({
-					id: item.id,
-					type: item.type,
-					_syncType: item._syncType,
-					value_type: typeof item.value,
-					value_preview:
-						item.value?.slice(0, 50) + (item.value?.length > 50 ? "..." : ""),
-				})),
+			// 找出所有需要同步的ZIP图片项目
+			const remoteImageItems = remoteItems.filter(
+				(item) => item.type === "image" && item._syncType === "zip_files"
 			);
 
-			// 筛选出包含文件包的项目
-			const packageItems = remoteItems.filter(
-				(item) =>
-					item._syncType === "package_files" &&
-					(item.type === "image" || item.type === "files"),
-			);
-
-			if (packageItems.length === 0) {
-				console.log("📭 没有文件包需要同步");
+			if (remoteImageItems.length === 0) {
+				this.addLog("info", "📷 没有需要同步的ZIP图片文件");
 				return;
 			}
 
-			console.log(`📋 发现 ${packageItems.length} 个文件包需要同步`);
+			this.addLog("info", `🖼️ 发现 ${remoteImageItems.length} 个ZIP图片文件需要同步`);
 
-			// 设置文件包管理器的WebDAV配置
-			if (!this.config) {
-				console.error("WebDAV配置未设置，无法同步文件包");
-				return;
-			}
-			filePackageManager.setWebDAVConfig(this.config);
-
-			console.log("🔧 文件包管理器配置完成，准备处理文件包同步");
-
-			for (const item of packageItems) {
+			// 提取图片数据信息
+			const imageDataList: any[] = [];
+			for (const item of remoteImageItems) {
 				try {
-					console.log(`🔄 处理文件包项: ${item.id}`);
+					const imageData = JSON.parse(item.value);
+					this.addLog("info", "🔍 解析ZIP图片数据结构", {
+						itemId: item.id,
+						imageDataType: Array.isArray(imageData) ? "array" : typeof imageData,
+						imageDataLength: Array.isArray(imageData) ? imageData.length : undefined,
+						firstImageData: Array.isArray(imageData) && imageData.length > 0 ? {
+							hasOriginalPath: !!imageData[0].originalPath,
+							hasZipName: !!imageData[0].zipName,
+							originalPath: imageData[0].originalPath?.substring(0, 50) + "...",
+							zipName: imageData[0].zipName
+						} : undefined
+					});
 
-					// 解析文件包信息
-					let packageInfo;
-					try {
-						packageInfo = JSON.parse(item.value);
-					} catch (parseError) {
-						this.addLog("error", `文件包信息解析失败: ${item.value}`, {
-							error: parseError,
-						});
-						continue;
-					}
-
-					this.addLog("info", `🔄 开始智能同步文件包: ${item.id}`);
-
-					// 使用智能同步策略处理文件
-					const syncResult = await filePackageManager.syncFilesIntelligently(
-						packageInfo,
-						this.config,
-					);
-
-					if (syncResult.paths.length > 0) {
-						// 更新本地数据库中的路径
-						await this.updateFilePathsInDatabase(item.id, syncResult.paths);
-						this.addLog(
-							"success",
-							`✅ 文件包同步成功: ${item.id} -> ${syncResult.paths.length} 个文件`,
-						);
-					} else {
-						this.addLog("error", `❌ 文件包同步失败: ${item.id}`);
+					// imageData 是一个数组，每个元素都包含 zipName
+					if (Array.isArray(imageData)) {
+						for (const imageInfo of imageData) {
+							if (imageInfo.zipName && imageInfo.originalPath) {
+								imageDataList.push(imageInfo);
+							} else {
+								this.addLog("error", "❌ ZIP图片数据缺少必要字段", {
+									itemId: item.id,
+									hasZipName: !!imageInfo.zipName,
+									hasOriginalPath: !!imageInfo.originalPath,
+									imageInfo
+								});
+							}
+						}
 					}
 				} catch (error) {
-					this.addLog("error", `❌ 文件包项处理失败: ${item.id}`, {
+					this.addLog("error", "❌ 解析ZIP图片数据失败", {
+						itemId: item.id,
 						error: error instanceof Error ? error.message : String(error),
+						rawValue: item.value?.substring(0, 100) + "..."
 					});
 				}
 			}
 
-			this.addLog("success", "🎉 文件包同步处理完成");
+			// 批量下载和保存图片
+			const pathMappings = await zipImageSyncService.batchSyncImages(
+				imageDataList,
+				this.config!,
+			);
+
+			// 更新数据库中的路径引用
+			for (const imageData of imageDataList) {
+				const newPath = pathMappings.get(imageData.originalPath);
+				if (newPath) {
+					// 更新数据库中的路径
+					await updateSQL("history", {
+						id: remoteImageItems.find((item) =>
+							item.value.includes(imageData.originalPath)
+						)?.id,
+						value: newPath,
+					});
+					this.addLog("info", "📝 ZIP图片路径已更新", {
+						originalPath: imageData.originalPath,
+						newPath: newPath,
+					});
+				}
+			}
+
+			this.addLog("success", "✅ ZIP图片文件同步完成", {
+				处理图片数量: imageDataList.length,
+				成功数量: pathMappings.size,
+			});
 		} catch (error) {
-			this.addLog("error", "❌ 文件包同步失败", {
+			this.addLog("error", "❌ ZIP图片文件同步失败", {
 				error: error instanceof Error ? error.message : String(error),
 			});
 		}
 	}
 
 	/**
-	 * 更新数据库中的文件路径
+	 * 处理图片文件同步
 	 */
-	private async updateFilePathsInDatabase(
-		itemId: string,
-		filePaths: string[],
+	private async processImageFilesSync(
+		remoteItems: SyncItem[],
+		localItems: SyncItem[],
 	): Promise<void> {
 		try {
-			const { updateSQL } = await import("@/database");
-
-			// 始终存储为JSON数组以保持一致性
-			await updateSQL("history", {
-				id: itemId,
-				value: JSON.stringify(filePaths),
-			});
-			this.addLog(
-				"info",
-				`✅ 数据库文件路径已更新: ${itemId} -> ${filePaths.length} 个文件`,
+			// 找出所有需要同步的图片项目
+			const remoteImageItems = remoteItems.filter(
+				(item) => item.type === "image" && item._syncType === "segmented_files"
 			);
-		} catch (error) {
-			this.addLog("error", `❌ 更新数据库文件路径失败: ${itemId}`, {
-				error: error instanceof Error ? error.message : String(error),
-			});
-			throw error;
-		}
-	}
 
-	/**
-	 * 检查项目是否在本地存在
-	 */
-	private itemExistsInLocal(itemId: string): boolean {
-		return this.lastLocalSnapshot?.has(itemId) || false;
-	}
+			if (remoteImageItems.length === 0) {
+				this.addLog("info", "📷 没有需要同步的图片文件");
+				return;
+			}
 
-	/**
-	 * 将云端数据合并到本地数据库
-	 */
-	private async mergeCloudDataToLocal(remoteData: SyncData): Promise<void> {
-		try {
-			console.log("🔄 开始合并云端数据到本地", {
-				云端数据量: remoteData.items.length,
-				云端删除记录量: remoteData.deleted?.length || 0,
-				云端删除记录: remoteData.deleted || [],
-			});
+			this.addLog("info", `🖼️ 发现 ${remoteImageItems.length} 个图片文件需要同步`);
 
-			// 先处理删除记录（必须在数据合并之前）
-			if (remoteData.deleted && remoteData.deleted.length > 0) {
-				console.log("🔍 开始处理云端删除记录", {
-					云端删除记录: remoteData.deleted,
-					云端删除数量: remoteData.deleted.length,
-				});
-
-				let deletedCount = 0;
-				for (const deletedId of remoteData.deleted) {
-					try {
-						// 检查本地是否存在该条目
-						const localItems = await selectSQL("history", { id: deletedId });
-						if (localItems && localItems.length > 0) {
-							const localItem = localItems[0];
-							console.log(`🔍 发现需要删除的本地条目: ${deletedId}`, {
-								本地条目: localItem,
-								删除前状态: localItem.deleted,
-							});
-
-							// 删除本地条目（软删除）
-							await deleteSQL("history", {
-								id: deletedId,
-								type: localItem.type,
-								value: localItem.value,
-							});
-							deletedCount++;
-							console.log(`🗑️ 已软删除本地条目: ${deletedId}`);
-
-							// 验证软删除是否成功 - 直接查询不过滤deleted字段
-							const verifyItems = await executeSQL(
-								"SELECT deleted FROM history WHERE id = ?;",
-								[deletedId],
-							);
-							const verifyItem = verifyItems.length > 0 ? verifyItems[0] : null;
-							console.log(`🔍 软删除验证: ${deletedId}`, {
-								删除后状态: verifyItem?.deleted,
-								验证结果: verifyItems,
-							});
-
-							// 验证getHistoryData是否能正确过滤
-							const allItems = await executeSQL(
-								"SELECT id, deleted FROM history;",
-							);
-							const activeItems = allItems.filter((item) => item.deleted === 0);
-							console.log(`🔍 getHistoryData验证: ${deletedId}`, {
-								所有记录: allItems,
-								活跃记录: activeItems,
-								活跃记录数: activeItems.length,
-							});
-						} else {
-							console.log(`📝 本地不存在条目: ${deletedId}，跳过删除`);
-						}
-					} catch (deleteError) {
-						console.error(`❌ 删除本地条目失败: ${deletedId}`, deleteError);
-					}
-				}
-
-				console.log(
-					`✅ 云端删除记录处理完成，软删除了 ${deletedCount} 个本地条目`,
-				);
-
-				// 立即触发界面刷新以显示删除效果
+			// 提取图片数据信息
+			const imageDataList: any[] = [];
+			for (const item of remoteImageItems) {
 				try {
-					// 强制刷新界面，清除所有缓存
-					console.log("🔄 开始强制刷新界面（删除记录处理后）");
-
-					// 直接清除Main组件的缓存并刷新
-					const cacheKey = JSON.stringify({
-						group: undefined,
-						search: undefined,
-						favorite: undefined,
-						deleted: 0,
+					const imageData = JSON.parse(item.value);
+					this.addLog("info", "🔍 解析图片数据结构", {
+						itemId: item.id,
+						imageDataType: Array.isArray(imageData) ? "array" : typeof imageData,
+						imageDataLength: Array.isArray(imageData) ? imageData.length : undefined,
+						firstImageData: Array.isArray(imageData) && imageData.length > 0 ? {
+							hasOriginalPath: !!imageData[0].originalPath,
+							hasSegmentId: !!imageData[0].segmentId,
+							originalPath: imageData[0].originalPath?.substring(0, 50) + "...",
+							segmentId: imageData[0].segmentId
+						} : undefined
 					});
 
-					// 清除getListCache
-					const { getListCache } = await import("@/pages/Main");
-					if (getListCache?.current) {
-						getListCache.current.clear();
-						console.log("🗑️ 已清除getListCache");
-					}
-
-					// 触发界面刷新事件
-					emit(LISTEN_KEY.REFRESH_CLIPBOARD_LIST);
-					console.log("🔄 已触发界面刷新（删除记录处理后）");
-				} catch (refreshError) {
-					console.error("❌ 删除记录处理后界面刷新失败", refreshError);
-				}
-			}
-
-			// 根据同步模式配置过滤云端数据
-			let filteredItems = remoteData.items;
-
-			// 过滤删除记录（优先级最高）
-			if (remoteData.deleted && remoteData.deleted.length > 0) {
-				const deletedSet = new Set(remoteData.deleted);
-				const originalCount = filteredItems.length;
-				filteredItems = filteredItems.filter(
-					(item) => !deletedSet.has(item.id),
-				);
-
-				console.log("🗑️ 过滤云端已删除项目", {
-					过滤前: originalCount,
-					过滤后: filteredItems.length,
-					删除的ID: remoteData.deleted,
-				});
-			}
-
-			if (this.syncModeConfig && this.syncModeConfig.settings) {
-				const settings = this.syncModeConfig.settings;
-				const originalCount = filteredItems.length;
-
-				// 收藏模式：只处理收藏的内容
-				if (settings.onlyFavorites) {
-					filteredItems = filteredItems.filter((item) => {
-						return item.favorite === true || item.favorite === 1;
-					});
-					this.addLog("info", "🔖 收藏模式过滤云端数据", {
-						过滤前: originalCount,
-						过滤后: filteredItems.length,
-					});
-				}
-
-				// 根据内容类型过滤
-				filteredItems = filteredItems.filter((item) => {
-					if (item.type === "text" && !settings.includeText) return false;
-					if (item.type === "html" && !settings.includeHtml) return false;
-					if (item.type === "rtf" && !settings.includeRtf) return false;
-					if (item.type === "image" && !settings.includeImages) return false;
-					if (item.type === "files" && !settings.includeFiles) return false;
-					return true;
-				});
-
-				this.addLog("info", "🎯 云端数据过滤完成", {
-					最终条数: filteredItems.length,
-				});
-			}
-
-			// 转换为本地格式
-			const localData = [];
-			for (const item of filteredItems) {
-				// 跳过本地软删除的项（避免被重新激活）
-				if (item.deleted === 1) {
-					this.addLog("info", `⏭️ 跳过本地软删除的条目: ${item.id}`);
-					continue;
-				}
-				const localItem: any = {
-					id: item.id,
-					type: item.type,
-					group: item.group,
-					value: item.value,
-					search: item.search,
-					count: item.count,
-					width: item.width,
-					height: item.height,
-					favorite: item.favorite,
-					createTime: item.createTime,
-					note: item.note,
-					subtype: item.subtype,
-					deleted: item.deleted || 0, // 确保删除字段被正确设置
-				};
-
-				// 处理文件数据 - 转换为数据库格式
-				if (item.type === "files" && item.files) {
-					localItem.files = JSON.stringify(item.files);
-				}
-
-				// 处理图片数据 - 确保value字段包含正确的图片数据
-				if (item.type === "image") {
-					// 检查是否是分段存储的图片（JSON metadata）
-					if (item.value && item.value.startsWith("[")) {
-						try {
-							const segmentData = JSON.parse(item.value);
-							if (
-								segmentData &&
-								segmentData[0] &&
-								segmentData[0].originalPath
-							) {
-								// 这是分段存储的图片，设置为按需下载模式
-								localItem.lazyDownload = 1;
-								localItem.fileSize = segmentData[0].originalSize || 0;
-								localItem.fileType = segmentData[0].fileType || "image";
-								// value字段保持原始JSON metadata，用于后续按需下载
-								localItem.value = item.value;
-
-								this.addLog("info", "📥 设置图片为按需下载模式", {
-									itemId: item.id,
-									originalPath: segmentData[0].originalPath,
-									fileSize: localItem.fileSize,
-								});
+					// imageData 是一个数组，每个元素都包含 segmentId
+					if (Array.isArray(imageData)) {
+						for (const imageInfo of imageData) {
+							if (imageInfo.segmentId && imageInfo.originalPath) {
+								imageDataList.push(imageInfo);
 							} else {
-								// JSON格式不正确，跳过此项目
-								this.addLog(
-									"warning",
-									"⚠️ 图片JSON metadata格式不正确，跳过此项目",
-									{
-										itemId: item.id,
-										value: item.value.substring(0, 100),
-									},
-								);
-								continue;
-							}
-						} catch (parseError) {
-							// JSON解析失败，跳过此项目
-							this.addLog(
-								"warning",
-								"⚠️ 图片JSON metadata解析失败，跳过此项目",
-								{
+								this.addLog("error", "❌ 图片数据缺少必要字段", {
 									itemId: item.id,
-									value: item.value.substring(0, 100),
-									error:
-										parseError instanceof Error
-											? parseError.message
-											: String(parseError),
-								},
-							);
-							continue;
+									hasSegmentId: !!imageInfo.segmentId,
+									hasOriginalPath: !!imageInfo.originalPath,
+									imageInfo
+								});
+							}
 						}
 					}
-					// 正常的本地图片文件路径
-					else if (item.value && typeof item.value === "string") {
-						localItem.value = item.value;
-					}
-					// 如果有imageData字段且是有效的图片路径，用它覆盖value
-					else if (item.imageData && typeof item.imageData === "string") {
-						localItem.value = item.imageData;
-					}
+				} catch (error) {
+					this.addLog("error", "❌ 解析图片数据失败", {
+						itemId: item.id,
+						error: error instanceof Error ? error.message : String(error),
+						rawValue: item.value?.substring(0, 100) + "..."
+					});
 				}
-
-				// 处理其他可选字段
-				if (item.lazyDownload !== undefined) {
-					localItem.lazyDownload = item.lazyDownload ? 1 : 0;
-				}
-				if (item.fileSize !== undefined) {
-					localItem.fileSize = item.fileSize;
-				}
-				if (item.fileType !== undefined) {
-					localItem.fileType = item.fileType;
-				}
-
-				localData.push(localItem);
 			}
 
-			if (localData.length > 0) {
-				this.addLog("info", "💾 开始导入云端数据到数据库");
+			// 批量下载和保存图片
+			const pathMappings = await imageSyncService.batchSyncImages(
+				imageDataList,
+				this.config!,
+			);
 
-				await this.mergeHistoryData(localData);
-				this.addLog("success", "✅ 云端数据合并完成");
-			} else {
-				this.addLog("info", "📭 没有需要合并的云端数据");
+			// 更新数据库中的路径引用
+			for (const imageData of imageDataList) {
+				const newPath = pathMappings.get(imageData.originalPath);
+				if (newPath) {
+					// 更新数据库中的路径
+					await updateSQL("history", {
+						id: remoteImageItems.find((item) =>
+							item.value.includes(imageData.originalPath)
+						)?.id,
+						value: newPath,
+					});
+					this.addLog("info", "📝 图片路径已更新", {
+						originalPath: imageData.originalPath,
+						newPath: newPath,
+					});
+				}
 			}
+
+			this.addLog("success", "✅ 图片文件同步完成", {
+				处理图片数量: imageDataList.length,
+				成功数量: pathMappings.size,
+			});
 		} catch (error) {
-			this.addLog("error", "❌ 合并云端数据失败", {
+			this.addLog("error", "❌ 图片文件同步失败", {
 				error: error instanceof Error ? error.message : String(error),
 			});
-			throw error;
-		}
-	}
-
-	/**
-	 * 从云端真正删除已删除的条目
-	 */
-	private async removeDeletedItemsFromCloud(
-		deletedItems: string[],
-	): Promise<void> {
-		try {
-			if (!this.config || deletedItems.length === 0) {
-				return;
-			}
-
-			console.log("🗑️ 开始从云端删除已删除的条目", {
-				需要删除的条目: deletedItems,
-			});
-
-			// 下载当前的同步数据
-			const currentRemoteData = await this.downloadRemoteData();
-			if (!currentRemoteData) {
-				return;
-			}
-
-			const deletedSet = new Set(deletedItems);
-			const originalCount = currentRemoteData.items.length;
-
-			// 从云端数据中移除被删除的条目
-			const filteredItems = currentRemoteData.items.filter(
-				(item) => !deletedSet.has(item.id),
-			);
-
-			console.log("🗑️ 云端条目删除统计", {
-				删除前: originalCount,
-				删除后: filteredItems.length,
-				已删除的条目: deletedItems,
-			});
-
-			// 如果有条目被删除，更新云端数据
-			if (filteredItems.length !== originalCount) {
-				// 重新上传清理后的同步数据
-				const updatedSyncData: SyncData = {
-					...currentRemoteData,
-					items: filteredItems,
-					timestamp: Date.now(),
-				};
-
-				const filePath = this.getFullSyncFilePath();
-				const uploadResult = await uploadSyncData(
-					this.config,
-					filePath,
-					JSON.stringify(updatedSyncData, null, 2),
-				);
-
-				if (uploadResult.success) {
-					console.log("✅ 云端条目删除完成");
-				} else {
-					console.error("❌ 云端条目删除失败", uploadResult.error_message);
-				}
-			} else {
-				console.log("📭 没有条目需要从云端删除");
-			}
-		} catch (error) {
-			console.error("❌ 删除云端条目异常", error);
-		}
-	}
-
-	/**
-	 * 清理云端删除记录（仅清理所有设备都已确认的删除记录）
-	 */
-	private async clearRemoteDeletedRecords(
-		deletedItems: string[],
-	): Promise<void> {
-		try {
-			if (!this.config || deletedItems.length === 0) {
-				return;
-			}
-
-			console.log("🗑️ 开始智能清理云端删除记录", {
-				需要清理的删除项: deletedItems,
-			});
-
-			// 下载当前的同步数据
-			const currentRemoteData = await this.downloadRemoteData();
-			if (!currentRemoteData) {
-				return;
-			}
-
-			// 只有当云端数据中完全不包含被删除的条目时，才清理删除记录
-			const deletedSet = new Set(deletedItems);
-			const originalCount = currentRemoteData.deleted?.length || 0;
-
-			// 检查云端数据是否还包含被删除的条目
-			const hasDeletedItemsInCloudData = currentRemoteData.items.some((item) =>
-				deletedSet.has(item.id),
-			);
-
-			if (hasDeletedItemsInCloudData) {
-				console.log("⏸️ 云端数据仍包含被删除的条目，跳过删除记录清理", {
-					删除项: deletedItems,
-					云端包含的条目: currentRemoteData.items
-						.filter((item) => deletedSet.has(item.id))
-						.map((item) => item.id),
-				});
-				return;
-			}
-
-			// 确认所有相关数据都已从云端移除后，才清理删除记录
-			const newDeletedRecords = (currentRemoteData.deleted || []).filter(
-				(id) => !deletedSet.has(id),
-			);
-
-			console.log("🗑️ 智能清理云端删除记录统计", {
-				清理前: originalCount,
-				清理后: newDeletedRecords.length,
-				已移除的删除项: deletedItems,
-			});
-
-			// 重新上传清理后的同步数据
-			const cleanedSyncData: SyncData = {
-				...currentRemoteData,
-				deleted: newDeletedRecords,
-				timestamp: Date.now(),
-			};
-
-			const filePath = this.getFullSyncFilePath();
-			const uploadResult = await uploadSyncData(
-				this.config,
-				filePath,
-				JSON.stringify(cleanedSyncData, null, 2),
-			);
-
-			if (uploadResult.success) {
-				console.log("✅ 云端删除记录清理完成");
-			} else {
-				console.error("❌ 云端删除记录清理失败", uploadResult.error_message);
-			}
-		} catch (error) {
-			console.error("❌ 清理云端删除记录异常", error);
 		}
 	}
 
 	/**
 	 * 下载远程数据并处理图片文件同步
 	 */
-	private async downloadRemoteDataAndProcessImages(
-		deletedItems: string[] = [],
-	): Promise<void> {
+	private async downloadRemoteDataAndProcessImages(): Promise<void> {
 		try {
-			// 检查是否启用轻量模式，如果启用则跳过图片下载
-			if (
-				this.syncModeConfig?.mode === "lightweight" ||
-				(this.syncModeConfig?.settings?.includeImages === false &&
-					this.syncModeConfig?.settings?.includeFiles === false)
-			) {
-				this.addLog("info", "🚫 轻量模式已启用，跳过图片文件下载");
-				return;
-			}
-
 			// 1. 下载远程数据
 			const remoteData = await this.downloadRemoteData();
 			if (!remoteData) {
 				this.addLog("info", "📭 没有远程数据，跳过图片同步");
 				return;
-			}
-
-			// 过滤删除记录（避免重复处理已删除的项目）
-			if (deletedItems.length > 0) {
-				const deletedSet = new Set(deletedItems);
-				const originalCount = remoteData.items.length;
-				remoteData.items = remoteData.items.filter(
-					(item) => !deletedSet.has(item.id),
-				);
-
-				console.log("🗑️ 图片同步中过滤已删除项目", {
-					过滤前: originalCount,
-					过滤后: remoteData.items.length,
-					删除的ID: deletedItems,
-				});
 			}
 
 			// 2. 获取本地数据
@@ -3374,41 +2963,24 @@ export class SyncEngine {
 				subtype: item.subtype,
 			}));
 
-			// 3. 处理图片文件同步 - 使用包模式
-			this.addLog("info", "🔄 包模式 - 开始自动图片下载");
+			// 3. 处理图片文件同步（ZIP模式优先）
+			await this.processZipImageFilesSync(remoteData.items, localItems);
+			// 4. 处理旧的分段文件同步（兼容性）
+			await this.processImageFilesSync(remoteData.items, localItems);
 
-			try {
-				console.log("🔍 准备处理文件包同步调试", {
-					remoteDataItems: remoteData.items.length,
-					localItems: localItems.length,
-					remoteItemsSample: remoteData.items.slice(0, 2).map((item) => ({
-						id: item.id,
-						type: item.type,
-						value: item.value?.substring(0, 50),
-					})),
-				});
-
-				await this.processPackageFilesSync(remoteData.items, localItems);
-
-				console.log("✅ 文件包同步完成");
-			} catch (packageError) {
-				console.error("❌ 文件包同步失败详细调试", {
-					error:
-						packageError instanceof Error
-							? packageError.message
-							: String(packageError),
-					errorStack:
-						packageError instanceof Error ? packageError.stack : undefined,
-					remoteDataItems: remoteData.items.length,
-					localItems: localItems.length,
-				});
-				throw packageError;
-			}
 		} catch (error) {
 			this.addLog("error", "❌ 下载远程数据并处理图片同步失败", {
 				error: error instanceof Error ? error.message : String(error),
 			});
 		}
+	}
+
+	/**
+	 * 获取完整同步文件路径
+	 */
+	private getFullSyncFilePath(): string {
+		const basePath = this.config?.path || "/EcoPaste";
+		return `${basePath}/sync-data.json`;
 	}
 }
 

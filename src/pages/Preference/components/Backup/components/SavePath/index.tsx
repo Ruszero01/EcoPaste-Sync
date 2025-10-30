@@ -1,5 +1,6 @@
 import ProList from "@/components/ProList";
 import ProListItem from "@/components/ProListItem";
+import { joinPath } from "@/utils/path";
 import { NodeIndexOutlined, ReloadOutlined } from "@ant-design/icons";
 import { emit } from "@tauri-apps/api/event";
 import { appLogDir, dataDir as tauriDataDir } from "@tauri-apps/api/path";

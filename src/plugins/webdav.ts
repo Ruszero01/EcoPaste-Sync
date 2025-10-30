@@ -53,6 +53,7 @@ const COMMAND = {
 	CREATE_DIRECTORY: "plugin:eco-webdav|create_directory",
 	UPLOAD_SYNC_DATA: "plugin:eco-webdav|upload_sync_data",
 	DOWNLOAD_SYNC_DATA: "plugin:eco-webdav|download_sync_data",
+	DELETE_FILE: "plugin:eco-webdav|delete_file",
 } as const;
 
 /**
@@ -110,6 +111,16 @@ export const uploadSyncData = (
  */
 export const downloadSyncData = (config: WebDAVConfig, filePath: string) => {
 	return invoke<FileDownloadResult>(COMMAND.DOWNLOAD_SYNC_DATA, {
+		config,
+		filePath,
+	});
+};
+
+/**
+ * 删除文件
+ */
+export const deleteFile = (config: WebDAVConfig, filePath: string) => {
+	return invoke<boolean>(COMMAND.DELETE_FILE, {
 		config,
 		filePath,
 	});

@@ -28,6 +28,29 @@ export interface SyncItem {
 	deviceId: string; // 创建设备ID
 	size?: number; // 数据大小
 	checksum?: string; // 数据校验和
+	_syncType?: string; // 同步类型标识
+	_originalPath?: string; // 原始路径
+	_originalSize?: number; // 原始大小
+	_compressedSize?: number; // 压缩后大小
+	_originalFiles?: Array<{
+		// 原始文件信息
+		originalPath: string;
+		webdavPath: string;
+		originalSize: number;
+		compressedSize: number;
+	}>;
+	files?: Array<{
+		// 文件数组信息
+		name: string;
+		data: string;
+		_syncType?: string;
+	}>;
+	// 按需下载标识
+	lazyDownload?: boolean; // 是否需要按需下载
+	fileSize?: number; // 原始文件大小（用于下载提示）
+	fileType?: string; // 文件类型
+	// 软删除标识
+	deleted?: boolean; // 是否已删除
 }
 
 // 同步元数据

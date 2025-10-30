@@ -1,5 +1,6 @@
 import ProList from "@/components/ProList";
 import UnoIcon from "@/components/UnoIcon";
+import { joinPath } from "@/utils/path";
 import { emit } from "@tauri-apps/api/event";
 import { downloadDir } from "@tauri-apps/api/path";
 import { confirm, open } from "@tauri-apps/plugin-dialog";

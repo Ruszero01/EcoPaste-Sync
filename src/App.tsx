@@ -1,8 +1,9 @@
 import { LISTEN_KEY } from "@/constants";
+import { useTray } from "@/hooks/useTray";
 import { HappyProvider } from "@ant-design/happy-work-theme";
 import { error } from "@tauri-apps/plugin-log";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { ConfigProvider, theme } from "antd";
+import { App as AntdApp, ConfigProvider, theme } from "antd";
 import { isString } from "lodash-es";
 import { RouterProvider } from "react-router-dom";
 import { useSnapshot } from "valtio";
@@ -12,6 +13,7 @@ const { defaultAlgorithm, darkAlgorithm } = theme;
 const App = () => {
 	const { appearance } = useSnapshot(globalStore);
 	const { restoreState } = useWindowState();
+	const { createTray } = useTray();
 	const [ready, { toggle }] = useBoolean();
 
 	useMount(async () => {
@@ -23,6 +25,23 @@ const App = () => {
 
 		// 生成 antd 的颜色变量
 		generateColorVars();
+
+		// 初始化托盘 - 使用更强的防护机制
+		try {
+			const { TrayIcon } = await import("@tauri-apps/api/tray");
+
+			// 先检查是否已存在托盘
+			const existingTray = await TrayIcon.getById("app-tray");
+			if (existingTray) {
+				console.info("托盘已存在，跳过创建");
+				return;
+			}
+
+			// 只有在没有托盘时才创建
+			await createTray();
+		} catch (error) {
+			console.error("托盘初始化失败:", error);
+		}
 	});
 
 	// 监听语言的变化
@@ -39,34 +58,6 @@ const App = () => {
 
 	// 监听关闭数据库的事件
 	useTauriListen(LISTEN_KEY.CLOSE_DATABASE, closeDatabase);
-
-	// 监听托盘重建事件（同步后修复托盘点击事件）
-	useTauriListen("rebuild-tray", async () => {
-		try {
-			// 先检查托盘是否存在
-			const { TrayIcon } = await import("@tauri-apps/api/tray");
-			const existingTray = await TrayIcon.getById("app-tray");
-
-			if (existingTray) {
-				try {
-					await existingTray.close();
-					// 等待一下确保托盘完全关闭
-					await new Promise((resolve) => setTimeout(resolve, 200));
-				} catch (closeError) {
-					console.error("App: 关闭托盘时出错", closeError);
-					// 即使关闭失败也继续，托盘可能已经无效
-				}
-			}
-
-			// 重新创建托盘
-			globalStore.app.showMenubarIcon = false;
-			setTimeout(() => {
-				globalStore.app.showMenubarIcon = true;
-			}, 100);
-		} catch (error) {
-			console.error("App: 托盘重建过程中出错", error);
-		}
-	});
 
 	// 链接跳转到系统浏览器
 	useEventListener("click", (event) => {
@@ -102,9 +93,11 @@ const App = () => {
 				algorithm: appearance.isDark ? darkAlgorithm : defaultAlgorithm,
 			}}
 		>
-			<HappyProvider>
-				{ready && <RouterProvider router={router} />}
-			</HappyProvider>
+			<AntdApp>
+				<HappyProvider>
+					{ready && <RouterProvider router={router} />}
+				</HappyProvider>
+			</AntdApp>
 		</ConfigProvider>
 	);
 };
