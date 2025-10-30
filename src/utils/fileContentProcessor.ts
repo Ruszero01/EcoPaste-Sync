@@ -12,15 +12,10 @@ export class FileContentProcessor {
 
 	async compressImage(imagePath: string): Promise<ArrayBuffer> {
 		try {
-			console.log(`[FileContentProcessor] 开始压缩图片: ${imagePath}`);
 			const originalBuffer = await readFile(imagePath);
-			console.log(
-				`[FileContentProcessor] 读取原始文件成功，大小: ${(originalBuffer.byteLength / 1024).toFixed(2)}KB`,
-			);
 
 			// 检查是否在浏览器环境中
 			if (typeof window === "undefined" || typeof document === "undefined") {
-				console.log("[FileContentProcessor] 非浏览器环境，返回原始文件");
 				return originalBuffer;
 			}
 
@@ -29,10 +24,6 @@ export class FileContentProcessor {
 				const img = new Image();
 
 				img.onload = () => {
-					console.log(
-						`[FileContentProcessor] 图片加载成功，尺寸: ${img.width}x${img.height}`,
-					);
-
 					try {
 						const canvas = document.createElement("canvas");
 						const ctx = canvas.getContext("2d");
@@ -48,9 +39,6 @@ export class FileContentProcessor {
 							img.width,
 							img.height,
 						);
-						console.log(
-							`[FileContentProcessor] 压缩后尺寸: ${width}x${height}`,
-						);
 
 						canvas.width = width;
 						canvas.height = height;
@@ -61,9 +49,6 @@ export class FileContentProcessor {
 						canvas.toBlob(
 							(blob) => {
 								if (blob) {
-									console.log(
-										`[FileContentProcessor] 图片压缩成功，大小: ${(blob.size / 1024).toFixed(2)}KB`,
-									);
 									blob.arrayBuffer().then(resolve).catch(reject);
 								} else {
 									console.error("[FileContentProcessor] Canvas toBlob失败");
@@ -102,42 +87,30 @@ export class FileContentProcessor {
 
 	async compressFile(filePath: string): Promise<ArrayBuffer> {
 		try {
-			console.log(`[FileContentProcessor] 开始压缩文件: ${filePath}`);
 			const originalBuffer = await readFile(filePath);
-			console.log(
-				`[FileContentProcessor] 读取原始文件成功，大小: ${(originalBuffer.byteLength / 1024).toFixed(2)}KB`,
-			);
 
 			const fileName = filePath.split(/[\\/]/).pop() || "file";
 
 			// 动态导入JSZip
 			try {
-				console.log("[FileContentProcessor] 导入JSZip库");
 				const { default: JSZip } = await import("jszip");
 				const zip = new JSZip();
 				zip.file(fileName, originalBuffer);
-
-				console.log("[FileContentProcessor] 开始生成ZIP文件");
 				const zipContent = await zip.generateAsync({
 					type: "arraybuffer",
 					compression: "DEFLATE",
 					compressionOptions: { level: 6 },
 				});
-				console.log(
-					`[FileContentProcessor] 文件压缩成功，压缩后大小: ${(zipContent.byteLength / 1024).toFixed(2)}KB`,
-				);
 
 				return zipContent;
 			} catch (jszipError) {
 				console.error("[FileContentProcessor] JSZip压缩失败:", jszipError);
-				console.log("[FileContentProcessor] 回退到原始文件");
 				return originalBuffer;
 			}
 		} catch (error) {
 			console.error("[FileContentProcessor] 文件压缩过程失败:", error);
 			// 如果所有压缩方法都失败，尝试返回原始缓冲区
 			try {
-				console.log("[FileContentProcessor] 尝试读取原始文件作为备用");
 				return await readFile(filePath);
 			} catch (readError) {
 				console.error("[FileContentProcessor] 读取原始文件也失败:", readError);
@@ -232,9 +205,6 @@ export class FileContentProcessor {
 				return syncItem.value;
 			}
 
-			// 需要按需下载
-			console.log(`开始按需下载图片: ${syncItem.id}`);
-
 			const fileData = await fileDownloadService.getFileContent(
 				syncItem,
 				webdavConfig,
@@ -274,9 +244,6 @@ export class FileContentProcessor {
 				return syncItem.value;
 			}
 
-			// 需要按需下载
-			console.log(`开始按需下载文件数组: ${syncItem.id}`);
-
 			const fileData = await fileDownloadService.getFileContent(
 				syncItem,
 				webdavConfig,
@@ -311,8 +278,6 @@ export class FileContentProcessor {
 			return;
 		}
 
-		console.log(`开始预加载 ${lazyDownloadItems.length} 个文件`);
-
 		for (let i = 0; i < lazyDownloadItems.length; i++) {
 			const item = lazyDownloadItems[i];
 
@@ -323,8 +288,6 @@ export class FileContentProcessor {
 				console.warn(`预加载文件失败: ${item.id}`, error);
 			}
 		}
-
-		console.log("文件预加载完成");
 	}
 
 	/**
@@ -388,8 +351,6 @@ export class FileContentProcessor {
 
 			// 保存文件
 			await writeFile(filePath, fileData);
-
-			console.log(`图片文件已保存: ${filePath}`);
 			return filePath;
 		} catch (error) {
 			console.error("保存图片文件失败:", error);
@@ -431,8 +392,6 @@ export class FileContentProcessor {
 					data: filePath,
 				},
 			];
-
-			console.log(`文件数组已保存: ${JSON.stringify(fileRefs)}`);
 			return fileRefs;
 		} catch (error) {
 			console.error("保存文件数组失败:", error);

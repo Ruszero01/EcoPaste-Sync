@@ -162,6 +162,6 @@ export type { IntervalSyncEngine };
 /**
  * 设置同步事件监听器
  */
-export const setSyncEventListener = (listener: () => void) => {
+export const setSyncEventListener = (_listener: () => void) => {
 	// 保留此函数以保持向后兼容性
 };

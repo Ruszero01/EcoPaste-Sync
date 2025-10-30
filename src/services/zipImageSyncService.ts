@@ -32,8 +32,6 @@ export class ZipImageSyncService {
 		zip: JSZip,
 	): Promise<string | null> {
 		try {
-			console.log(`🖼️ 开始处理ZIP图片同步: ${imageData.originalPath}`);
-
 			// 1. 从ZIP包中提取图片文件
 			const file = zip.file(imageData.fileInfo.fileName);
 			if (!file) {
@@ -45,22 +43,18 @@ export class ZipImageSyncService {
 
 			// 2. 验证校验和
 			const actualChecksum = await this.calculateChecksum(
-				imageDataBuffer.buffer,
+				imageDataBuffer.buffer.slice(0) as ArrayBuffer,
 			);
 			if (actualChecksum !== imageData.fileInfo.checksum) {
 				console.error(`❌ 图片校验和不匹配: ${imageData.fileInfo.fileName}`);
 				return null;
 			}
 
-			console.log(`✅ 图片校验和验证通过: ${imageData.fileInfo.fileName}`);
-
 			// 3. 保存到本地图片目录
 			const localImagePath = await this.saveImageToLocal(
-				imageDataBuffer.buffer,
+				imageDataBuffer.buffer.slice(0) as ArrayBuffer,
 				imageData.fileInfo.fileName,
 			);
-
-			console.log(`✅ 图片保存成功: ${localImagePath}`);
 			return localImagePath;
 		} catch (error) {
 			console.error("❌ ZIP图片同步失败:", error);
@@ -83,15 +77,12 @@ export class ZipImageSyncService {
 			return results;
 		}
 
-		console.log(`🔍 开始批量图片同步，imagesData长度: ${imagesData.length}`);
-
 		try {
 			// 1. 批量下载ZIP包
 			const zipMap = await zipFileManager.batchDownloadImages(
 				imagesData,
 				webdavConfig,
 			);
-			console.log(`📦 下载了 ${zipMap.size} 个ZIP包`);
 
 			// 2. 处理每个图片文件
 			for (const imageData of imagesData) {
@@ -173,8 +164,8 @@ export class ZipImageSyncService {
 		}
 
 		// 简单哈希算法（改进版）
-		let hash1 = 5381,
-			hash2 = 5273;
+		let hash1 = 5381;
+		let hash2 = 5273;
 		const bytes = new Uint8Array(data);
 		for (let i = 0; i < bytes.length; i++) {
 			hash1 = ((hash1 << 5) + hash1) ^ bytes[i];
@@ -259,8 +250,6 @@ export class ZipImageSyncService {
 		webdavConfig: WebDAVConfig,
 	): Promise<string | null> {
 		try {
-			console.log(`🖼️ 开始懒加载图片: ${imageData.originalPath}`);
-
 			// 1. 下载ZIP包
 			const zip = await zipFileManager.downloadZip(
 				imageData.zipName,
@@ -281,22 +270,20 @@ export class ZipImageSyncService {
 			const fileData = await file.async("uint8array");
 
 			// 3. 验证校验和
-			const actualChecksum = await this.calculateChecksum(fileData.buffer);
+			const actualChecksum = await this.calculateChecksum(
+				fileData.buffer.slice(0) as ArrayBuffer,
+			);
 			if (actualChecksum !== imageData.fileInfo.checksum) {
 				console.error(`❌ 图片校验和不匹配: ${imageData.fileInfo.fileName}`);
 				return null;
 			}
 
-			console.log(`✅ 图片校验和验证通过: ${imageData.fileInfo.fileName}`);
-
 			// 4. 保存到本地，尽量保持原始路径
-			const localImagePath = await this.saveImageToLocal(
-				fileData.buffer,
+			const localImagePath = await this.saveImageToOriginalPath(
+				fileData.buffer.slice(0) as ArrayBuffer,
 				imageData.fileInfo.fileName,
 				imageData.originalPath,
 			);
-
-			console.log(`✅ 图片懒加载成功: ${localImagePath}`);
 			return localImagePath;
 		} catch (error) {
 			console.error("❌ 图片懒加载失败:", error);
@@ -307,7 +294,7 @@ export class ZipImageSyncService {
 	/**
 	 * 保存图片到本地，尽量保持原始路径
 	 */
-	private async saveImageToLocal(
+	private async saveImageToOriginalPath(
 		imageData: ArrayBuffer,
 		fileName: string,
 		originalPath: string,
@@ -332,14 +319,8 @@ export class ZipImageSyncService {
 				// 写入文件
 				const uint8Array = new Uint8Array(imageData);
 				await writeFile(originalFilePath, uint8Array);
-
-				console.log(`✅ 使用原始路径保存: ${originalFilePath}`);
 				return originalFilePath;
-			} catch (originalPathError) {
-				console.log(
-					`⚠️ 原始路径不可写，使用备用路径: ${originalPathError.message}`,
-				);
-
+			} catch (_originalPathError) {
 				// 备用方案：保存到标准图片目录
 				const imageDir = await getSaveImagePath();
 				const { mkdir, writeFile } = await import("@tauri-apps/plugin-fs");
@@ -363,8 +344,6 @@ export class ZipImageSyncService {
 				// 写入文件
 				const uint8Array = new Uint8Array(imageData);
 				await writeFile(localImagePath, uint8Array);
-
-				console.log(`✅ 使用备用路径保存: ${localImagePath}`);
 				return localImagePath;
 			}
 		} catch (error) {
@@ -378,7 +357,6 @@ export class ZipImageSyncService {
 	 */
 	clearCache(): void {
 		this.downloadCache.clear();
-		console.log("🗑️ 懒加载缓存已清理");
 	}
 
 	/**

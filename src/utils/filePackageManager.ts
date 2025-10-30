@@ -77,7 +77,6 @@ export class FilePackageManager {
 		if (this.logCallback) {
 			this.logCallback(level, message, data);
 		} else {
-			console.log(`[${level.toUpperCase()}] ${message}`, data || "");
 		}
 	}
 
@@ -153,22 +152,18 @@ export class FilePackageManager {
 					if (originalExists) {
 						// 原始路径文件存在，直接使用
 						finalPath = originalPath;
-						console.log(`📁 使用原始路径文件: ${originalPath}`);
 					} else if (potentialLocalExists) {
 						// 用户文件目录中有同名文件，使用本地文件
 						finalPath = potentialLocalPath;
-						console.log(`📁 使用本地同名文件: ${potentialLocalPath}`);
 					} else if (cachedExists) {
 						// 缓存文件存在，使用缓存文件
 						finalPath = cachedPath;
-						console.log(`📁 使用缓存文件: ${cachedPath}`);
 					} else {
 						// 都不存在，需要下载
 						needsDownload = true;
 						finalPath = cachedPath;
-						console.log(`⬇️ 需要下载文件到: ${finalPath}`);
 					}
-				} catch (error) {
+				} catch (_error) {
 					needsDownload = true;
 					finalPath = cachedPath;
 				}
@@ -185,7 +180,6 @@ export class FilePackageManager {
 					);
 					if (downloadSuccess) {
 						hasChanges = true;
-						console.log(`✅ 文件下载成功: ${finalPath}`);
 					} else {
 						// 移除失败的路径
 						resultPaths.pop();
@@ -226,7 +220,7 @@ export class FilePackageManager {
 			// 找到对应的文件
 			const files = Object.entries(zip.files);
 			const fileEntry = files.find(
-				([filename, file], index) => !file.dir && index === fileIndex,
+				([_filename, file], index) => !file.dir && index === fileIndex,
 			);
 
 			if (!fileEntry) {
@@ -234,7 +228,7 @@ export class FilePackageManager {
 				return false;
 			}
 
-			const [filename, file] = fileEntry;
+			const [_filename, file] = fileEntry;
 			const fileData = await file.async("arraybuffer");
 
 			// 确保目标目录存在
@@ -242,8 +236,6 @@ export class FilePackageManager {
 
 			// 保存文件
 			await writeFile(targetPath, new Uint8Array(fileData));
-
-			console.log(`📄 单个文件下载成功: ${targetPath}`);
 			return true;
 		} catch (error) {
 			console.error(`❌ 单个文件下载失败: ${targetPath}`, error);
@@ -257,7 +249,7 @@ export class FilePackageManager {
 	async downloadAndUnpackFiles(
 		packageInfo: PackageInfo,
 		config?: WebDAVConfig,
-		localOnly = false,
+		_localOnly = false,
 	): Promise<string[] | null> {
 		const syncResult = await this.syncFilesIntelligently(packageInfo, config);
 		return syncResult.paths.length > 0 ? syncResult.paths : null;
@@ -337,7 +329,7 @@ export class FilePackageManager {
 				try {
 					const data = await readFile(filePath);
 					zip.file(fileName, data.buffer);
-				} catch (error) {
+				} catch (_error) {
 					return null;
 				}
 			}
@@ -364,7 +356,7 @@ export class FilePackageManager {
 			}
 
 			return finalPackageInfo;
-		} catch (error) {
+		} catch (_error) {
 			return null;
 		}
 	}
@@ -403,7 +395,7 @@ export class FilePackageManager {
 			}
 
 			return { exists: false };
-		} catch (error) {
+		} catch (_error) {
 			return { exists: false };
 		}
 	}
@@ -442,7 +434,6 @@ export class FilePackageManager {
 					localZip.file(fileName, data.buffer);
 				} catch (error) {
 					console.error(`读取本地文件失败: ${filePath}`, error);
-					continue;
 				}
 			}
 
@@ -537,7 +528,7 @@ export class FilePackageManager {
 			try {
 				const { createDirectory } = await import("@/plugins/webdav");
 				await createDirectory(webdavConfig, filesDirPath);
-			} catch (dirError) {
+			} catch (_dirError) {
 				// 目录创建失败，继续尝试上传
 			}
 
@@ -560,30 +551,29 @@ export class FilePackageManager {
 
 			if (uploadResult.success) {
 				return true;
-			} else {
-				// 如果遇到409错误，尝试删除后重新上传
-				if (uploadResult.error_message?.includes("409")) {
-					try {
-						const { deleteFile } = await import("@/plugins/webdav");
-						await deleteFile(webdavConfig, webdavPath);
-
-						// 重新上传
-						const retryResult = await uploadSyncData(
-							webdavConfig,
-							webdavPath,
-							base64Content,
-						);
-						if (retryResult.success) {
-							return true;
-						}
-					} catch (deleteError) {
-						// 删除失败，返回失败
-					}
-				}
-
-				return false;
 			}
-		} catch (error) {
+			// 如果遇到409错误，尝试删除后重新上传
+			if (uploadResult.error_message?.includes("409")) {
+				try {
+					const { deleteFile } = await import("@/plugins/webdav");
+					await deleteFile(webdavConfig, webdavPath);
+
+					// 重新上传
+					const retryResult = await uploadSyncData(
+						webdavConfig,
+						webdavPath,
+						base64Content,
+					);
+					if (retryResult.success) {
+						return true;
+					}
+				} catch (_deleteError) {
+					// 删除失败，返回失败
+				}
+			}
+
+			return false;
+		} catch (_error) {
 			return false;
 		}
 	}
@@ -617,7 +607,7 @@ export class FilePackageManager {
 		const sizes = ["B", "KB", "MB", "GB"];
 		if (bytes === 0) return "0 B";
 		const i = Math.floor(Math.log(bytes) / Math.log(1024));
-		return `${Math.round((bytes / Math.pow(1024, i)) * 100) / 100} ${sizes[i]}`;
+		return `${Math.round((bytes / 1024 ** i) * 100) / 100} ${sizes[i]}`;
 	}
 
 	/**
@@ -686,8 +676,8 @@ export class FilePackageManager {
 		}
 
 		// 简单哈希算法
-		let hash1 = 5381,
-			hash2 = 5273;
+		let hash1 = 5381;
+		let hash2 = 5273;
 		const bytes = new Uint8Array(data);
 		for (let i = 0; i < bytes.length; i++) {
 			hash1 = ((hash1 << 5) + hash1) ^ bytes[i];
@@ -763,9 +753,7 @@ export class FilePackageManager {
 	/**
 	 * 清理状态
 	 */
-	clearCurrentState(): void {
-		console.log("🗑️ 文件包管理器状态已清理");
-	}
+	clearCurrentState(): void {}
 }
 
 // 导出单例实例

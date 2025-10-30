@@ -138,7 +138,7 @@ export const insertWithDeduplicationForSync = async (
 	tableName: TableName,
 	payload: TablePayload,
 ) => {
-	const { id, type, value, group } = payload;
+	const { id } = payload;
 
 	if (!id) {
 		// 如果没有ID，使用原有的去重逻辑
@@ -147,37 +147,31 @@ export const insertWithDeduplicationForSync = async (
 
 	try {
 		// 检查是否已存在相同ID的记录
-		const existingRecords = await executeSQL(
+		const existingRecords = (await executeSQL(
 			`SELECT id, deleted FROM ${tableName} WHERE id = ?;`,
 			[id],
-		);
+		)) as any[];
 
 		if (existingRecords.length > 0) {
 			const existing = existingRecords[0];
 
 			if (existing.deleted === 1) {
-				// 如果记录已被软删除，保持删除状态，不要恢复
-				console.log(`🔄 同步跳过已删除记录: ${id} (保持删除状态)`);
-				return;
-			} else {
-				// 如果记录存在且未被删除，则更新它
-				const { updateSQL } = await import("@/database");
-				await updateSQL(tableName, payload);
-				console.log(`🔄 同步更新现有记录: ${id}`);
 				return;
 			}
-		} else {
-			// 如果记录不存在，则插入新记录
-			const { keys, values } = handlePayload(payload);
-			const refs = map(values, () => "?");
-
-			await executeSQL(
-				`INSERT INTO ${tableName} (${keys}) VALUES (${refs});`,
-				values,
-			);
-			console.log(`🔄 同步插入新记录: ${id}`);
+			// 如果记录存在且未被删除，则更新它
+			const { updateSQL } = await import("@/database");
+			await updateSQL(tableName, payload);
 			return;
 		}
+		// 如果记录不存在，则插入新记录
+		const { keys, values } = handlePayload(payload);
+		const refs = map(values, () => "?");
+
+		await executeSQL(
+			`INSERT INTO ${tableName} (${keys}) VALUES (${refs});`,
+			values,
+		);
+		return;
 	} catch (error) {
 		console.error(`❌ 同步插入失败: ${id}`, error);
 		throw error;
@@ -222,10 +216,10 @@ export const insertWithDeduplication = async (
 				await executeSQL(deleteSQL2, [value]);
 
 				// 也检查是否有text类型记录包含相同文件路径，但只删除未删除的记录
-				const textRecords = await executeSQL(
+				const textRecords = (await executeSQL(
 					`SELECT id FROM ${tableName} WHERE type = "text" AND value LIKE ? AND deleted = 0;`,
 					[`%${filePath}%`],
-				);
+				)) as any[];
 
 				if (textRecords.length > 0) {
 					const deleteSQL3 = `DELETE FROM ${tableName} WHERE type = "text" AND value LIKE ? AND deleted = 0;`;
@@ -297,21 +291,14 @@ export const updateSQL = (tableName: TableName, payload: TablePayload) => {
 export const deleteSQL = async (tableName: TableName, item: TablePayload) => {
 	const { id, type, value } = item;
 
-	console.log("🗑️ 开始软删除操作", { id, type, tableName });
-
 	// 先检查删除前的状态
-	const beforeResult = await executeSQL(
+	const _beforeResult = await executeSQL(
 		`SELECT deleted FROM ${tableName} WHERE id = ?;`,
 		[id],
 	);
-	console.log("🔍 删除前状态", {
-		id,
-		currentDeleted: beforeResult[0]?.deleted,
-	});
 
 	// 使用软删除：更新 deleted 标记而不是真正删除
 	await executeSQL(`UPDATE ${tableName} SET deleted = 1 WHERE id = ?;`, [id]);
-	console.log("✅ 软删除SQL执行完成", { id });
 
 	// 验证软删除是否成功
 	const verifyResult = await executeSQL(
@@ -320,16 +307,10 @@ export const deleteSQL = async (tableName: TableName, item: TablePayload) => {
 	);
 
 	// 同时检查该项的当前状态
-	const currentState = await executeSQL(
+	const _currentState = await executeSQL(
 		`SELECT deleted FROM ${tableName} WHERE id = ?;`,
 		[id],
 	);
-
-	console.log("🔍 软删除验证结果", {
-		id,
-		verifyCount: verifyResult[0]?.count,
-		currentState: currentState[0]?.deleted,
-	});
 
 	// 检查软删除是否真的成功
 	if (verifyResult.length > 0 && verifyResult[0].count === 0) {
@@ -338,12 +319,9 @@ export const deleteSQL = async (tableName: TableName, item: TablePayload) => {
 	}
 
 	// 检查删除后的数据状态
-	const afterResult = await executeSQL(
+	const _afterResult = await executeSQL(
 		`SELECT COUNT(*) as totalCount FROM ${tableName} WHERE deleted = 0;`,
 	);
-	console.log("📊 删除后剩余未删除数据", {
-		totalCount: afterResult[0]?.totalCount,
-	});
 
 	// 对于图片类型，还需要删除对应的文件
 	if (type === "image" && value) {
@@ -354,8 +332,6 @@ export const deleteSQL = async (tableName: TableName, item: TablePayload) => {
 			return remove(resolveImagePath(value));
 		}
 	}
-
-	console.log("✅ 软删除操作完成", { id });
 };
 
 /**
@@ -364,9 +340,9 @@ export const deleteSQL = async (tableName: TableName, item: TablePayload) => {
 export const cleanupDuplicateRecords = async () => {
 	try {
 		// 获取所有files和image类型的记录
-		const fileRecords = await executeSQL(
+		const fileRecords = (await executeSQL(
 			`SELECT * FROM history WHERE type = "files" OR type = "image" ORDER BY createTime DESC`,
-		);
+		)) as any[];
 
 		const processedPaths = new Set<string>();
 		let deletedCount = 0;
@@ -407,7 +383,6 @@ export const clearHistoryTable = async () => {
 		await executeSQL("DELETE FROM history;");
 		// 重置自增ID（如果有的话）
 		await executeSQL("VACUUM;");
-		console.log("✅ 历史记录表已清空");
 		return true;
 	} catch (error) {
 		console.error("❌ 清空历史记录表失败:", error);
@@ -432,12 +407,10 @@ export const resetDatabase = async () => {
 
 		if (await exists(dbPath)) {
 			await remove(dbPath);
-			console.log("✅ 数据库文件已删除:", dbPath);
 		}
 
 		// 重新初始化数据库
 		await initDatabase();
-		console.log("✅ 数据库已重置并重新初始化");
 		return true;
 	} catch (error) {
 		console.error("❌ 重置数据库失败:", error);
@@ -471,41 +444,31 @@ const getFields = async (tableName: TableName) => {
  */
 export const getHistoryData = async () => {
 	const result = await selectSQL("history", { deleted: 0 });
-	console.log(`📊 getHistoryData 返回 ${result.length} 条未删除数据`);
 
 	// 同时检查数据库中的总数据状态
-	const totalResult = await executeSQL(
+	const totalResult = (await executeSQL(
 		`SELECT COUNT(*) as total FROM ${"history"};`,
-	);
-	const deletedResult = await executeSQL(
+	)) as any[];
+	const _deletedResult = (await executeSQL(
 		`SELECT COUNT(*) as deleted FROM ${"history"} WHERE deleted = 1;`,
-	);
-	const activeResult = await executeSQL(
+	)) as any[];
+	const activeResult = (await executeSQL(
 		`SELECT COUNT(*) as active FROM ${"history"} WHERE deleted = 0;`,
-	);
-
-	console.log("📊 数据库状态统计", {
-		total: totalResult[0]?.total,
-		deleted: deletedResult[0]?.deleted,
-		active: activeResult[0]?.active,
-		returned: result.length,
-	});
+	)) as any[];
 
 	// 如果数据量异常，进行详细检查
 	if (totalResult[0]?.total > 50 || result.length !== activeResult[0]?.active) {
-		console.log("🔍 检测到数据异常，进行详细分析");
-		const duplicateCheck = await executeSQL(
+		const duplicateCheck = (await executeSQL(
 			`SELECT id, COUNT(*) as count FROM ${"history"} GROUP BY id HAVING COUNT(*) > 1;`,
-		);
+		)) as any[];
 		if (duplicateCheck.length > 0) {
 			console.warn("⚠️ 发现重复记录", duplicateCheck);
 		}
 
 		// 显示前几条数据的详情
-		const sampleData = await executeSQL(
+		const _sampleData = await executeSQL(
 			`SELECT id, type, deleted, createTime FROM ${"history"} ORDER BY createTime DESC LIMIT 5;`,
 		);
-		console.log("📋 数据样本", sampleData);
 	}
 
 	return result;
@@ -706,59 +669,45 @@ export const addField = async (
  */
 export const cleanupInvalidData = async () => {
 	try {
-		console.log("🧹 开始清理数据库中的无效数据");
-
 		// 1. 检查并清理重复记录（保留最新的）
-		const duplicates = await executeSQL(
+		const duplicates = (await executeSQL(
 			"SELECT id, COUNT(*) as count FROM history GROUP BY id HAVING COUNT(*) > 1;",
-		);
+		)) as any[];
 
 		for (const duplicate of duplicates) {
 			// 获取该ID的所有记录，按时间排序，保留最新的
-			const records = await executeSQL(
+			const records = (await executeSQL(
 				"SELECT rowid, * FROM history WHERE id = ? ORDER BY createTime DESC, rowid DESC;",
 				[duplicate.id],
-			);
+			)) as any[];
 
 			// 删除除第一条外的所有重复记录
 			for (let i = 1; i < records.length; i++) {
 				await executeSQL("DELETE FROM history WHERE rowid = ?;", [
 					records[i].rowid,
 				]);
-				console.log(
-					`🗑️ 删除重复记录: ${duplicate.id} (rowid: ${records[i].rowid})`,
-				);
 			}
 		}
 
 		// 2. 清理空值记录
-		const emptyRecords = await executeSQL(
+		const emptyRecords = (await executeSQL(
 			`SELECT id FROM history WHERE (value IS NULL OR value = '') AND (search IS NULL OR search = '');`,
-		);
+		)) as any[];
 
 		for (const record of emptyRecords) {
 			await executeSQL("DELETE FROM history WHERE id = ?;", [record.id]);
-			console.log(`🗑️ 删除空值记录: ${record.id}`);
 		}
 
 		// 3. 显示清理后的状态
-		const totalResult = await executeSQL(
+		const _totalResult = await executeSQL(
 			"SELECT COUNT(*) as total FROM history;",
 		);
-		const activeResult = await executeSQL(
+		const _activeResult = await executeSQL(
 			"SELECT COUNT(*) as active FROM history WHERE deleted = 0;",
 		);
-		const deletedResult = await executeSQL(
+		const _deletedResult = await executeSQL(
 			"SELECT COUNT(*) as deleted FROM history WHERE deleted = 1;",
 		);
-
-		console.log("✅ 数据库清理完成", {
-			total: totalResult[0]?.total,
-			active: activeResult[0]?.active,
-			deleted: deletedResult[0]?.deleted,
-			duplicatesRemoved: duplicates.length,
-			emptyRecordsRemoved: emptyRecords.length,
-		});
 
 		return true;
 	} catch (error) {
@@ -772,12 +721,8 @@ export const cleanupInvalidData = async () => {
  */
 export const resetAllData = async () => {
 	try {
-		console.log("🔄 重置数据库，清空所有数据");
-
 		await executeSQL("DELETE FROM history;");
 		await executeSQL("VACUUM;");
-
-		console.log("✅ 数据库重置完成");
 		return true;
 	} catch (error) {
 		console.error("❌ 数据库重置失败", error);

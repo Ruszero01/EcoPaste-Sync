@@ -88,10 +88,6 @@ export class ZipFileManager {
 			fileType: itemType,
 		};
 
-		console.log(
-			`📁 文件已添加到ZIP: ${fileName} -> ${this.currentZipName}/${uniqueFileName}`,
-		);
-
 		return {
 			zipName: this.currentZipName,
 			fileInfo,
@@ -121,19 +117,12 @@ export class ZipFileManager {
 		let success = false;
 		let finalZipName = this.currentZipName;
 
-		console.log(
-			`🚀 开始上传ZIP包: ${this.currentZipName}, 大小: ${base64Content.length} 字符`,
-		);
-
 		while (!success && uploadAttempts < maxAttempts) {
 			uploadAttempts++;
 
 			// 每次重试都使用新的文件名（除了第一次）
 			if (uploadAttempts > 1) {
 				finalZipName = this.generateZipName();
-				console.log(
-					`🔄 重试 ${uploadAttempts}/${maxAttempts}，使用新文件名: ${finalZipName}`,
-				);
 			}
 
 			try {
@@ -148,27 +137,11 @@ export class ZipFileManager {
 					throw new Error("WebDAV配置不完整");
 				}
 
-				console.log(`📤 尝试上传 ZIP 包到: ${webdavPath}`);
-				console.log("🔧 WebDAV配置详情:", {
-					url: webdavConfig.url,
-					username: webdavConfig.username,
-					path: webdavConfig.path,
-					timeout: webdavConfig.timeout,
-					contentSize: base64Content.length,
-				});
-
 				const uploadResult = await uploadSyncData(
 					webdavConfig,
 					webdavPath,
 					base64Content,
 				);
-
-				console.log(`📊 ZIP上传结果 (${uploadAttempts}/${maxAttempts}):`, {
-					success: uploadResult.success,
-					error: uploadResult.error_message,
-					zipName: finalZipName,
-					duration: uploadResult.duration_ms,
-				});
 
 				if (uploadResult.success) {
 					// 验证ZIP包确实可以下载
@@ -177,19 +150,8 @@ export class ZipFileManager {
 						webdavConfig,
 					);
 					if (verificationZip) {
-						// 保存ZIP索引
-						// await this.saveZipIndex(
-						// 	finalZipName,
-						// 	this.currentZipSize,
-						// 	Object.keys(this.currentZip.files),
-						// );
-						console.log("📝 跳过本地索引保存，专注于核心ZIP上传功能");
-						console.log(`✅ ZIP包上传并验证成功: ${finalZipName}`);
 						success = true;
 					} else {
-						console.log(
-							`⚠️ ZIP包上传成功但验证失败，重试中...: ${finalZipName}`,
-						);
 					}
 				} else {
 					// 处理409冲突
@@ -197,25 +159,14 @@ export class ZipFileManager {
 						uploadResult.error_message?.includes("HTTP 409") ||
 						uploadResult.error_message?.includes("Conflict")
 					) {
-						console.log(`⚠️ 检测到409冲突: ${finalZipName}`);
-
 						// 验证文件是否真的存在
 						const existingZip = await this.downloadZip(
 							finalZipName,
 							webdavConfig,
 						);
 						if (existingZip) {
-							console.log(`✅ 确认ZIP包已存在且可用: ${finalZipName}`);
-							// 保存本地索引
-							// await this.saveZipIndex(
-							// 	finalZipName,
-							// 	this.currentZipSize,
-							// 	Object.keys(this.currentZip.files),
-							// );
-							console.log("📝 跳过本地索引保存，专注于核心ZIP上传功能");
 							success = true;
 						} else {
-							console.log(`❌ ZIP包不存在或无法访问: ${finalZipName}`);
 							if (uploadAttempts >= maxAttempts) {
 								throw new Error(
 									`ZIP包上传失败，已达到最大重试次数: ${maxAttempts}`,
@@ -223,10 +174,6 @@ export class ZipFileManager {
 							}
 						}
 					} else {
-						// 其他错误
-						console.log(
-							`❌ ZIP包上传失败: ${uploadResult.error_message || "未知错误"}`,
-						);
 						if (uploadAttempts >= maxAttempts) {
 							throw new Error(
 								`ZIP包上传失败: ${uploadResult.error_message || "未知错误"}`,
@@ -243,7 +190,6 @@ export class ZipFileManager {
 
 			// 添加延迟，避免服务器端的缓存或锁定问题
 			if (!success && uploadAttempts < maxAttempts) {
-				console.log("⏳ 等待 1 秒后重试...");
 				await new Promise((resolve) => setTimeout(resolve, 1000));
 			}
 		}
@@ -254,8 +200,6 @@ export class ZipFileManager {
 
 		// 更新当前ZIP名称为实际成功上传的名称
 		this.currentZipName = finalZipName;
-
-		console.log(`🎉 ZIP包上传流程完成: ${finalZipName}`);
 	}
 
 	/**
@@ -269,16 +213,7 @@ export class ZipFileManager {
 			const webdavConfig = await this.getWebDAVConfig(config);
 			const webdavPath = this.getZipWebDAVPath(zipName);
 
-			console.log(`🌐 开始下载ZIP包: ${zipName} 从路径: ${webdavPath}`);
-
 			const result = await downloadSyncData(webdavConfig, webdavPath);
-			console.log("📦 ZIP下载完成", {
-				success: result.success,
-				hasData: !!result.data,
-				dataSize: result.data ? result.data.length : 0,
-				error: result.error_message,
-				duration: result.duration_ms,
-			});
 
 			if (result.success && result.data && result.data.length > 0) {
 				try {
@@ -292,8 +227,6 @@ export class ZipFileManager {
 
 					const zip = await JSZip.loadAsync(zipData);
 					const fileCount = Object.keys(zip.files).length;
-
-					console.log(`✅ ZIP包解压成功: ${zipName}, 包含 ${fileCount} 个文件`);
 
 					// 验证ZIP包完整性 - 确保至少有一些文件
 					if (fileCount === 0) {
@@ -340,7 +273,6 @@ export class ZipFileManager {
 			}
 
 			const fileData = await file.async("uint8array");
-			console.log(`✅ 从ZIP包中提取文件成功: ${fileName}`);
 			return fileData.buffer;
 		} catch (error) {
 			console.error(`❌ 从ZIP包中提取文件失败: ${fileName}`, error);
@@ -363,14 +295,10 @@ export class ZipFileManager {
 			return zipMap;
 		}
 
-		console.log(
-			`🔍 开始批量下载ZIP包， imageDataList长度: ${imageDataList.length}`,
-		);
-
 		// 收集所有需要下载的ZIP包
 		const zipNames = new Set<string>();
 		for (const imageData of imageDataList) {
-			if (imageData && imageData.zipName) {
+			if (imageData?.zipName) {
 				zipNames.add(imageData.zipName);
 			} else {
 				console.warn("⚠️ 跳过无效的imageData:", imageData);
@@ -379,17 +307,13 @@ export class ZipFileManager {
 
 		// 批量下载ZIP包
 		for (const zipName of zipNames) {
-			console.log(`🔄 下载ZIP包: ${zipName}`);
 			const zip = await this.downloadZip(zipName, config);
 			if (zip) {
 				zipMap.set(zipName, zip);
-				console.log(`✅ ZIP包下载成功: ${zipName}`);
 			} else {
 				console.error(`❌ ZIP包下载失败: ${zipName}`);
 			}
 		}
-
-		console.log(`📊 ZIP包下载完成，成功: ${zipMap.size}/${zipNames.size}`);
 		return zipMap;
 	}
 
@@ -431,12 +355,9 @@ export class ZipFileManager {
 	 */
 	private async ensureZipDirectoryExists(config: WebDAVConfig): Promise<void> {
 		try {
-			console.log("📁 确保ZIP文件目录存在: /EcoPaste/zip_files");
 			const { createDirectory } = await import("@/plugins/webdav");
-			const result = await createDirectory(config, "/EcoPaste/zip_files");
-			console.log("📁 目录创建结果:", result);
-		} catch (error) {
-			console.log("ℹ️ 目录创建失败（可能已存在）:", error);
+			const _result = await createDirectory(config, "/EcoPaste/zip_files");
+		} catch (_error) {
 			// 忽略目录创建错误，因为目录可能已经存在
 		}
 	}
@@ -497,8 +418,8 @@ export class ZipFileManager {
 		}
 
 		// 简单哈希算法
-		let hash1 = 5381,
-			hash2 = 5273;
+		let hash1 = 5381;
+		let hash2 = 5273;
 		const bytes = new Uint8Array(data);
 		for (let i = 0; i < bytes.length; i++) {
 			hash1 = ((hash1 << 5) + hash1) ^ bytes[i];
@@ -539,15 +460,11 @@ export class ZipFileManager {
 		filePath: string,
 	): Promise<void> {
 		try {
-			console.log(`🗑️ 尝试删除文件: ${filePath}`);
 			const result = await deleteFile(config, filePath);
 			if (result) {
-				console.log(`✅ 文件删除成功: ${filePath}`);
 			} else {
-				console.log(`ℹ️ 文件不存在或删除失败（正常）: ${filePath}`);
 			}
-		} catch (error) {
-			console.log(`ℹ️ 删除文件时出错（可忽略）: ${filePath}`, error);
+		} catch (_error) {
 			// 忽略删除错误，因为文件可能本来就不存在
 		}
 	}

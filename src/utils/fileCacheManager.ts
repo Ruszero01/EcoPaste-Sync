@@ -95,7 +95,6 @@ export class FileCacheManager {
 		}
 
 		if (expiredKeys.length > 0) {
-			console.log(`清理了 ${expiredKeys.length} 个过期缓存文件`);
 		}
 	}
 
@@ -207,8 +206,6 @@ export class FileCacheManager {
 			this.currentCacheSize -= cached.data.length;
 			freedSpace += cached.data.length;
 		}
-
-		console.log(`LRU清理: 释放了 ${freedSpace} bytes 缓存空间`);
 	}
 }
 

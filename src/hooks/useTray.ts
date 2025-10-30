@@ -47,7 +47,7 @@ export const useTray = () => {
 				isTrayCreated = true; // 标记为已创建
 				return existingTray; // 返回现有托盘
 			}
-		} catch (error) {
+		} catch (_error) {
 			// 检查失败，继续创建新托盘
 		}
 

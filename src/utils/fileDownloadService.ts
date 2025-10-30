@@ -36,10 +36,10 @@ export class FileDownloadService {
 			// 根据文件类型确定下载路径
 			if (syncItem.type === "image") {
 				// 检查是否是分段存储的图片（JSON metadata格式）
-				if (syncItem.value && syncItem.value.startsWith("[")) {
+				if (syncItem.value?.startsWith("[")) {
 					try {
 						const segmentData = JSON.parse(syncItem.value);
-						if (segmentData && segmentData[0] && segmentData[0].originalPath) {
+						if (segmentData?.[0]?.originalPath) {
 							// 这是分段存储的图片，使用ImageSyncService处理下载
 							const { imageSyncService } = await import(
 								"@/services/imageSyncService"
@@ -116,10 +116,10 @@ export class FileDownloadService {
 
 		if (syncItem.type === "image") {
 			// 检查是否是分段存储的图片（JSON metadata格式）
-			if (syncItem.value && syncItem.value.startsWith("[")) {
+			if (syncItem.value?.startsWith("[")) {
 				try {
 					const segmentData = JSON.parse(syncItem.value);
-					if (segmentData && segmentData[0] && segmentData[0].originalPath) {
+					if (segmentData?.[0]?.originalPath) {
 						// 这是分段存储的图片，使用ImageSyncService处理
 						const { imageSyncService } = await import(
 							"@/services/imageSyncService"

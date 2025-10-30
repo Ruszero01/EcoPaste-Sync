@@ -113,9 +113,6 @@ export const useThumbnail = () => {
 						const data = JSON.parse(item.value);
 
 						if (data.packageId && data.originalPaths) {
-							// 包模式的图片，需要从包中提取图片
-							console.log(`🖼️ 为缩略图下载包模式图片: ${item.id}`);
-
 							const { filePackageManager } = await import(
 								"@/utils/filePackageManager"
 							);
@@ -131,9 +128,6 @@ export const useThumbnail = () => {
 								imageData = fileData.buffer;
 							}
 						} else if (Array.isArray(data) && data[0] && data[0].originalPath) {
-							// 兼容旧的分段存储方式
-							console.log(`🖼️ 为缩略图下载分段图片: ${item.id}`);
-
 							const { imageSyncService } = await import(
 								"@/services/imageSyncService"
 							);
@@ -173,8 +167,6 @@ export const useThumbnail = () => {
 
 				// 缓存缩略图URL
 				setThumbnailUrls((prev) => ({ ...prev, [item.id]: thumbnailUrl }));
-
-				console.log(`缩略图加载成功: ${item.id}`);
 				return thumbnailUrl;
 			} catch (error) {
 				console.error(`获取缩略图失败: ${item.id}`, error);

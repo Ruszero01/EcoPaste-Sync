@@ -54,9 +54,6 @@ export class FileSegmentManager {
 
 		// 大于8MB的文件单独上传，不进行批处理
 		if (fileSize > this.SEGMENT_SIZE_LIMIT * 0.8) {
-			console.log(
-				`📁 大文件单独上传: ${fileName}, 大小: ${(fileSize / 1024).toFixed(2)}KB`,
-			);
 			return await this.processSingleFile(
 				filePath,
 				fileData,
@@ -67,9 +64,6 @@ export class FileSegmentManager {
 
 		// 对于图片类型，总是单独处理，不进行批处理
 		if (itemType === "image") {
-			console.log(
-				`🖼️ 图片文件单独处理: ${fileName}, 大小: ${(fileSize / 1024).toFixed(2)}KB`,
-			);
 			return await this.processSingleFile(
 				filePath,
 				fileData,
@@ -77,11 +71,6 @@ export class FileSegmentManager {
 				webdavConfig,
 			);
 		}
-
-		// 其他小文件添加到批处理队列
-		console.log(
-			`📦 小文件添加到批处理队列: ${fileName}, 大小: ${(fileSize / 1024).toFixed(2)}KB`,
-		);
 		this.currentBatch.push({
 			filePath,
 			fileData,
@@ -95,18 +84,12 @@ export class FileSegmentManager {
 			0,
 		);
 		if (currentBatchSize >= this.SEGMENT_SIZE_LIMIT) {
-			console.log(
-				`🚀 批处理达到1MB限制，开始上传: ${currentBatchSize / 1024}KB`,
-			);
 			const result = await this.processBatch(webdavConfig);
 			return result;
 		}
 
 		// 如果设置了立即处理标志，立即处理批处理队列
 		if (immediate && this.currentBatch.length > 0) {
-			console.log(
-				`🚀 立即处理批处理队列: ${this.currentBatch.length} 个文件, 总大小: ${currentBatchSize / 1024}KB`,
-			);
 			const result = await this.processBatch(webdavConfig);
 			return result;
 		}
@@ -129,10 +112,6 @@ export class FileSegmentManager {
 			fileData.byteLength / this.SEGMENT_SIZE_LIMIT,
 		);
 		const segments: SegmentInfo[] = [];
-
-		console.log(
-			`📁 开始单独上传文件: ${fileName}, 大小: ${(fileData.byteLength / 1024).toFixed(2)}KB, 分段数: ${segmentCount}`,
-		);
 
 		// 计算整个文件的校验和，用于生成稳定的段ID
 		const fileChecksum = await this.calculateChecksum(fileData);
@@ -170,7 +149,6 @@ export class FileSegmentManager {
 			);
 
 			if (downloadResult.success && downloadResult.data) {
-				console.log(`🔄 分段已存在云端，跳过上传: ${segmentFileName}`);
 				segments.push(segmentInfo);
 				continue;
 			}
@@ -178,13 +156,7 @@ export class FileSegmentManager {
 			// 上传段
 			await this.uploadSegment(segmentInfo, segmentData, webdavConfig);
 			segments.push(segmentInfo);
-
-			console.log(
-				`✅ 分段 ${i + 1}/${segmentCount} 上传成功: ${segmentFileName}`,
-			);
 		}
-
-		console.log(`🎉 文件单独上传完成: ${fileName}, 共 ${segments.length} 个段`);
 		return segments;
 	}
 
@@ -197,8 +169,6 @@ export class FileSegmentManager {
 		if (this.currentBatch.length === 0) {
 			return [];
 		}
-
-		console.log(`📦 开始处理批处理，文件数: ${this.currentBatch.length}`);
 
 		// 确保分段文件目录存在
 		await this.ensureSegmentDirectoryExists(webdavConfig);
@@ -252,16 +222,12 @@ export class FileSegmentManager {
 		}
 
 		// 清空批处理队列
-		const totalFiles = this.currentBatch.length;
-		const totalSize = this.currentBatch.reduce(
+		const _totalFiles = this.currentBatch.length;
+		const _totalSize = this.currentBatch.reduce(
 			(sum, item) => sum + item.fileSize,
 			0,
 		);
 		this.currentBatch = [];
-
-		console.log(
-			`🎉 批处理完成: ${totalFiles} 个文件, 总大小: ${(totalSize / 1024).toFixed(2)}KB, 生成 ${segments.length} 个段`,
-		);
 		return segments;
 	}
 
@@ -280,7 +246,7 @@ export class FileSegmentManager {
 			const checksum = await this.calculateChecksum(segmentData.buffer);
 
 			// 创建批处理文件的元数据
-			const batchMetadata = this.currentBatch.map((item) => ({
+			const _batchMetadata = this.currentBatch.map((item) => ({
 				filePath: item.filePath,
 				fileSize: item.fileSize,
 				itemType: item.itemType,
@@ -297,13 +263,6 @@ export class FileSegmentManager {
 
 			// 上传段
 			await this.uploadSegment(segmentInfo, segmentData.buffer, webdavConfig);
-
-			// TODO: 可能需要额外保存批处理元数据，以便后续能够正确分解
-			// await this.saveBatchMetadata(segmentId, batchMetadata, webdavConfig);
-
-			console.log(
-				`✅ 批处理段上传成功: ${segmentFileName}, 大小: ${(segmentData.length / 1024).toFixed(2)}KB`,
-			);
 			return segmentInfo;
 		} catch (error) {
 			console.error("❌ 批处理段上传失败:", error);
@@ -318,10 +277,6 @@ export class FileSegmentManager {
 		if (this.currentBatch.length === 0) {
 			return [];
 		}
-
-		console.log(
-			`🔄 强制刷新批处理队列，剩余文件数: ${this.currentBatch.length}`,
-		);
 		const webdavConfig = await this.getWebDAVConfig(config);
 		return await this.processBatch(webdavConfig);
 	}
@@ -346,9 +301,6 @@ export class FileSegmentManager {
 			// 每次重试都使用新的文件名（除了第一次）
 			if (attempts > 1) {
 				finalSegmentName = `${segmentInfo.segmentId}_retry_${attempts}.seg`;
-				console.log(
-					`🔄 重试 ${attempts}/${maxAttempts}，使用新文件名: ${finalSegmentName}`,
-				);
 			}
 
 			try {
@@ -363,27 +315,11 @@ export class FileSegmentManager {
 					throw new Error("WebDAV配置不完整");
 				}
 
-				console.log(`📤 尝试上传分段到: ${webdavPath}`);
-				console.log("🔧 分段配置详情:", {
-					url: webdavConfig.url,
-					username: webdavConfig.username,
-					path: webdavConfig.path,
-					timeout: webdavConfig.timeout,
-					contentSize: base64Content.length,
-				});
-
 				const uploadResult = await uploadSyncData(
 					webdavConfig,
 					webdavPath,
 					base64Content,
 				);
-
-				console.log(`📊 分段上传结果 (${attempts}/${maxAttempts}):`, {
-					success: uploadResult.success,
-					error: uploadResult.error_message,
-					segmentName: finalSegmentName,
-					duration: uploadResult.duration_ms,
-				});
 
 				if (uploadResult.success) {
 					// 验证分段是否确实可以下载
@@ -392,14 +328,10 @@ export class FileSegmentManager {
 						webdavConfig,
 					);
 					if (verificationSuccess) {
-						console.log(`✅ 分段上传并验证成功: ${finalSegmentName}`);
 						success = true;
 						// 更新segmentInfo中的实际文件名
 						segmentInfo.fileName = finalSegmentName;
 					} else {
-						console.log(
-							`⚠️ 分段上传成功但验证失败，重试中...: ${finalSegmentName}`,
-						);
 					}
 				} else {
 					// 处理409冲突
@@ -407,19 +339,15 @@ export class FileSegmentManager {
 						uploadResult.error_message?.includes("HTTP 409") ||
 						uploadResult.error_message?.includes("Conflict")
 					) {
-						console.log(`⚠️ 检测到409冲突: ${finalSegmentName}`);
-
 						// 验证文件是否真的存在
 						const existingSegment = await this.verifySegment(
 							finalSegmentName,
 							webdavConfig,
 						);
 						if (existingSegment) {
-							console.log(`✅ 确认分段已存在且可用: ${finalSegmentName}`);
 							success = true;
 							segmentInfo.fileName = finalSegmentName;
 						} else {
-							console.log(`❌ 分段不存在或无法访问: ${finalSegmentName}`);
 							if (attempts >= maxAttempts) {
 								throw new Error(
 									`分段上传失败，已达到最大重试次数: ${maxAttempts}`,
@@ -427,9 +355,6 @@ export class FileSegmentManager {
 							}
 						}
 					} else {
-						console.log(
-							`❌ 分段上传失败: ${uploadResult.error_message || "未知错误"}`,
-						);
 						if (attempts >= maxAttempts) {
 							throw new Error(
 								`分段上传失败: ${uploadResult.error_message || "未知错误"}`,
@@ -446,7 +371,6 @@ export class FileSegmentManager {
 
 			// 添加延迟，避免服务器端的缓存或锁定问题
 			if (!success && attempts < maxAttempts) {
-				console.log("⏳ 等待 1 秒后重试...");
 				await new Promise((resolve) => setTimeout(resolve, 1000));
 			}
 		}
@@ -484,8 +408,6 @@ export class FileSegmentManager {
 		const webdavConfig = await this.getWebDAVConfig(config);
 
 		try {
-			console.log(`🔄 开始下载并重组文件，段数: ${segments.length}`);
-
 			// 按segmentId排序以确保正确的顺序
 			const sortedSegments = segments.sort((a, b) => {
 				const aIndex = Number.parseInt(a.segmentId.split("_").pop() || "0");
@@ -527,10 +449,6 @@ export class FileSegmentManager {
 				view.set(new Uint8Array(segmentData), offset);
 				offset += segmentData.byteLength;
 			}
-
-			console.log(
-				`✅ 文件重组成功，总大小: ${(totalSize / 1024).toFixed(2)}KB`,
-			);
 			return result;
 		} catch (error) {
 			console.error("❌ 文件重组失败:", error);
@@ -600,12 +518,9 @@ export class FileSegmentManager {
 	): Promise<void> {
 		try {
 			const filesDirPath = `${config.path}/files`;
-			console.log("📁 确保分段文件目录存在:", filesDirPath);
 			const { createDirectory } = await import("@/plugins/webdav");
-			const result = await createDirectory(config, filesDirPath);
-			console.log("📁 目录创建结果:", result);
-		} catch (error) {
-			console.log("ℹ️ 目录创建失败（可能已存在）:", error);
+			const _result = await createDirectory(config, filesDirPath);
+		} catch (_error) {
 			// 忽略目录创建错误，因为目录可能已经存在
 		}
 	}
@@ -637,8 +552,8 @@ export class FileSegmentManager {
 		}
 
 		// 简单哈希算法
-		let hash1 = 5381,
-			hash2 = 5273;
+		let hash1 = 5381;
+		let hash2 = 5273;
 		const bytes = new Uint8Array(data);
 		for (let i = 0; i < bytes.length; i++) {
 			hash1 = ((hash1 << 5) + hash1) ^ bytes[i];
@@ -674,10 +589,7 @@ export class FileSegmentManager {
 	/**
 	 * 清理当前状态
 	 */
-	clearCurrentState(): void {
-		// 清理状态（如果需要）
-		console.log("🗑️ 分段管理器状态已清理");
-	}
+	clearCurrentState(): void {}
 }
 
 // 导出单例实例

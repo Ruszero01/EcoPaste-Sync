@@ -78,7 +78,7 @@ const CloudSync = () => {
 	try {
 		const app = App.useApp();
 		appMessage = app.message;
-	} catch (error) {
+	} catch (_error) {
 		// 如果 App.useApp() 失败，使用静态方法
 		appMessage = {
 			success: (content: string) => message.success(content),
@@ -123,7 +123,7 @@ const CloudSync = () => {
 	const saveLastSyncTime = useCallback((timestamp: number) => {
 		try {
 			localStorage.setItem("ecopaste-last-sync-time", timestamp.toString());
-		} catch (error) {
+		} catch (_error) {
 			// 静默处理，避免控制台噪音
 		}
 	}, []);
@@ -142,7 +142,7 @@ const CloudSync = () => {
 					"ecopaste-connection-state",
 					JSON.stringify(connectionState),
 				);
-			} catch (error) {
+			} catch (_error) {
 				// 静默处理，避免控制台噪音
 			}
 		},
@@ -175,7 +175,6 @@ const CloudSync = () => {
 						realtimeSync.initialize({
 							enabled: true,
 							intervalHours: syncInterval,
-							webdavConfig: config,
 						});
 					}
 
@@ -203,7 +202,15 @@ const CloudSync = () => {
 				}
 			}
 		},
-		[intervalSyncEnabled, syncInterval, syncModeConfig, saveConnectionState],
+		[
+			intervalSyncEnabled,
+			syncInterval,
+			syncModeConfig,
+			saveConnectionState,
+			appMessage.success,
+			appMessage.warning,
+			appMessage.error,
+		],
 	);
 
 	// 加载同步模式配置
@@ -231,7 +238,7 @@ const CloudSync = () => {
 			// 立即更新同步引擎配置（如果引擎已初始化）
 			try {
 				syncEngine.setSyncModeConfig(config);
-			} catch (error) {
+			} catch (_error) {
 				// 同步引擎尚未初始化，配置将在引擎初始化后应用
 			}
 		} catch (error) {
@@ -246,7 +253,7 @@ const CloudSync = () => {
 	const loadServerConfig = useCallback(async () => {
 		try {
 			const config = await getServerConfig();
-			if (config && config.url) {
+			if (config?.url) {
 				setWebdavConfig(config);
 				form.setFieldsValue(config);
 
@@ -283,7 +290,6 @@ const CloudSync = () => {
 									realtimeSync.initialize({
 										enabled: true,
 										intervalHours: syncInterval,
-										webdavConfig: config,
 									});
 								}
 							} catch (_initError) {
@@ -317,6 +323,7 @@ const CloudSync = () => {
 		syncInterval,
 		form,
 		validateConnectionStatus,
+		appMessage.error,
 	]);
 
 	// 处理收藏模式开关变更
@@ -454,7 +461,6 @@ const CloudSync = () => {
 	const saveServerConfig = async (config: WebDAVConfig) => {
 		try {
 			await setServerConfig(config);
-			console.log("WebDAV配置已保存", config);
 			return true;
 		} catch (error) {
 			console.error("保存配置失败", {
@@ -476,7 +482,7 @@ const CloudSync = () => {
 				setConnectionStatus("failed");
 				appMessage.error("连接测试失败");
 			}
-		} catch (error) {
+		} catch (_error) {
 			setConnectionStatus("failed");
 			appMessage.error("连接测试异常");
 		}
@@ -563,7 +569,7 @@ const CloudSync = () => {
 				// 显示成功消息 - 统一格式
 				const totalCount = syncResult.downloaded + syncResult.uploaded;
 
-				let successMessage;
+				let successMessage: string;
 				if (totalCount === 0) {
 					successMessage = "无需同步";
 				} else {
@@ -575,7 +581,7 @@ const CloudSync = () => {
 				// 触发界面刷新，确保列表显示最新数据
 				try {
 					emit(LISTEN_KEY.REFRESH_CLIPBOARD_LIST);
-				} catch (error) {
+				} catch (_error) {
 					// 静默处理刷新失败
 				}
 			} else {
@@ -599,13 +605,10 @@ const CloudSync = () => {
 				realtimeSync.initialize({
 					enabled: true,
 					intervalHours: syncInterval,
-					webdavConfig,
 				});
-				console.log(`🔄 间隔同步已启用，间隔: ${syncInterval}小时`);
 				appMessage.success(`间隔同步已启用，每${syncInterval}小时自动同步`);
 			} else {
 				realtimeSync.setEnabled(false);
-				console.log("⏸️ 间隔同步已禁用");
 				appMessage.info("间隔同步已禁用");
 			}
 		} catch (error) {
@@ -622,7 +625,6 @@ const CloudSync = () => {
 		if (intervalSyncEnabled) {
 			try {
 				realtimeSync.setIntervalHours(hours);
-				console.log(`📊 同步间隔已更新: ${hours}小时`, { hours });
 				appMessage.success(`同步间隔已更新为每${hours}小时`);
 			} catch (error) {
 				console.error("更新同步间隔失败", {

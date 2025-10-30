@@ -22,7 +22,7 @@ export class SegmentDownloadService {
 	 */
 	public async getFileContent(
 		syncItem: SyncItem,
-		webdavConfig: WebDAVConfig,
+		__webdavConfig: WebDAVConfig,
 		onProgress?: (progress: number) => void,
 	): Promise<Uint8Array | null> {
 		try {
@@ -74,7 +74,7 @@ export class SegmentDownloadService {
 	 */
 	public async preloadFile(
 		syncItem: SyncItem,
-		webdavConfig: WebDAVConfig,
+		__webdavConfig: WebDAVConfig,
 	): Promise<boolean> {
 		if (syncItem._syncType !== "segmented_files") {
 			return true; // 非分段存储文件默认可用
@@ -141,7 +141,7 @@ export class SegmentDownloadService {
 	 */
 	public async downloadMultipleFiles(
 		syncItems: SyncItem[],
-		webdavConfig: WebDAVConfig,
+		__webdavConfig: WebDAVConfig,
 		onOverallProgress?: (completed: number, total: number) => void,
 	): Promise<Map<string, Uint8Array | null>> {
 		const results = new Map<string, Uint8Array | null>();

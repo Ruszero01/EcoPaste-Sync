@@ -155,8 +155,6 @@ export const readFiles = async (): Promise<ClipboardPayload> => {
 
 	// 智能检测：如果只有一个文件且是图片，归类为图片类型
 	if (files.length === 1 && (await isImageFile(files[0]))) {
-		console.log(`检测到单个图片文件: ${files[0]}, 归类为图片类型`);
-
 		const { size, name } = await metadata(files[0]);
 
 		// 为截图文件生成更友好的标题
@@ -573,8 +571,6 @@ export const smartPasteClipboard = async (
 			fileType: data.fileType,
 		} as any;
 
-		console.log(`开始按需下载${type}文件: ${data.id}`);
-
 		// 根据类型处理按需下载
 		let processedValue: string | null = null;
 
@@ -582,17 +578,13 @@ export const smartPasteClipboard = async (
 			processedValue = await fileContentProcessor.processImageContent(
 				syncItem,
 				webdavConfig,
-				(progress) => {
-					console.log(`图片下载进度: ${progress}%`);
-				},
+				(_progress) => {},
 			);
 		} else if (type === "files") {
 			processedValue = await fileContentProcessor.processFilesContent(
 				syncItem,
 				webdavConfig,
-				(progress) => {
-					console.log(`文件下载进度: ${progress}%`);
-				},
+				(_progress) => {},
 			);
 		}
 
@@ -603,7 +595,6 @@ export const smartPasteClipboard = async (
 				value: processedValue,
 				lazyDownload: false,
 			};
-			console.log("文件下载成功，开始粘贴");
 
 			// 更新数据库记录，移除lazyDownload标记并更新value
 			try {
@@ -613,23 +604,20 @@ export const smartPasteClipboard = async (
 					value: processedValue,
 					lazyDownload: false,
 				});
-				console.log("✅ 数据库记录已更新，移除按需下载标记");
 
 				// 触发界面刷新事件
 				const { emit } = await import("@tauri-apps/api/event");
 				const { LISTEN_KEY } = await import("@/constants");
 				emit(LISTEN_KEY.REFRESH_CLIPBOARD_LIST);
-				console.log("✅ 界面刷新事件已触发");
 			} catch (updateError) {
 				console.error("❌ 更新数据库记录失败:", updateError);
 			}
 
 			return pasteClipboard(updatedData, plain);
-		} else {
-			// 下载失败，回退到原有逻辑
-			console.warn("文件下载失败，使用原有数据");
-			return pasteClipboard(data, plain);
 		}
+		// 下载失败，回退到原有逻辑
+		console.warn("文件下载失败，使用原有数据");
+		return pasteClipboard(data, plain);
 	} catch (error) {
 		console.error("智能粘贴过程中出错:", error);
 		// 出错时回退到原有逻辑
