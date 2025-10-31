@@ -135,7 +135,6 @@ const CloudSync = () => {
 				const configHash = btoa(JSON.stringify(config)).substring(0, 16);
 				const connectionState = {
 					status,
-					timestamp: Date.now(),
 					configHash,
 				};
 				localStorage.setItem(
@@ -263,22 +262,15 @@ const CloudSync = () => {
 				);
 				if (savedConnectionState) {
 					try {
-						const { status, timestamp, configHash } =
-							JSON.parse(savedConnectionState);
-						const currentTime = Date.now();
-						const tenMinutes = 10 * 60 * 1000;
+						const { status, configHash } = JSON.parse(savedConnectionState);
 
-						// 检查缓存是否过期（10分钟）以及配置是否变化
+						// 检查配置是否变化（移除时间限制，让连接状态持久化）
 						const currentConfigHash = btoa(JSON.stringify(config)).substring(
 							0,
 							16,
 						);
 
-						if (
-							currentTime - timestamp < tenMinutes &&
-							configHash === currentConfigHash &&
-							status === "success"
-						) {
+						if (configHash === currentConfigHash && status === "success") {
 							setConnectionStatus("success");
 
 							// 如果之前连接成功，直接初始化同步引擎
@@ -286,12 +278,6 @@ const CloudSync = () => {
 								await syncEngine.initialize(config);
 								// 设置同步模式配置
 								syncEngine.setSyncModeConfig(syncModeConfig);
-								if (intervalSyncEnabled) {
-									realtimeSync.initialize({
-										enabled: true,
-										intervalHours: syncInterval,
-									});
-								}
 							} catch (_initError) {
 								// 如果初始化失败，重新测试连接
 								await validateConnectionStatus(config);
@@ -317,14 +303,7 @@ const CloudSync = () => {
 		} finally {
 			setIsConfigLoading(false);
 		}
-	}, [
-		syncModeConfig,
-		intervalSyncEnabled,
-		syncInterval,
-		form,
-		validateConnectionStatus,
-		appMessage.error,
-	]);
+	}, [syncModeConfig, form, validateConnectionStatus, appMessage.error]);
 
 	// 处理收藏模式开关变更
 	const handleFavoritesModeChange = (enabled: boolean) => {
@@ -456,6 +435,24 @@ const CloudSync = () => {
 			setFavoritesModeEnabled(syncModeConfig.settings.onlyFavorites);
 		}
 	}, [syncModeConfig]);
+
+	// 间隔同步初始化 - 独立于连接状态加载
+	useEffect(() => {
+		if (connectionStatus === "success" && webdavConfig.url) {
+			try {
+				if (intervalSyncEnabled) {
+					realtimeSync.initialize({
+						enabled: true,
+						intervalHours: syncInterval,
+					});
+				} else {
+					realtimeSync.setEnabled(false);
+				}
+			} catch (error) {
+				console.error("间隔同步初始化失败:", error);
+			}
+		}
+	}, [connectionStatus, intervalSyncEnabled, syncInterval, webdavConfig]);
 
 	// 保存服务器配置
 	const saveServerConfig = async (config: WebDAVConfig) => {
