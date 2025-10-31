@@ -127,21 +127,6 @@ export const useThumbnail = () => {
 								const fileData = await readFile(paths.paths[0]);
 								imageData = fileData.buffer;
 							}
-						} else if (Array.isArray(data) && data[0] && data[0].originalPath) {
-							const { imageSyncService } = await import(
-								"@/services/imageSyncService"
-							);
-							const downloadedImagePath =
-								await imageSyncService.downloadAndSaveImage(
-									data[0],
-									webdavConfig,
-								);
-
-							if (downloadedImagePath) {
-								const { readFile } = await import("@tauri-apps/plugin-fs");
-								const fileData = await readFile(downloadedImagePath);
-								imageData = fileData.buffer;
-							}
 						}
 					} catch (parseError) {
 						console.error("解析图片数据失败:", parseError);

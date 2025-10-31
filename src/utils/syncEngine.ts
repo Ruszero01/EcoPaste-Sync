@@ -19,7 +19,6 @@ import {
 } from "@/utils/shared";
 import { emit } from "@tauri-apps/api/event";
 import { fileContentProcessor } from "./fileContentProcessor";
-import { fileSegmentManager } from "./fileSegmentManager";
 
 // 全局事件发射器
 let syncEventEmitter: (() => void) | null = null;
@@ -611,16 +610,6 @@ export class SyncEngine {
 			// 同步文本、富文本等内容
 			if (this.isTextContentItem(item)) {
 				syncItems.push(this.convertToSyncItem(item));
-			}
-		}
-
-		// 刷新批处理队列，确保所有剩余的小文件都被上传
-		if (this.config) {
-			fileSegmentManager.setWebDAVConfig(this.config);
-			try {
-				await fileSegmentManager.flushBatch(this.config);
-			} catch {
-				// 批处理队列刷新失败
 			}
 		}
 

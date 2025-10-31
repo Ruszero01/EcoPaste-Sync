@@ -35,34 +35,6 @@ export class FileDownloadService {
 
 			// 根据文件类型确定下载路径
 			if (syncItem.type === "image") {
-				// 检查是否是分段存储的图片（JSON metadata格式）
-				if (syncItem.value?.startsWith("[")) {
-					try {
-						const segmentData = JSON.parse(syncItem.value);
-						if (segmentData?.[0]?.originalPath) {
-							// 这是分段存储的图片，使用ImageSyncService处理下载
-							const { imageSyncService } = await import(
-								"@/services/imageSyncService"
-							);
-							const downloadedImagePath =
-								await imageSyncService.downloadAndSaveImage(
-									segmentData[0],
-									webdavConfig,
-								);
-
-							if (downloadedImagePath) {
-								// 读取下载的文件并返回数据
-								const { readFile } = await import("@tauri-apps/plugin-fs");
-								const fileData = await readFile(downloadedImagePath);
-								return new Uint8Array(fileData);
-							}
-							return null;
-						}
-					} catch (error) {
-						console.error("解析图片分段数据失败:", error);
-						return null;
-					}
-				}
 				// 兼容旧格式，直接使用文件路径
 				filePath = syncItem.value;
 			} else if (syncItem.type === "files") {
@@ -115,27 +87,6 @@ export class FileDownloadService {
 		let filePath: string;
 
 		if (syncItem.type === "image") {
-			// 检查是否是分段存储的图片（JSON metadata格式）
-			if (syncItem.value?.startsWith("[")) {
-				try {
-					const segmentData = JSON.parse(syncItem.value);
-					if (segmentData?.[0]?.originalPath) {
-						// 这是分段存储的图片，使用ImageSyncService处理
-						const { imageSyncService } = await import(
-							"@/services/imageSyncService"
-						);
-						const downloadedImagePath =
-							await imageSyncService.downloadAndSaveImage(
-								segmentData[0],
-								webdavConfig,
-							);
-						return downloadedImagePath !== null;
-					}
-				} catch (error) {
-					console.error("解析图片分段数据失败:", error);
-					return false;
-				}
-			}
 			filePath = syncItem.value;
 		} else if (syncItem.type === "files") {
 			try {
