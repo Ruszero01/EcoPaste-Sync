@@ -111,7 +111,7 @@ const CloudSync = () => {
 		username: "",
 		password: "",
 		path: "/EcoPaste",
-		timeout: 30000, // 设置默认超时时间30秒，不在前端显示
+		timeout: 60000, // 增加默认超时时间到60秒，提高网络请求的可靠性
 	});
 	const [syncModeConfig, setSyncModeConfig] = useState<SyncModeConfig>(
 		SYNC_MODE_PRESETS.lightweight,
@@ -492,7 +492,7 @@ const CloudSync = () => {
 			// 确保包含默认超时时间
 			const config: WebDAVConfig = {
 				...values,
-				timeout: 30000, // 设置默认30秒超时
+				timeout: 60000, // 增加默认超时时间到60秒，提高网络请求的可靠性
 			};
 
 			setWebdavConfig(config);
@@ -546,6 +546,8 @@ const CloudSync = () => {
 			const enhancedSyncModeConfig = {
 				...syncModeConfig,
 				fileLimits: {
+					maxImageSize: cloudSyncStore.fileSync.maxFileSize,
+					maxFileSize: cloudSyncStore.fileSync.maxFileSize,
 					maxPackageSize: cloudSyncStore.fileSync.maxFileSize,
 				},
 			};
