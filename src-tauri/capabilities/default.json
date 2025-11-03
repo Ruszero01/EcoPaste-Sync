@@ -74,6 +74,14 @@
 					"cmd": "download_sync_data"
 				}
 			]
+		},
+		{
+			"identifier": "eco-webdav:allow-delete-file",
+			"allow": [
+				{
+					"cmd": "delete_file"
+				}
+			]
 		}
 	]
 }

@@ -15,7 +15,8 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::test_webdav_operations,
             commands::create_directory,
             commands::upload_sync_data,
-            commands::download_sync_data
+            commands::download_sync_data,
+            commands::delete_file
         ])
         .build()
 }

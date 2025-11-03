@@ -498,7 +498,94 @@ pub struct FileDownloadResult {
     pub error_message: Option<String>,
 }
 
-async fn upload_file(config: &WebDAVConfig, file_path: &str, content: String) -> Result<FileUploadResult> {
+async fn upload_file_with_retry(config: &WebDAVConfig, file_path: &str, content: String, max_retries: u32) -> Result<FileUploadResult> {
+    let start_time = Instant::now();
+    let mut last_error = None;
+    
+    // 增加超时时间，特别是对于大文件
+    let enhanced_timeout = if file_path.ends_with(".zip") {
+        std::cmp::max(config.timeout, 120000) // ZIP文件最少2分钟超时
+    } else if file_path.contains("sync-data.json") {
+        std::cmp::max(config.timeout, 90000) // 同步数据最少90秒超时
+    } else {
+        std::cmp::max(config.timeout, 60000) // 其他文件最少60秒超时
+    };
+    
+    for attempt in 1..=max_retries {
+        let attempt_start = Instant::now();
+        println!("[Rust] 🔄 尝试上传文件 (第{}次/共{}次): {}, 大小: {} 字节", attempt, max_retries, file_path, content.len());
+        
+        match upload_file_single_attempt(config, file_path, &content, enhanced_timeout).await {
+            Ok(mut result) => {
+                if result.success {
+                    let total_duration = start_time.elapsed().as_millis() as u64;
+                    result.duration_ms = total_duration;
+                    println!("[Rust] ✅ 文件上传成功 (第{}次尝试): {}, 总耗时: {}ms", attempt, file_path, total_duration);
+                    return Ok(result);
+                } else {
+                    // 检查是否是可重试的错误
+                    let error_msg = result.error_message.as_ref().map(|s| s.as_str()).unwrap_or("");
+                    let is_retryable = error_msg.contains("timeout") ||
+                                     error_msg.contains("超时") ||
+                                     error_msg.contains("connection") ||
+                                     error_msg.contains("连接") ||
+                                     result.error_message.as_ref().map_or(false, |msg| msg.contains("502")) ||
+                                     result.error_message.as_ref().map_or(false, |msg| msg.contains("503")) ||
+                                     result.error_message.as_ref().map_or(false, |msg| msg.contains("504"));
+                    
+                    if is_retryable && attempt < max_retries {
+                        println!("[Rust] ⚠️ 可重试错误 (第{}次尝试): {}, 将进行重试", attempt, error_msg);
+                        last_error = Some(result.error_message.clone());
+                        
+                        // 指数退避策略
+                        let delay_ms = 1000 * (2_u64.pow(attempt - 1));
+                        println!("[Rust] ⏱️ 等待 {}ms 后重试...", delay_ms);
+                        tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                        continue;
+                    } else {
+                        let total_duration = start_time.elapsed().as_millis() as u64;
+                        result.duration_ms = total_duration;
+                        println!("[Rust] ❌ 不可重试错误或已达最大重试次数: {}", error_msg);
+                        return Ok(result);
+                    }
+                }
+            },
+            Err(e) => {
+                let attempt_duration = attempt_start.elapsed().as_millis() as u64;
+                println!("[Rust] ❌ 上传尝试失败 (第{}次), 耗时: {}ms, 错误: {}", attempt, attempt_duration, e);
+                
+                if attempt < max_retries {
+                    last_error = Some(Some(format!("尝试{}失败: {}", attempt, e)));
+                    
+                    // 指数退避策略
+                    let delay_ms = 1000 * (2_u64.pow(attempt - 1));
+                    println!("[Rust] ⏱️ 等待 {}ms 后重试...", delay_ms);
+                    tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                } else {
+                    let total_duration = start_time.elapsed().as_millis() as u64;
+                    return Ok(FileUploadResult {
+                        success: false,
+                        path: file_path.to_string(),
+                        size: 0,
+                        duration_ms: total_duration,
+                        error_message: Some(format!("所有重试均失败: {}", e)),
+                    });
+                }
+            }
+        }
+    }
+    
+    let total_duration = start_time.elapsed().as_millis() as u64;
+    Ok(FileUploadResult {
+        success: false,
+        path: file_path.to_string(),
+        size: 0,
+        duration_ms: total_duration,
+        error_message: last_error.flatten().or(Some(String::from("未知错误"))),
+    })
+}
+
+async fn upload_file_single_attempt(config: &WebDAVConfig, file_path: &str, content: &str, timeout_ms: u64) -> Result<FileUploadResult> {
     let start_time = Instant::now();
     let base_url = config.url.trim_end_matches('/');
 
@@ -508,8 +595,13 @@ async fn upload_file(config: &WebDAVConfig, file_path: &str, content: String) ->
         format!("{}/{}", base_url, file_path)
     };
 
+    println!("[Rust] 🔍 开始上传文件: {}", file_path);
+    println!("[Rust] 📍 完整URL: {}", full_path);
+    println!("[Rust] 📏 文件大小: {} 字节", content.len());
+    println!("[Rust] ⏱️ 超时设置: {}ms (原配置: {}ms)", timeout_ms, config.timeout);
+
     let client = reqwest::Client::builder()
-        .timeout(Duration::from_millis(config.timeout))
+        .timeout(Duration::from_millis(timeout_ms))
         .build()?;
 
     let auth_header = build_auth_header(&config.username, &config.password);
@@ -525,20 +617,52 @@ async fn upload_file(config: &WebDAVConfig, file_path: &str, content: String) ->
         "application/octet-stream"
     };
 
-    let response = client
+    // 添加请求开始时间日志
+    let request_start = Instant::now();
+    println!("[Rust] 📤 发送HTTP PUT请求...");
+
+    let response = match client
         .put(&full_path)
         .header("Authorization", auth_header)
         .header("Content-Type", content_type)
         .header("User-Agent", "EcoPaste-WebDAV/1.0")
         .header("Overwrite", "T") // 允许覆盖现有文件
-        .body(content.clone())
+        .body(content.to_string())
         .send()
-        .await?;
+        .await {
+            Ok(resp) => {
+                let request_duration = request_start.elapsed().as_millis() as u64;
+                println!("[Rust] 📥 HTTP请求完成，耗时: {}ms", request_duration);
+                resp
+            },
+            Err(e) => {
+                let request_duration = request_start.elapsed().as_millis() as u64;
+                println!("[Rust] ❌ HTTP请求失败，耗时: {}ms, 错误: {}", request_duration, e);
+                
+                // 检查是否是超时错误
+                if e.is_timeout() {
+                    println!("[Rust] ⏰ 检测到超时错误！当前超时设置: {}ms", timeout_ms);
+                }
+                
+                let duration = start_time.elapsed().as_millis() as u64;
+                return Ok(FileUploadResult {
+                    success: false,
+                    path: file_path.to_string(),
+                    size: 0,
+                    duration_ms: duration,
+                    error_message: Some(format!("请求失败: {}", e)),
+                });
+            }
+        };
 
     let duration = start_time.elapsed().as_millis() as u64;
     let status = response.status();
+    
+    println!("[Rust] 📋 HTTP响应状态: {} {}", status.as_u16(), status.canonical_reason().unwrap_or("Unknown"));
+    println!("[Rust] ⏱️ 本次上传耗时: {}ms", duration);
 
     if status.is_success() || status.as_u16() == 201 || status.as_u16() == 204 {
+        println!("[Rust] ✅ 文件上传成功");
         Ok(FileUploadResult {
             success: true,
             path: file_path.to_string(),
@@ -547,6 +671,7 @@ async fn upload_file(config: &WebDAVConfig, file_path: &str, content: String) ->
             error_message: None,
         })
     } else {
+        println!("[Rust] ❌ 上传失败，HTTP状态: {}", status);
         Ok(FileUploadResult {
             success: false,
             path: file_path.to_string(),
@@ -557,7 +682,99 @@ async fn upload_file(config: &WebDAVConfig, file_path: &str, content: String) ->
     }
 }
 
-async fn download_file(config: &WebDAVConfig, file_path: &str) -> Result<FileDownloadResult> {
+async fn upload_file(config: &WebDAVConfig, file_path: &str, content: String) -> Result<FileUploadResult> {
+    // 默认重试3次
+    upload_file_with_retry(config, file_path, content, 3).await
+}
+
+async fn download_file_with_retry(config: &WebDAVConfig, file_path: &str, max_retries: u32) -> Result<FileDownloadResult> {
+    let start_time = Instant::now();
+    let mut last_error = None;
+    
+    // 增加超时时间，特别是对于指纹数据下载
+    let enhanced_timeout = if file_path.contains("fingerprints.json") {
+        std::cmp::max(config.timeout, 60000) // 指纹数据最少60秒超时
+    } else {
+        std::cmp::max(config.timeout, 45000) // 其他文件最少45秒超时
+    };
+    
+    for attempt in 1..=max_retries {
+        let attempt_start = Instant::now();
+        println!("[Rust] 🔄 尝试下载文件 (第{}次/共{}次): {}", attempt, max_retries, file_path);
+        
+        match download_file_single_attempt(config, file_path, enhanced_timeout).await {
+            Ok(mut result) => {
+                if result.success {
+                    let total_duration = start_time.elapsed().as_millis() as u64;
+                    result.duration_ms = total_duration;
+                    println!("[Rust] ✅ 文件下载成功 (第{}次尝试): {}, 总耗时: {}ms", attempt, file_path, total_duration);
+                    return Ok(result);
+                } else {
+                    // 检查是否是可重试的错误
+                    let error_msg = result.error_message.as_ref().map(|s| s.as_str()).unwrap_or("");
+                    let is_retryable = error_msg.contains("timeout") ||
+                                     error_msg.contains("超时") ||
+                                     error_msg.contains("connection") ||
+                                     error_msg.contains("连接") ||
+                                     result.error_message.as_ref().map_or(false, |msg| msg.contains("502")) ||
+                                     result.error_message.as_ref().map_or(false, |msg| msg.contains("503")) ||
+                                     result.error_message.as_ref().map_or(false, |msg| msg.contains("504"));
+                    
+                    if is_retryable && attempt < max_retries {
+                        println!("[Rust] ⚠️ 可重试错误 (第{}次尝试): {}, 将进行重试", attempt, error_msg);
+                        last_error = Some(result.error_message.clone());
+                        
+                        // 指数退避策略
+                        let delay_ms = 1000 * (2_u64.pow(attempt - 1));
+                        println!("[Rust] ⏱️ 等待 {}ms 后重试...", delay_ms);
+                        tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                        continue;
+                    } else {
+                        let total_duration = start_time.elapsed().as_millis() as u64;
+                        result.duration_ms = total_duration;
+                        println!("[Rust] ❌ 不可重试错误或已达最大重试次数: {}", error_msg);
+                        return Ok(result);
+                    }
+                }
+            },
+            Err(e) => {
+                let attempt_duration = attempt_start.elapsed().as_millis() as u64;
+                println!("[Rust] ❌ 下载尝试失败 (第{}次), 耗时: {}ms, 错误: {}", attempt, attempt_duration, e);
+                
+                if attempt < max_retries {
+                    last_error = Some(Some(format!("尝试{}失败: {}", attempt, e)));
+                    
+                    // 指数退避策略
+                    let delay_ms = 1000 * (2_u64.pow(attempt - 1));
+                    println!("[Rust] ⏱️ 等待 {}ms 后重试...", delay_ms);
+                    tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                } else {
+                    let total_duration = start_time.elapsed().as_millis() as u64;
+                    return Ok(FileDownloadResult {
+                        success: false,
+                        path: file_path.to_string(),
+                        size: 0,
+                        duration_ms: total_duration,
+                        data: None,
+                        error_message: Some(format!("所有重试均失败: {}", e)),
+                    });
+                }
+            }
+        }
+    }
+    
+    let total_duration = start_time.elapsed().as_millis() as u64;
+    Ok(FileDownloadResult {
+        success: false,
+        path: file_path.to_string(),
+        size: 0,
+        duration_ms: total_duration,
+        data: None,
+        error_message: last_error.flatten().or(Some(String::from("未知错误"))),
+    })
+}
+
+async fn download_file_single_attempt(config: &WebDAVConfig, file_path: &str, timeout_ms: u64) -> Result<FileDownloadResult> {
     let start_time = Instant::now();
     let base_url = config.url.trim_end_matches('/');
 
@@ -567,24 +784,78 @@ async fn download_file(config: &WebDAVConfig, file_path: &str) -> Result<FileDow
         format!("{}/{}", base_url, file_path)
     };
 
+    // 添加详细的调试日志
+    println!("[Rust] 🔍 开始下载文件: {}", file_path);
+    println!("[Rust] 📍 完整URL: {}", full_path);
+    println!("[Rust] ⏱️ 超时设置: {}ms (原配置: {}ms)", timeout_ms, config.timeout);
+
     let client = reqwest::Client::builder()
-        .timeout(Duration::from_millis(config.timeout))
+        .timeout(Duration::from_millis(timeout_ms))
         .build()?;
 
     let auth_header = build_auth_header(&config.username, &config.password);
 
-    let response = client
+    // 添加请求开始时间日志
+    let request_start = Instant::now();
+    println!("[Rust] 📤 发送HTTP GET请求...");
+
+    let response = match client
         .get(&full_path)
         .header("Authorization", auth_header)
         .header("User-Agent", "EcoPaste-WebDAV/1.0")
         .send()
-        .await?;
+        .await {
+            Ok(resp) => {
+                let request_duration = request_start.elapsed().as_millis() as u64;
+                println!("[Rust] 📥 HTTP请求完成，耗时: {}ms", request_duration);
+                resp
+            },
+            Err(e) => {
+                let request_duration = request_start.elapsed().as_millis() as u64;
+                println!("[Rust] ❌ HTTP请求失败，耗时: {}ms, 错误: {}", request_duration, e);
+                
+                // 检查是否是超时错误
+                if e.is_timeout() {
+                    println!("[Rust] ⏰ 检测到超时错误！当前超时设置: {}ms", timeout_ms);
+                }
+                
+                let duration = start_time.elapsed().as_millis() as u64;
+                return Ok(FileDownloadResult {
+                    success: false,
+                    path: file_path.to_string(),
+                    size: 0,
+                    duration_ms: duration,
+                    data: None,
+                    error_message: Some(format!("请求失败: {}", e)),
+                });
+            }
+        };
 
     let duration = start_time.elapsed().as_millis() as u64;
     let status = response.status();
+    
+    println!("[Rust] 📋 HTTP响应状态: {} {}", status.as_u16(), status.canonical_reason().unwrap_or("Unknown"));
+    println!("[Rust] ⏱️ 本次下载耗时: {}ms", duration);
 
     if status.is_success() {
-        let content = response.text().await?;
+        let content = match response.text().await {
+            Ok(text) => {
+                println!("[Rust] ✅ 文件内容读取成功，大小: {} 字节", text.len());
+                text
+            },
+            Err(e) => {
+                println!("[Rust] ❌ 读取响应内容失败: {}", e);
+                return Ok(FileDownloadResult {
+                    success: false,
+                    path: file_path.to_string(),
+                    size: 0,
+                    duration_ms: duration,
+                    data: None,
+                    error_message: Some(format!("读取响应内容失败: {}", e)),
+                });
+            }
+        };
+        
         Ok(FileDownloadResult {
             success: true,
             path: file_path.to_string(),
@@ -594,6 +865,7 @@ async fn download_file(config: &WebDAVConfig, file_path: &str) -> Result<FileDow
             error_message: None,
         })
     } else {
+        println!("[Rust] ❌ 下载失败，HTTP状态: {}", status);
         Ok(FileDownloadResult {
             success: false,
             path: file_path.to_string(),
@@ -603,6 +875,11 @@ async fn download_file(config: &WebDAVConfig, file_path: &str) -> Result<FileDow
             error_message: Some(format!("HTTP {}: {}", status.as_u16(), status.canonical_reason().unwrap_or("Unknown"))),
         })
     }
+}
+
+async fn download_file(config: &WebDAVConfig, file_path: &str) -> Result<FileDownloadResult> {
+    // 默认重试3次
+    download_file_with_retry(config, file_path, 3).await
 }
 
 #[command]
@@ -654,6 +931,12 @@ async fn delete_webdav_file(config: &WebDAVConfig, file_path: &str) -> Result<bo
 
     let auth_header = build_auth_header(&config.username, &config.password);
 
+    // 添加详细的调试日志
+    println!("[Rust] 🗑️ 开始删除WebDAV文件: {}", file_path);
+    println!("[Rust] 📍 完整URL: {}", full_path);
+    println!("[Rust] 🔧 基础URL: {}", base_url);
+    println!("[Rust] 👤 用户名: {}", config.username);
+
     let response = client
         .delete(&full_path)
         .header("Authorization", auth_header)
@@ -662,13 +945,30 @@ async fn delete_webdav_file(config: &WebDAVConfig, file_path: &str) -> Result<bo
         .await?;
 
     let status = response.status();
+    println!("[Rust] 📋 HTTP响应状态: {} {}", status.as_u16(), status.canonical_reason().unwrap_or("Unknown"));
 
     // 200 OK 或 204 No Content 表示成功删除
     // 404 Not Found 表示文件不存在（也算成功）
     if status.is_success() || status.as_u16() == 204 || status.as_u16() == 404 {
+        println!("[Rust] ✅ 文件删除成功: {}", file_path);
         Ok(true)
     } else {
-        Err(anyhow::anyhow!("删除文件失败: HTTP {}", status))
+        let error_msg = format!("删除文件失败: HTTP {} {}", status.as_u16(), status.canonical_reason().unwrap_or("Unknown"));
+        println!("[Rust] ❌ {}", error_msg);
+        
+        // 尝试获取响应体以获取更多错误信息
+        match response.text().await {
+            Ok(body) => {
+                if !body.is_empty() {
+                    println!("[Rust] 📄 错误响应体: {}", body);
+                }
+            }
+            Err(e) => {
+                println!("[Rust] ⚠️ 无法读取错误响应体: {}", e);
+            }
+        }
+        
+        Err(anyhow::anyhow!(error_msg))
     }
 }
 
