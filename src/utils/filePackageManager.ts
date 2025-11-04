@@ -1,5 +1,6 @@
 import type { WebDAVConfig } from "@/plugins/webdav";
 import { downloadSyncData, uploadSyncData } from "@/plugins/webdav";
+import { getGlobalSyncErrorTracker } from "@/utils/syncErrorTracker";
 import { downloadDir, join } from "@tauri-apps/api/path";
 import { mkdir, readFile, writeFile } from "@tauri-apps/plugin-fs";
 import JSZip from "jszip";
@@ -92,15 +93,41 @@ export class FilePackageManager {
 		// 直接使用智能上传方法
 		return this.smartUploadPackage(itemId, itemType, paths, config);
 	}
-
 	/**
 	 * 智能同步文件（本地优先，缓存下载）
+	 *
+	 * 设备间文件同步机制说明：
+	 * 1. 所有设备共享同一个云端同步池（WebDAV服务器）
+	 * 2. 每个设备有自己的本地缓存目录，用于存储从云端下载的文件
+	 * 3. 文件上传：每个设备上传的文件都会上传到同一个云端位置，以包模式存储
+	 * 4. 文件下载：不同设备下载时，都会从同一个云端包中解压文件到各自的本地缓存
+	 * 5. 冲突避免：通过唯一的packageId确保云端文件不冲突，通过本地缓存文件名格式确保本地文件不冲突
+	 * 6. 缓存文件名格式：${packageId}_${itemId}_${fileIndex}_${extension}，不包含设备ID，因为所有设备共享云端同步池
 	 */
 	async syncFilesIntelligently(
 		packageInfo: PackageInfo,
 		config?: WebDAVConfig,
 	): Promise<{ paths: string[]; hasChanges: boolean }> {
-		const webdavConfig = await this.getWebDAVConfig(config);
+		const globalErrorTracker = getGlobalSyncErrorTracker();
+
+		// 检查全局错误状态
+		if (globalErrorTracker.hasFailedTooManyTimes(packageInfo.packageId)) {
+			this.addLog(
+				"warning",
+				`⚠️ 包 ${packageInfo.packageId} 已失败过多，跳过同步`,
+				{
+					packageId: packageInfo.packageId,
+					itemId: packageInfo.itemId,
+				},
+			);
+			return { paths: [], hasChanges: false };
+		}
+
+		// 首先检查WebDAV配置是否可用
+		const isConfigAvailable = await this.isWebDAVConfigAvailable(config);
+		const webdavConfig = isConfigAvailable
+			? await this.getWebDAVConfig(config)
+			: null;
 
 		try {
 			this.addLog("info", `🔄 开始智能同步文件包: ${packageInfo.packageId}`, {
@@ -109,6 +136,17 @@ export class FilePackageManager {
 				fileName: packageInfo.fileName,
 				originalPathsCount: packageInfo.originalPaths.length,
 				originalPaths: packageInfo.originalPaths,
+				hasWebDAVConfig: isConfigAvailable,
+			});
+
+			// 记录设备间同步机制的关键信息
+			this.addLog("info", "🌐 设备间同步机制说明:", {
+				云端同步池: "所有设备共享同一个WebDAV服务器上的文件池",
+				本地缓存: "每个设备有独立的本地缓存目录",
+				文件上传: "文件以包模式上传到云端，使用唯一的packageId避免冲突",
+				文件下载:
+					"从云端包中解压文件到本地缓存，所有设备使用相同的缓存文件名格式",
+				冲突避免: "云端通过packageId避免冲突，本地通过缓存文件名格式避免冲突",
 			});
 
 			const resultPaths: string[] = [];
@@ -162,10 +200,18 @@ export class FilePackageManager {
 					continue;
 				}
 
-				const cachedFileName = `${packageInfo.itemId}_${i}_${this.getFileExtension(originalPath)}`;
+				// 缓存文件名格式：${packageId}_${itemId}_${fileIndex}_${extension}
+				// 注意：此格式不包含设备ID，因为所有设备共享同一个云端同步池
+				// 不同设备下载的文件会使用相同的缓存文件名，这是正确的行为
+				// 因为它们是从同一个云端ZIP包中解压的相同内容
+				const cachedFileName = `${packageInfo.packageId}_${packageInfo.itemId}_${i}_${this.getFileExtension(originalPath)}`;
 				const cachedPath = await join(cacheDir, cachedFileName);
 				this.addLog("info", `📝 缓存文件名: ${cachedFileName}`);
 				this.addLog("info", `💾 缓存路径: ${cachedPath}`);
+				this.addLog(
+					"info",
+					"🌐 设备间同步机制: 所有设备共享同一个云端同步池，使用相同的缓存文件名格式",
+				);
 
 				// 提取原始文件名
 				const { basename } = await import("@tauri-apps/api/path");
@@ -225,32 +271,129 @@ export class FilePackageManager {
 
 				// 如果需要下载，立即下载（单个文件）
 				if (needsDownload) {
+					// 检查是否有WebDAV配置
+					if (!isConfigAvailable || !webdavConfig) {
+						this.addLog(
+							"info",
+							`ℹ️ WebDAV配置未设置，跳过文件下载: ${finalPath}`,
+							{
+								packageId: packageInfo.packageId,
+								fileIndex: i,
+							},
+						);
+						// 移除失败的路径
+						resultPaths.pop();
+						continue;
+					}
+
 					this.addLog(
 						"info",
 						`🚀 开始下载文件 ${i + 1}/${packageInfo.originalPaths.length}`,
 					);
-					const downloadSuccess = await this.downloadSingleFile(
-						packageInfo,
-						i,
-						finalPath,
-						webdavConfig,
-					);
+
+					// 添加重试机制
+					const MAX_RETRY_ATTEMPTS = 2;
+					let downloadSuccess = false;
+					let lastError: Error | null = null;
+
+					for (let attempt = 1; attempt <= MAX_RETRY_ATTEMPTS; attempt++) {
+						try {
+							downloadSuccess = await this.downloadSingleFile(
+								packageInfo,
+								i,
+								finalPath,
+								webdavConfig,
+							);
+
+							if (downloadSuccess) {
+								break; // 下载成功，跳出重试循环
+							}
+						} catch (error) {
+							lastError =
+								error instanceof Error ? error : new Error(String(error));
+							this.addLog(
+								"warning",
+								`⚠️ 文件下载第 ${attempt} 次尝试失败: ${finalPath}`,
+								{
+									error: lastError.message,
+									attempt,
+									maxAttempts: MAX_RETRY_ATTEMPTS,
+								},
+							);
+
+							// 如果不是最后一次尝试，等待一段时间再重试
+							if (attempt < MAX_RETRY_ATTEMPTS) {
+								await new Promise((resolve) =>
+									setTimeout(resolve, 1000 * attempt),
+								); // 递增延迟
+							}
+						}
+					}
+
 					if (downloadSuccess) {
 						hasChanges = true;
 						this.addLog("success", `✅ 文件下载成功: ${finalPath}`);
 					} else {
 						// 移除失败的路径
 						resultPaths.pop();
-						this.addLog("error", `❌ 文件下载失败: ${finalPath}`, {
-							packageInfo: {
-								packageId: packageInfo.packageId,
-								fileName: packageInfo.fileName,
-								itemId: packageInfo.itemId,
+						const errorMessage = lastError?.message || "未知错误";
+
+						// 记录到全局错误跟踪器
+						globalErrorTracker.recordError(
+							packageInfo.packageId,
+							`文件下载失败: ${errorMessage}`,
+						);
+
+						this.addLog(
+							"error",
+							`❌ 文件下载失败（已重试 ${MAX_RETRY_ATTEMPTS} 次）: ${finalPath}`,
+							{
+								packageInfo: {
+									packageId: packageInfo.packageId,
+									fileName: packageInfo.fileName,
+									itemId: packageInfo.itemId,
+								},
+								fileIndex: i,
+								targetPath: finalPath,
+								error: errorMessage,
+								retryAttempts: MAX_RETRY_ATTEMPTS,
 							},
-							fileIndex: i,
-							targetPath: finalPath,
-						});
+						);
 					}
+				}
+			}
+
+			// 修复：如果有成功同步的文件，更新数据库中的路径
+			if (hasChanges && resultPaths.length > 0) {
+				try {
+					// 动态导入数据库函数以避免循环依赖
+					const { updateSQL } = await import("@/database");
+
+					// 更新数据库中的文件路径为解压后的路径
+					await updateSQL("history", {
+						id: packageInfo.itemId,
+						value: JSON.stringify(resultPaths),
+					});
+
+					this.addLog("success", "✅ 已更新数据库中的文件路径", {
+						itemId: packageInfo.itemId,
+						newPaths: resultPaths,
+					});
+
+					// 同步成功，清除错误记录
+					globalErrorTracker.clearError(packageInfo.packageId);
+				} catch (dbError) {
+					this.addLog("error", "❌ 更新数据库失败", {
+						error: dbError instanceof Error ? dbError.message : String(dbError),
+						itemId: packageInfo.itemId,
+						paths: resultPaths,
+					});
+
+					// 记录数据库更新错误
+					globalErrorTracker.recordError(
+						packageInfo.packageId,
+						`数据库更新失败: ${dbError instanceof Error ? dbError.message : String(dbError)}`,
+					);
 				}
 			}
 
@@ -262,8 +405,17 @@ export class FilePackageManager {
 
 			return { paths: resultPaths, hasChanges };
 		} catch (error) {
+			const errorMessage =
+				error instanceof Error ? error.message : String(error);
+
+			// 记录到全局错误跟踪器
+			globalErrorTracker.recordError(
+				packageInfo.packageId,
+				`智能同步失败: ${errorMessage}`,
+			);
+
 			this.addLog("error", "❌ 智能同步失败", {
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage,
 				stack: error instanceof Error ? error.stack : undefined,
 				packageInfo: {
 					packageId: packageInfo.packageId,
@@ -274,7 +426,6 @@ export class FilePackageManager {
 			return { paths: [], hasChanges: false };
 		}
 	}
-
 	/**
 	 * 下载单个文件（从ZIP包中提取）
 	 */
@@ -375,8 +526,35 @@ export class FilePackageManager {
 			const { exists } = await import("@tauri-apps/plugin-fs");
 			const fileExists = await exists(targetPath);
 			if (fileExists) {
-				this.addLog("success", `✅ 文件下载并保存成功: ${targetPath}`);
-				return true;
+				// 额外验证：检查文件大小是否合理
+				try {
+					const { lstat } = await import("@tauri-apps/plugin-fs");
+					const stat = await lstat(targetPath);
+					const fileSize = stat.size || 0;
+
+					if (fileSize > 0) {
+						this.addLog(
+							"success",
+							`✅ 文件下载并保存成功: ${targetPath} (${fileSize} bytes)`,
+						);
+						return true;
+					}
+
+					this.addLog("error", `❌ 文件保存后大小为0: ${targetPath}`);
+					return false;
+				} catch (statError) {
+					this.addLog(
+						"warning",
+						`⚠️ 无法验证文件大小，但文件存在: ${targetPath}`,
+						{
+							error:
+								statError instanceof Error
+									? statError.message
+									: String(statError),
+						},
+					);
+					return true; // 即使无法验证大小，也认为成功
+				}
 			}
 
 			this.addLog("error", `❌ 文件保存后验证失败: ${targetPath}`);
@@ -393,6 +571,23 @@ export class FilePackageManager {
 				fileIndex,
 				targetPath,
 			});
+
+			// 尝试清理可能的部分下载文件
+			try {
+				const { exists, remove } = await import("@tauri-apps/plugin-fs");
+				if (await exists(targetPath)) {
+					await remove(targetPath);
+					this.addLog("info", `🧹 已清理部分下载的文件: ${targetPath}`);
+				}
+			} catch (cleanupError) {
+				this.addLog("warning", `⚠️ 清理部分下载文件失败: ${targetPath}`, {
+					error:
+						cleanupError instanceof Error
+							? cleanupError.message
+							: String(cleanupError),
+				});
+			}
+
 			return false;
 		}
 	}
@@ -411,6 +606,12 @@ export class FilePackageManager {
 
 	/**
 	 * 智能上传文件包（带跨设备唯一性检查）
+	 *
+	 * 跨设备文件同步机制：
+	 * 1. 所有设备上传的文件都会存储到同一个云端同步池
+	 * 2. 使用itemId作为包名，确保相同条目的文件在不同设备间共享
+	 * 3. 通过校验和检查避免重复上传相同内容的文件包
+	 * 4. 不同设备上传的相同内容会共享同一个云端文件包，避免存储冗余
 	 */
 	async smartUploadPackage(
 		itemId: string,
@@ -423,6 +624,16 @@ export class FilePackageManager {
 			"info",
 			`📦 开始智能上传文件包: itemId=${itemId}, type=${itemType}, paths=${JSON.stringify(paths)}`,
 		);
+
+		// 首先检查WebDAV配置是否可用
+		const isConfigAvailable = await this.isWebDAVConfigAvailable(config);
+		if (!isConfigAvailable) {
+			this.addLog("info", "ℹ️ WebDAV配置未设置或无效，跳过智能上传", {
+				itemId,
+				itemType,
+			});
+			return null;
+		}
 
 		const webdavConfig = await this.getWebDAVConfig(config);
 
@@ -779,6 +990,11 @@ export class FilePackageManager {
 
 	/**
 	 * 创建本地包信息
+	 *
+	 * 包信息创建机制：
+	 * 1. 使用itemId作为packageId和文件名，确保跨设备一致性
+	 * 2. 所有设备对相同条目使用相同的包名，实现文件共享
+	 * 3. 不包含设备特定信息，确保不同设备可以访问同一个文件包
 	 */
 	private async createLocalPackageInfo(
 		itemId: string,
@@ -1042,6 +1258,29 @@ export class FilePackageManager {
 	}
 
 	/**
+	 * 检查WebDAV配置是否可用
+	 */
+	private async isWebDAVConfigAvailable(
+		config?: WebDAVConfig,
+	): Promise<boolean> {
+		const effectiveConfig = config || this.config;
+		if (!effectiveConfig) {
+			return false;
+		}
+
+		// 检查必要的配置字段
+		if (
+			!effectiveConfig.url ||
+			!effectiveConfig.username ||
+			!effectiveConfig.password
+		) {
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
 	 * 获取文件存储目录
 	 */
 	private async getFilesDirectory(): Promise<string> {
@@ -1256,6 +1495,449 @@ export class FilePackageManager {
 			`🗑️ 批量删除完成: 成功 ${results.success}，失败 ${results.failed}`,
 		);
 		return results;
+	}
+
+	/**
+	 * 解包远程数据中的包模式数据为本地数据
+	 * 在双向同步数据合并阶段调用，确保数据在存储到数据库前已正确解包
+	 *
+	 * 设备间文件解包机制：
+	 * 1. 所有设备共享同一个云端同步池，可以访问相同的文件包
+	 * 2. 基于设备ID判断文件来源，实现智能路径恢复
+	 * 3. 当前设备上传的文件优先尝试本地路径恢复
+	 * 4. 其他设备上传的文件从云端下载到本地缓存
+	 * 5. 性能优化：添加快速路径和并发控制
+	 */
+	async unpackRemotePackageData(
+		remoteItem: any,
+		currentDeviceId: string,
+	): Promise<any> {
+		// 快速路径：非包模式数据直接返回
+		if (!remoteItem._syncType || remoteItem._syncType !== "package_files") {
+			return remoteItem;
+		}
+
+		// 快速路径：非文件类型直接返回
+		if (remoteItem.type !== "image" && remoteItem.type !== "files") {
+			return remoteItem;
+		}
+
+		const startTime = Date.now();
+
+		try {
+			// 减少日志频率，只在调试模式下记录详细信息
+			if (process.env.NODE_ENV === "development") {
+				this.addLog("info", `🔄 开始解包远程数据: ${remoteItem.id}`, {
+					itemId: remoteItem.id,
+					itemType: remoteItem.type,
+					syncType: remoteItem._syncType,
+					deviceId: currentDeviceId,
+					remoteDeviceId: remoteItem.deviceId,
+				});
+			}
+
+			// 解析包信息
+			let packageInfo: PackageInfo | null = null;
+			try {
+				packageInfo = JSON.parse(remoteItem.value) as PackageInfo;
+			} catch (parseError) {
+				this.addLog("error", `❌ 解析包信息失败: ${remoteItem.id}`, {
+					error:
+						parseError instanceof Error
+							? parseError.message
+							: String(parseError),
+				});
+				return remoteItem;
+			}
+
+			if (
+				!packageInfo ||
+				!packageInfo.packageId ||
+				!packageInfo.originalPaths
+			) {
+				this.addLog("error", `❌ 包信息格式无效: ${remoteItem.id}`);
+				return remoteItem;
+			}
+
+			// 快速路径：检查WebDAV配置是否可用
+			const isConfigAvailable = await this.isWebDAVConfigAvailable();
+			if (!isConfigAvailable) {
+				this.addLog("info", `ℹ️ WebDAV配置未设置，跳过解包: ${remoteItem.id}`);
+				return remoteItem;
+			}
+
+			const webdavConfig = await this.getWebDAVConfig();
+
+			// 基于设备ID的智能路径恢复
+			const isFromCurrentDevice = remoteItem.deviceId === currentDeviceId;
+
+			// 记录设备间文件处理逻辑
+			this.addLog("info", `🔍 设备间文件处理分析: ${remoteItem.id}`, {
+				itemId: remoteItem.id,
+				当前设备ID: currentDeviceId,
+				远程设备ID: remoteItem.deviceId,
+				是否来自当前设备: isFromCurrentDevice,
+				处理策略: isFromCurrentDevice
+					? "优先尝试本地路径恢复"
+					: "从云端下载到本地缓存",
+				云端同步池: "所有设备共享同一个云端文件池",
+				本地缓存: "每个设备有独立的本地缓存目录",
+			});
+
+			// 性能优化：对于当前设备的文件，优先尝试快速路径恢复
+			if (isFromCurrentDevice) {
+				this.addLog(
+					"info",
+					`🚀 当前设备文件，尝试快速路径恢复: ${remoteItem.id}`,
+					{
+						策略: "检查原始路径是否仍然有效",
+						优势: "避免不必要的网络请求和文件下载",
+						适用场景: "文件在当前设备上仍然存在",
+					},
+				);
+
+				const fastRecoveredPaths = await this.fastRecoverLocalPaths(
+					packageInfo.originalPaths,
+				);
+
+				if (fastRecoveredPaths.length > 0) {
+					// 修复：对于单个图片文件，直接使用路径字符串，而不是数组格式
+					let finalValue: string;
+					if (remoteItem.type === "image" && fastRecoveredPaths.length === 1) {
+						// 对于单个图片文件，直接使用路径字符串
+						finalValue = fastRecoveredPaths[0];
+					} else {
+						// 对于多个文件或文件数组，使用JSON数组格式
+						finalValue = JSON.stringify(fastRecoveredPaths);
+					}
+
+					// 快速恢复成功，跳过智能同步
+					const unpackedItem = {
+						...remoteItem,
+						value: finalValue,
+						_syncType: undefined,
+						fileSize: await this.calculatePathsSize(fastRecoveredPaths),
+					};
+
+					this.addLog("success", `✅ 快速恢复本地路径成功: ${remoteItem.id}`, {
+						itemId: remoteItem.id,
+						itemType: remoteItem.type,
+						恢复的路径数量: fastRecoveredPaths.length,
+						解包后格式:
+							remoteItem.type === "image" && fastRecoveredPaths.length === 1
+								? "字符串"
+								: "数组",
+						解包后路径: finalValue,
+						耗时: `${Date.now() - startTime}ms`,
+						设备间同步: "当前设备文件，无需从云端下载",
+					});
+
+					return unpackedItem;
+				}
+
+				this.addLog(
+					"info",
+					`⚠️ 快速路径恢复失败，将尝试云端同步: ${remoteItem.id}`,
+					{
+						原因: "原始路径已失效",
+						下一步: "从云端下载文件到本地缓存",
+					},
+				);
+			}
+
+			this.addLog("info", `🌐 设备间文件处理策略: ${remoteItem.id}`, {
+				是否来自当前设备: isFromCurrentDevice,
+				处理策略: isFromCurrentDevice
+					? "当前设备文件，原始路径失效后从云端恢复"
+					: "其他设备文件，从云端下载到本地缓存",
+				云端同步池: "所有设备共享同一个文件池",
+				本地缓存: "每个设备有独立的缓存目录",
+			});
+
+			// 性能优化：对于小文件，使用快速路径
+			const isSmallFile = packageInfo.size < 1024 * 1024; // 小于1MB
+			if (isSmallFile && isFromCurrentDevice) {
+				// 对于当前设备的小文件，尝试更激进的路径恢复
+				const aggressiveRecoveredPaths = await this.aggressiveRecoverLocalPaths(
+					packageInfo.originalPaths,
+				);
+
+				if (aggressiveRecoveredPaths.length > 0) {
+					// 修复：对于单个图片文件，直接使用路径字符串，而不是数组格式
+					let finalValue: string;
+					if (
+						remoteItem.type === "image" &&
+						aggressiveRecoveredPaths.length === 1
+					) {
+						// 对于单个图片文件，直接使用路径字符串
+						finalValue = aggressiveRecoveredPaths[0];
+					} else {
+						// 对于多个文件或文件数组，使用JSON数组格式
+						finalValue = JSON.stringify(aggressiveRecoveredPaths);
+					}
+
+					const unpackedItem = {
+						...remoteItem,
+						value: finalValue,
+						_syncType: undefined,
+						fileSize: await this.calculatePathsSize(aggressiveRecoveredPaths),
+					};
+
+					if (process.env.NODE_ENV === "development") {
+						this.addLog("success", `✅ 激进恢复本地路径: ${remoteItem.id}`, {
+							itemId: remoteItem.id,
+							itemType: remoteItem.type,
+							恢复的路径数量: aggressiveRecoveredPaths.length,
+							解包后格式:
+								remoteItem.type === "image" &&
+								aggressiveRecoveredPaths.length === 1
+									? "字符串"
+									: "数组",
+							解包后路径: finalValue,
+							耗时: `${Date.now() - startTime}ms`,
+						});
+					}
+
+					return unpackedItem;
+				}
+			}
+
+			// 智能解包文件（最后的备选方案）
+			this.addLog("info", `🔄 开始智能解包文件: ${remoteItem.id}`, {
+				策略: "从云端同步池下载文件到本地缓存",
+				云端文件: `${webdavConfig.url}/files/${packageInfo.fileName}`,
+				本地缓存: "下载到当前设备的独立缓存目录",
+				设备间共享: "所有设备访问同一个云端文件",
+			});
+
+			const syncResult = await this.syncFilesIntelligently(
+				packageInfo,
+				webdavConfig,
+			);
+
+			if (syncResult.hasChanges && syncResult.paths.length > 0) {
+				// 修复：对于单个图片文件，直接使用路径字符串，而不是数组格式
+				let finalValue: string;
+				if (remoteItem.type === "image" && syncResult.paths.length === 1) {
+					// 对于单个图片文件，直接使用路径字符串
+					finalValue = syncResult.paths[0];
+				} else {
+					// 对于多个文件或文件数组，使用JSON数组格式
+					finalValue = JSON.stringify(syncResult.paths);
+				}
+
+				const unpackedItem = {
+					...remoteItem,
+					value: finalValue,
+					_syncType: undefined,
+					fileSize:
+						syncResult.paths.length > 0
+							? await this.calculatePathsSize(syncResult.paths)
+							: remoteItem.fileSize,
+				};
+
+				this.addLog("success", `✅ 远程数据解包成功: ${remoteItem.id}`, {
+					itemId: remoteItem.id,
+					itemType: remoteItem.type,
+					originalPaths: packageInfo.originalPaths.length,
+					unpackedPaths: syncResult.paths.length,
+					packageId: packageInfo.packageId,
+					是否来自当前设备: isFromCurrentDevice,
+					解包后格式:
+						remoteItem.type === "image" && syncResult.paths.length === 1
+							? "字符串"
+							: "数组",
+					解包后路径: finalValue,
+					耗时: `${Date.now() - startTime}ms`,
+					设备间同步机制: isFromCurrentDevice
+						? "当前设备文件，原始路径失效后从云端恢复"
+						: "其他设备文件，从云端下载到本地缓存",
+					云端同步池: "所有设备共享同一个文件池",
+					本地缓存: "每个设备有独立的缓存目录",
+				});
+
+				return unpackedItem;
+			}
+
+			// 解包没有变化，可能是文件已存在本地
+			if (syncResult.paths.length > 0) {
+				// 修复：对于单个图片文件，直接使用路径字符串，而不是数组格式
+				let finalValue: string;
+				if (remoteItem.type === "image" && syncResult.paths.length === 1) {
+					// 对于单个图片文件，直接使用路径字符串
+					finalValue = syncResult.paths[0];
+				} else {
+					// 对于多个文件或文件数组，使用JSON数组格式
+					finalValue = JSON.stringify(syncResult.paths);
+				}
+
+				const unpackedItem = {
+					...remoteItem,
+					value: finalValue,
+					_syncType: undefined,
+				};
+
+				return unpackedItem;
+			}
+
+			return remoteItem;
+		} catch (error) {
+			this.addLog("error", `❌ 解包远程数据失败: ${remoteItem.id}`, {
+				error: error instanceof Error ? error.message : String(error),
+				itemId: remoteItem.id,
+				itemType: remoteItem.type,
+				耗时: `${Date.now() - startTime}ms`,
+			});
+			return remoteItem;
+		}
+	}
+
+	/**
+	 * 快速恢复本地路径（性能优化版本）
+	 * 只检查最常见的路径，减少I/O操作
+	 */
+	private async fastRecoverLocalPaths(
+		originalPaths: string[],
+	): Promise<string[]> {
+		const recoveredPaths: string[] = [];
+		const { exists } = await import("@tauri-apps/plugin-fs");
+
+		// 只检查原始路径，不进行复杂的文件名匹配
+		for (const originalPath of originalPaths) {
+			if (typeof originalPath === "string" && (await exists(originalPath))) {
+				recoveredPaths.push(originalPath);
+			}
+		}
+
+		return recoveredPaths;
+	}
+
+	/**
+	 * 激进恢复本地路径（针对小文件）
+	 * 根据用户反馈，简化逻辑，只检查原始路径是否有效
+	 */
+	private async aggressiveRecoverLocalPaths(
+		originalPaths: string[],
+	): Promise<string[]> {
+		const recoveredPaths: string[] = [];
+		const { exists } = await import("@tauri-apps/plugin-fs");
+
+		for (let i = 0; i < originalPaths.length; i++) {
+			let originalPath = originalPaths[i];
+
+			// 处理嵌套数组的情况
+			if (Array.isArray(originalPath)) {
+				const foundPath = originalPath.find(
+					(item) =>
+						typeof item === "string" &&
+						(item.includes(":") || item.includes("/") || item.includes("\\")),
+				);
+				if (foundPath) {
+					originalPath = foundPath;
+				} else {
+					originalPath = originalPath[0];
+				}
+			}
+
+			if (typeof originalPath !== "string") {
+				continue;
+			}
+
+			// 只检查原始路径是否有效
+			if (await exists(originalPath)) {
+				recoveredPaths.push(originalPath);
+			}
+		}
+
+		return recoveredPaths;
+	}
+
+	/**
+	 * 恢复本地路径
+	 * 对于当前设备上传的文件，只检查原始路径是否仍然有效
+	 * 根据用户反馈，不再检查本地同名文件，单纯依赖设备ID判断
+	 */
+	private async recoverLocalPaths(originalPaths: string[]): Promise<string[]> {
+		const recoveredPaths: string[] = [];
+		const { exists } = await import("@tauri-apps/plugin-fs");
+
+		this.addLog("info", "🔍 开始恢复本地路径（仅检查原始路径）", {
+			原始路径数量: originalPaths.length,
+			原始路径: originalPaths,
+		});
+
+		for (let i = 0; i < originalPaths.length; i++) {
+			let originalPath = originalPaths[i];
+
+			// 处理嵌套数组的情况
+			if (Array.isArray(originalPath)) {
+				// 如果是数组，查找有效的文件路径
+				const foundPath = originalPath.find(
+					(item) =>
+						typeof item === "string" &&
+						(item.includes(":") || item.includes("/") || item.includes("\\")),
+				);
+				if (foundPath) {
+					originalPath = foundPath;
+				} else {
+					originalPath = originalPath[0];
+				}
+			}
+
+			// 确保originalPath是字符串
+			if (typeof originalPath !== "string") {
+				this.addLog(
+					"warning",
+					`⚠️ 跳过无效的文件路径: ${JSON.stringify(originalPath)}`,
+					{
+						路径类型: typeof originalPath,
+						索引: i,
+					},
+				);
+				continue;
+			}
+
+			// 只检查原始路径是否仍然有效
+			try {
+				if (await exists(originalPath)) {
+					recoveredPaths.push(originalPath);
+					this.addLog("info", `✅ 原始路径仍然有效: ${originalPath}`);
+				} else {
+					this.addLog("info", `ℹ️ 原始路径已失效: ${originalPath}`);
+				}
+			} catch (error) {
+				this.addLog("warning", `⚠️ 检查原始路径失败: ${originalPath}`, {
+					error: error instanceof Error ? error.message : String(error),
+				});
+			}
+		}
+
+		this.addLog("info", "📊 本地路径恢复完成", {
+			原始路径数量: originalPaths.length,
+			恢复的路径数量: recoveredPaths.length,
+			恢复的路径: recoveredPaths,
+		});
+
+		return recoveredPaths;
+	}
+
+	/**
+	 * 计算多个路径的总大小
+	 */
+	private async calculatePathsSize(paths: string[]): Promise<number> {
+		let totalSize = 0;
+		const { lstat } = await import("@tauri-apps/plugin-fs");
+
+		for (const path of paths) {
+			try {
+				const stat = await lstat(path);
+				totalSize += stat.size || 0;
+			} catch {
+				// 忽略无法获取大小的文件
+			}
+		}
+
+		return totalSize;
 	}
 }
 

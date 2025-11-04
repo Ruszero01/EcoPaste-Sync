@@ -1,8 +1,8 @@
 import { FileStatusIndicator } from "@/components/FileStatusIndicator";
 import type { HistoryTablePayload } from "@/types/database";
+import { getGlobalSyncErrorTracker } from "@/utils/syncErrorTracker";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import type { FC } from "react";
-import { memo } from "react";
+import { type FC, memo, useEffect, useState } from "react";
 
 interface ImageProps extends Partial<HistoryTablePayload> {
 	className?: string;
@@ -10,6 +10,10 @@ interface ImageProps extends Partial<HistoryTablePayload> {
 
 const Image: FC<ImageProps> = (props) => {
 	const { value, className = "max-h-full", fileSize, fileType, id } = props;
+	const [isSyncing, setIsSyncing] = useState(false);
+	const [syncedImagePath, setSyncedImagePath] = useState<string | null>(null);
+	const [syncError, setSyncError] = useState<string | null>(null);
+	const [retryCount, setRetryCount] = useState(0);
 
 	// 检查是否为包模式的图片（JSON格式的包信息）
 	const isPackageMode = typeof value === "string" && value.startsWith("{");
@@ -26,8 +30,95 @@ const Image: FC<ImageProps> = (props) => {
 		}
 	}
 
-	// 如果是包模式且有有效的包信息，尝试显示实际图片
+	// 处理智能同步的异步操作
+	useEffect(() => {
+		const handlePackageSync = async () => {
+			// 检查是否需要同步
+			if (!isPackageMode || !packageInfo || syncedImagePath || isSyncing) {
+				return;
+			}
+
+			// 检查重试次数限制
+			const MAX_RETRY_COUNT = 3;
+			if (retryCount >= MAX_RETRY_COUNT) {
+				console.error(
+					`❌ 智能同步重试次数已达上限 (${MAX_RETRY_COUNT}次)，停止重试:`,
+					packageInfo.packageId,
+				);
+				setSyncError("同步失败次数过多，已停止重试");
+				return;
+			}
+
+			// 检查全局错误状态
+			const globalErrorTracker = getGlobalSyncErrorTracker();
+			if (globalErrorTracker.hasFailedTooManyTimes(packageInfo.packageId)) {
+				console.error(
+					"❌ 全局错误跟踪器显示该包已失败过多，停止同步:",
+					packageInfo.packageId,
+				);
+				setSyncError("该文件同步失败次数过多，已暂时停止");
+				return;
+			}
+
+			setIsSyncing(true);
+			setSyncError(null);
+
+			try {
+				// 动态导入文件包管理器以避免循环依赖
+				const { filePackageManager } = await import(
+					"@/utils/filePackageManager"
+				);
+
+				// 尝试智能同步文件
+				const syncResult =
+					await filePackageManager.syncFilesIntelligently(packageInfo);
+
+				if (syncResult.hasChanges && syncResult.paths.length > 0) {
+					// 同步成功，使用第一个路径显示图片
+					const syncedPath = syncResult.paths[0];
+					// biome-ignore lint/suspicious/noConsoleLog: 调试日志需要输出到控制台
+					console.log("🔄 智能同步成功，显示解压后的图片:", syncedPath);
+					setSyncedImagePath(syncedPath);
+					setRetryCount(0); // 重置重试计数
+					globalErrorTracker.clearError(packageInfo.packageId); // 清除错误记录
+				} else if (!syncResult.hasChanges && syncResult.paths.length === 0) {
+					// 同步没有变化且没有路径，可能是WebDAV未配置或文件不存在
+					// 不设置错误状态，让组件继续尝试使用本地文件
+					// biome-ignore lint/suspicious/noConsoleLog: 调试日志需要输出到控制台
+					console.log("ℹ️ 智能同步无变化，可能是WebDAV未配置或文件已在本地");
+				}
+			} catch (syncError) {
+				console.error("❌ 智能同步失败:", syncError);
+				const newRetryCount = retryCount + 1;
+				setRetryCount(newRetryCount);
+
+				// 记录到全局错误跟踪器
+				globalErrorTracker.recordError(
+					packageInfo.packageId,
+					syncError instanceof Error ? syncError.message : String(syncError),
+				);
+
+				// 如果达到重试上限，设置错误信息
+				if (newRetryCount >= MAX_RETRY_COUNT) {
+					setSyncError(`同步失败 ${newRetryCount} 次，已停止重试`);
+				}
+			} finally {
+				setIsSyncing(false);
+			}
+		};
+
+		handlePackageSync();
+	}, [isPackageMode, packageInfo, syncedImagePath, isSyncing, retryCount]);
+
+	// 如果是包模式且有有效的包信息，优先显示同步后的图片
 	if (isPackageMode && packageInfo && packageInfo.originalPaths) {
+		// 如果已经同步成功，显示同步后的图片
+		if (syncedImagePath) {
+			return (
+				<img src={convertFileSrc(syncedImagePath)} className={className} />
+			);
+		}
+
 		// 尝试从包信息中获取可用的图片路径
 		let imagePath = null;
 
@@ -63,7 +154,7 @@ const Image: FC<ImageProps> = (props) => {
 			});
 		}
 
-		// 如果无法显示实际图片，显示包模式占位符
+		// 如果无法直接显示图片，显示包模式占位符或同步状态
 		const syncItem = {
 			id: id || "",
 			type: "image" as const,
@@ -86,8 +177,24 @@ const Image: FC<ImageProps> = (props) => {
 				{/* 包模式图片占位符 */}
 				<div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-lg border-2 border-gray-300 border-dashed bg-gray-100">
 					<div className="text-center">
-						<div className="mb-1 text-gray-400 text-xs">已打包</div>
-						<div className="text-gray-500 text-xs">点击复制自动解压</div>
+						{isSyncing ? (
+							<>
+								<div className="mb-1 text-blue-500 text-xs">解压中...</div>
+								<div className="text-blue-400 text-xs">请稍候</div>
+							</>
+						) : syncError ? (
+							<>
+								<div className="mb-1 text-red-500 text-xs">同步失败</div>
+								<div className="max-w-16 truncate text-red-400 text-xs text-xs">
+									{syncError}
+								</div>
+							</>
+						) : (
+							<>
+								<div className="mb-1 text-gray-400 text-xs">已打包</div>
+								<div className="text-gray-500 text-xs">点击复制自动解压</div>
+							</>
+						)}
 					</div>
 				</div>
 

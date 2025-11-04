@@ -18,7 +18,63 @@ import {
 	calculateChecksum as calculateStringChecksum,
 	generateDeviceId,
 } from "@/utils/shared";
+import { getGlobalSyncErrorTracker } from "@/utils/syncErrorTracker";
 import { emit } from "@tauri-apps/api/event";
+
+/**
+ * 统一的校验和计算函数
+ * 确保不同同步模式下同一项的校验和一致
+ *
+ * @param item 要计算校验和的数据项
+ * @param includeMetadata 是否包含元数据（默认为false，只计算核心内容）
+ * @returns 计算出的校验和
+ */
+export function calculateUnifiedChecksum(
+	item: any,
+	includeMetadata = false,
+): string {
+	// 提取核心字段，排除同步相关的临时字段
+	const coreFields: any = {
+		id: item.id,
+		type: item.type,
+		value: item.value,
+	};
+
+	// 如果需要包含元数据，添加一些稳定的元数据字段
+	if (includeMetadata) {
+		coreFields.createTime = item.createTime;
+		coreFields.favorite = !!item.favorite;
+		coreFields.note = item.note || "";
+	}
+
+	// 按固定顺序序列化，避免属性顺序影响
+	const sortedKeys = Object.keys(coreFields).sort();
+	const orderedObject: any = {};
+
+	for (const key of sortedKeys) {
+		orderedObject[key] = coreFields[key];
+	}
+
+	// 使用稳定的JSON序列化
+	const checksumSource = JSON.stringify(orderedObject);
+
+	// 计算校验和
+	const checksum = calculateStringChecksum(checksumSource);
+
+	// 添加详细的调试日志
+	// biome-ignore lint/suspicious/noConsoleLog: 允许在校验和计算时使用日志
+	console.log("🔍 [calculateUnifiedChecksum] 统一校验和计算:", {
+		项ID: item.id,
+		项类型: item.type,
+		包含元数据: includeMetadata,
+		核心字段: coreFields,
+		排序后对象: orderedObject,
+		校验和源字符串: checksumSource,
+		计算出的校验和: checksum,
+	});
+
+	return checksum;
+}
 
 // 全局事件发射器
 let syncEventEmitter: (() => void) | null = null;
@@ -213,95 +269,182 @@ class MetadataManager {
 	 * 生成数据指纹
 	 */
 	generateFingerprint(item: SyncItem): DataFingerprint {
-		// 修复：对于图片和文件项，使用原始value计算校验和，而不是JSON.stringify整个对象
-		let checksumSource: string;
+		// 使用统一的校验和计算函数，确保不同同步模式下同一项的校验和一致
+		const checksum = item.checksum || calculateUnifiedChecksum(item, false);
+
+		// 计算数据大小
+		let size: number;
 		if (item.type === "image" || item.type === "files") {
-			// 对于文件项，只使用value字段计算校验和，避免因为_syncType等字段的变化导致误判
-			checksumSource =
+			// 对于文件项，使用value字段的长度
+			size =
 				typeof item.value === "string"
-					? item.value
-					: JSON.stringify(item.value);
+					? item.value.length
+					: JSON.stringify(item.value).length;
 		} else {
-			// 对于其他类型，使用整个对象的JSON字符串
-			checksumSource = JSON.stringify(item);
+			// 对于其他类型，使用整个对象的JSON字符串长度
+			size = JSON.stringify(item).length;
 		}
+
+		// biome-ignore lint/suspicious/noConsoleLog: 允许在指纹生成时使用日志
+		console.log("🔍 [MetadataManager.generateFingerprint] 生成数据指纹:", {
+			项ID: item.id,
+			项类型: item.type,
+			校验和: checksum,
+			时间戳: item.lastModified || Date.now(),
+			数据大小: size,
+		});
 
 		return {
 			id: item.id,
-			checksum: item.checksum || calculateStringChecksum(checksumSource),
+			checksum,
 			timestamp: item.lastModified || Date.now(),
-			size: item.size || checksumSource.length,
+			size,
 			type: item.type,
 		};
 	}
 
 	/**
 	 * 比较指纹差异
+	 * 修复：增加对删除项的支持，确保删除项不会被误判为未变更项
 	 */
 	compareFingerprints(
 		local: Map<string, DataFingerprint>,
 		remote: Map<string, DataFingerprint>,
+		deletedItemIds: string[] = [], // 新增参数：已删除项的ID列表
 	): {
 		added: DataFingerprint[];
 		modified: DataFingerprint[];
-		deleted: string[];
 		unchanged: string[];
 	} {
 		const added: DataFingerprint[] = [];
 		const modified: DataFingerprint[] = [];
-		const deleted: string[] = [];
 		const unchanged: string[] = [];
+		const deletedSet = new Set(deletedItemIds);
 
 		// 检查本地新增和修改的项
 		for (const [id, localFp] of local) {
+			// 如果该项已被标记为删除，则不参与指纹比较
+			if (deletedSet.has(id)) {
+				// biome-ignore lint/suspicious/noConsoleLog: 允许在关键删除项处理时使用日志
+				console.log("🗑️ [MetadataManager] 指纹比较跳过已删除项:", {
+					项ID: id,
+					项类型: localFp.type,
+					原因: "该项已被标记为软删除，不参与指纹比较",
+				});
+				continue;
+			}
+
 			const remoteFp = remote.get(id);
 			if (!remoteFp) {
-				added.push(localFp);
-				// 移除详细的新增项日志
+				// 修复：当远程指纹为空时，不要直接标记为新增，而是进行更详细的验证
+				// 检查是否是因为远程指纹数据不完整导致的误判
+				if (remote.size === 0) {
+					// 如果远程指纹数据完全为空，可能是首次同步或数据丢失
+					// 记录详细信息，但不立即标记为新增
+					// biome-ignore lint/suspicious/noConsoleLog: 允许在关键指纹比较时使用日志
+					console.log("⚠️ [MetadataManager] 远程指纹数据为空，可能首次同步:", {
+						项ID: id,
+						项类型: localFp.type,
+						本地校验和: localFp.checksum,
+						原因: "远程指纹数据为空，可能首次同步或数据丢失",
+					});
+				}
+
+				// 检查本地项是否真的是新增的，还是因为远程指纹数据不完整
+				// 如果本地项有有效的校验和且不是空数据，则认为是新增
+				if (localFp.checksum && localFp.checksum.length > 0) {
+					added.push(localFp);
+
+					// biome-ignore lint/suspicious/noConsoleLog: 允许在关键指纹比较时使用日志
+					console.log("➕ [MetadataManager] 确认为新增项:", {
+						项ID: id,
+						项类型: localFp.type,
+						本地校验和: localFp.checksum,
+						原因: "远程指纹不存在且本地有有效校验和",
+					});
+				} else {
+					// biome-ignore lint/suspicious/noConsoleLog: 允许在关键指纹比较时使用日志
+					console.log("⏭️ [MetadataManager] 跳过无效校验和的项:", {
+						项ID: id,
+						项类型: localFp.type,
+						本地校验和: localFp.checksum,
+						原因: "本地校验和无效，跳过处理",
+					});
+				}
 			} else {
 				// 修复：对于文件项，需要特殊处理校验和比较
 				if (localFp.type === "image" || localFp.type === "files") {
 					// 对于文件项，如果校验和不匹配，记录详细信息
 					if (localFp.checksum !== remoteFp.checksum) {
-						// 移除详细的文件项变更日志
+						// biome-ignore lint/suspicious/noConsoleLog: 允许在关键校验和比较时使用日志
+						console.log("🔍 [MetadataManager] 文件项校验和不匹配:", {
+							项ID: id,
+							项类型: localFp.type,
+							本地校验和: localFp.checksum,
+							远程校验和: remoteFp.checksum,
+							本地时间戳: localFp.timestamp,
+							远程时间戳: remoteFp.timestamp,
+							操作: "标记为修改项",
+						});
 						modified.push(localFp);
 					} else {
+						// biome-ignore lint/suspicious/noConsoleLog: 允许在关键校验和比较时使用日志
+						console.log("✅ [MetadataManager] 文件项校验和匹配:", {
+							项ID: id,
+							项类型: localFp.type,
+							本地校验和: localFp.checksum,
+							远程校验和: remoteFp.checksum,
+							操作: "标记为未变更项",
+						});
 						unchanged.push(id);
-						// 移除详细的文件项未变更日志
 					}
 				} else {
 					// 对于非文件项，直接比较校验和
 					if (localFp.checksum !== remoteFp.checksum) {
-						// 移除详细的非文件项变更日志
+						// biome-ignore lint/suspicious/noConsoleLog: 允许在关键校验和比较时使用日志
+						console.log("🔍 [MetadataManager] 非文件项校验和不匹配:", {
+							项ID: id,
+							项类型: localFp.type,
+							本地校验和: localFp.checksum,
+							远程校验和: remoteFp.checksum,
+							本地时间戳: localFp.timestamp,
+							远程时间戳: remoteFp.timestamp,
+							操作: "标记为修改项",
+						});
 						modified.push(localFp);
 					} else {
+						// biome-ignore lint/suspicious/noConsoleLog: 允许在关键校验和比较时使用日志
+						console.log("✅ [MetadataManager] 非文件项校验和匹配:", {
+							项ID: id,
+							项类型: localFp.type,
+							本地校验和: localFp.checksum,
+							远程校验和: remoteFp.checksum,
+							操作: "标记为未变更项",
+						});
 						unchanged.push(id);
-						// 移除详细的非文件项未变更日志
 					}
 				}
 			}
 		}
 
-		// 检查删除的项
-		// 移除删除检测开始日志
+		// 修复：移除基于数据差异的删除检测逻辑
+		// 删除检测现在完全基于软删除标记，不再比较本地和远程的数据量差异
+		// 这样可以避免将"设备B没有设备A的数据"误判为删除操作
 
-		// 记录远程数据中但本地数据中没有的项
-		const potentialDeletions: string[] = [];
-		for (const [id] of remote) {
-			if (!local.has(id)) {
-				potentialDeletions.push(id);
-			}
-		}
+		// 添加指纹比较日志，帮助调试
+		// biome-ignore lint/suspicious/noConsoleLog: 允许在关键指纹比较时使用日志
+		console.log("🔍 [MetadataManager] 指纹比较结果:", {
+			本地数据量: local.size,
+			远程数据量: remote.size,
+			已删除项数量: deletedItemIds.length,
+			已删除项ID列表: deletedItemIds,
+			新增项数量: added.length,
+			修改项数量: modified.length,
+			未变更项数量: unchanged.length,
+			删除检测方式: "完全基于软删除标记，删除项不参与指纹比较",
+		});
 
-		// 确认删除项
-		for (const id of potentialDeletions) {
-			deleted.push(id);
-			// 移除详细的确认删除项日志
-		}
-
-		// 移除详细的删除检测完成日志
-
-		return { added, modified, deleted, unchanged };
+		return { added, modified, unchanged };
 	}
 
 	/**
@@ -400,14 +543,24 @@ class IncrementalSyncManager {
 			}
 		}
 
-		// 3. 比较差异
+		// 修复：先检测本地删除操作，确保删除项不参与指纹比较
+		const localDeletions = this.syncEngine.detectLocalDeletions(localData);
+
+		// biome-ignore lint/suspicious/noConsoleLog: 允许在关键删除检测时使用日志
+		console.log("🗑️ [IncrementalSyncManager] 早期检测本地软删除操作:", {
+			当前本地数据量: localData.length,
+			检测到的删除项数量: localDeletions.length,
+			删除项ID列表: localDeletions,
+		});
+
+		// 3. 比较差异（传递删除项信息，确保删除项不参与比较）
 		const diff = this.metadataManager.compareFingerprints(
 			localFingerprints,
 			remoteFingerprints,
+			localDeletions, // 传递删除项ID列表
 		);
 		statistics.addedItems = diff.added.length;
 		statistics.modifiedItems = diff.modified.length;
-		statistics.deletedItems = diff.deleted.length;
 		statistics.skippedItems = diff.unchanged.length;
 
 		// 4. 筛选需要同步的项
@@ -422,18 +575,23 @@ class IncrementalSyncManager {
 			}
 		}
 
-		// 添加远程检测到的删除项
-		deletedIds.push(...diff.deleted);
-
-		// 检测本地删除操作（基于上次快照）
-		if (this.syncEngine.getLastLocalSnapshotSize() > 0) {
-			const localDeletions = this.syncEngine.detectLocalDeletions(localData);
-			for (const deletedId of localDeletions) {
-				if (!deletedIds.includes(deletedId)) {
-					deletedIds.push(deletedId);
-				}
+		// 将检测到的本地删除操作添加到删除列表
+		for (const deletedId of localDeletions) {
+			if (!deletedIds.includes(deletedId)) {
+				deletedIds.push(deletedId);
 			}
 		}
+
+		// 更新删除项统计
+		statistics.deletedItems = localDeletions.length;
+
+		// 修复：完全移除基于数据差异的删除检测逻辑
+		// 删除操作现在完全基于软删除标记，不再比较本地和远程的数据量差异
+		// biome-ignore lint/suspicious/noConsoleLog: 允许在关键删除检测时使用日志
+		console.log("ℹ️ [IncrementalSyncManager] 删除检测已完全基于软删除标记:", {
+			删除项数量: localDeletions.length,
+			原因: "删除操作现在完全基于软删除标记，删除项不参与指纹比较",
+		});
 
 		// 5. 创建同步数据
 		const syncData: SyncData = {
@@ -488,6 +646,382 @@ class IncrementalSyncManager {
 	}
 
 	/**
+	 * 改进的包模式数据识别逻辑
+	 * 不仅依赖_syncType字段，还基于数据类型和内容进行判断
+	 */
+	private identifyPackageItem(item: any): boolean {
+		// 首先检查基本类型
+		if (item.type !== "image" && item.type !== "files") {
+			return false;
+		}
+
+		// 方法1：检查_syncType字段（原有逻辑）
+		if (item._syncType === "package_files") {
+			return true;
+		}
+
+		// 方法2：检查value字段是否包含包信息（容错逻辑）
+		if (typeof item.value === "string") {
+			try {
+				const parsedValue = JSON.parse(item.value);
+				if (
+					parsedValue &&
+					typeof parsedValue === "object" &&
+					parsedValue.packageId &&
+					parsedValue.originalPaths &&
+					Array.isArray(parsedValue.originalPaths)
+				) {
+					// biome-ignore lint/suspicious/noConsoleLog: 允许在关键识别逻辑时使用日志
+					console.log("🔍 [IncrementalSyncManager] 通过内容识别为包模式数据:", {
+						项ID: item.id,
+						项类型: item.type,
+						识别方式: "value字段包含包信息",
+						包ID: parsedValue.packageId,
+						原始路径数量: parsedValue.originalPaths.length,
+					});
+					return true;
+				}
+			} catch {
+				// JSON解析失败，继续其他检查
+			}
+		}
+
+		// 方法3：检查是否包含包特征字段（容错逻辑）
+		if (
+			item.value &&
+			typeof item.value === "string" &&
+			(item.value.includes("packageId") ||
+				item.value.includes("originalPaths") ||
+				item.value.includes("fileName"))
+		) {
+			// biome-ignore lint/suspicious/noConsoleLog: 允许在关键识别逻辑时使用日志
+			console.log("🔍 [IncrementalSyncManager] 通过特征字段识别为包模式数据:", {
+				项ID: item.id,
+				项类型: item.type,
+				识别方式: "value字段包含包特征",
+				value预览: `${item.value.substring(0, 100)}...`,
+			});
+			return true;
+		}
+
+		// 方法4：检查文件大小和校验和字段（容错逻辑）
+		if (
+			item.fileSize &&
+			item.checksum &&
+			typeof item.fileSize === "number" &&
+			item.fileSize > 0
+		) {
+			// biome-ignore lint/suspicious/noConsoleLog: 允许在关键识别逻辑时使用日志
+			console.log("🔍 [IncrementalSyncManager] 通过文件属性识别为包模式数据:", {
+				项ID: item.id,
+				项类型: item.type,
+				识别方式: "包含文件大小和校验和字段",
+				文件大小: item.fileSize,
+				校验和: item.checksum,
+			});
+			return true;
+		}
+
+		// 方法5：检查设备ID是否与当前设备不同（跨设备同步特征）
+		if (item.deviceId && item.deviceId !== this.deviceId) {
+			// biome-ignore lint/suspicious/noConsoleLog: 允许在关键识别逻辑时使用日志
+			console.log("🔍 [IncrementalSyncManager] 通过设备ID识别为包模式数据:", {
+				项ID: item.id,
+				项类型: item.type,
+				识别方式: "跨设备同步数据",
+				当前设备ID: this.deviceId,
+				远程设备ID: item.deviceId,
+			});
+			return true;
+		}
+
+		return false;
+	}
+
+	/**
+	 * 数据完整性检查
+	 * 检查远程数据与本地数据的一致性，识别潜在问题
+	 */
+	private performDataIntegrityCheck(
+		remoteData: SyncData,
+		localData: SyncItem[],
+	): { isComplete: boolean; issues: string[] } {
+		const issues: string[] = [];
+
+		// 检查1：远程数据项是否为空
+		if (!remoteData.items || remoteData.items.length === 0) {
+			issues.push("远程数据项为空");
+		}
+
+		// 检查2：检查远程数据项的基本字段
+		for (const item of remoteData.items) {
+			if (!item.id) {
+				issues.push(
+					`发现缺少ID的远程数据项: ${JSON.stringify(item).substring(0, 100)}`,
+				);
+			}
+			if (!item.type) {
+				issues.push(`项 ${item.id} 缺少类型字段`);
+			}
+			if (item.value === undefined || item.value === null) {
+				issues.push(`项 ${item.id} 缺少value字段`);
+			}
+		}
+
+		// 检查3：检查包模式数据的一致性
+		const packageItems = remoteData.items.filter(
+			(item) =>
+				(item.type === "image" || item.type === "files") &&
+				this.identifyPackageItem(item),
+		);
+
+		for (const packageItem of packageItems) {
+			try {
+				if (typeof packageItem.value === "string") {
+					const parsedValue = JSON.parse(packageItem.value);
+					if (!parsedValue.packageId) {
+						issues.push(`包模式项 ${packageItem.id} 缺少packageId`);
+					}
+					if (
+						!parsedValue.originalPaths ||
+						!Array.isArray(parsedValue.originalPaths)
+					) {
+						issues.push(`包模式项 ${packageItem.id} 缺少originalPaths数组`);
+					}
+				}
+			} catch (error) {
+				issues.push(`包模式项 ${packageItem.id} 的value字段无法解析: ${error}`);
+			}
+		}
+
+		// 检查4：检查本地数据与远程数据的ID冲突
+		const localIds = new Set(localData.map((item) => item.id));
+		const remoteIds = new Set(remoteData.items.map((item) => item.id));
+		const conflictingIds = [...localIds].filter((id) => remoteIds.has(id));
+
+		if (conflictingIds.length > 0) {
+			issues.push(
+				`发现 ${conflictingIds.length} 个ID冲突: ${conflictingIds.join(", ")}`,
+			);
+		}
+
+		return {
+			isComplete: issues.length === 0,
+			issues,
+		};
+	}
+
+	/**
+	 * 尝试数据恢复
+	 * 当检测到数据不完整时，尝试多种恢复策略
+	 */
+	private async attemptDataRecovery(
+		remoteData: SyncData,
+		localData: SyncItem[],
+		integrityCheck: { isComplete: boolean; issues: string[] },
+	): Promise<void> {
+		// biome-ignore lint/suspicious/noConsoleLog: 允许在关键恢复操作时使用日志
+		console.log("🔧 [IncrementalSyncManager] 开始数据恢复尝试:", {
+			问题数量: integrityCheck.issues.length,
+			问题列表: integrityCheck.issues,
+		});
+
+		// 策略1：修复缺少基本字段的问题
+		for (let i = 0; i < remoteData.items.length; i++) {
+			const item = remoteData.items[i];
+
+			// 修复缺少ID的项
+			if (!item.id) {
+				item.id = `recovered_${Date.now()}_${i}`;
+				// biome-ignore lint/suspicious/noConsoleLog: 允许在关键恢复操作时使用日志
+				console.log(`🔧 [IncrementalSyncManager] 为项生成临时ID: ${item.id}`);
+			}
+
+			// 修复缺少类型的项
+			if (!item.type) {
+				// 尝试从value推断类型
+				if (typeof item.value === "string") {
+					if (item.value.startsWith("http") || item.value.includes(".")) {
+						item.type = "image";
+					} else if (item.value.startsWith("[")) {
+						item.type = "files";
+					} else {
+						item.type = "text";
+					}
+				} else {
+					item.type = "text";
+				}
+				// biome-ignore lint/suspicious/noConsoleLog: 允许在关键恢复操作时使用日志
+				console.log(
+					`🔧 [IncrementalSyncManager] 为项 ${item.id} 推断类型: ${item.type}`,
+				);
+			}
+
+			// 修复缺少value的项
+			if (item.value === undefined || item.value === null) {
+				item.value = "";
+				// biome-ignore lint/suspicious/noConsoleLog: 允许在关键恢复操作时使用日志
+				console.log(
+					`🔧 [IncrementalSyncManager] 为项 ${item.id} 设置默认value`,
+				);
+			}
+		}
+
+		// 策略2：修复包模式数据的问题
+		const packageItems = remoteData.items.filter(
+			(item) =>
+				(item.type === "image" || item.type === "files") &&
+				this.identifyPackageItem(item),
+		);
+
+		for (const packageItem of packageItems) {
+			try {
+				if (typeof packageItem.value === "string") {
+					const parsedValue = JSON.parse(packageItem.value);
+
+					// 修复缺少packageId的问题
+					if (!parsedValue.packageId) {
+						parsedValue.packageId = packageItem.id;
+						// biome-ignore lint/suspicious/noConsoleLog: 允许在关键恢复操作时使用日志
+						console.log(
+							`🔧 [IncrementalSyncManager] 为包模式项 ${packageItem.id} 设置packageId`,
+						);
+					}
+
+					// 修复缺少originalPaths的问题
+					if (
+						!parsedValue.originalPaths ||
+						!Array.isArray(parsedValue.originalPaths)
+					) {
+						parsedValue.originalPaths = [];
+						// biome-ignore lint/suspicious/noConsoleLog: 允许在关键恢复操作时使用日志
+						console.log(
+							`🔧 [IncrementalSyncManager] 为包模式项 ${packageItem.id} 设置空originalPaths`,
+						);
+					}
+
+					// 更新修复后的值
+					packageItem.value = JSON.stringify(parsedValue);
+				}
+			} catch (error) {
+				console.warn(
+					`⚠️ [IncrementalSyncManager] 无法修复包模式项 ${packageItem.id}:`,
+					error,
+				);
+			}
+		}
+
+		// 策略3：从本地数据补充远程数据
+		const localMap = new Map(localData.map((item) => [item.id, item]));
+		for (const remoteItem of remoteData.items) {
+			const localItem = localMap.get(remoteItem.id);
+			if (localItem && !remoteItem.value) {
+				remoteItem.value = localItem.value;
+				// biome-ignore lint/suspicious/noConsoleLog: 允许在关键恢复操作时使用日志
+				console.log(
+					`🔧 [IncrementalSyncManager] 从本地数据补充项 ${remoteItem.id} 的value`,
+				);
+			}
+		}
+
+		// biome-ignore lint/suspicious/noConsoleLog: 允许在关键恢复操作时使用日志
+		console.log("✅ [IncrementalSyncManager] 数据恢复尝试完成");
+	}
+
+	/**
+	 * 最终数据完整性检查
+	 * 在合并完成后进行最终验证
+	 */
+	private performFinalDataIntegrityCheck(
+		mergedData: SyncItem[],
+		remoteData: SyncData,
+	): { isComplete: boolean; issues: string[] } {
+		const issues: string[] = [];
+
+		// 检查1：合并后数据是否包含所有远程项
+		const mergedIds = new Set(mergedData.map((item) => item.id));
+		const remoteIds = new Set(remoteData.items.map((item) => item.id));
+
+		const missingRemoteItems = [...remoteIds].filter(
+			(id) => !mergedIds.has(id),
+		);
+		if (missingRemoteItems.length > 0) {
+			issues.push(
+				`合并后数据缺少 ${missingRemoteItems.length} 个远程项: ${missingRemoteItems.join(", ")}`,
+			);
+		}
+
+		// 检查2：检查合并后数据的基本字段
+		for (const item of mergedData) {
+			if (!item.id) {
+				issues.push("合并后数据中发现缺少ID的项");
+			}
+			if (!item.type) {
+				issues.push(`项 ${item.id} 缺少类型字段`);
+			}
+			if (item.value === undefined || item.value === null) {
+				issues.push(`项 ${item.id} 缺少value字段`);
+			}
+		}
+
+		// 检查3：检查包模式数据是否正确解包
+		const packageItems = mergedData.filter(
+			(item) => item.type === "image" || item.type === "files",
+		);
+
+		for (const packageItem of packageItems) {
+			// 检查是否仍然包含_syncType字段（应该已被移除）
+			if (packageItem._syncType) {
+				issues.push(
+					`包模式项 ${packageItem.id} 仍包含_syncType字段，可能未正确解包`,
+				);
+			}
+
+			// 检查value字段是否有效
+			if (typeof packageItem.value === "string") {
+				// 对于单个图片，value应该是路径字符串
+				if (
+					packageItem.type === "image" &&
+					!packageItem.value.startsWith("[")
+				) {
+					if (
+						!packageItem.value.includes("/") &&
+						!packageItem.value.includes("\\")
+					) {
+						issues.push(
+							`图片项 ${packageItem.id} 的value可能不是有效路径: ${packageItem.value}`,
+						);
+					}
+				}
+
+				// 对于文件数组，value应该是有效的JSON数组
+				if (
+					packageItem.type === "files" ||
+					(packageItem.type === "image" && packageItem.value.startsWith("["))
+				) {
+					try {
+						const parsedValue = JSON.parse(packageItem.value);
+						if (!Array.isArray(parsedValue)) {
+							issues.push(
+								`文件项 ${packageItem.id} 的value不是有效数组: ${packageItem.value}`,
+							);
+						}
+					} catch (error) {
+						issues.push(
+							`文件项 ${packageItem.id} 的value无法解析为JSON: ${error}`,
+						);
+					}
+				}
+			}
+		}
+
+		return {
+			isComplete: issues.length === 0,
+			issues,
+		};
+	}
+
+	/**
 	 * 合并远程增量数据
 	 */
 	async mergeRemoteIncrementalData(
@@ -501,19 +1035,63 @@ class IncrementalSyncManager {
 		const localMap = new Map(localData.map((item) => [item.id, item]));
 		const mergedData: SyncItem[] = [];
 
+		// 增强的数据完整性检查
+		const integrityCheck = this.performDataIntegrityCheck(
+			remoteData,
+			localData,
+		);
+
+		// biome-ignore lint/suspicious/noConsoleLog: 允许在关键合并开始时使用日志
+		console.log("🔀 [IncrementalSyncManager] 开始合并远程增量数据:", {
+			远程数据项数量: remoteData.items.length,
+			本地数据项数量: localData.length,
+			远程删除项数量: remoteData.deleted?.length || 0,
+			远程删除项ID列表: remoteData.deleted || [],
+			数据完整性检查: integrityCheck,
+		});
+
+		// 如果检测到数据不完整，尝试修复
+		if (!integrityCheck.isComplete) {
+			console.warn(
+				"⚠️ [IncrementalSyncManager] 检测到数据不完整，尝试修复:",
+				integrityCheck.issues,
+			);
+			await this.attemptDataRecovery(remoteData, localData, integrityCheck);
+		}
+
 		// 处理删除的项
 		const deletedIds = remoteData.deleted || [];
 		for (const deletedId of deletedIds) {
 			localMap.delete(deletedId);
 		}
 
-		// 处理新增和修改的项
+		// biome-ignore lint/suspicious/noConsoleLog: 允许在关键删除处理时使用日志
+		console.log("🗑️ [IncrementalSyncManager] 处理远程删除项:", {
+			远程删除项数量: deletedIds.length,
+			删除项ID列表: deletedIds,
+		});
+
+		// 性能优化：分离包模式数据和非包模式数据，实现并发处理
+		const packageItems: any[] = [];
+		const regularItems: any[] = [];
+		const processedRemoteIds = new Set<string>();
+
+		// 预处理：分类包模式数据和非包模式数据
 		for (const remoteItem of remoteData.items) {
 			const localItem = localMap.get(remoteItem.id);
 
 			if (!localItem) {
-				// 新增项
-				mergedData.push(remoteItem);
+				// 新增项 - 分类处理
+				processedRemoteIds.add(remoteItem.id);
+
+				// 改进的包模式数据识别逻辑
+				const isPackageItem = this.identifyPackageItem(remoteItem);
+
+				if (isPackageItem) {
+					packageItems.push(remoteItem);
+				} else {
+					regularItems.push(remoteItem);
+				}
 			} else {
 				// 检查冲突
 				const localTime = new Date(localItem.createTime).getTime();
@@ -563,12 +1141,73 @@ class IncrementalSyncManager {
 				}
 
 				if (hasConflict) {
-					// 有冲突
+					// 有冲突 - 检查是否需要解包远程包模式数据
+					let processedRemoteItem = remoteItem;
+
+					// 改进的包模式数据识别逻辑
+					const isPackageItem = this.identifyPackageItem(remoteItem);
+
+					if (isPackageItem) {
+						// biome-ignore lint/suspicious/noConsoleLog: 允许在关键解包操作时使用日志
+						console.log(
+							"📦 [IncrementalSyncManager] 冲突项检测到包模式数据，开始解包:",
+							{
+								项ID: remoteItem.id,
+								项类型: remoteItem.type,
+								设备ID: remoteItem.deviceId,
+							},
+						);
+
+						try {
+							// 解包远程包模式数据
+							const unpackResult =
+								await filePackageManager.unpackRemotePackageData(
+									remoteItem,
+									this.deviceId,
+								);
+
+							if (unpackResult.success && unpackResult.processedItem) {
+								processedRemoteItem = unpackResult.processedItem;
+
+								// biome-ignore lint/suspicious/noConsoleLog: 允许在解包成功时使用日志
+								console.log(
+									"✅ [IncrementalSyncManager] 冲突项包模式数据解包成功:",
+									{
+										项ID: remoteItem.id,
+										原始类型: remoteItem._syncType,
+										解包后路径:
+											typeof processedRemoteItem.value === "string"
+												? processedRemoteItem.value
+												: `${JSON.stringify(processedRemoteItem.value).substring(0, 100)}...`,
+									},
+								);
+							} else {
+								// biome-ignore lint/suspicious/noConsoleLog: 允许在解包失败时使用日志
+								console.warn(
+									"⚠️ [IncrementalSyncManager] 冲突项包模式数据解包失败，使用原始数据:",
+									{
+										项ID: remoteItem.id,
+										失败原因: unpackResult.error || "未知错误",
+									},
+								);
+							}
+						} catch (error) {
+							// biome-ignore lint/suspicious/noConsoleLog: 允许在解包异常时使用日志
+							console.error(
+								"❌ [IncrementalSyncManager] 冲突项包模式数据解包异常:",
+								{
+									项ID: remoteItem.id,
+									错误: error instanceof Error ? error.message : String(error),
+								},
+							);
+						}
+					}
+
 					const conflict: ConflictInfo = {
 						itemId: remoteItem.id,
 						type: "modify",
 						localVersion: localItem,
-						remoteVersion: remoteItem,
+						remoteVersion: processedRemoteItem,
 						resolution: remoteTime > localTime ? "remote" : "local",
 						reason: "内容冲突",
 					};
@@ -576,7 +1215,7 @@ class IncrementalSyncManager {
 
 					// 使用时间戳较新的版本
 					if (remoteTime > localTime) {
-						mergedData.push(remoteItem);
+						mergedData.push(processedRemoteItem);
 					} else {
 						mergedData.push(localItem);
 					}
@@ -590,9 +1229,148 @@ class IncrementalSyncManager {
 			localMap.delete(remoteItem.id);
 		}
 
+		// 处理未被预处理的远程项（确保所有远程项都被处理）
+		for (const remoteItem of remoteData.items) {
+			if (!processedRemoteIds.has(remoteItem.id)) {
+				const localItem = localMap.get(remoteItem.id);
+
+				if (!localItem) {
+					// 这些应该是已经被处理过的新增项，但以防万一有遗漏
+					// 改进的包模式数据识别逻辑
+					const isPackageItem = this.identifyPackageItem(remoteItem);
+
+					if (isPackageItem) {
+						packageItems.push(remoteItem);
+					} else {
+						regularItems.push(remoteItem);
+					}
+				}
+			}
+		}
+
+		// 处理新增的包模式数据
+		if (packageItems.length > 0) {
+			// biome-ignore lint/suspicious/noConsoleLog: 允许在关键解包操作时使用日志
+			console.log("📦 [IncrementalSyncManager] 开始处理新增的包模式数据:", {
+				包模式项数量: packageItems.length,
+				包模式项ID列表: packageItems.map((item) => item.id),
+				包模式项详情: packageItems.map((item) => ({
+					id: item.id,
+					type: item.type,
+					_syncType: item._syncType,
+					valuePreview:
+						typeof item.value === "string"
+							? `${item.value.substring(0, 100)}...`
+							: `${JSON.stringify(item.value).substring(0, 100)}...`,
+				})),
+			});
+
+			for (const packageItem of packageItems) {
+				try {
+					// 解包远程包模式数据
+					const unpackResult = await filePackageManager.unpackRemotePackageData(
+						packageItem,
+						this.deviceId,
+					);
+
+					if (unpackResult && unpackResult !== packageItem) {
+						// 解包成功，添加到合并结果
+						mergedData.push(unpackResult);
+
+						// biome-ignore lint/suspicious/noConsoleLog: 允许在解包成功时使用日志
+						console.log("✅ [IncrementalSyncManager] 新增包模式数据解包成功:", {
+							项ID: packageItem.id,
+							项类型: packageItem.type,
+							原始类型: packageItem._syncType,
+							解包后路径:
+								typeof unpackResult.value === "string"
+									? unpackResult.value
+									: `${JSON.stringify(unpackResult.value).substring(0, 100)}...`,
+						});
+					} else {
+						// 解包失败或无需解包，使用原始数据
+						mergedData.push(packageItem);
+
+						// biome-ignore lint/suspicious/noConsoleLog: 允许在解包失败时使用日志
+						console.log(
+							"⚠️ [IncrementalSyncManager] 新增包模式数据解包失败，使用原始数据:",
+							{
+								项ID: packageItem.id,
+								项类型: packageItem.type,
+								原始类型: packageItem._syncType,
+							},
+						);
+					}
+				} catch (error) {
+					// 解包异常，使用原始数据
+					mergedData.push(packageItem);
+
+					// biome-ignore lint/suspicious/noConsoleLog: 允许在解包异常时使用日志
+					console.error("❌ [IncrementalSyncManager] 新增包模式数据解包异常:", {
+						项ID: packageItem.id,
+						项类型: packageItem.type,
+						错误: error instanceof Error ? error.message : String(error),
+					});
+				}
+			}
+		}
+
+		// 处理新增的常规模式数据
+		if (regularItems.length > 0) {
+			// biome-ignore lint/suspicious/noConsoleLog: 允许在关键数据处理时使用日志
+			console.log("📄 [IncrementalSyncManager] 开始处理新增的常规模式数据:", {
+				常规项数量: regularItems.length,
+				常规项ID列表: regularItems.map((item) => item.id),
+				常规项详情: regularItems.map((item) => ({
+					id: item.id,
+					type: item.type,
+					valuePreview:
+						typeof item.value === "string"
+							? `${item.value.substring(0, 100)}...`
+							: `${JSON.stringify(item.value).substring(0, 100)}...`,
+				})),
+			});
+
+			for (const regularItem of regularItems) {
+				// 直接添加到合并结果
+				mergedData.push(regularItem);
+
+				// biome-ignore lint/suspicious/noConsoleLog: 允许在数据处理时使用日志
+				console.log("✅ [IncrementalSyncManager] 新增常规模式数据处理完成:", {
+					项ID: regularItem.id,
+					项类型: regularItem.type,
+				});
+			}
+		}
+
 		// 添加剩余的本地项（未被远程数据影响的项）
 		for (const localItem of localMap.values()) {
 			mergedData.push(localItem);
+		}
+
+		// 最终数据完整性验证
+		const finalIntegrityCheck = this.performFinalDataIntegrityCheck(
+			mergedData,
+			remoteData,
+		);
+
+		// biome-ignore lint/suspicious/noConsoleLog: 允许在合并完成时使用日志
+		console.log("🔀 [IncrementalSyncManager] 数据合并完成:", {
+			合并后数据项数量: mergedData.length,
+			冲突数量: conflicts.length,
+			合并后项ID列表: mergedData.map((item) => item.id),
+			新增包模式项数量: packageItems.length,
+			新增常规项数量: regularItems.length,
+			剩余本地项数量: localMap.size,
+			最终完整性检查: finalIntegrityCheck,
+		});
+
+		// 如果最终检查仍有问题，记录警告但不阻止流程
+		if (!finalIntegrityCheck.isComplete) {
+			console.warn(
+				"⚠️ [IncrementalSyncManager] 最终数据完整性检查仍有问题:",
+				finalIntegrityCheck.issues,
+			);
 		}
 
 		return { mergedData, conflicts };
@@ -949,52 +1727,133 @@ class FileSyncManager {
 			return;
 		}
 
+		const globalErrorTracker = getGlobalSyncErrorTracker();
 		const errors: string[] = [];
+		const MAX_CONCURRENT_SYNC = 3; // 限制并发同步数量
+		const syncPromises: Promise<void>[] = [];
 
-		for (const item of packageItems) {
+		// biome-ignore lint/suspicious/noConsoleLog: 允许在关键同步操作时使用日志
+		console.log("🔄 [FileSyncManager] 开始同步远程文件:", {
+			总文件数: packageItems.length,
+			最大并发数: MAX_CONCURRENT_SYNC,
+		});
+
+		// 分批处理文件，避免同时处理过多文件导致卡死
+		for (let i = 0; i < packageItems.length; i++) {
+			const item = packageItems[i];
+
+			// 检查全局错误状态
+			let packageInfo: any;
 			try {
-				let packageInfo: any;
-				try {
-					packageInfo = JSON.parse(item.value);
-				} catch {
-					continue;
-				}
-
-				const syncResult = await filePackageManager.syncFilesIntelligently(
-					packageInfo,
-					this.webdavConfig,
-				);
-
-				if (syncResult.hasChanges) {
-					// 更新本地数据库中的文件路径
-					try {
-						await this.updateFilePathsInDatabase(item.id, syncResult.paths);
-					} catch (dbError) {
-						const errorMsg = `更新数据库失败 (ID: ${item.id}): ${dbError instanceof Error ? dbError.message : String(dbError)}`;
-						errors.push(errorMsg);
-					}
-				} else {
-				}
+				packageInfo = JSON.parse(item.value);
 			} catch {
-				errors.push(`同步远程文件失败 (ID: ${item.id})`);
+				continue;
+			}
 
-				// 即使单个文件同步失败，也继续处理其他文件
-				// 这样可以避免单个文件处理失败影响整个同步流程
+			if (globalErrorTracker.hasFailedTooManyTimes(packageInfo.packageId)) {
+				// biome-ignore lint/suspicious/noConsoleLog: 允许在错误跳过时使用日志
+				console.log("⏭️ [FileSyncManager] 跳过已失败过多的文件:", {
+					itemId: item.id,
+					packageId: packageInfo.packageId,
+				});
+				continue;
+			}
+
+			// 创建同步Promise
+			const syncPromise = (async () => {
+				try {
+					const syncResult = await filePackageManager.syncFilesIntelligently(
+						packageInfo,
+						this.webdavConfig!,
+					);
+
+					if (syncResult.hasChanges) {
+						// biome-ignore lint/suspicious/noConsoleLog: 允许在关键同步操作时使用日志
+						console.log("🔄 [FileSyncManager] 文件同步完成，已更新数据库路径", {
+							itemId: item.id,
+							syncedPaths: syncResult.paths,
+						});
+					} else {
+						// biome-ignore lint/suspicious/noConsoleLog: 允许在关键同步操作时使用日志
+						console.log("📋 [FileSyncManager] 文件无需同步，已存在本地", {
+							itemId: item.id,
+							existingPaths: syncResult.paths,
+						});
+					}
+				} catch (error) {
+					const errorMsg = `同步远程文件失败 (ID: ${item.id}): ${error instanceof Error ? error.message : String(error)}`;
+					errors.push(errorMsg);
+
+					// 记录到全局错误跟踪器
+					if (packageInfo?.packageId) {
+						globalErrorTracker.recordError(packageInfo.packageId, errorMsg);
+					}
+
+					// biome-ignore lint/suspicious/noConsoleLog: 允许在错误处理时使用日志
+					console.error("❌ [FileSyncManager] 文件同步失败:", {
+						itemId: item.id,
+						packageId: packageInfo?.packageId,
+						error: errorMsg,
+					});
+				}
+			})();
+
+			syncPromises.push(syncPromise);
+
+			// 控制并发数量
+			if (syncPromises.length >= MAX_CONCURRENT_SYNC) {
+				// 等待至少一个Promise完成
+				await Promise.race(syncPromises);
+
+				// 移除已完成的Promise
+				for (let j = syncPromises.length - 1; j >= 0; j--) {
+					const promise = syncPromises[j];
+					if (
+						await promise.then(
+							() => true,
+							() => true,
+						)
+					) {
+						syncPromises.splice(j, 1);
+					}
+				}
 			}
 		}
 
+		// 等待所有剩余的同步完成
+		await Promise.allSettled(syncPromises);
+
 		// 如果有错误，记录但不中断整个流程
 		if (errors.length > 0) {
+			// biome-ignore lint/suspicious/noConsoleLog: 允许在错误汇总时使用日志
+			console.error("❌ [FileSyncManager] 部分文件同步失败:", {
+				错误数量: errors.length,
+				总文件数: packageItems.length,
+				错误列表: errors.slice(0, 5), // 只显示前5个错误，避免日志过多
+			});
 		}
+
+		// 输出错误跟踪器统计信息
+		const stats = globalErrorTracker.getStats();
+		// biome-ignore lint/suspicious/noConsoleLog: 允许在统计信息时使用日志
+		console.log("📊 [FileSyncManager] 同步完成，错误跟踪器统计:", stats);
 	}
 
 	/**
 	 * 更新数据库中的文件路径
+	 * 修复：此方法已弃用，更新逻辑移至filePackageManager.syncFilesIntelligently中
+	 * 保留此方法仅为向后兼容
+	 * @deprecated 请使用filePackageManager.syncFilesIntelligently中的自动更新逻辑
 	 */
 	private async updateFilePathsInDatabase(
 		itemId: string,
 		filePaths: string[],
 	): Promise<void> {
+		// biome-ignore lint/suspicious/noConsoleLog: 允许在弃用方法调用时使用日志
+		console.warn(
+			"⚠️ [FileSyncManager] updateFilePathsInDatabase方法已弃用，请使用filePackageManager.syncFilesIntelligently中的自动更新逻辑",
+		);
+
 		try {
 			await updateSQL("history", {
 				id: itemId,
@@ -1171,8 +2030,39 @@ export class SyncEngineV2 {
 	 * 设置同步模式配置
 	 */
 	setSyncModeConfig(config: SyncModeConfig): void {
+		// 检查文件模式是否发生变化
+		const fileModeChanged =
+			this.syncModeConfig?.settings.includeImages !==
+				config.settings.includeImages ||
+			this.syncModeConfig?.settings.includeFiles !==
+				config.settings.includeFiles;
+
+		// 记录配置变更
+		if (fileModeChanged) {
+			// biome-ignore lint/suspicious/noConsoleLog: 允许在关键配置变更时使用日志
+			console.log("🔄 [SyncEngine] 文件模式发生变化:", {
+				旧配置: {
+					includeImages: this.syncModeConfig?.settings.includeImages,
+					includeFiles: this.syncModeConfig?.settings.includeFiles,
+				},
+				新配置: {
+					includeImages: config.settings.includeImages,
+					includeFiles: config.settings.includeFiles,
+				},
+			});
+		}
+
 		this.syncModeConfig = config;
 		this.fileSyncManager.setSyncModeConfig(config);
+
+		// 如果文件模式发生变化，清除缓存以确保数据重新计算
+		if (fileModeChanged) {
+			// biome-ignore lint/suspicious/noConsoleLog: 允许在关键缓存操作时使用日志
+			console.log(
+				"🔄 [SyncEngine] 文件模式发生变化，清除缓存以确保同步计数正确",
+			);
+			this.clearCache();
+		}
 	}
 
 	/**
@@ -1226,6 +2116,15 @@ export class SyncEngineV2 {
 			timestamp: startTime,
 		};
 
+		// biome-ignore lint/suspicious/noConsoleLog: 允许在关键同步开始时使用日志
+		console.log("🚀 [SyncEngine] 开始双向同步:", {
+			同步模式: this.syncModeConfig?.mode,
+			包含图片: this.syncModeConfig?.settings.includeImages,
+			包含文件: this.syncModeConfig?.settings.includeFiles,
+			包含文本: this.syncModeConfig?.settings.includeText,
+			收藏模式: this.syncModeConfig?.settings.onlyFavorites,
+		});
+
 		// 声明在方法作用域内，以便在末尾日志中访问
 		let diffResult: {
 			itemsToSync: any[];
@@ -1243,11 +2142,19 @@ export class SyncEngineV2 {
 			let remoteFingerprints =
 				await this.metadataManager.downloadFingerprints();
 
+			// biome-ignore lint/suspicious/noConsoleLog: 允许在关键数据获取时使用日志
+			console.log("📥 [SyncEngine] 远程数据获取结果:", {
+				远程数据项数: remoteData?.items?.length || 0,
+				远程指纹数量: remoteFingerprints.size,
+			});
+
 			// 修复：检测远程数据缓存问题，如果远程数据为空但指纹数据不为空，强制刷新缓存
 			if (
 				(!remoteData?.items?.length || remoteData.items.length === 0) &&
 				remoteFingerprints.size > 0
 			) {
+				// biome-ignore lint/suspicious/noConsoleLog: 允许在关键缓存修复时使用日志
+				console.log("🔄 [SyncEngine] 检测到数据不一致，强制刷新缓存");
 				remoteData = await this.refreshRemoteDataCache();
 
 				// 修复：强制清除指纹缓存并重新获取指纹数据以确保一致性
@@ -1257,6 +2164,8 @@ export class SyncEngineV2 {
 
 			// 修复：确保远程数据和指纹数据的一致性
 			if (remoteData?.items?.length && remoteFingerprints.size === 0) {
+				// biome-ignore lint/suspicious/noConsoleLog: 允许在关键指纹重建时使用日志
+				console.log("🔧 [SyncEngine] 远程数据存在但指纹为空，重建指纹数据");
 				// 修复：强制清除指纹缓存，确保获取最新数据
 				this.metadataManager.clearFingerprintCache();
 				const retryFingerprints =
@@ -1276,7 +2185,8 @@ export class SyncEngineV2 {
 			}
 
 			// 2. 轻量级获取本地数据，只获取基本信息用于比较
-			const localLightweightData = await this.getLightweightLocalData();
+			// 修复：在删除检测阶段，需要包含软删除的项
+			const localLightweightData = await this.getLightweightLocalData(false);
 
 			// 3. 快速比较差异，确定需要同步的项
 			diffResult = await this.performSelectiveDiff(
@@ -1291,6 +2201,13 @@ export class SyncEngineV2 {
 
 			// 5. 下载远程数据并合并
 			if (remoteData && itemsToDownload.length > 0) {
+				// biome-ignore lint/suspicious/noConsoleLog: 允许在关键下载操作时使用日志
+				console.log("🔄 [SyncEngine] 开始下载远程数据:", {
+					需要下载项数量: itemsToDownload.length,
+					下载项ID列表: itemsToDownload,
+					远程数据总项数: remoteData.items.length,
+				});
+
 				// 筛选出需要下载的远程数据项
 				const filteredRemoteData: SyncData = {
 					...remoteData,
@@ -1299,26 +2216,63 @@ export class SyncEngineV2 {
 					),
 				};
 
+				// biome-ignore lint/suspicious/noConsoleLog: 允许在关键下载操作时使用日志
+				console.log("📋 [SyncEngine] 筛选后的下载数据:", {
+					筛选后项数量: filteredRemoteData.items.length,
+					筛选后项ID列表: filteredRemoteData.items.map((item) => item.id),
+				});
+
 				const { mergedData, conflicts } =
 					await this.incrementalSyncManager.mergeRemoteIncrementalData(
 						filteredRemoteData,
 						fullLocalData,
 					);
 
+				// biome-ignore lint/suspicious/noConsoleLog: 允许在关键合并操作时使用日志
+				console.log("🔀 [SyncEngine] 远程数据合并完成:", {
+					合并后数据项数量: mergedData.length,
+					冲突数量: conflicts.length,
+					合并后项ID列表: mergedData.map((item) => item.id),
+				});
+
 				// 解决冲突
 				if (conflicts.length > 0) {
 					const resolvedConflicts =
 						this.conflictResolver.resolveConflicts(conflicts);
 					result.conflicts = resolvedConflicts;
+
+					// biome-ignore lint/suspicious/noConsoleLog: 允许在冲突解决时使用日志
+					console.log("⚔️ [SyncEngine] 冲突解决完成:", {
+						解决冲突数量: resolvedConflicts.length,
+					});
 				}
 
 				// 更新本地数据
 				await this.updateLocalData(mergedData);
 
+				// biome-ignore lint/suspicious/noConsoleLog: 允许在关键数据更新时使用日志
+				console.log("💾 [SyncEngine] 本地数据更新完成");
+
 				// 同步远程文件
 				await this.fileSyncManager.syncRemoteFiles(mergedData);
 
+				// biome-ignore lint/suspicious/noConsoleLog: 允许在文件同步完成时使用日志
+				console.log("📁 [SyncEngine] 远程文件同步完成");
+
 				result.downloaded = itemsToDownload.length;
+
+				// biome-ignore lint/suspicious/noConsoleLog: 允许在下载完成时使用日志
+				console.log("✅ [SyncEngine] 下载操作完成:", {
+					实际下载数量: result.downloaded,
+					预期下载数量: itemsToDownload.length,
+				});
+			} else {
+				// biome-ignore lint/suspicious/noConsoleLog: 允许在跳过下载时使用日志
+				console.log("⏭️ [SyncEngine] 跳过下载操作:", {
+					远程数据存在: !!remoteData,
+					需要下载项数量: itemsToDownload.length,
+					原因: !remoteData ? "远程数据为空" : "没有需要下载的项",
+				});
 			}
 
 			// 6. 上传本地变更
@@ -1326,6 +2280,20 @@ export class SyncEngineV2 {
 				// 修复：只上传真正需要同步的项目，而不是所有本地数据
 				// fullLocalData 已经是经过选择性处理的数据，只包含需要同步的项目
 				const actualUploadCount = fullLocalData.length;
+
+				// biome-ignore lint/suspicious/noConsoleLog: 允许在关键上传操作时使用日志
+				console.log("⬆️ [SyncEngine] 准备上传本地变更:", {
+					需要上传项数量: itemsToSync.length,
+					实际处理项数量: actualUploadCount,
+					需要删除项数量: deletedIds.length,
+					上传项类型分布: fullLocalData.reduce(
+						(acc, item) => {
+							acc[item.type] = (acc[item.type] || 0) + 1;
+							return acc;
+						},
+						{} as Record<string, number>,
+					),
+				});
 
 				const syncData: SyncData = {
 					version: 2,
@@ -1398,6 +2366,11 @@ export class SyncEngineV2 {
 			// 7. 更新元数据
 			await this.updateMetadata();
 
+			// 8. 清理已同步的软删除项
+			if (deletedIds.length > 0) {
+				await this.permanentlyDeleteItems(deletedIds);
+			}
+
 			result.success = result.errors.length === 0;
 			this.lastSyncTime = Date.now();
 
@@ -1423,30 +2396,77 @@ export class SyncEngineV2 {
 	/**
 	 * 轻量级获取本地数据，只获取基本信息用于比较
 	 */
-	private async getLightweightLocalData(): Promise<any[]> {
+	private async getLightweightLocalData(
+		includeDeletedForDetection = false,
+	): Promise<any[]> {
 		try {
-			// 直接从数据库获取原始数据，不进行完整转换
-			const localRawData = await getHistoryData();
+			// 修复：在删除检测阶段，需要包含软删除的项
+			const localRawData = await getHistoryData(includeDeletedForDetection);
 
-			// 只进行基本的去重和过滤，不进行文件处理
+			// 只进行基本的去重，不进行过滤（保留软删除项用于检测）
 			const uniqueItems = this.deduplicateItems(localRawData as any[]);
-			const filteredItems = this.filterItemsBySyncMode(uniqueItems);
+
+			// 修复：分离删除检测和数据过滤逻辑
+			let filteredItems = uniqueItems;
+
+			// 如果不是删除检测阶段，才进行同步模式过滤
+			if (!includeDeletedForDetection) {
+				filteredItems = this.filterItemsBySyncMode(uniqueItems, false);
+			} else {
+				// 删除检测阶段，包含软删除项但仍然应用其他过滤条件
+				filteredItems = this.filterItemsBySyncMode(uniqueItems, true);
+			}
+
+			// 记录过滤前后的数据量变化，帮助诊断同步计数问题
+			// biome-ignore lint/suspicious/noConsoleLog: 允许在关键数据过滤时使用日志
+			console.log("📊 [SyncEngine] 本地数据过滤统计:", {
+				原始数据量: (localRawData as any[]).length,
+				去重后数据量: uniqueItems.length,
+				过滤后数据量: filteredItems.length,
+				当前同步模式: this.syncModeConfig?.mode,
+				包含图片: this.syncModeConfig?.settings.includeImages,
+				包含文件: this.syncModeConfig?.settings.includeFiles,
+				删除检测模式: includeDeletedForDetection,
+			});
 
 			// 只提取基本信息用于比较
-			const lightweightData = filteredItems.map((item) => ({
-				id: item.id,
-				type: item.type,
-				value: item.value,
-				createTime: item.createTime,
-				lastModified: item.lastModified || Date.now(),
-				favorite: item.favorite,
-				// 只计算基本校验和，不进行文件处理
-				checksum: calculateStringChecksum(
-					typeof item.value === "string"
-						? item.value
-						: JSON.stringify(item.value),
-				),
-			}));
+			const lightweightData = filteredItems.map((item) => {
+				// 使用统一的校验和计算函数，确保与generateFingerprint方法一致
+				const checksum = item.checksum || calculateUnifiedChecksum(item, false);
+
+				// biome-ignore lint/suspicious/noConsoleLog: 允许在轻量级数据处理时使用日志
+				console.log("🔍 [SyncEngine.getLightweightLocalData] 处理轻量级数据:", {
+					项ID: item.id,
+					项类型: item.type,
+					校验和: checksum,
+					是否已删除: item.deleted || false,
+					是否收藏: item.favorite,
+				});
+
+				return {
+					id: item.id,
+					type: item.type,
+					value: item.value,
+					createTime: item.createTime,
+					lastModified: item.lastModified || Date.now(),
+					favorite: item.favorite,
+					deleted: item.deleted || false, // 确保包含软删除标记
+					// 使用统一的校验和计算方式
+					checksum,
+				};
+			});
+
+			// biome-ignore lint/suspicious/noConsoleLog: 允许在轻量级数据处理完成时使用日志
+			console.log(
+				"📊 [SyncEngine.getLightweightLocalData] 轻量级数据处理完成:",
+				{
+					原始数据量: (localRawData as any[]).length,
+					去重后数据量: uniqueItems.length,
+					过滤后数据量: filteredItems.length,
+					轻量级数据量: lightweightData.length,
+					当前同步模式: this.syncModeConfig?.mode,
+				},
+			);
 
 			return lightweightData;
 		} catch {
@@ -1529,7 +2549,7 @@ export class SyncEngineV2 {
 	}
 
 	/**
-	 * 执行选择性差异检测 - 优化版本，主要依赖指纹数据
+	 * 执行选择性差异检测 - 修复版本，基于用户实际删除操作而不是简单的数据条目数对比
 	 */
 	private async performSelectiveDiff(
 		localData: any[],
@@ -1544,12 +2564,48 @@ export class SyncEngineV2 {
 		const itemsToDownload: string[] = [];
 		const deletedIds: string[] = [];
 
+		// 修复：获取包含软删除项的完整数据用于删除检测
+		const localDataWithDeleted = await this.getLightweightLocalData(true);
+
+		// 修复：先检测本地删除操作，确保删除项不参与指纹比较
+		const localDeletions = this.detectLocalDeletions(localDataWithDeleted);
+
+		// biome-ignore lint/suspicious/noConsoleLog: 允许在关键删除检测时使用日志
+		console.log("🗑️ [SyncEngine] 早期检测本地软删除操作:", {
+			当前本地数据量: localData.length,
+			包含删除项的数据量: localDataWithDeleted.length,
+			检测到的删除项数量: localDeletions.length,
+			删除项ID列表: localDeletions,
+		});
+
+		// 将检测到的本地删除操作添加到删除列表
+		for (const deletedId of localDeletions) {
+			if (!deletedIds.includes(deletedId)) {
+				deletedIds.push(deletedId);
+			}
+		}
+
 		// 生成本地指纹
 		const localFingerprints = new Map<string, DataFingerprint>();
 		for (const item of localData) {
+			// 使用统一的校验和计算函数，确保与generateFingerprint方法一致
+			const checksum = item.checksum || calculateUnifiedChecksum(item, false);
+
+			// biome-ignore lint/suspicious/noConsoleLog: 允许在指纹生成时使用日志
+			console.log("🔍 [SyncEngine.performSelectiveDiff] 生成本地指纹:", {
+				项ID: item.id,
+				项类型: item.type,
+				校验和: checksum,
+				时间戳: item.lastModified || item.createTime,
+				数据大小:
+					typeof item.value === "string"
+						? item.value.length
+						: JSON.stringify(item.value).length,
+			});
+
 			localFingerprints.set(item.id, {
 				id: item.id,
-				checksum: item.checksum,
+				checksum,
 				timestamp: item.lastModified || item.createTime,
 				size:
 					typeof item.value === "string"
@@ -1559,11 +2615,65 @@ export class SyncEngineV2 {
 			});
 		}
 
-		// 依赖指纹数据进行差异检测
+		// 修复：传递删除项信息给指纹比较方法，确保删除项不参与比较
 		const diff = this.metadataManager.compareFingerprints(
 			localFingerprints,
 			remoteFingerprints,
+			localDeletions, // 传递删除项ID列表
 		);
+
+		// 记录差异检测结果，帮助诊断同步计数问题
+		// biome-ignore lint/suspicious/noConsoleLog: 允许在关键差异检测时使用日志
+		console.log("🔍 [SyncEngine] 差异检测结果:", {
+			本地数据量: localData.length,
+			远程指纹数量: remoteFingerprints.size,
+			已删除项数量: localDeletions.length,
+			已删除项ID列表: localDeletions,
+			新增项数量: diff.added.length,
+			新增项ID列表: diff.added.map((fp) => fp.id),
+			修改项数量: diff.modified.length,
+			修改项ID列表: diff.modified.map((fp) => fp.id),
+			未变更项数量: diff.unchanged.length,
+			未变更项ID列表: diff.unchanged,
+			当前同步模式: this.syncModeConfig?.mode,
+			删除检测方式: "完全基于软删除标记，删除项不参与指纹比较",
+		});
+
+		// 添加校验和一致性检查日志
+		// biome-ignore lint/suspicious/noConsoleLog: 允许在校验和一致性检查时使用日志
+		console.log("🔍 [SyncEngine] 校验和一致性检查:", {
+			本地数据校验和示例: localData.slice(0, 3).map((item) => ({
+				id: item.id,
+				type: item.type,
+				checksum: item.checksum,
+			})),
+			远程指纹校验和示例: Array.from(remoteFingerprints.entries())
+				.slice(0, 3)
+				.map(([id, fp]) => ({
+					id,
+					type: fp.type,
+					checksum: fp.checksum,
+				})),
+		});
+
+		// 修复：验证删除项是否正确地从指纹比较中排除
+		const deletedItemsInUnchanged = diff.unchanged.filter((id) =>
+			localDeletions.includes(id),
+		);
+		if (deletedItemsInUnchanged.length > 0) {
+			// biome-ignore lint/suspicious/noConsoleLog: 允许在错误检测时使用日志
+			console.error("❌ [SyncEngine] 检测到删除项被错误归类为未变更项:", {
+				错误删除项ID列表: deletedItemsInUnchanged,
+				原因: "删除项应该被排除在指纹比较之外，但仍然出现在未变更项中",
+			});
+		} else {
+			// biome-ignore lint/suspicious/noConsoleLog: 允许在验证成功时使用日志
+			console.log("✅ [SyncEngine] 删除项正确排除验证通过:", {
+				验证结果: "所有删除项都已正确地从指纹比较中排除",
+				删除项数量: localDeletions.length,
+				未变更项中不包含删除项: true,
+			});
+		}
 
 		// 如果指纹数据完整且远程数据为空，优先使用指纹数据
 		let effectiveRemoteData = remoteData;
@@ -1605,15 +2715,21 @@ export class SyncEngineV2 {
 			}
 		}
 
-		// 检测本地删除操作，确保删除操作优先
-		if (this.getLastLocalSnapshotSize() > 0) {
-			const localDeletions = this.detectLocalDeletions(localData);
-			for (const deletedId of localDeletions) {
-				if (!deletedIds.includes(deletedId)) {
-					deletedIds.push(deletedId);
-				}
-			}
-		}
+		// 修复：删除检测已在前面完成，这里只需要确认删除项已正确添加到列表
+		// biome-ignore lint/suspicious/noConsoleLog: 允许在关键删除检测时使用日志
+		console.log("ℹ️ [SyncEngine] 删除检测已在指纹比较前完成:", {
+			删除项数量: localDeletions.length,
+			删除项ID列表: localDeletions,
+			原因: "删除项不参与指纹比较，避免被误判为未变更项",
+		});
+
+		// 修复：完全移除基于数据差异的删除检测逻辑
+		// 删除操作现在完全基于软删除标记，不再比较本地和远程的数据量差异
+		// biome-ignore lint/suspicious/noConsoleLog: 允许在关键删除检测时使用日志
+		console.log("ℹ️ [SyncEngine] 删除检测已完全基于软删除标记:", {
+			删除项数量: localDeletions.length,
+			原因: "删除操作现在完全基于软删除标记，避免误判新设备首次同步",
+		});
 
 		// 在处理远程数据前，先移除已标记为删除的项目，避免操作冲突
 		const filteredLocalData = localData.filter(
@@ -1622,11 +2738,10 @@ export class SyncEngineV2 {
 		const filteredDiff = {
 			added: diff.added.filter((fp) => !deletedIds.includes(fp.id)),
 			modified: diff.modified.filter((fp) => !deletedIds.includes(fp.id)),
-			deleted: diff.deleted.filter((id) => !deletedIds.includes(id)),
 			unchanged: diff.unchanged.filter((id) => !deletedIds.includes(id)),
 		};
 
-		// 确定需要下载和删除的项
+		// 确定需要下载的项
 		if (effectiveRemoteData) {
 			const remoteIds = new Set(
 				effectiveRemoteData.items.map((item) => item.id),
@@ -1635,16 +2750,27 @@ export class SyncEngineV2 {
 				effectiveRemoteData.items.map((item) => [item.id, item]),
 			);
 
-			// 正确区分下载和删除操作，避免与本地删除冲突
-			for (const deletedId of filteredDiff.deleted) {
-				// 如果该项已经被标记为本地删除，则不再处理为下载
-				if (deletedIds.includes(deletedId)) {
-					continue;
-				}
+			// 修复：当本地数据库为空时，确保所有远程项都被标记为需要下载
+			const isLocalDatabaseEmpty = localData.length === 0;
 
-				if (remoteIds.has(deletedId)) {
-					// 远程有该项，本地没有，且未被标记为本地删除，这是需要下载的新增项
-					itemsToDownload.push(deletedId);
+			if (isLocalDatabaseEmpty && effectiveRemoteData?.items?.length > 0) {
+				for (const remoteItem of effectiveRemoteData.items) {
+					if (
+						!itemsToDownload.includes(remoteItem.id) &&
+						!deletedIds.includes(remoteItem.id)
+					) {
+						itemsToDownload.push(remoteItem.id);
+
+						// biome-ignore lint/suspicious/noConsoleLog: 允许在关键下载检测时使用日志
+						console.log(
+							"⬇️ [SyncEngine] 本地数据库为空，标记远程项为需要下载:",
+							{
+								项ID: remoteItem.id,
+								项类型: remoteItem.type,
+								原因: "本地数据库为空，所有远程数据都需要下载",
+							},
+						);
+					}
 				}
 			}
 
@@ -1677,14 +2803,24 @@ export class SyncEngineV2 {
 					}
 				}
 			}
-		} else {
-			// 没有远程数据，所有diff.deleted都是需要删除的项
-			for (const deletedId of filteredDiff.deleted) {
-				if (!deletedIds.includes(deletedId)) {
-					deletedIds.push(deletedId);
-				}
-			}
 		}
+
+		// 记录最终确定的同步操作，帮助诊断同步计数问题
+		// 修复：将统计日志移到下载项标记完成后
+		// biome-ignore lint/suspicious/noConsoleLog: 允许在关键同步决策时使用日志
+		console.log("📋 [SyncEngine] 最终同步操作统计:", {
+			需要上传项数量: itemsToSync.length,
+			需要下载项数量: itemsToDownload.length,
+			需要删除项数量: deletedIds.length,
+			上传项类型分布: itemsToSync.reduce(
+				(acc, item) => {
+					acc[item.type] = (acc[item.type] || 0) + 1;
+					return acc;
+				},
+				{} as Record<string, number>,
+			),
+			下载项ID列表: itemsToDownload,
+		});
 
 		// 更新本地快照
 		this.updateLocalSnapshot(
@@ -1711,8 +2847,6 @@ export class SyncEngineV2 {
 			})),
 		);
 
-		// 简化差异检测统计日志，只在有变更时输出详细信息
-
 		// 简化操作冲突检测和解决逻辑
 		const uploadIds = new Set(itemsToSync.map((item) => item.id));
 		const downloadIds = new Set(itemsToDownload);
@@ -1734,6 +2868,13 @@ export class SyncEngineV2 {
 			downloadDeleteOverlap.length > 0 ||
 			uploadDownloadOverlap.length > 0
 		) {
+			// biome-ignore lint/suspicious/noConsoleLog: 允许在冲突解决时使用日志
+			console.log("⚠️ [SyncEngine] 检测到操作冲突，开始解决:", {
+				上传下载冲突: uploadDownloadOverlap,
+				上传删除冲突: uploadDeleteOverlap,
+				下载删除冲突: downloadDeleteOverlap,
+			});
+
 			// 解决上传与删除的冲突：优先保留删除操作
 			for (const conflictId of uploadDeleteOverlap) {
 				const index = itemsToSync.findIndex((item) => item.id === conflictId);
@@ -1778,7 +2919,8 @@ export class SyncEngineV2 {
 				finalUploadDeleteOverlap.length === 0 &&
 				finalDownloadDeleteOverlap.length === 0
 			) {
-				// 操作冲突已解决
+				// biome-ignore lint/suspicious/noConsoleLog: 允许在冲突解决完成时使用日志
+				console.log("✅ [SyncEngine] 操作冲突已解决");
 			}
 		}
 
@@ -1805,8 +2947,9 @@ export class SyncEngineV2 {
 
 	/**
 	 * 根据同步模式过滤项
+	 * 修复：添加一个选项来控制是否过滤软删除项，用于删除检测阶段
 	 */
-	private filterItemsBySyncMode(items: any[]): any[] {
+	private filterItemsBySyncMode(items: any[], includeDeleted = false): any[] {
 		if (!this.syncModeConfig?.settings) {
 			return items;
 		}
@@ -1814,6 +2957,15 @@ export class SyncEngineV2 {
 		const settings = this.syncModeConfig.settings;
 
 		return items.filter((item) => {
+			// 修复：只有在非删除检测阶段才过滤掉已标记为软删除的项
+			// 修复：使用双重检查确保能正确识别数据库中存储为数字1的软删除标记
+			if (
+				!includeDeleted &&
+				(item.deleted === true || (item.deleted as any) === 1)
+			) {
+				return false;
+			}
+
 			// 收藏模式检查
 			if (settings.onlyFavorites && !item.favorite) {
 				return false;
@@ -1841,24 +2993,30 @@ export class SyncEngineV2 {
 	 * 转换为同步项
 	 */
 	private convertToSyncItem(item: any): SyncItem {
-		// 修复：对于文件项，只使用value字段计算校验和，避免因为其他字段的变化导致误判
-		let checksum: string;
-		let size: number;
+		// 使用统一的校验和计算函数，确保与generateFingerprint方法一致
+		const checksum = item.checksum || calculateUnifiedChecksum(item, false);
 
+		// 计算数据大小
+		let size: number;
 		if (item.type === "image" || item.type === "files") {
-			// 对于文件项，只使用value字段计算校验和和大小
-			const valueStr =
+			// 对于文件项，使用value字段的长度
+			size =
 				typeof item.value === "string"
-					? item.value
-					: JSON.stringify(item.value);
-			checksum = calculateStringChecksum(valueStr);
-			size = valueStr.length;
+					? item.value.length
+					: JSON.stringify(item.value).length;
 		} else {
-			// 对于其他类型，使用整个对象的JSON字符串
-			const itemStr = JSON.stringify(item);
-			checksum = calculateStringChecksum(item.value);
-			size = itemStr.length;
+			// 对于其他类型，使用整个对象的JSON字符串长度
+			size = JSON.stringify(item).length;
 		}
+
+		// biome-ignore lint/suspicious/noConsoleLog: 允许在同步项转换时使用日志
+		console.log("🔄 [SyncEngine.convertToSyncItem] 转换为同步项:", {
+			项ID: item.id,
+			项类型: item.type,
+			校验和: checksum,
+			数据大小: size,
+			设备ID: this.deviceId,
+		});
 
 		return {
 			id: item.id,
@@ -1875,8 +3033,9 @@ export class SyncEngineV2 {
 			subtype: item.subtype,
 			lastModified: item.lastModified || Date.now(),
 			deviceId: this.deviceId,
-			size: size,
-			checksum: checksum,
+			size,
+			checksum,
+			deleted: item.deleted || false, // 确保包含软删除标记
 		};
 	}
 
@@ -1933,15 +3092,49 @@ export class SyncEngineV2 {
 	private async updateLocalData(data: SyncItem[]): Promise<void> {
 		const errors: string[] = [];
 
+		// biome-ignore lint/suspicious/noConsoleLog: 允许在关键数据更新时使用日志
+		console.log("💾 [SyncEngine] 开始更新本地数据:", {
+			需要更新的项数量: data.length,
+			项ID列表: data.map((item) => item.id),
+			项类型分布: data.reduce(
+				(acc, item) => {
+					acc[item.type] = (acc[item.type] || 0) + 1;
+					return acc;
+				},
+				{} as Record<string, number>,
+			),
+		});
+
 		for (const item of data) {
 			try {
 				await this.insertOrUpdateItem(item);
+
+				// biome-ignore lint/suspicious/noConsoleLog: 允许在单项更新成功时使用日志
+				console.log("✅ [SyncEngine] 项更新成功:", {
+					项ID: item.id,
+					项类型: item.type,
+					操作: "插入或更新",
+				});
 			} catch (error) {
-				errors.push(
-					`更新本地数据失败 (ID: ${item.id}): ${error instanceof Error ? error.message : String(error)}`,
-				);
+				const errorMsg = `更新本地数据失败 (ID: ${item.id}): ${error instanceof Error ? error.message : String(error)}`;
+				errors.push(errorMsg);
+
+				// biome-ignore lint/suspicious/noConsoleLog: 允许在单项更新失败时使用日志
+				console.error("❌ [SyncEngine] 项更新失败:", {
+					项ID: item.id,
+					项类型: item.type,
+					错误: errorMsg,
+				});
 			}
 		}
+
+		// biome-ignore lint/suspicious/noConsoleLog: 允许在数据更新完成时使用日志
+		console.log("📊 [SyncEngine] 本地数据更新完成:", {
+			总项数量: data.length,
+			成功数量: data.length - errors.length,
+			失败数量: errors.length,
+			错误列表: errors,
+		});
 
 		// 如果有错误，记录但不中断整个流程
 	}
@@ -1966,11 +3159,29 @@ export class SyncEngineV2 {
 				subtype: item.subtype,
 			};
 
+			// biome-ignore lint/suspicious/noConsoleLog: 允许在关键数据库操作时使用日志
+			console.log("🔍 [SyncEngine] 检查项是否已存在:", {
+				项ID: item.id,
+				项类型: item.type,
+				查询条件: { type: item.type, value: item.value },
+			});
+
 			// 检查是否已存在
 			const existingRecords = (await selectSQL("history", {
 				type: item.type,
 				value: item.value,
 			})) as any[];
+
+			// biome-ignore lint/suspicious/noConsoleLog: 允许在数据库查询结果时使用日志
+			console.log("📋 [SyncEngine] 数据库查询结果:", {
+				项ID: item.id,
+				现有记录数量: existingRecords?.length || 0,
+				现有记录: existingRecords?.map((record) => ({
+					id: record.id,
+					type: record.type,
+					createTime: record.createTime,
+				})),
+			});
 
 			if (existingRecords && existingRecords.length > 0) {
 				const existing = existingRecords[0];
@@ -1981,11 +3192,44 @@ export class SyncEngineV2 {
 					count: Math.max(existing.count || 0, item.count || 0),
 					createTime: existing.createTime,
 				};
+
+				// biome-ignore lint/suspicious/noConsoleLog: 允许在更新操作时使用日志
+				console.log("🔄 [SyncEngine] 更新现有项:", {
+					项ID: item.id,
+					现有项ID: existing.id,
+					更新数据: updateItem,
+				});
+
 				await updateSQL("history", updateItem);
+
+				// biome-ignore lint/suspicious/noConsoleLog: 允许在更新成功时使用日志
+				console.log("✅ [SyncEngine] 项更新成功:", {
+					项ID: item.id,
+					操作: "更新",
+				});
 			} else {
+				// biome-ignore lint/suspicious/noConsoleLog: 允许在插入操作时使用日志
+				console.log("➕ [SyncEngine] 插入新项:", {
+					项ID: item.id,
+					插入数据: localItem,
+				});
+
 				await this.insertForSync("history", localItem);
+
+				// biome-ignore lint/suspicious/noConsoleLog: 允许在插入成功时使用日志
+				console.log("✅ [SyncEngine] 项插入成功:", {
+					项ID: item.id,
+					操作: "插入",
+				});
 			}
 		} catch (error) {
+			// biome-ignore lint/suspicious/noConsoleLog: 允许在错误处理时使用日志
+			console.error("❌ [SyncEngine] 插入或更新项失败:", {
+				项ID: item.id,
+				项类型: item.type,
+				错误: error instanceof Error ? error.message : String(error),
+			});
+
 			// 重新抛出错误，让上层处理
 			throw new Error(
 				`插入或更新项失败 (ID: ${item.id}): ${error instanceof Error ? error.message : String(error)}`,
@@ -2258,19 +3502,112 @@ export class SyncEngineV2 {
 	}
 
 	/**
+	 * 检查项是否在本地快照中
+	 */
+	isInLocalSnapshot(itemId: string): boolean {
+		return this.lastLocalSnapshot.has(itemId);
+	}
+
+	/**
 	 * 检测本地删除操作（供IncrementalSyncManager调用）
+	 * 修复：基于软删除标记检测删除操作，而不是基于数据差异
 	 */
 	detectLocalDeletions(currentLocalData: SyncItem[]): string[] {
-		const currentIds = new Set(currentLocalData.map((item) => item.id));
 		const deletedIds: string[] = [];
 
-		for (const [id] of this.lastLocalSnapshot) {
-			if (!currentIds.has(id)) {
-				deletedIds.push(id);
+		// 遍历当前本地数据，查找标记为删除的项
+		for (const item of currentLocalData) {
+			// 修复：使用双重检查确保能正确识别数据库中存储为数字1的软删除标记
+			if (item.deleted === true || (item.deleted as any) === 1) {
+				deletedIds.push(item.id);
+
+				// biome-ignore lint/suspicious/noConsoleLog: 允许在关键删除检测时使用日志
+				console.log("🗑️ [SyncEngine] 检测到软删除项:", {
+					删除项ID: item.id,
+					删除项类型: item.type,
+					删除项时间戳: item.lastModified,
+				});
 			}
 		}
 
+		// biome-ignore lint/suspicious/noConsoleLog: 允许在关键删除检测时使用日志
+		console.log("📊 [SyncEngine] 软删除检测完成:", {
+			当前本地数据量: currentLocalData.length,
+			检测到的删除项数量: deletedIds.length,
+			删除项ID列表: deletedIds,
+		});
+
 		return deletedIds;
+	}
+
+	/**
+	 * 标记项为软删除
+	 * 当用户删除数据时调用此方法，而不是直接从数据库删除
+	 */
+	async markItemAsDeleted(itemId: string): Promise<boolean> {
+		try {
+			// biome-ignore lint/suspicious/noConsoleLog: 允许在关键删除操作时使用日志
+			console.log("🗑️ [SyncEngine] 标记项为软删除:", { itemId });
+
+			// 更新数据库中的删除标记
+			await updateSQL("history", {
+				id: itemId,
+				deleted: true, // 标记为软删除
+			});
+
+			return true;
+		} catch (error) {
+			// biome-ignore lint/suspicious/noConsoleLog: 允许在错误日志时使用日志
+			console.error("❌ [SyncEngine] 标记软删除失败:", {
+				itemId,
+				error: error instanceof Error ? error.message : String(error),
+			});
+			return false;
+		}
+	}
+
+	/**
+	 * 彻底删除已标记为软删除的项
+	 * 在同步完成后调用此方法清理本地数据
+	 */
+	async permanentlyDeleteItems(itemIds: string[]): Promise<void> {
+		if (itemIds.length === 0) {
+			return;
+		}
+
+		try {
+			// biome-ignore lint/suspicious/noConsoleLog: 允许在关键删除操作时使用日志
+			console.log("🗑️ [SyncEngine] 彻底删除已同步的软删除项:", {
+				删除项ID列表: itemIds,
+			});
+
+			// 使用新的数据库删除函数，真正从数据库中删除这些项
+			const { deleteFromDatabase } = await import("@/database");
+			const result = await deleteFromDatabase("history", itemIds);
+
+			// biome-ignore lint/suspicious/noConsoleLog: 允许在删除结果时使用日志
+			console.log("📊 [SyncEngine] 彻底删除操作完成:", {
+				总删除项数量: itemIds.length,
+				成功删除数量: result.success,
+				失败删除数量: result.failed,
+				错误列表: result.errors,
+			});
+
+			// 如果有失败的删除操作，记录但不抛出异常
+			if (result.failed > 0) {
+				// biome-ignore lint/suspicious/noConsoleLog: 允许在部分失败时使用日志
+				console.warn("⚠️ [SyncEngine] 部分删除操作失败:", {
+					失败数量: result.failed,
+					错误列表: result.errors,
+				});
+			}
+		} catch (error) {
+			// biome-ignore lint/suspicious/noConsoleLog: 允许在错误日志时使用日志
+			console.error("❌ [SyncEngine] 彻底删除失败:", {
+				删除项ID列表: itemIds,
+				error: error instanceof Error ? error.message : String(error),
+			});
+		}
 	}
 
 	/**

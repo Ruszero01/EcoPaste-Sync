@@ -1,5 +1,5 @@
 import type { TableName, TablePayload } from "@/types/database";
-import { exists, remove } from "@tauri-apps/plugin-fs";
+import {} from "@tauri-apps/plugin-fs";
 import Database from "@tauri-apps/plugin-sql";
 import { entries, isBoolean, isNil, map, omitBy, some } from "lodash-es";
 
@@ -292,25 +292,25 @@ export const deleteSQL = async (tableName: TableName, item: TablePayload) => {
 	const { id, type, value } = item;
 
 	// 先检查删除前的状态
-	const _beforeResult = await executeSQL(
+	const _beforeResult = (await executeSQL(
 		`SELECT deleted FROM ${tableName} WHERE id = ?;`,
 		[id],
-	);
+	)) as any[];
 
 	// 使用软删除：更新 deleted 标记而不是真正删除
 	await executeSQL(`UPDATE ${tableName} SET deleted = 1 WHERE id = ?;`, [id]);
 
 	// 验证软删除是否成功
-	const verifyResult = await executeSQL(
+	const verifyResult = (await executeSQL(
 		`SELECT COUNT(*) as count FROM ${tableName} WHERE id = ? AND deleted = 1;`,
 		[id],
-	);
+	)) as any[];
 
 	// 同时检查该项的当前状态
-	const _currentState = await executeSQL(
+	const _currentState = (await executeSQL(
 		`SELECT deleted FROM ${tableName} WHERE id = ?;`,
 		[id],
-	);
+	)) as any[];
 
 	// 检查软删除是否真的成功
 	if (verifyResult.length > 0 && verifyResult[0].count === 0) {
@@ -323,14 +323,12 @@ export const deleteSQL = async (tableName: TableName, item: TablePayload) => {
 		`SELECT COUNT(*) as totalCount FROM ${tableName} WHERE deleted = 0;`,
 	);
 
-	// 对于图片类型，还需要删除对应的文件
+	// 注意：我们不再删除本地文件系统中的原始文件
+	// 因为剪切板是复制操作，删除源文件容易导致原本的数据丢失
+	// 我们只删除数据库记录和云端数据，保留本地文件系统中的原始文件
 	if (type === "image" && value) {
-		const path = resolveImagePath(value);
-		const existed = await exists(path);
-
-		if (existed) {
-			return remove(resolveImagePath(value));
-		}
+		// biome-ignore lint/suspicious/noConsoleLog: 允许在关键文件保留操作时使用日志
+		console.log(`📝 保留本地图片文件: ${value}`);
 	}
 };
 
@@ -442,8 +440,21 @@ const getFields = async (tableName: TableName) => {
 /**
  * 获取所有历史数据（过滤已删除项）
  */
-export const getHistoryData = async () => {
-	const result = await selectSQL("history", { deleted: 0 });
+export const getHistoryData = async (includeDeleted = false) => {
+	// 根据参数决定是否包含已删除项
+	let result: any[];
+
+	if (includeDeleted) {
+		// 获取所有数据，包括已删除项
+		result = (await executeSQL(
+			"SELECT * FROM history ORDER BY createTime DESC;",
+		)) as any[];
+	} else {
+		// 只获取未删除项
+		result = (await executeSQL(
+			"SELECT * FROM history WHERE deleted = 0 ORDER BY createTime DESC;",
+		)) as any[];
+	}
 
 	// 同时检查数据库中的总数据状态
 	const totalResult = (await executeSQL(
@@ -728,4 +739,72 @@ export const resetAllData = async () => {
 		console.error("❌ 数据库重置失败", error);
 		return false;
 	}
+};
+
+/**
+ * 从数据库中彻底删除记录（物理删除）
+ * @param tableName 表名称
+ * @param ids 要删除的记录ID数组
+ */
+export const deleteFromDatabase = async (
+	tableName: TableName,
+	ids: string[],
+) => {
+	if (ids.length === 0) {
+		return { success: 0, failed: 0, errors: [] as string[] };
+	}
+
+	const results = { success: 0, failed: 0, errors: [] as string[] };
+
+	try {
+		// 使用事务确保删除操作的原子性
+		await executeSQL("BEGIN TRANSACTION;");
+
+		for (const id of ids) {
+			try {
+				// 先获取记录信息，仅用于日志记录
+				const records = (await executeSQL(
+					`SELECT * FROM ${tableName} WHERE id = ?;`,
+					[id],
+				)) as any[];
+
+				if (records.length > 0) {
+					const record = records[0];
+
+					// 注意：我们不再删除本地文件系统中的原始文件
+					// 因为剪切板是复制操作，删除源文件容易导致原本的数据丢失
+					// 我们只删除数据库记录和云端数据，保留本地文件系统中的原始文件
+					if (record.type === "image" && record.value) {
+						// 记录保留本地文件的信息，但不删除文件
+						// biome-ignore lint/suspicious/noConsoleLog: 允许在关键文件保留操作时使用日志
+						console.log(`📝 保留本地图片文件: ${record.value}`);
+					}
+
+					// 从数据库中彻底删除记录
+					await executeSQL(`DELETE FROM ${tableName} WHERE id = ?;`, [id]);
+					results.success++;
+				} else {
+					results.failed++;
+					results.errors.push(`记录不存在: ${id}`);
+				}
+			} catch (error) {
+				results.failed++;
+				results.errors.push(
+					`删除记录失败 (ID: ${id}): ${error instanceof Error ? error.message : String(error)}`,
+				);
+			}
+		}
+
+		// 提交事务
+		await executeSQL("COMMIT;");
+	} catch (error) {
+		// 出错时回滚
+		await executeSQL("ROLLBACK;");
+		results.failed = ids.length;
+		results.errors = [
+			`事务执行失败: ${error instanceof Error ? error.message : String(error)}`,
+		];
+	}
+
+	return results;
 };
