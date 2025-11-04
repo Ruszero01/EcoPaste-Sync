@@ -27,11 +27,13 @@ import { emit } from "@tauri-apps/api/event";
  *
  * @param item 要计算校验和的数据项
  * @param includeMetadata 是否包含元数据（默认为false，只计算核心内容）
+ * @param includeFavorite 是否包含收藏状态（默认为false，用于检测收藏状态变化）
  * @returns 计算出的校验和
  */
 export function calculateUnifiedChecksum(
 	item: any,
 	includeMetadata = false,
+	includeFavorite = true, // 修复：默认包含收藏状态以检测收藏状态变化
 ): string {
 	// 提取核心字段，排除同步相关的临时字段
 	const coreFields: any = {
@@ -45,6 +47,12 @@ export function calculateUnifiedChecksum(
 		coreFields.createTime = item.createTime;
 		coreFields.favorite = !!item.favorite;
 		coreFields.note = item.note || "";
+	}
+
+	// 修复：统一收藏状态处理逻辑，避免重复添加
+	// 如果需要包含收藏状态（用于检测收藏状态变化）
+	if (includeFavorite) {
+		coreFields.favorite = !!item.favorite;
 	}
 
 	// 按固定顺序序列化，避免属性顺序影响
@@ -67,13 +75,37 @@ export function calculateUnifiedChecksum(
 		项ID: item.id,
 		项类型: item.type,
 		包含元数据: includeMetadata,
+		包含收藏状态: includeFavorite,
+		原始收藏状态: item.favorite,
 		核心字段: coreFields,
 		排序后对象: orderedObject,
 		校验和源字符串: checksumSource,
 		计算出的校验和: checksum,
+		调用堆栈: new Error().stack
+			?.split("\n")
+			.slice(1, 4)
+			.map((line) => line.trim()),
 	});
 
 	return checksum;
+}
+
+/**
+ * 计算不包含收藏状态的校验和
+ * 用于比较内容变化，忽略收藏状态差异
+ */
+export function calculateContentChecksum(item: any): string {
+	// 使用不包含收藏状态的校验和计算
+	return calculateUnifiedChecksum(item, false, false);
+}
+
+/**
+ * 计算包含收藏状态的校验和
+ * 用于检测收藏状态变化
+ */
+export function calculateFavoriteAwareChecksum(item: any): string {
+	// 使用包含收藏状态的校验和计算
+	return calculateUnifiedChecksum(item, false, true);
 }
 
 // 全局事件发射器
@@ -267,10 +299,13 @@ class MetadataManager {
 
 	/**
 	 * 生成数据指纹
+	 * 修复：始终使用不包含收藏状态的校验和，确保收藏模式切换前后校验和一致
+	 * 这样可以避免收藏模式切换导致同一条数据被误判为新增项
 	 */
 	generateFingerprint(item: SyncItem): DataFingerprint {
-		// 使用统一的校验和计算函数，确保不同同步模式下同一项的校验和一致
-		const checksum = item.checksum || calculateUnifiedChecksum(item, false);
+		// 修复：始终使用不包含收藏状态的校验和，确保收藏模式切换前后校验和一致
+		// 这样可以避免收藏模式切换导致同一条数据被误判为新增项
+		const checksum = calculateContentChecksum(item);
 
 		// 计算数据大小
 		let size: number;
@@ -292,7 +327,53 @@ class MetadataManager {
 			校验和: checksum,
 			时间戳: item.lastModified || Date.now(),
 			数据大小: size,
+			校验和类型: "内容校验和（不包含收藏状态）",
+			说明: "确保收藏模式切换前后校验和一致，避免误判为新增项",
 		});
+
+		return {
+			id: item.id,
+			checksum,
+			timestamp: item.lastModified || Date.now(),
+			size,
+			type: item.type,
+		};
+	}
+
+	/**
+	 * 生成包含收藏状态的数据指纹
+	 * 用于检测收藏状态变化
+	 */
+	generateFavoriteAwareFingerprint(item: SyncItem): DataFingerprint {
+		// 修复：使用专门的包含收藏状态的校验和计算函数
+		const checksum = calculateFavoriteAwareChecksum(item);
+
+		// 计算数据大小
+		let size: number;
+		if (item.type === "image" || item.type === "files") {
+			// 对于文件项，使用value字段的长度
+			size =
+				typeof item.value === "string"
+					? item.value.length
+					: JSON.stringify(item.value).length;
+		} else {
+			// 对于其他类型，使用整个对象的JSON字符串长度
+			size = JSON.stringify(item).length;
+		}
+
+		// biome-ignore lint/suspicious/noConsoleLog: 允许在指纹生成时使用日志
+		console.log(
+			"🔍 [MetadataManager.generateFavoriteAwareFingerprint] 生成包含收藏状态的数据指纹:",
+			{
+				项ID: item.id,
+				项类型: item.type,
+				收藏状态: item.favorite,
+				校验和: checksum,
+				时间戳: item.lastModified || Date.now(),
+				数据大小: size,
+				校验和类型: "收藏状态感知校验和（包含收藏状态）",
+			},
+		);
 
 		return {
 			id: item.id,
@@ -306,20 +387,42 @@ class MetadataManager {
 	/**
 	 * 比较指纹差异
 	 * 修复：增加对删除项的支持，确保删除项不会被误判为未变更项
+	 * 修复：增加对收藏状态变化的智能判断，避免收藏状态变化被误判为内容修改
 	 */
 	compareFingerprints(
 		local: Map<string, DataFingerprint>,
 		remote: Map<string, DataFingerprint>,
 		deletedItemIds: string[] = [], // 新增参数：已删除项的ID列表
+		localDataItems?: any[], // 新增参数：本地原始数据项，用于检测收藏状态变化
 	): {
 		added: DataFingerprint[];
 		modified: DataFingerprint[];
 		unchanged: string[];
+		favoriteChanged: string[]; // 新增：收藏状态变化的项ID列表
 	} {
 		const added: DataFingerprint[] = [];
 		const modified: DataFingerprint[] = [];
 		const unchanged: string[] = [];
+		const favoriteChanged: string[] = []; // 新增：收藏状态变化的项
 		const deletedSet = new Set(deletedItemIds);
+
+		// 添加调试日志：记录指纹比较的初始状态
+		// biome-ignore lint/suspicious/noConsoleLog: 允许在关键指纹比较时使用日志
+		console.log("🔍 [MetadataManager.compareFingerprints] 开始指纹比较:", {
+			本地指纹数量: local.size,
+			远程指纹数量: remote.size,
+			已删除项数量: deletedItemIds.length,
+			已删除项ID列表: deletedItemIds,
+			本地数据项数量: localDataItems?.length || 0,
+		});
+
+		// 创建本地数据项的映射，便于查找
+		const localDataMap = new Map<string, any>();
+		if (localDataItems) {
+			for (const item of localDataItems) {
+				localDataMap.set(item.id, item);
+			}
+		}
 
 		// 检查本地新增和修改的项
 		for (const [id, localFp] of local) {
@@ -361,6 +464,7 @@ class MetadataManager {
 						项类型: localFp.type,
 						本地校验和: localFp.checksum,
 						原因: "远程指纹不存在且本地有有效校验和",
+						可能原因: "可能是收藏模式切换导致的校验和不匹配",
 					});
 				} else {
 					// biome-ignore lint/suspicious/noConsoleLog: 允许在关键指纹比较时使用日志
@@ -372,12 +476,38 @@ class MetadataManager {
 					});
 				}
 			} else {
-				// 修复：对于文件项，需要特殊处理校验和比较
-				if (localFp.type === "image" || localFp.type === "files") {
-					// 对于文件项，如果校验和不匹配，记录详细信息
-					if (localFp.checksum !== remoteFp.checksum) {
+				// 修复：智能判断校验和差异的原因
+				if (localFp.checksum !== remoteFp.checksum) {
+					// 获取本地数据项，用于检测收藏状态变化
+					const localDataItem = localDataMap.get(id);
+
+					// 修复：检查是否只是收藏状态变化导致的校验和差异
+					if (
+						localDataItem &&
+						this.isChecksumDifferenceOnlyDueToFavorite(
+							localDataItem,
+							localFp,
+							remoteFp,
+						)
+					) {
+						// 如果只是收藏状态变化，标记为收藏状态变化，而不是内容修改
+						favoriteChanged.push(id);
+
+						// biome-ignore lint/suspicious/noConsoleLog: 允许在关键收藏状态检测时使用日志
+						console.log("⭐ [MetadataManager] 检测到收藏状态变化:", {
+							项ID: id,
+							项类型: localFp.type,
+							本地校验和: localFp.checksum,
+							远程校验和: remoteFp.checksum,
+							本地收藏状态: localDataItem.favorite,
+							操作: "标记为收藏状态变化，不触发内容同步",
+						});
+					} else {
+						// 真正的内容变化，标记为修改项
+						modified.push(localFp);
+
 						// biome-ignore lint/suspicious/noConsoleLog: 允许在关键校验和比较时使用日志
-						console.log("🔍 [MetadataManager] 文件项校验和不匹配:", {
+						console.log("🔍 [MetadataManager] 检测到内容变化:", {
 							项ID: id,
 							项类型: localFp.type,
 							本地校验和: localFp.checksum,
@@ -385,44 +515,21 @@ class MetadataManager {
 							本地时间戳: localFp.timestamp,
 							远程时间戳: remoteFp.timestamp,
 							操作: "标记为修改项",
+							原因: "检测到真实的内容变化，需要同步",
 						});
-						modified.push(localFp);
-					} else {
-						// biome-ignore lint/suspicious/noConsoleLog: 允许在关键校验和比较时使用日志
-						console.log("✅ [MetadataManager] 文件项校验和匹配:", {
-							项ID: id,
-							项类型: localFp.type,
-							本地校验和: localFp.checksum,
-							远程校验和: remoteFp.checksum,
-							操作: "标记为未变更项",
-						});
-						unchanged.push(id);
 					}
 				} else {
-					// 对于非文件项，直接比较校验和
-					if (localFp.checksum !== remoteFp.checksum) {
-						// biome-ignore lint/suspicious/noConsoleLog: 允许在关键校验和比较时使用日志
-						console.log("🔍 [MetadataManager] 非文件项校验和不匹配:", {
-							项ID: id,
-							项类型: localFp.type,
-							本地校验和: localFp.checksum,
-							远程校验和: remoteFp.checksum,
-							本地时间戳: localFp.timestamp,
-							远程时间戳: remoteFp.timestamp,
-							操作: "标记为修改项",
-						});
-						modified.push(localFp);
-					} else {
-						// biome-ignore lint/suspicious/noConsoleLog: 允许在关键校验和比较时使用日志
-						console.log("✅ [MetadataManager] 非文件项校验和匹配:", {
-							项ID: id,
-							项类型: localFp.type,
-							本地校验和: localFp.checksum,
-							远程校验和: remoteFp.checksum,
-							操作: "标记为未变更项",
-						});
-						unchanged.push(id);
-					}
+					// 校验和匹配，标记为未变更
+					unchanged.push(id);
+
+					// biome-ignore lint/suspicious/noConsoleLog: 允许在关键校验和比较时使用日志
+					console.log("✅ [MetadataManager] 校验和匹配:", {
+						项ID: id,
+						项类型: localFp.type,
+						本地校验和: localFp.checksum,
+						远程校验和: remoteFp.checksum,
+						操作: "标记为未变更项",
+					});
 				}
 			}
 		}
@@ -441,10 +548,153 @@ class MetadataManager {
 			新增项数量: added.length,
 			修改项数量: modified.length,
 			未变更项数量: unchanged.length,
+			收藏状态变化项数量: favoriteChanged.length,
+			收藏状态变化项ID列表: favoriteChanged,
 			删除检测方式: "完全基于软删除标记，删除项不参与指纹比较",
 		});
 
-		return { added, modified, unchanged };
+		return { added, modified, unchanged, favoriteChanged };
+	}
+
+	/**
+	 * 检查校验和差异是否仅由收藏状态变化引起
+	 * 修复：新增方法，用于智能判断校验和差异的原因
+	 */
+	private isChecksumDifferenceOnlyDueToFavorite(
+		localDataItem: any,
+		localFp: DataFingerprint,
+		remoteFp: DataFingerprint,
+	): boolean {
+		// 如果没有本地数据项，无法判断，返回false
+		if (!localDataItem) {
+			return false;
+		}
+
+		// 计算不包含收藏状态的内容校验和
+		const contentChecksum = calculateContentChecksum(localDataItem);
+
+		// 计算包含收藏状态的完整校验和
+		const favoriteAwareChecksum = calculateFavoriteAwareChecksum(localDataItem);
+
+		// biome-ignore lint/suspicious/noConsoleLog: 允许在关键校验和比较时使用日志
+		console.log(
+			"🔍 [MetadataManager.isChecksumDifferenceOnlyDueToFavorite] 分析校验和差异:",
+			{
+				项ID: localDataItem.id,
+				项类型: localDataItem.type,
+				本地收藏状态: localDataItem.favorite,
+				内容校验和: contentChecksum,
+				收藏状态感知校验和: favoriteAwareChecksum,
+				本地指纹校验和: localFp.checksum,
+				远程指纹校验和: remoteFp.checksum,
+			},
+		);
+
+		// 情况1：远程校验和与内容校验和匹配，但与本地校验和不匹配
+		// 这表明本地校验和包含了收藏状态，而远程校验和不包含
+		if (
+			remoteFp.checksum === contentChecksum &&
+			localFp.checksum !== contentChecksum
+		) {
+			// biome-ignore lint/suspicious/noConsoleLog: 允许在关键判断结果时使用日志
+			console.log("✅ [MetadataManager] 确认收藏状态变化情况1:", {
+				项ID: localDataItem.id,
+				判断: "远程校验和与内容校验和匹配，但与本地校验和不匹配",
+				结论: "校验和差异仅由收藏状态变化引起",
+			});
+			return true;
+		}
+
+		// 情况2：本地校验和与内容校验和匹配，但与远程校验和不匹配
+		// 这表明远程校验和包含了收藏状态，而本地校验和不包含
+		if (
+			localFp.checksum === contentChecksum &&
+			remoteFp.checksum !== contentChecksum
+		) {
+			// biome-ignore lint/suspicious/noConsoleLog: 允许在关键判断结果时使用日志
+			console.log("✅ [MetadataManager] 确认收藏状态变化情况2:", {
+				项ID: localDataItem.id,
+				判断: "本地校验和与内容校验和匹配，但与远程校验和不匹配",
+				结论: "校验和差异仅由收藏状态变化引起",
+			});
+			return true;
+		}
+
+		// 情况3：本地校验和与收藏状态感知校验和匹配，远程校验和与内容校验和匹配
+		// 这表明本地是包含收藏状态的校验和，远程是不包含收藏状态的校验和
+		if (
+			localFp.checksum === favoriteAwareChecksum &&
+			remoteFp.checksum === contentChecksum
+		) {
+			// biome-ignore lint/suspicious/noConsoleLog: 允许在关键判断结果时使用日志
+			console.log("✅ [MetadataManager] 确认收藏状态变化情况3:", {
+				项ID: localDataItem.id,
+				判断: "本地校验和包含收藏状态，远程校验和不包含收藏状态",
+				结论: "校验和差异仅由收藏状态变化引起",
+			});
+			return true;
+		}
+
+		// 情况4：本地校验和与内容校验和匹配，远程校验和与收藏状态感知校验和匹配
+		// 这表明本地是不包含收藏状态的校验和，远程是包含收藏状态的校验和
+		if (
+			localFp.checksum === contentChecksum &&
+			remoteFp.checksum === favoriteAwareChecksum
+		) {
+			// biome-ignore lint/suspicious/noConsoleLog: 允许在关键判断结果时使用日志
+			console.log("✅ [MetadataManager] 确认收藏状态变化情况4:", {
+				项ID: localDataItem.id,
+				判断: "本地校验和不包含收藏状态，远程校验和包含收藏状态",
+				结论: "校验和差异仅由收藏状态变化引起",
+			});
+			return true;
+		}
+
+		// 如果以上情况都不匹配，则认为是真实的内容变化
+		// biome-ignore lint/suspicious/noConsoleLog: 允许在关键判断结果时使用日志
+		console.log("❌ [MetadataManager] 确认内容变化:", {
+			项ID: localDataItem.id,
+			判断: "校验和差异不符合收藏状态变化的特征",
+			结论: "检测到真实的内容变化，需要同步",
+		});
+
+		return false;
+	}
+
+	/**
+	 * 比较包含收藏状态的指纹差异
+	 * 用于检测收藏状态变化
+	 * 修复：改进收藏状态变化检测逻辑，使用新的智能判断方法
+	 */
+	compareFavoriteAwareFingerprints(
+		local: Map<string, DataFingerprint>,
+		remote: Map<string, DataFingerprint>,
+		deletedItemIds: string[] = [], // 已删除项的ID列表
+		localDataItems?: any[], // 本地原始数据项，用于检测收藏状态变化
+	): {
+		added: DataFingerprint[];
+		modified: DataFingerprint[];
+		unchanged: string[];
+		favoriteChanged: string[]; // 收藏状态发生变化的项ID列表
+	} {
+		// 修复：直接使用改进的compareFingerprints方法，它已经包含了智能的收藏状态变化检测
+		// biome-ignore lint/suspicious/noConsoleLog: 允许在关键指纹比较时使用日志
+		console.log(
+			"🔍 [MetadataManager.compareFavoriteAwareFingerprints] 使用改进的指纹比较方法:",
+			{
+				本地指纹数量: local.size,
+				远程指纹数量: remote.size,
+				已删除项数量: deletedItemIds.length,
+				本地数据项数量: localDataItems?.length || 0,
+			},
+		);
+
+		return this.compareFingerprints(
+			local,
+			remote,
+			deletedItemIds,
+			localDataItems,
+		);
 	}
 
 	/**
@@ -570,8 +820,15 @@ class IncrementalSyncManager {
 		// 添加新增和修改的项
 		for (const fp of [...diff.added, ...diff.modified]) {
 			const item = localData.find((i) => i.id === fp.id);
-			if (item && this.shouldSyncItem(item, syncModeConfig)) {
-				itemsToSync.push(item);
+			if (item) {
+				// 检查是否是收藏状态变更
+				const isFavoriteChange =
+					diff.favoriteChanged?.includes(item.id) || false;
+
+				// 如果是收藏状态变更，允许在收藏模式下同步
+				if (this.shouldSyncItem(item, syncModeConfig, isFavoriteChange)) {
+					itemsToSync.push(item);
+				}
 			}
 		}
 
@@ -614,17 +871,42 @@ class IncrementalSyncManager {
 
 	/**
 	 * 判断是否应该同步该项
+	 * 修复：允许收藏状态变更在收藏模式下同步，确保收藏状态变更能够正确同步到远程
+	 * 修复：优化收藏模式下的同步策略，只上传不下载
 	 */
 	private shouldSyncItem(
 		item: SyncItem,
 		syncModeConfig: SyncModeConfig | null,
+		allowFavoriteChanges = false, // 新增参数：是否允许收藏状态变更
 	): boolean {
 		if (!syncModeConfig?.settings) return true;
 
 		const settings = syncModeConfig.settings;
 
-		// 收藏模式检查
+		// 修复：收藏模式检查 - 允许收藏状态变更同步，但过滤其他非收藏项
 		if (settings.onlyFavorites && !item.favorite) {
+			// 如果是收藏状态变更，则允许同步
+			if (allowFavoriteChanges) {
+				// biome-ignore lint/suspicious/noConsoleLog: 允许在关键过滤逻辑时使用日志
+				console.log(
+					"⭐ [IncrementalSyncManager] 收藏模式下允许收藏状态变更同步:",
+					{
+						项ID: item.id,
+						项类型: item.type,
+						收藏状态: item.favorite,
+						处理方式: "允许同步收藏状态变更",
+					},
+				);
+				return true;
+			}
+
+			// biome-ignore lint/suspicious/noConsoleLog: 允许在关键过滤逻辑时使用日志
+			console.log("⭐ [IncrementalSyncManager] 收藏模式下跳过非收藏项:", {
+				项ID: item.id,
+				项类型: item.type,
+				收藏状态: item.favorite,
+				处理方式: "完全跳过同步，非收藏项不应该上传到远程",
+			});
 			return false;
 		}
 
@@ -1023,6 +1305,7 @@ class IncrementalSyncManager {
 
 	/**
 	 * 合并远程增量数据
+	 * 修复：增加对收藏状态变化的处理
 	 */
 	async mergeRemoteIncrementalData(
 		remoteData: SyncData,
@@ -1057,6 +1340,16 @@ class IncrementalSyncManager {
 				integrityCheck.issues,
 			);
 			await this.attemptDataRecovery(remoteData, localData, integrityCheck);
+		}
+
+		// 检查收藏状态变化
+		const favoriteChanges = this.detectFavoriteChanges(remoteData, localData);
+		if (favoriteChanges.length > 0) {
+			// biome-ignore lint/suspicious/noConsoleLog: 允许在收藏状态变化检测时使用日志
+			console.log("⭐ [IncrementalSyncManager] 检测到收藏状态变化:", {
+				收藏状态变化项数量: favoriteChanges.length,
+				收藏状态变化项详情: favoriteChanges,
+			});
 		}
 
 		// 处理删除的项
@@ -1096,6 +1389,72 @@ class IncrementalSyncManager {
 				// 检查冲突
 				const localTime = new Date(localItem.createTime).getTime();
 				const remoteTime = new Date(remoteItem.createTime).getTime();
+
+				// 修复：优先检查收藏状态冲突
+				const localFavorite = !!localItem.favorite;
+				const remoteFavorite = !!remoteItem.favorite;
+
+				// 修复：如果收藏状态不同，优先保留本地收藏状态
+				if (localFavorite !== remoteFavorite) {
+					// biome-ignore lint/suspicious/noConsoleLog: 允许在收藏状态冲突时使用日志
+					console.log("⭐ [IncrementalSyncManager] 检测到收藏状态冲突:", {
+						项ID: localItem.id,
+						项类型: localItem.type,
+						本地收藏状态: localFavorite,
+						远程收藏状态: remoteFavorite,
+						解决策略: "优先保留本地收藏状态",
+					});
+
+					// 修复：在收藏模式切换时，特别处理收藏状态冲突
+					let finalFavoriteState = localFavorite;
+					let resolutionReason = "优先保留本地收藏状态";
+
+					// 如果是从全部模式切换到收藏模式，完全忽略远程收藏状态
+					if (this.syncEngine.checkTransitioningToFavoriteMode()) {
+						finalFavoriteState = localFavorite;
+						resolutionReason =
+							"从全部模式切换到收藏模式，完全忽略远程收藏状态，保持本地状态";
+					}
+					// 如果是从收藏模式切换到全部模式，完全忽略远程非收藏状态
+					else if (this.syncEngine.checkTransitioningFromFavoriteMode()) {
+						finalFavoriteState = localFavorite;
+						resolutionReason =
+							"从收藏模式切换到全部模式，完全忽略远程非收藏状态，保持本地状态";
+					}
+					// 修复：特别处理本地取消收藏的情况
+					else if (!localFavorite && remoteFavorite) {
+						// 本地未收藏，远程收藏 - 优先保留本地的未收藏状态
+						// 这解决了用户取消收藏后，远程数据覆盖本地状态的问题
+						finalFavoriteState = false;
+						resolutionReason =
+							"本地取消收藏，优先保留本地未收藏状态，避免远程收藏数据覆盖本地状态";
+					}
+					// 修复：本地收藏，远程未收藏
+					else if (localFavorite && !remoteFavorite) {
+						// 本地收藏，远程未收藏 - 保持本地收藏状态
+						finalFavoriteState = true;
+						resolutionReason = "本地收藏，保持本地收藏状态";
+					}
+
+					// 优先保留本地收藏状态
+					const finalItem = {
+						...localItem,
+						favorite: finalFavoriteState,
+					};
+
+					// biome-ignore lint/suspicious/noConsoleLog: 允许在收藏状态冲突解决时使用日志
+					console.log("⭐ [IncrementalSyncManager] 收藏状态冲突解决结果:", {
+						项ID: localItem.id,
+						项类型: localItem.type,
+						本地收藏状态: localFavorite,
+						远程收藏状态: remoteFavorite,
+						最终收藏状态: finalFavoriteState,
+						解决策略: resolutionReason,
+					});
+
+					mergedData.push(finalItem);
+					continue;
+				}
 
 				// 修复：对于文件项，需要特殊处理冲突检测
 				let hasConflict = false;
@@ -1213,11 +1572,17 @@ class IncrementalSyncManager {
 					};
 					conflicts.push(conflict);
 
-					// 使用时间戳较新的版本
-					if (remoteTime > localTime) {
-						mergedData.push(processedRemoteItem);
-					} else {
+					// 修复：优先保留本地版本，特别是当收藏状态不同时
+					if (localFavorite !== remoteFavorite) {
+						// 如果收藏状态不同，优先保留本地版本
 						mergedData.push(localItem);
+					} else {
+						// 收藏状态相同，使用时间戳较新的版本
+						if (remoteTime > localTime) {
+							mergedData.push(processedRemoteItem);
+						} else {
+							mergedData.push(localItem);
+						}
 					}
 				} else {
 					// 无冲突，使用本地版本
@@ -1373,7 +1738,189 @@ class IncrementalSyncManager {
 			);
 		}
 
+		// 处理收藏状态变化
+		this.processFavoriteChanges(favoriteChanges, mergedData);
+
+		// 修复：确保收藏状态变更后的数据校验和正确
+		// 这样可以避免收藏状态变更被误判为内容修改
+		for (const change of favoriteChanges) {
+			const mergedItem = mergedData.find((item) => item.id === change.itemId);
+			if (mergedItem) {
+				// 重新计算包含收藏状态的校验和
+				const favoriteAwareChecksum = calculateUnifiedChecksum(
+					mergedItem,
+					false,
+					true,
+				);
+
+				// 更新校验和
+				mergedItem.checksum = favoriteAwareChecksum;
+
+				// biome-ignore lint/suspicious/noConsoleLog: 允许在收藏状态处理时使用日志
+				console.log("⭐ [IncrementalSyncManager] 更新收藏状态变更项的校验和:", {
+					项ID: change.itemId,
+					项类型: mergedItem.type,
+					本地收藏状态: change.localFavorite,
+					远程收藏状态: change.remoteFavorite,
+					最终收藏状态: mergedItem.favorite,
+					新校验和: favoriteAwareChecksum,
+					处理方式: "确保校验和包含收藏状态，避免被误判为内容修改",
+				});
+			}
+		}
+
 		return { mergedData, conflicts };
+	}
+
+	/**
+	 * 检测收藏状态变化
+	 * 修复：优先保留本地收藏状态，避免远程数据覆盖本地的收藏状态变更
+	 */
+	private detectFavoriteChanges(
+		remoteData: SyncData,
+		localData: SyncItem[],
+	): Array<{
+		itemId: string;
+		localFavorite: boolean;
+		remoteFavorite: boolean;
+		changeType: "local_to_remote" | "remote_to_local" | "conflict";
+	}> {
+		const changes: Array<{
+			itemId: string;
+			localFavorite: boolean;
+			remoteFavorite: boolean;
+			changeType: "local_to_remote" | "remote_to_local" | "conflict";
+		}> = [];
+
+		const remoteMap = new Map(remoteData.items.map((item) => [item.id, item]));
+
+		// 检查本地数据中的收藏状态变化
+		for (const localItem of localData) {
+			const remoteItem = remoteMap.get(localItem.id);
+			if (remoteItem) {
+				const localFavorite = !!localItem.favorite;
+				const remoteFavorite = !!remoteItem.favorite;
+
+				if (localFavorite !== remoteFavorite) {
+					// 修复：优先保留本地收藏状态，特别是当本地取消收藏时
+					let changeType: "local_to_remote" | "remote_to_local" | "conflict";
+
+					// 修复：特别处理本地取消收藏的情况
+					if (!localFavorite && remoteFavorite) {
+						// 本地未收藏，远程收藏 - 优先保留本地的未收藏状态
+						// 这解决了用户取消收藏后，远程数据覆盖本地状态的问题
+						changeType = "local_to_remote";
+					} else if (localFavorite && !remoteFavorite) {
+						// 本地收藏，远程未收藏 - 保持本地收藏状态
+						changeType = "local_to_remote";
+					} else {
+						// 其他情况，检查时间戳
+						const localTime = new Date(
+							localItem.lastModified || localItem.createTime,
+						).getTime();
+						const remoteTime = new Date(
+							remoteItem.lastModified || remoteItem.createTime,
+						).getTime();
+
+						if (localTime > remoteTime) {
+							changeType = "local_to_remote";
+						} else if (remoteTime > localTime) {
+							changeType = "remote_to_local";
+						} else {
+							changeType = "conflict";
+						}
+					}
+
+					changes.push({
+						itemId: localItem.id,
+						localFavorite,
+						remoteFavorite,
+						changeType,
+					});
+
+					// biome-ignore lint/suspicious/noConsoleLog: 允许在收藏状态变化检测时使用日志
+					console.log("⭐ [IncrementalSyncManager] 检测到收藏状态变化:", {
+						项ID: localItem.id,
+						项类型: localItem.type,
+						本地收藏状态: localFavorite,
+						远程收藏状态: remoteFavorite,
+						变化类型: changeType,
+						解决策略: "优先保留本地收藏状态",
+					});
+				}
+			}
+		}
+
+		return changes;
+	}
+
+	/**
+	 * 处理收藏状态变化
+	 * 修复：优先保留本地收藏状态，避免远程数据覆盖本地的收藏状态变更
+	 */
+	private processFavoriteChanges(
+		favoriteChanges: Array<{
+			itemId: string;
+			localFavorite: boolean;
+			remoteFavorite: boolean;
+			changeType: "local_to_remote" | "remote_to_local" | "conflict";
+		}>,
+		mergedData: SyncItem[],
+	): void {
+		for (const change of favoriteChanges) {
+			const mergedItem = mergedData.find((item) => item.id === change.itemId);
+			if (mergedItem) {
+				let finalFavoriteState: boolean;
+				let strategy: string;
+
+				// 修复：在收藏模式切换时，完全忽略远程收藏状态
+				if (this.syncEngine.checkTransitioningToFavoriteMode()) {
+					// 从全部模式切换到收藏模式，完全忽略远程收藏状态
+					finalFavoriteState = change.localFavorite;
+					strategy =
+						"从全部模式切换到收藏模式，完全忽略远程收藏状态，保持本地状态";
+				} else if (this.syncEngine.checkTransitioningFromFavoriteMode()) {
+					// 从收藏模式切换到全部模式，完全忽略远程收藏状态
+					finalFavoriteState = change.localFavorite;
+					strategy =
+						"从收藏模式切换到全部模式，完全忽略远程收藏状态，保持本地状态";
+				} else {
+					// 正常情况下的收藏状态处理
+					if (!change.localFavorite && change.remoteFavorite) {
+						// 本地未收藏，远程收藏 - 优先保留本地的未收藏状态
+						// 这解决了用户取消收藏后，远程数据覆盖本地状态的问题
+						finalFavoriteState = false;
+						strategy =
+							"本地取消收藏，优先保留本地未收藏状态，避免远程收藏数据覆盖本地状态";
+					} else if (change.localFavorite && !change.remoteFavorite) {
+						// 本地收藏，远程未收藏 - 保持本地收藏状态
+						finalFavoriteState = true;
+						strategy = "本地收藏，保持本地收藏状态";
+					} else if (change.localFavorite && change.remoteFavorite) {
+						// 双方都是收藏 - 保持收藏状态
+						finalFavoriteState = true;
+						strategy = "双方都是收藏，保持收藏状态";
+					} else {
+						// 双方都未收藏 - 保持未收藏状态
+						finalFavoriteState = false;
+						strategy = "双方都未收藏，保持未收藏状态";
+					}
+				}
+
+				// 更新合并后项的收藏状态
+				mergedItem.favorite = finalFavoriteState;
+
+				// biome-ignore lint/suspicious/noConsoleLog: 允许在收藏状态处理时使用日志
+				console.log("⭐ [IncrementalSyncManager] 处理收藏状态变化:", {
+					项ID: change.itemId,
+					本地收藏状态: change.localFavorite,
+					远程收藏状态: change.remoteFavorite,
+					变化类型: change.changeType,
+					解决策略: strategy,
+					最终收藏状态: finalFavoriteState,
+				});
+			}
+		}
 	}
 
 	/**
@@ -1956,6 +2503,38 @@ class ConflictResolver {
 }
 
 /**
+ * 错误类型枚举
+ */
+enum ErrorType {
+	NETWORK = "network",
+	FILE_OPERATION = "file_operation",
+	DATABASE = "database",
+	PARSING = "parsing",
+	VALIDATION = "validation",
+	SYNC_CONFLICT = "sync_conflict",
+	UNKNOWN = "unknown",
+}
+
+/**
+ * 错误严重程度枚举
+ */
+enum ErrorSeverity {
+	FATAL = "fatal", // 致命错误，必须停止同步
+	NON_FATAL = "non_fatal", // 非致命错误，可以忽略
+	WARNING = "warning", // 警告，仅记录日志
+}
+
+/**
+ * 错误分类结果接口
+ */
+interface ErrorClassification {
+	type: ErrorType;
+	severity: ErrorSeverity;
+	message: string;
+	originalError: any;
+}
+
+/**
  * 高效同步引擎 V2
  */
 export class SyncEngineV2 {
@@ -1980,6 +2559,171 @@ export class SyncEngineV2 {
 
 	// 删除检测相关
 	private lastLocalSnapshot: Map<string, DataFingerprint> = new Map();
+
+	// 收藏模式切换相关
+	private isTransitioningToFavoriteMode = false;
+	private isTransitioningFromFavoriteMode = false;
+
+	/**
+	 * 错误分类方法 - 对错误进行分类和严重程度判断
+	 */
+	private classifyError(error: any): ErrorClassification {
+		const errorMessage = error instanceof Error ? error.message : String(error);
+
+		// 网络相关错误
+		if (
+			errorMessage.includes("network") ||
+			errorMessage.includes("connection") ||
+			errorMessage.includes("timeout") ||
+			errorMessage.includes("ECONNREFUSED") ||
+			errorMessage.includes("ENOTFOUND")
+		) {
+			return {
+				type: ErrorType.NETWORK,
+				severity: ErrorSeverity.NON_FATAL,
+				message: `网络错误: ${errorMessage}`,
+				originalError: error,
+			};
+		}
+
+		// 文件操作错误
+		if (
+			errorMessage.includes("file") ||
+			errorMessage.includes("path") ||
+			errorMessage.includes("directory") ||
+			errorMessage.includes("ENOENT") ||
+			errorMessage.includes("EACCES")
+		) {
+			return {
+				type: ErrorType.FILE_OPERATION,
+				severity: ErrorSeverity.NON_FATAL,
+				message: `文件操作错误: ${errorMessage}`,
+				originalError: error,
+			};
+		}
+
+		// 数据库错误
+		if (
+			errorMessage.includes("database") ||
+			errorMessage.includes("sql") ||
+			errorMessage.includes("query") ||
+			errorMessage.includes("transaction")
+		) {
+			return {
+				type: ErrorType.DATABASE,
+				severity: ErrorSeverity.NON_FATAL,
+				message: `数据库错误: ${errorMessage}`,
+				originalError: error,
+			};
+		}
+
+		// 解析错误
+		if (
+			errorMessage.includes("parse") ||
+			errorMessage.includes("json") ||
+			errorMessage.includes("syntax") ||
+			errorMessage.includes("invalid format")
+		) {
+			return {
+				type: ErrorType.PARSING,
+				severity: ErrorSeverity.WARNING,
+				message: `数据解析错误: ${errorMessage}`,
+				originalError: error,
+			};
+		}
+
+		// 验证错误
+		if (
+			errorMessage.includes("validation") ||
+			errorMessage.includes("invalid") ||
+			errorMessage.includes("missing") ||
+			errorMessage.includes("required")
+		) {
+			return {
+				type: ErrorType.VALIDATION,
+				severity: ErrorSeverity.WARNING,
+				message: `数据验证错误: ${errorMessage}`,
+				originalError: error,
+			};
+		}
+
+		// 同步冲突错误
+		if (
+			errorMessage.includes("conflict") ||
+			errorMessage.includes("merge") ||
+			errorMessage.includes("concurrent")
+		) {
+			return {
+				type: ErrorType.SYNC_CONFLICT,
+				severity: ErrorSeverity.NON_FATAL,
+				message: `同步冲突错误: ${errorMessage}`,
+				originalError: error,
+			};
+		}
+
+		// 默认为未知错误，但标记为非致命
+		return {
+			type: ErrorType.UNKNOWN,
+			severity: ErrorSeverity.NON_FATAL,
+			message: `未知错误: ${errorMessage}`,
+			originalError: error,
+		};
+	}
+
+	/**
+	 * 判断错误是否致命
+	 */
+	private isFatalError(error: any): boolean {
+		const classification = this.classifyError(error);
+
+		// 目前所有错误都被分类为非致命或警告
+		// 只有在特定情况下才认为是致命错误
+		// 例如：WebDAV配置完全错误或认证失败
+		const errorMessage = error instanceof Error ? error.message : String(error);
+
+		// 认证失败或配置错误 - 这些是致命错误
+		if (
+			errorMessage.includes("authentication") ||
+			errorMessage.includes("unauthorized") ||
+			errorMessage.includes("401") ||
+			errorMessage.includes("403") ||
+			errorMessage.includes("WebDAV配置未初始化")
+		) {
+			return true;
+		}
+
+		// 如果错误分类为致命，则返回true
+		return classification.severity === ErrorSeverity.FATAL;
+	}
+
+	/**
+	 * 记录错误日志 - 根据错误严重程度使用不同的日志级别
+	 */
+	private logError(classification: ErrorClassification, context: string): void {
+		const logData = {
+			错误类型: classification.type,
+			严重程度: classification.severity,
+			错误消息: classification.message,
+			上下文: context,
+			原始错误:
+				classification.originalError instanceof Error
+					? classification.originalError.message
+					: String(classification.originalError),
+		};
+
+		switch (classification.severity) {
+			case ErrorSeverity.FATAL:
+				console.error("💥 [SyncEngine] 致命错误:", logData);
+				break;
+			case ErrorSeverity.NON_FATAL:
+				console.warn("⚠️ [SyncEngine] 非致命错误:", logData);
+				break;
+			case ErrorSeverity.WARNING:
+				// biome-ignore lint/suspicious/noConsoleLog: 允许在警告日志时使用日志
+				console.log("ℹ️ [SyncEngine] 警告:", logData);
+				break;
+		}
+	}
 
 	constructor() {
 		this.deviceId = generateDeviceId();
@@ -2030,6 +2774,15 @@ export class SyncEngineV2 {
 	 * 设置同步模式配置
 	 */
 	setSyncModeConfig(config: SyncModeConfig): void {
+		// 检查配置是否真的发生了变化，避免不必要的处理
+		if (this.syncModeConfig) {
+			const configString = JSON.stringify(config);
+			const currentConfigString = JSON.stringify(this.syncModeConfig);
+			if (configString === currentConfigString) {
+				return; // 配置没有变化，直接返回
+			}
+		}
+
 		// 检查文件模式是否发生变化
 		const fileModeChanged =
 			this.syncModeConfig?.settings.includeImages !==
@@ -2037,31 +2790,83 @@ export class SyncEngineV2 {
 			this.syncModeConfig?.settings.includeFiles !==
 				config.settings.includeFiles;
 
-		// 记录配置变更
-		if (fileModeChanged) {
-			// biome-ignore lint/suspicious/noConsoleLog: 允许在关键配置变更时使用日志
-			console.log("🔄 [SyncEngine] 文件模式发生变化:", {
-				旧配置: {
-					includeImages: this.syncModeConfig?.settings.includeImages,
-					includeFiles: this.syncModeConfig?.settings.includeFiles,
-				},
-				新配置: {
-					includeImages: config.settings.includeImages,
-					includeFiles: config.settings.includeFiles,
-				},
-			});
+		// 检查收藏模式是否发生变化
+		const favoriteModeChanged =
+			this.syncModeConfig?.settings.onlyFavorites !==
+			config.settings.onlyFavorites;
+
+		// 如果收藏模式发生变化，需要特殊处理
+		if (favoriteModeChanged) {
+			this.handleFavoriteModeChange(
+				this.syncModeConfig?.settings.onlyFavorites || false,
+				config.settings.onlyFavorites,
+			);
 		}
 
 		this.syncModeConfig = config;
 		this.fileSyncManager.setSyncModeConfig(config);
 
-		// 如果文件模式发生变化，清除缓存以确保数据重新计算
-		if (fileModeChanged) {
-			// biome-ignore lint/suspicious/noConsoleLog: 允许在关键缓存操作时使用日志
-			console.log(
-				"🔄 [SyncEngine] 文件模式发生变化，清除缓存以确保同步计数正确",
-			);
+		// 修复：如果文件模式或收藏模式发生变化，清除缓存以确保数据重新计算
+		if (fileModeChanged || favoriteModeChanged) {
+			// biome-ignore lint/suspicious/noConsoleLog: 允许在关键缓存清除时使用日志
+			console.log("🔄 [SyncEngine] 检测到模式变化，清除缓存:", {
+				文件模式变化: fileModeChanged,
+				收藏模式变化: favoriteModeChanged,
+				之前的收藏模式: this.syncModeConfig?.settings.onlyFavorites,
+				当前的收藏模式: config.settings.onlyFavorites,
+				原因: "模式变化可能导致校验和计算不一致，需要清除缓存重新计算",
+			});
+
 			this.clearCache();
+
+			// 修复：额外清除指纹缓存，确保校验和重新计算
+			this.metadataManager.clearFingerprintCache();
+		}
+	}
+
+	/**
+	 * 处理收藏模式变化
+	 * 当用户切换收藏模式时，需要特殊处理以确保数据一致性
+	 */
+	private handleFavoriteModeChange(
+		previousOnlyFavorites: boolean,
+		currentOnlyFavorites: boolean,
+	): void {
+		// biome-ignore lint/suspicious/noConsoleLog: 允许在关键模式切换时使用日志
+		console.log("⭐ [SyncEngine] 检测到收藏模式变化:", {
+			之前的收藏模式: previousOnlyFavorites,
+			当前的收藏模式: currentOnlyFavorites,
+			变化类型: previousOnlyFavorites
+				? currentOnlyFavorites
+					? "无变化"
+					: "从收藏模式切换到全部模式"
+				: currentOnlyFavorites
+					? "从全部模式切换到收藏模式"
+					: "无变化",
+			潜在问题: "模式切换可能导致校验和计算不一致",
+		});
+
+		// 如果是从全部模式切换到收藏模式，需要特殊处理
+		if (!previousOnlyFavorites && currentOnlyFavorites) {
+			// biome-ignore lint/suspicious/noConsoleLog: 允许在关键模式切换时使用日志
+			console.log("⭐ [SyncEngine] 从全部模式切换到收藏模式，设置特殊标记", {
+				警告: "避免远程收藏数据覆盖本地非收藏数据",
+				处理策略: "在下次同步时优先保留本地收藏状态",
+			});
+
+			// 设置特殊标记，表示刚刚从全部模式切换到收藏模式
+			this.isTransitioningToFavoriteMode = true;
+		}
+		// 如果是从收藏模式切换到全部模式，需要特殊处理
+		else if (previousOnlyFavorites && !currentOnlyFavorites) {
+			// biome-ignore lint/suspicious/noConsoleLog: 允许在关键模式切换时使用日志
+			console.log("⭐ [SyncEngine] 从收藏模式切换到全部模式，设置特殊标记", {
+				警告: "避免远程非收藏数据覆盖本地收藏数据",
+				处理策略: "在下次同步时优先保留本地收藏状态",
+			});
+
+			// 设置特殊标记，表示刚刚从收藏模式切换到全部模式
+			this.isTransitioningFromFavoriteMode = true;
 		}
 	}
 
@@ -2070,6 +2875,28 @@ export class SyncEngineV2 {
 	 */
 	getDeviceId(): string {
 		return this.deviceId;
+	}
+
+	/**
+	 * 检查是否正在从全部模式切换到收藏模式
+	 */
+	checkTransitioningToFavoriteMode(): boolean {
+		return this.isTransitioningToFavoriteMode;
+	}
+
+	/**
+	 * 检查是否正在从收藏模式切换到全部模式
+	 */
+	checkTransitioningFromFavoriteMode(): boolean {
+		return this.isTransitioningFromFavoriteMode;
+	}
+
+	/**
+	 * 重置模式切换标记
+	 */
+	resetModeTransitionFlags(): void {
+		this.isTransitioningToFavoriteMode = false;
+		this.isTransitioningFromFavoriteMode = false;
 	}
 
 	/**
@@ -2248,10 +3075,19 @@ export class SyncEngineV2 {
 				}
 
 				// 更新本地数据
-				await this.updateLocalData(mergedData);
+				const updateResult = await this.updateLocalData(mergedData);
 
 				// biome-ignore lint/suspicious/noConsoleLog: 允许在关键数据更新时使用日志
-				console.log("💾 [SyncEngine] 本地数据更新完成");
+				console.log("💾 [SyncEngine] 本地数据更新完成:", {
+					成功数量: updateResult.success,
+					失败数量: updateResult.failed,
+					致命错误数量: updateResult.errors.length,
+				});
+
+				// 将致命错误添加到结果中
+				if (updateResult.errors.length > 0) {
+					result.errors.push(...updateResult.errors);
+				}
 
 				// 同步远程文件
 				await this.fileSyncManager.syncRemoteFiles(mergedData);
@@ -2317,9 +3153,21 @@ export class SyncEngineV2 {
 						const deleteResult = await this.deleteRemoteFiles(deletedIds);
 
 						if (deleteResult.failed > 0) {
-							result.errors.push(
-								`部分远程文件包删除失败: ${deleteResult.failed} 个`,
-							);
+							// 文件删除失败通常是非致命错误，只记录日志
+							const errorMsg = `部分远程文件包删除失败: ${deleteResult.failed} 个`;
+							const classification = this.classifyError(new Error(errorMsg));
+							this.logError(classification, "远程文件包删除");
+
+							// 只有在大量删除失败时才认为是致命错误
+							if (deleteResult.failed > deletedIds.length / 2) {
+								result.errors.push(errorMsg);
+							} else {
+								// biome-ignore lint/suspicious/noConsoleLog: 允许在非致命错误处理时使用日志
+								console.log("ℹ️ [SyncEngine] 部分文件删除失败但继续同步:", {
+									失败数量: deleteResult.failed,
+									总数量: deletedIds.length,
+								});
+							}
 						}
 
 						// 删除操作完成后，刷新缓存
@@ -2356,10 +3204,36 @@ export class SyncEngineV2 {
 						currentRemoteFingerprints,
 					);
 					if (!uploadSuccess) {
-						result.errors.push("指纹数据上传失败");
+						// 指纹数据上传失败通常是非致命错误
+						const errorMsg = "指纹数据上传失败";
+						const classification = this.classifyError(new Error(errorMsg));
+						this.logError(classification, "指纹数据上传");
+
+						// 指纹上传失败通常不是致命错误，不影响同步成功
+						// biome-ignore lint/suspicious/noConsoleLog: 允许在非致命错误处理时使用日志
+						console.log("ℹ️ [SyncEngine] 指纹数据上传失败但同步继续:", {
+							错误: errorMsg,
+							错误分类: classification.type,
+							严重程度: classification.severity,
+						});
 					}
 				} else {
-					result.errors.push("上传同步数据失败");
+					// 上传同步数据失败需要检查是否是致命错误
+					const errorMsg = "上传同步数据失败";
+					const classification = this.classifyError(new Error(errorMsg));
+					this.logError(classification, "同步数据上传");
+
+					// 只有致命错误才添加到结果中
+					if (this.isFatalError(new Error(errorMsg))) {
+						result.errors.push(errorMsg);
+					} else {
+						// biome-ignore lint/suspicious/noConsoleLog: 允许在非致命错误处理时使用日志
+						console.log("ℹ️ [SyncEngine] 上传同步数据失败但继续同步:", {
+							错误: errorMsg,
+							错误分类: classification.type,
+							严重程度: classification.severity,
+						});
+					}
 				}
 			}
 
@@ -2371,19 +3245,93 @@ export class SyncEngineV2 {
 				await this.permanentlyDeleteItems(deletedIds);
 			}
 
-			result.success = result.errors.length === 0;
+			// 修复：只考虑致命错误，忽略非致命错误
+			const fatalErrors = result.errors.filter((error) =>
+				this.isFatalError(error),
+			);
+			const nonFatalErrors = result.errors.filter(
+				(error) => !this.isFatalError(error),
+			);
+
+			// 记录错误统计信息
+			// biome-ignore lint/suspicious/noConsoleLog: 允许在错误统计时使用日志
+			console.log("📊 [SyncEngine] 错误统计:", {
+				总错误数量: result.errors.length,
+				致命错误数量: fatalErrors.length,
+				非致命错误数量: nonFatalErrors.length,
+				致命错误列表: fatalErrors,
+				非致命错误列表: nonFatalErrors,
+			});
+
+			// 只有致命错误才导致同步失败
+			result.success = fatalErrors.length === 0;
+
+			// 如果有非致命错误，记录但不影响同步结果
+			if (nonFatalErrors.length > 0) {
+				// biome-ignore lint/suspicious/noConsoleLog: 允许在非致命错误处理时使用日志
+				console.log("⚠️ [SyncEngine] 同步完成但有非致命错误:", {
+					非致命错误数量: nonFatalErrors.length,
+					非致命错误列表: nonFatalErrors,
+				});
+			}
+
 			this.lastSyncTime = Date.now();
+
+			// 修复：同步完成后重置模式切换标记
+			if (
+				this.isTransitioningToFavoriteMode ||
+				this.isTransitioningFromFavoriteMode
+			) {
+				// biome-ignore lint/suspicious/noConsoleLog: 允许在关键状态重置时使用日志
+				console.log("🔄 [SyncEngine] 同步完成，重置模式切换标记:", {
+					之前是从全部模式切换到收藏模式: this.isTransitioningToFavoriteMode,
+					之前是从收藏模式切换到全部模式: this.isTransitioningFromFavoriteMode,
+					原因: "同步已完成，模式切换的特殊处理不再需要",
+				});
+
+				this.resetModeTransitionFlags();
+			}
 
 			// 触发界面刷新
 			try {
 				emit(LISTEN_KEY.REFRESH_CLIPBOARD_LIST);
-			} catch {
-				result.errors.push("界面刷新失败");
+			} catch (error) {
+				const classification = this.classifyError(error);
+				this.logError(classification, "界面刷新");
+
+				// 界面刷新错误通常是非致命的
+				if (this.isFatalError(error)) {
+					result.errors.push(
+						`界面刷新失败: ${error instanceof Error ? error.message : String(error)}`,
+					);
+				} else {
+					// 非致命错误只记录日志，不添加到结果中
+					// biome-ignore lint/suspicious/noConsoleLog: 允许在非致命错误处理时使用日志
+					console.log("ℹ️ [SyncEngine] 界面刷新非致命错误:", {
+						错误: error instanceof Error ? error.message : String(error),
+						错误分类: classification.type,
+						严重程度: classification.severity,
+					});
+				}
 			}
 		} catch (error) {
-			result.errors.push(
-				`同步异常: ${error instanceof Error ? error.message : String(error)}`,
-			);
+			const classification = this.classifyError(error);
+			this.logError(classification, "同步过程");
+
+			// 只有致命错误才添加到结果中
+			if (this.isFatalError(error)) {
+				result.errors.push(
+					`同步异常: ${error instanceof Error ? error.message : String(error)}`,
+				);
+			} else {
+				// 非致命错误只记录日志，不添加到结果中
+				// biome-ignore lint/suspicious/noConsoleLog: 允许在非致命错误处理时使用日志
+				console.log("ℹ️ [SyncEngine] 同步过程非致命错误:", {
+					错误: error instanceof Error ? error.message : String(error),
+					错误分类: classification.type,
+					严重程度: classification.severity,
+				});
+			}
 		} finally {
 			this.syncInProgress = false;
 		}
@@ -2431,8 +3379,9 @@ export class SyncEngineV2 {
 
 			// 只提取基本信息用于比较
 			const lightweightData = filteredItems.map((item) => {
-				// 使用统一的校验和计算函数，确保与generateFingerprint方法一致
-				const checksum = item.checksum || calculateUnifiedChecksum(item, false);
+				// 修复：始终使用不包含收藏状态的校验和，确保收藏模式切换前后校验和一致
+				// 这样可以避免收藏模式切换导致同一条数据被误判为新增项
+				const checksum = calculateContentChecksum(item);
 
 				// biome-ignore lint/suspicious/noConsoleLog: 允许在轻量级数据处理时使用日志
 				console.log("🔍 [SyncEngine.getLightweightLocalData] 处理轻量级数据:", {
@@ -2441,6 +3390,8 @@ export class SyncEngineV2 {
 					校验和: checksum,
 					是否已删除: item.deleted || false,
 					是否收藏: item.favorite,
+					校验和类型: "内容校验和（不包含收藏状态）",
+					说明: "确保收藏模式切换前后校验和一致，避免误判为新增项",
 				});
 
 				return {
@@ -2588,8 +3539,9 @@ export class SyncEngineV2 {
 		// 生成本地指纹
 		const localFingerprints = new Map<string, DataFingerprint>();
 		for (const item of localData) {
-			// 使用统一的校验和计算函数，确保与generateFingerprint方法一致
-			const checksum = item.checksum || calculateUnifiedChecksum(item, false);
+			// 修复：始终使用不包含收藏状态的校验和，确保收藏模式切换前后校验和一致
+			// 这样可以避免收藏模式切换导致同一条数据被误判为新增项
+			const checksum = calculateContentChecksum(item);
 
 			// biome-ignore lint/suspicious/noConsoleLog: 允许在指纹生成时使用日志
 			console.log("🔍 [SyncEngine.performSelectiveDiff] 生成本地指纹:", {
@@ -2601,6 +3553,8 @@ export class SyncEngineV2 {
 					typeof item.value === "string"
 						? item.value.length
 						: JSON.stringify(item.value).length,
+				校验和类型: "内容校验和（不包含收藏状态）",
+				说明: "确保收藏模式切换前后校验和一致，避免误判为新增项",
 			});
 
 			localFingerprints.set(item.id, {
@@ -2615,11 +3569,12 @@ export class SyncEngineV2 {
 			});
 		}
 
-		// 修复：传递删除项信息给指纹比较方法，确保删除项不参与比较
+		// 修复：传递删除项信息和本地数据给指纹比较方法，确保删除项不参与比较并支持收藏状态变化检测
 		const diff = this.metadataManager.compareFingerprints(
 			localFingerprints,
 			remoteFingerprints,
 			localDeletions, // 传递删除项ID列表
+			localData, // 传递本地数据项，用于检测收藏状态变化
 		);
 
 		// 记录差异检测结果，帮助诊断同步计数问题
@@ -2707,11 +3662,134 @@ export class SyncEngineV2 {
 			};
 		}
 
+		// 修复：优化模式切换时的数据处理，避免收藏状态变化被误判为内容修改
+		// 特别处理从收藏模式切换到全部模式的情况
+		const isTransitioningFromFavorite =
+			this.checkTransitioningFromFavoriteMode();
+
 		// 确定需要上传的项
 		for (const fp of [...diff.added, ...diff.modified]) {
 			const item = localData.find((i) => i.id === fp.id);
 			if (item) {
-				itemsToSync.push(item);
+				// 检查是否是收藏状态变更项
+				const isFavoriteChange =
+					diff.favoriteChanged?.includes(item.id) || false;
+
+				// 修复：在收藏模式下，检查是否是收藏状态变更
+				if (this.syncModeConfig?.settings.onlyFavorites && !item.favorite) {
+					if (isFavoriteChange) {
+						// biome-ignore lint/suspicious/noConsoleLog: 允许在关键收藏状态变更时使用日志
+						console.log("⭐ [SyncEngine] 收藏模式下同步收藏状态变更:", {
+							项ID: item.id,
+							项类型: item.type,
+							收藏状态: item.favorite,
+							处理方式: "允许上传，用于同步收藏状态变更",
+						});
+						itemsToSync.push(item);
+					} else {
+						// biome-ignore lint/suspicious/noConsoleLog: 允许在关键过滤逻辑时使用日志
+						console.log("⭐ [SyncEngine] 收藏模式下跳过非收藏项上传:", {
+							项ID: item.id,
+							项类型: item.type,
+							收藏状态: item.favorite,
+							处理方式: "完全跳过上传，非收藏项不应该上传到远程",
+						});
+						// 修复：跳过非收藏项，不添加到同步列表，确保完全过滤
+						// 不添加到itemsToSync，自然跳过后续处理
+					}
+				}
+				// 修复：从收藏模式切换到全部模式时的特殊处理
+				else if (isTransitioningFromFavorite && isFavoriteChange) {
+					// biome-ignore lint/suspicious/noConsoleLog: 允许在关键模式切换时使用日志
+					console.log(
+						"⭐ [SyncEngine] 从收藏模式切换到全部模式，处理收藏状态变化:",
+						{
+							项ID: item.id,
+							项类型: item.type,
+							收藏状态: item.favorite,
+							处理方式: "允许上传，同步收藏状态变化",
+						},
+					);
+					itemsToSync.push(item);
+				} else {
+					itemsToSync.push(item);
+				}
+			}
+		}
+
+		// 修复：额外处理收藏状态变更，确保收藏状态变更能够被正确同步到远程
+		// 特别是在收藏模式下，用户取消收藏的操作需要被同步到远程
+		if (diff.favoriteChanged && diff.favoriteChanged.length > 0) {
+			// biome-ignore lint/suspicious/noConsoleLog: 允许在收藏状态变更处理时使用日志
+			console.log("⭐ [SyncEngine] 处理收藏状态变更项:", {
+				收藏状态变化项数量: diff.favoriteChanged.length,
+				收藏状态变化项ID列表: diff.favoriteChanged,
+			});
+
+			for (const itemId of diff.favoriteChanged) {
+				// 查找本地数据中的该项
+				const localItem = localData.find((item) => item.id === itemId);
+
+				if (localItem) {
+					// 修复：强制添加所有收藏状态变更项到同步列表，无论是否在收藏模式下
+					// 这样可以确保收藏状态变更能够被同步到远程
+					const alreadyInSyncList = itemsToSync.some(
+						(item) => item.id === itemId,
+					);
+
+					if (!alreadyInSyncList) {
+						// biome-ignore lint/suspicious/noConsoleLog: 允许在关键收藏状态变更时使用日志
+						console.log("⭐ [SyncEngine] 强制添加收藏状态变更项到同步列表:", {
+							项ID: localItem.id,
+							项类型: localItem.type,
+							收藏状态: localItem.favorite,
+							处理方式: "强制添加到同步列表，确保收藏状态变更同步到远程",
+							当前模式: this.syncModeConfig?.settings.onlyFavorites
+								? "收藏模式"
+								: "全部模式",
+						});
+						itemsToSync.push(localItem);
+					} else {
+						// 如果已经在同步列表中，确保其收藏状态是最新的
+						const existingItem = itemsToSync.find((item) => item.id === itemId);
+						if (existingItem) {
+							existingItem.favorite = localItem.favorite;
+
+							// biome-ignore lint/suspicious/noConsoleLog: 允许在收藏状态更新时使用日志
+							console.log("⭐ [SyncEngine] 更新同步列表中项的收藏状态:", {
+								项ID: localItem.id,
+								项类型: localItem.type,
+								更新前收藏状态: existingItem.favorite,
+								更新后收藏状态: localItem.favorite,
+								处理方式: "确保同步列表中的收藏状态是最新的",
+							});
+						}
+					}
+
+					// 修复：确保收藏状态变更项的校验和包含收藏状态
+					// 这样可以确保收藏状态变更能够被正确检测和同步
+					const favoriteAwareChecksum = calculateUnifiedChecksum(
+						localItem,
+						false,
+						true,
+					);
+
+					// 更新本地指纹中的校验和
+					const localFp = localFingerprints.get(itemId);
+					if (localFp) {
+						localFp.checksum = favoriteAwareChecksum;
+
+						// biome-ignore lint/suspicious/noConsoleLog: 允许在收藏状态处理时使用日志
+						console.log("⭐ [SyncEngine] 更新收藏状态变更项的校验和:", {
+							项ID: itemId,
+							项类型: localItem.type,
+							收藏状态: localItem.favorite,
+							原校验和: localFp.checksum,
+							新校验和: favoriteAwareChecksum,
+							处理方式: "确保校验和包含收藏状态，以便正确同步",
+						});
+					}
+				}
 			}
 		}
 
@@ -2750,8 +3828,9 @@ export class SyncEngineV2 {
 				effectiveRemoteData.items.map((item) => [item.id, item]),
 			);
 
-			// 修复：当本地数据库为空时，确保所有远程项都被标记为需要下载
+			// 修复：当本地数据库为空时，需要特殊处理收藏模式切换
 			const isLocalDatabaseEmpty = localData.length === 0;
+			const isFavoriteMode = this.syncModeConfig?.settings.onlyFavorites;
 
 			if (isLocalDatabaseEmpty && effectiveRemoteData?.items?.length > 0) {
 				for (const remoteItem of effectiveRemoteData.items) {
@@ -2759,17 +3838,55 @@ export class SyncEngineV2 {
 						!itemsToDownload.includes(remoteItem.id) &&
 						!deletedIds.includes(remoteItem.id)
 					) {
-						itemsToDownload.push(remoteItem.id);
+						// 修复：在收藏模式切换时，避免下载远程数据覆盖本地收藏状态
+						let shouldDownload = true;
 
-						// biome-ignore lint/suspicious/noConsoleLog: 允许在关键下载检测时使用日志
-						console.log(
-							"⬇️ [SyncEngine] 本地数据库为空，标记远程项为需要下载:",
-							{
+						// 如果是从全部模式切换到收藏模式，需要特别处理
+						if (this.checkTransitioningToFavoriteMode()) {
+							// 在收藏模式切换时，完全跳过下载远程数据，避免覆盖本地状态
+							shouldDownload = false;
+
+							// biome-ignore lint/suspicious/noConsoleLog: 允许在关键下载检测时使用日志
+							console.log(
+								"⭐ [SyncEngine] 收藏模式切换，跳过所有远程数据下载:",
+								{
+									项ID: remoteItem.id,
+									项类型: remoteItem.type,
+									远程收藏状态: remoteItem.favorite,
+									原因: "从全部模式切换到收藏模式，避免远程数据覆盖本地状态",
+								},
+							);
+						}
+						// 修复：收藏模式下，如果本地数据为空，需要特殊处理
+						else if (isFavoriteMode) {
+							// 收藏模式下，本地数据为空表示用户已取消所有收藏
+							// 这种情况下，不应该下载任何远程数据，避免覆盖用户的取消收藏操作
+							shouldDownload = false;
+
+							// biome-ignore lint/suspicious/noConsoleLog: 允许在关键下载检测时使用日志
+							console.log(
+								"⭐ [SyncEngine] 收藏模式下本地为空，跳过所有远程数据下载:",
+								{
+									项ID: remoteItem.id,
+									项类型: remoteItem.type,
+									远程收藏状态: remoteItem.favorite,
+									原因: "收藏模式下本地数据为空，表示用户已取消所有收藏，不下载任何远程数据以避免覆盖用户的取消收藏操作",
+								},
+							);
+						}
+
+						if (shouldDownload) {
+							itemsToDownload.push(remoteItem.id);
+
+							// biome-ignore lint/suspicious/noConsoleLog: 允许在关键下载检测时使用日志
+							console.log("⬇️ [SyncEngine] 标记远程项为需要下载:", {
 								项ID: remoteItem.id,
 								项类型: remoteItem.type,
-								原因: "本地数据库为空，所有远程数据都需要下载",
-							},
-						);
+								原因: isLocalDatabaseEmpty
+									? "本地数据库为空，需要下载远程数据"
+									: "远程数据较新，需要下载",
+							});
+						}
 					}
 				}
 			}
@@ -2793,12 +3910,42 @@ export class SyncEngineV2 {
 							remoteItem.lastModified || remoteItem.createTime,
 						).getTime();
 
-						// 只有当远程版本较新时才需要下载
-						if (remoteTime > localTime) {
-							// 确保不会被同时标记为上传和下载
-							if (!itemsToSync.some((item) => item.id === fp.id)) {
-								itemsToDownload.push(fp.id);
-							}
+						// 修复：在收藏模式切换时，优先保留本地收藏状态
+						let shouldDownload = remoteTime > localTime;
+
+						// 如果是从全部模式切换到收藏模式，需要特殊处理收藏状态
+						if (this.checkTransitioningToFavoriteMode()) {
+							// 在收藏模式切换时，完全跳过下载远程数据，避免覆盖本地状态
+							shouldDownload = false;
+
+							const localFavorite = !!localItem.favorite;
+							const remoteFavorite = !!remoteItem.favorite;
+
+							// biome-ignore lint/suspicious/noConsoleLog: 允许在关键下载检测时使用日志
+							console.log("⭐ [SyncEngine] 收藏模式切换，跳过远程数据下载:", {
+								项ID: fp.id,
+								项类型: fp.type,
+								本地收藏状态: localFavorite,
+								远程收藏状态: remoteFavorite,
+								原因: "从全部模式切换到收藏模式，避免远程数据覆盖本地状态",
+							});
+						}
+
+						// 只有当需要下载且不会被同时标记为上传和下载时才添加到下载列表
+						if (
+							shouldDownload &&
+							!itemsToSync.some((item) => item.id === fp.id)
+						) {
+							itemsToDownload.push(fp.id);
+
+							// biome-ignore lint/suspicious/noConsoleLog: 允许在关键下载检测时使用日志
+							console.log("⬇️ [SyncEngine] 标记修改项为需要下载:", {
+								项ID: fp.id,
+								项类型: fp.type,
+								本地时间戳: localTime,
+								远程时间戳: remoteTime,
+								原因: "远程版本较新",
+							});
 						}
 					}
 				}
@@ -2924,7 +4071,61 @@ export class SyncEngineV2 {
 			}
 		}
 
+		// 修复：处理收藏状态变化，避免收藏状态变化被误判为内容修改
+		if (diff.favoriteChanged && diff.favoriteChanged.length > 0) {
+			// biome-ignore lint/suspicious/noConsoleLog: 允许在收藏状态变化处理时使用日志
+			console.log("⭐ [SyncEngine] 处理收藏状态变化项:", {
+				收藏状态变化项数量: diff.favoriteChanged.length,
+				收藏状态变化项ID列表: diff.favoriteChanged,
+			});
+
+			// 对于收藏状态变化的项，需要确保它们被正确处理
+			// 这些项不应该被标记为需要上传，因为只是收藏状态变化
+			for (const itemId of diff.favoriteChanged) {
+				// 检查该项是否在待上传列表中
+				const uploadIndex = itemsToSync.findIndex((item) => item.id === itemId);
+				if (uploadIndex !== -1) {
+					// 如果该项已经在待上传列表中，检查是否只是收藏状态变化
+					const item = itemsToSync[uploadIndex];
+					const localItem = localData.find((i) => i.id === itemId);
+
+					if (localItem) {
+						// 重新计算包含收藏状态的校验和
+						const favoriteAwareChecksum = calculateUnifiedChecksum(
+							localItem,
+							false,
+							true,
+						);
+
+						// 更新本地指纹中的校验和
+						const localFp = localFingerprints.get(itemId);
+						if (localFp) {
+							localFp.checksum = favoriteAwareChecksum;
+						}
+
+						// biome-ignore lint/suspicious/noConsoleLog: 允许在收藏状态处理时使用日志
+						console.log("⭐ [SyncEngine] 更新收藏状态变化项的校验和:", {
+							项ID: itemId,
+							项类型: item.type,
+							收藏状态: localItem.favorite,
+							原校验和: item.checksum,
+							新校验和: favoriteAwareChecksum,
+						});
+					}
+				}
+			}
+		}
+
 		return { itemsToSync, itemsToDownload, deletedIds };
+	}
+
+	/**
+	 * 检查是否需要检测收藏状态变化
+	 * 修复：简化方法，现在收藏状态变化检测已在compareFingerprints中完成
+	 */
+	private shouldCheckFavoriteChanges(): boolean {
+		// 如果当前是收藏模式，或者最近切换过收藏模式，则需要检测收藏状态变化
+		return !!this.syncModeConfig?.settings.onlyFavorites;
 	}
 
 	/**
@@ -2948,8 +4149,17 @@ export class SyncEngineV2 {
 	/**
 	 * 根据同步模式过滤项
 	 * 修复：添加一个选项来控制是否过滤软删除项，用于删除检测阶段
+	 * 修复：增加对模式切换的特殊处理
+	 * 修复：收藏模式下只同步收藏项到远程，但允许收藏状态变更同步
+	 * 修复：确保收藏模式下非收藏项被完全过滤掉，避免重复处理
+	 * 修复：优化收藏模式下的同步策略，只上传不下载
 	 */
-	private filterItemsBySyncMode(items: any[], includeDeleted = false): any[] {
+	private filterItemsBySyncMode(
+		items: any[],
+		includeDeleted = false,
+		_handleModeTransition = false, // 重命名避免未使用警告
+		syncFavoriteChanges = false, // 重命名参数：是否同步收藏状态变更
+	): any[] {
 		if (!this.syncModeConfig?.settings) {
 			return items;
 		}
@@ -2966,9 +4176,47 @@ export class SyncEngineV2 {
 				return false;
 			}
 
-			// 收藏模式检查
-			if (settings.onlyFavorites && !item.favorite) {
-				return false;
+			// 修复：收藏模式下的特殊处理
+			if (settings.onlyFavorites) {
+				// 如果是专门同步收藏状态变更，则允许非收藏项通过
+				if (syncFavoriteChanges) {
+					// biome-ignore lint/suspicious/noConsoleLog: 允许在关键过滤逻辑时使用日志
+					console.log("⭐ [SyncEngine] 收藏模式下同步收藏状态变更:", {
+						项ID: item.id,
+						项类型: item.type,
+						收藏状态: item.favorite,
+						处理方式: "允许通过，用于同步收藏状态变更",
+					});
+					return true;
+				}
+
+				// 修复：在收藏模式切换时，允许所有项通过过滤但不上传到远程
+				if (this.checkTransitioningToFavoriteMode()) {
+					// biome-ignore lint/suspicious/noConsoleLog: 允许在关键过滤逻辑时使用日志
+					console.log("⭐ [SyncEngine] 收藏模式切换，允许项通过本地过滤:", {
+						项ID: item.id,
+						项类型: item.type,
+						收藏状态: item.favorite,
+						处理方式: "允许通过本地过滤，但不会上传到远程",
+					});
+					return true;
+				}
+
+				// 修复：正常收藏模式下，只同步收藏项到远程
+				// 修复：确保收藏模式下非收藏项被完全过滤掉，避免重复处理
+				if (!item.favorite) {
+					// biome-ignore lint/suspicious/noConsoleLog: 允许在关键过滤逻辑时使用日志
+					console.log("⭐ [SyncEngine] 收藏模式下过滤非收藏项:", {
+						项ID: item.id,
+						项类型: item.type,
+						收藏状态: item.favorite,
+						处理方式: "完全过滤掉，避免重复处理",
+					});
+
+					// 收藏模式下，非收藏项不应该被同步到远程
+					// 修复：确保非收藏项被完全过滤掉，避免在后续同步中被重复处理
+					return false;
+				}
 			}
 
 			// 类型检查
@@ -2991,10 +4239,12 @@ export class SyncEngineV2 {
 
 	/**
 	 * 转换为同步项
+	 * 修复：始终使用不包含收藏状态的校验和，确保收藏模式切换前后校验和一致
 	 */
 	private convertToSyncItem(item: any): SyncItem {
-		// 使用统一的校验和计算函数，确保与generateFingerprint方法一致
-		const checksum = item.checksum || calculateUnifiedChecksum(item, false);
+		// 修复：始终使用不包含收藏状态的校验和，确保收藏模式切换前后校验和一致
+		// 这样可以避免收藏模式切换导致同一条数据被误判为新增项
+		const checksum = item.checksum || calculateContentChecksum(item);
 
 		// 计算数据大小
 		let size: number;
@@ -3016,6 +4266,8 @@ export class SyncEngineV2 {
 			校验和: checksum,
 			数据大小: size,
 			设备ID: this.deviceId,
+			校验和类型: "内容校验和（不包含收藏状态）",
+			说明: "确保收藏模式切换前后校验和一致，避免误判为新增项",
 		});
 
 		return {
@@ -3089,8 +4341,12 @@ export class SyncEngineV2 {
 	/**
 	 * 更新本地数据
 	 */
-	private async updateLocalData(data: SyncItem[]): Promise<void> {
+	private async updateLocalData(
+		data: SyncItem[],
+	): Promise<{ success: number; failed: number; errors: string[] }> {
 		const errors: string[] = [];
+		let successCount = 0;
+		let failedCount = 0;
 
 		// biome-ignore lint/suspicious/noConsoleLog: 允许在关键数据更新时使用日志
 		console.log("💾 [SyncEngine] 开始更新本地数据:", {
@@ -3108,6 +4364,7 @@ export class SyncEngineV2 {
 		for (const item of data) {
 			try {
 				await this.insertOrUpdateItem(item);
+				successCount++;
 
 				// biome-ignore lint/suspicious/noConsoleLog: 允许在单项更新成功时使用日志
 				console.log("✅ [SyncEngine] 项更新成功:", {
@@ -3116,14 +4373,25 @@ export class SyncEngineV2 {
 					操作: "插入或更新",
 				});
 			} catch (error) {
+				failedCount++;
 				const errorMsg = `更新本地数据失败 (ID: ${item.id}): ${error instanceof Error ? error.message : String(error)}`;
-				errors.push(errorMsg);
+
+				// 使用错误分类系统处理错误
+				const classification = this.classifyError(error);
+				this.logError(classification, "本地数据更新");
+
+				// 只有致命错误才添加到错误列表中
+				if (this.isFatalError(error)) {
+					errors.push(errorMsg);
+				}
 
 				// biome-ignore lint/suspicious/noConsoleLog: 允许在单项更新失败时使用日志
 				console.error("❌ [SyncEngine] 项更新失败:", {
 					项ID: item.id,
 					项类型: item.type,
 					错误: errorMsg,
+					错误分类: classification.type,
+					严重程度: classification.severity,
 				});
 			}
 		}
@@ -3131,12 +4399,14 @@ export class SyncEngineV2 {
 		// biome-ignore lint/suspicious/noConsoleLog: 允许在数据更新完成时使用日志
 		console.log("📊 [SyncEngine] 本地数据更新完成:", {
 			总项数量: data.length,
-			成功数量: data.length - errors.length,
-			失败数量: errors.length,
+			成功数量: successCount,
+			失败数量: failedCount,
+			致命错误数量: errors.length,
 			错误列表: errors,
 		});
 
-		// 如果有错误，记录但不中断整个流程
+		// 返回详细的更新结果
+		return { success: successCount, failed: failedCount, errors };
 	}
 
 	/**
@@ -3239,23 +4509,106 @@ export class SyncEngineV2 {
 
 	/**
 	 * 解决收藏状态冲突
+	 * 修复：优先保留本地收藏状态，避免远程数据覆盖本地的收藏状态变更
 	 */
 	private resolveFavoriteStatus(existing: any, incoming: SyncItem): boolean {
 		const existingIsFavorite =
 			existing.favorite === true || existing.favorite === 1;
 		const incomingIsFavorite = incoming.favorite;
 
-		// 如果任何一个版本是收藏的，则标记为收藏
-		if (existingIsFavorite || incomingIsFavorite) {
-			return true;
+		// biome-ignore lint/suspicious/noConsoleLog: 允许在关键收藏状态冲突解决时使用日志
+		console.log("⚖️ [SyncEngine.resolveFavoriteStatus] 解决收藏状态冲突:", {
+			项ID: existing.id || incoming.id,
+			项类型: existing.type || incoming.type,
+			现有收藏状态: existingIsFavorite,
+			传入收藏状态: incomingIsFavorite,
+			原始现有值: existing.favorite,
+			原始传入值: incoming.favorite,
+			同步模式: this.syncModeConfig?.settings?.onlyFavorites
+				? "收藏模式"
+				: "全部模式",
+		});
+
+		let result: boolean;
+		let strategy: string;
+
+		// 修复：在收藏模式切换时，完全忽略远程收藏状态
+		if (this.checkTransitioningToFavoriteMode()) {
+			// 从全部模式切换到收藏模式，完全忽略远程收藏状态
+			result = existingIsFavorite;
+			strategy = "从全部模式切换到收藏模式，完全忽略远程收藏状态，保持本地状态";
+		} else if (this.checkTransitioningFromFavoriteMode()) {
+			// 从收藏模式切换到全部模式，完全忽略远程收藏状态
+			result = existingIsFavorite;
+			strategy = "从收藏模式切换到全部模式，完全忽略远程收藏状态，保持本地状态";
+		} else {
+			// 正常情况下的收藏状态处理
+			// 修复：优先保留本地收藏状态，特别是当本地取消收藏时
+			// 这解决了用户取消收藏后，远程数据覆盖本地状态的问题
+			if (!existingIsFavorite && incomingIsFavorite) {
+				// 本地未收藏，远程收藏 - 优先保留本地的未收藏状态
+				result = false;
+				strategy =
+					"本地取消收藏，优先保留本地未收藏状态，避免远程收藏数据覆盖本地状态";
+			} else if (existingIsFavorite && !incomingIsFavorite) {
+				// 本地收藏，远程未收藏 - 保持本地收藏状态
+				result = true;
+				strategy = "本地收藏，保持本地收藏状态";
+			} else if (existingIsFavorite && incomingIsFavorite) {
+				// 双方都是收藏 - 保持收藏状态
+				result = true;
+				strategy = "双方都是收藏，保持收藏状态";
+			} else {
+				// 双方都未收藏 - 保持未收藏状态
+				result = false;
+				strategy = "双方都未收藏，保持未收藏状态";
+			}
+
+			// 修复：在收藏模式下，特别强化本地收藏状态的优先级
+			if (this.syncModeConfig?.settings.onlyFavorites) {
+				// 在收藏模式下，如果本地未收藏，强制保持未收藏状态
+				// 这样可以避免远程收藏数据覆盖本地的取消收藏操作
+				if (!existingIsFavorite) {
+					result = false;
+					strategy = "收藏模式下强制保持本地未收藏状态，避免远程收藏数据覆盖";
+				}
+			}
 		}
 
-		// 如果同步模式是收藏模式，且新数据是收藏的，则以新数据为准
-		if (this.syncModeConfig?.settings?.onlyFavorites && incomingIsFavorite) {
-			return true;
+		// 修复：只有在收藏状态完全相同的情况下，才考虑时间戳
+		// 这样可以避免时间戳比较导致的收藏状态覆盖问题
+		if (existingIsFavorite === incomingIsFavorite) {
+			const existingTime = new Date(
+				existing.lastModified || existing.createTime,
+			).getTime();
+			const incomingTime = new Date(
+				incoming.lastModified || incoming.createTime,
+			).getTime();
+
+			// 如果收藏状态相同，但时间戳不同，记录但不改变收藏状态
+			if (existingTime !== incomingTime) {
+				// biome-ignore lint/suspicious/noConsoleLog: 允许在时间戳比较时使用日志
+				console.log(
+					"🕐 [SyncEngine.resolveFavoriteStatus] 收藏状态相同但时间戳不同:",
+					{
+						项ID: existing.id || incoming.id,
+						收藏状态: existingIsFavorite,
+						现有时间戳: existingTime,
+						传入时间戳: incomingTime,
+						处理方式: "收藏状态相同，保持不变，忽略时间戳差异",
+					},
+				);
+			}
 		}
 
-		return existingIsFavorite;
+		// biome-ignore lint/suspicious/noConsoleLog: 允许在关键收藏状态冲突解决时使用日志
+		console.log("✅ [SyncEngine.resolveFavoriteStatus] 收藏状态冲突解决结果:", {
+			项ID: existing.id || incoming.id,
+			解决策略: strategy,
+			最终收藏状态: result,
+		});
+
+		return result;
 	}
 
 	/**
@@ -3622,43 +4975,66 @@ export class SyncEngineV2 {
 			return results;
 		}
 
-		// 获取远程指纹数据以确定哪些是文件项
-		const remoteFingerprints =
-			await this.metadataManager.downloadFingerprints();
+		try {
+			// 获取远程指纹数据以确定哪些是文件项
+			const remoteFingerprints =
+				await this.metadataManager.downloadFingerprints();
 
-		const filePackagesToDelete: any[] = [];
+			const filePackagesToDelete: any[] = [];
 
-		// 筛选出需要删除的文件包
-		for (const deletedId of deletedIds) {
-			const fingerprint = remoteFingerprints.get(deletedId);
-			if (
-				fingerprint &&
-				(fingerprint.type === "image" || fingerprint.type === "files")
-			) {
-				// 构造包信息
-				const packageInfo = {
-					packageId: deletedId,
-					itemId: deletedId,
-					itemType: fingerprint.type,
-					fileName: `${deletedId}.zip`,
-					originalPaths: [],
-					size: fingerprint.size,
-					checksum: fingerprint.checksum,
-					compressedSize: 0,
-				};
-				filePackagesToDelete.push(packageInfo);
+			// 筛选出需要删除的文件包
+			for (const deletedId of deletedIds) {
+				const fingerprint = remoteFingerprints.get(deletedId);
+				if (
+					fingerprint &&
+					(fingerprint.type === "image" || fingerprint.type === "files")
+				) {
+					// 构造包信息
+					const packageInfo = {
+						packageId: deletedId,
+						itemId: deletedId,
+						itemType: fingerprint.type,
+						fileName: `${deletedId}.zip`,
+						originalPaths: [],
+						size: fingerprint.size,
+						checksum: fingerprint.checksum,
+						compressedSize: 0,
+					};
+					filePackagesToDelete.push(packageInfo);
+				}
 			}
-		}
 
-		if (filePackagesToDelete.length === 0) {
+			if (filePackagesToDelete.length === 0) {
+				return results;
+			}
+
+			const deleteResults = await filePackageManager.deleteRemotePackages(
+				filePackagesToDelete,
+				this.webdavConfig,
+			);
+
+			return deleteResults;
+		} catch (error) {
+			// 使用错误分类系统处理错误
+			const classification = this.classifyError(error);
+			this.logError(classification, "远程文件删除");
+
+			// 只有致命错误才添加到错误列表中
+			if (this.isFatalError(error)) {
+				results.errors.push(
+					`删除远程文件失败: ${error instanceof Error ? error.message : String(error)}`,
+				);
+			} else {
+				// biome-ignore lint/suspicious/noConsoleLog: 允许在非致命错误处理时使用日志
+				console.log("ℹ️ [SyncEngine] 远程文件删除非致命错误:", {
+					错误: error instanceof Error ? error.message : String(error),
+					错误分类: classification.type,
+					严重程度: classification.severity,
+				});
+			}
+
 			return results;
 		}
-		const deleteResults = await filePackageManager.deleteRemotePackages(
-			filePackagesToDelete,
-			this.webdavConfig,
-		);
-
-		return deleteResults;
 	}
 }
 

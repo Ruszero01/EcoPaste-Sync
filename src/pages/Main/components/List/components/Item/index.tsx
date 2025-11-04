@@ -157,12 +157,42 @@ const Item: FC<ItemProps> = (props) => {
 	};
 
 	// 切换收藏状态
-	const toggleFavorite = () => {
+	const toggleFavorite = async () => {
 		const nextFavorite = !favorite;
+
+		// biome-ignore lint/suspicious/noConsoleLog: 允许在关键收藏状态变更时使用日志
+		console.log("⭐ [Item.toggleFavorite] 收藏状态变更:", {
+			项ID: id,
+			项类型: type,
+			之前收藏状态: favorite,
+			之后收藏状态: nextFavorite,
+			时间戳: Date.now(),
+		});
 
 		find(state.list, { id })!.favorite = nextFavorite;
 
-		updateSQL("history", { id, favorite: nextFavorite });
+		// biome-ignore lint/suspicious/noConsoleLog: 允许在关键数据库操作时使用日志
+		console.log("💾 [Item.toggleFavorite] 准备更新数据库收藏状态:", {
+			项ID: id,
+			新收藏状态: nextFavorite,
+		});
+
+		try {
+			await updateSQL("history", { id, favorite: nextFavorite });
+
+			// biome-ignore lint/suspicious/noConsoleLog: 允许在关键数据库操作成功时使用日志
+			console.log("✅ [Item.toggleFavorite] 数据库收藏状态更新成功:", {
+				项ID: id,
+				新收藏状态: nextFavorite,
+			});
+		} catch (error) {
+			// biome-ignore lint/suspicious/noConsoleLog: 允许在关键数据库操作失败时使用日志
+			console.error("❌ [Item.toggleFavorite] 数据库收藏状态更新失败:", {
+				项ID: id,
+				新收藏状态: nextFavorite,
+				错误: error instanceof Error ? error.message : String(error),
+			});
+		}
 	};
 
 	// 打开链接至浏览器

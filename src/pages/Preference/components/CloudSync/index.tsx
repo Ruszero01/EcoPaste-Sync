@@ -40,9 +40,9 @@ import {
 	Typography,
 	message,
 } from "antd";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSnapshot } from "valtio";
-import { saveSyncModeConfig } from "./syncModeConfig";
+import { loadSyncModeConfig, saveSyncModeConfig } from "./syncModeConfig";
 
 const { Text } = Typography;
 
@@ -116,7 +116,6 @@ const CloudSync = () => {
 	const [syncModeConfig, setSyncModeConfig] = useState<SyncModeConfig>(
 		SYNC_MODE_PRESETS.lightweight,
 	);
-	const [favoritesModeEnabled, setFavoritesModeEnabled] = useState(false);
 	const [form] = Form.useForm();
 
 	// 保存上次同步时间到本地存储
@@ -166,8 +165,8 @@ const CloudSync = () => {
 
 					// 初始化同步引擎
 					await syncEngine.initialize(config);
-					// 设置同步模式配置
-					syncEngine.setSyncModeConfig(syncModeConfig);
+					// 设置同步模式配置 - 使用 ref 避免循环依赖
+					syncEngine.setSyncModeConfig(syncModeConfigRef.current);
 
 					// 如果自动同步已启用，重新初始化它
 					if (autoSyncEnabled) {
@@ -204,49 +203,54 @@ const CloudSync = () => {
 		[
 			autoSyncEnabled,
 			syncInterval,
-			syncModeConfig,
 			saveConnectionState,
 			appMessage.success,
 			appMessage.warning,
 			appMessage.error,
-		],
+		], // 移除 syncModeConfig 依赖，使用 ref 代替
 	);
 
 	// 加载同步模式配置
 	const loadSyncMode = useCallback(() => {
 		try {
-			// 优先使用globalStore中的lightweightMode状态来生成配置
-			const lightweightMode = cloudSyncStore.fileSync.lightweightMode;
+			// 从localStorage加载保存的配置
+			const savedConfig = loadSyncModeConfig();
 			let config: SyncModeConfig;
 
-			if (lightweightMode) {
-				// 轻量模式：排除图片和文件
-				config = SYNC_MODE_PRESETS.lightweight;
+			// 如果有保存的配置，优先使用
+			if (savedConfig) {
+				config = savedConfig;
 			} else {
-				// 全量模式：包含所有类型
-				config = SYNC_MODE_PRESETS.full;
-			}
-
-			// 检查当前组件状态中的收藏模式，而不是旧的syncModeConfig
-			if (favoritesModeEnabled) {
-				config = SYNC_MODE_PRESETS.favorites;
+				// 否则根据globalStore中的lightweightMode状态生成配置
+				const lightweightMode = cloudSyncStore.fileSync.lightweightMode;
+				config = lightweightMode
+					? SYNC_MODE_PRESETS.lightweight
+					: SYNC_MODE_PRESETS.full;
 			}
 
 			setSyncModeConfig(config);
 
-			// 立即更新同步引擎配置（如果引擎已初始化）
-			try {
-				syncEngine.setSyncModeConfig(config);
-			} catch (_error) {
-				// 同步引擎尚未初始化，配置将在引擎初始化后应用
-			}
+			// 延迟更新同步引擎配置，避免循环依赖
+			setTimeout(() => {
+				try {
+					syncEngine.setSyncModeConfig(config);
+				} catch (_error) {
+					// 同步引擎尚未初始化，配置将在引擎初始化后应用
+				}
+			}, 100);
 		} catch (error) {
-			console.error("❌ 加载同步模式配置失败", error);
+			console.error("加载同步模式配置失败:", error);
 			// 发生错误时使用默认配置
 			const defaultConfig = SYNC_MODE_PRESETS.lightweight;
 			setSyncModeConfig(defaultConfig);
 		}
-	}, [cloudSyncStore.fileSync.lightweightMode, favoritesModeEnabled]);
+	}, [cloudSyncStore.fileSync.lightweightMode]);
+
+	// 使用 useRef 存储 syncModeConfig，避免循环依赖
+	const syncModeConfigRef = useRef(syncModeConfig);
+	useEffect(() => {
+		syncModeConfigRef.current = syncModeConfig;
+	}, [syncModeConfig]);
 
 	// 加载服务器配置
 	const loadServerConfig = useCallback(async () => {
@@ -276,8 +280,10 @@ const CloudSync = () => {
 							// 如果之前连接成功，直接初始化同步引擎
 							try {
 								await syncEngine.initialize(config);
-								// 设置同步模式配置
-								syncEngine.setSyncModeConfig(syncModeConfig);
+								// 设置同步模式配置 - 使用 ref 避免循环依赖
+								setTimeout(() => {
+									syncEngine.setSyncModeConfig(syncModeConfigRef.current);
+								}, 100);
 							} catch (_initError) {
 								// 如果初始化失败，重新测试连接
 								await validateConnectionStatus(config);
@@ -303,91 +309,123 @@ const CloudSync = () => {
 		} finally {
 			setIsConfigLoading(false);
 		}
-	}, [syncModeConfig, form, validateConnectionStatus, appMessage.error]);
+	}, [form, validateConnectionStatus, appMessage.error]); // 移除 syncModeConfigRef 依赖，因为 ref 对象本身不会变化
 
-	// 处理收藏模式开关变更
-	const handleFavoritesModeChange = (enabled: boolean) => {
-		try {
-			const currentConfig = syncModeConfig;
-			const newConfig = {
-				...currentConfig,
-				mode: (enabled ? "favorites" : "full") as SyncMode,
-				settings: {
-					...currentConfig.settings,
-					onlyFavorites: enabled,
-				},
-			};
+	// 处理收藏模式开关变更（使用防抖优化）
+	const handleFavoritesModeChange = useCallback(
+		(enabled: boolean) => {
+			try {
+				// 检查状态是否已经相同，避免不必要的更新
+				if (syncModeConfig.settings.onlyFavorites === enabled) {
+					return;
+				}
 
-			setSyncModeConfig(newConfig);
+				const currentConfig = syncModeConfig;
+				const newConfig = {
+					...currentConfig,
+					mode: (enabled ? "favorites" : "full") as SyncMode,
+					settings: {
+						...currentConfig.settings,
+						onlyFavorites: enabled,
+					},
+				};
 
-			// 同时更新globalStore中的lightweightMode状态
-			globalStore.cloudSync.fileSync.lightweightMode = enabled;
+				// 先保存配置到localStorage
+				const saved = saveSyncModeConfig(newConfig);
 
-			const saved = saveSyncModeConfig(newConfig);
-			if (saved) {
-				appMessage.success(enabled ? "收藏模式已启用" : "收藏模式已关闭");
-			} else {
-				appMessage.error("保存配置失败");
+				if (saved) {
+					// 更新组件状态
+					setSyncModeConfig(newConfig);
+
+					// 更新globalStore中的lightweightMode状态
+					globalStore.cloudSync.fileSync.lightweightMode = enabled;
+
+					appMessage.success(enabled ? "收藏模式已启用" : "收藏模式已关闭");
+				} else {
+					appMessage.error("保存配置失败");
+				}
+			} catch (error) {
+				console.error("处理收藏模式变更失败:", error);
+				appMessage.error("更新配置失败");
 			}
-		} catch (error) {
-			console.error("❌ 处理收藏模式变更失败", error);
-			appMessage.error("更新配置失败");
-		}
-	};
+		},
+		[syncModeConfig, appMessage],
+	);
 
 	// 处理文件模式开关变更（新版本：文件模式 = 包含图片和文件）
-	const handleFileModeChange = (enabled: boolean) => {
-		try {
-			// 检查是否真的需要变更（避免重复操作）
-			const currentMode =
-				syncModeConfig.settings.includeImages &&
-				syncModeConfig.settings.includeFiles;
-			if (currentMode === enabled) {
-				return; // 状态未变化，直接返回
+	const handleFileModeChange = useCallback(
+		(enabled: boolean) => {
+			try {
+				// 检查是否真的需要变更（避免重复操作）
+				const currentMode =
+					syncModeConfig.settings.includeImages &&
+					syncModeConfig.settings.includeFiles;
+				if (currentMode === enabled) {
+					return; // 状态未变化，直接返回
+				}
+
+				const currentConfig = syncModeConfig;
+				const newConfig = {
+					...currentConfig,
+					settings: {
+						...currentConfig.settings,
+						includeImages: enabled,
+						includeFiles: enabled,
+					},
+				};
+
+				const saved = saveSyncModeConfig(newConfig);
+				if (saved) {
+					// 更新组件状态
+					setSyncModeConfig(newConfig);
+
+					// 更新globalStore状态
+					globalStore.cloudSync.fileSync.lightweightMode = !enabled;
+
+					appMessage.success(enabled ? "文件模式已启用" : "文件模式已关闭");
+				} else {
+					appMessage.error("保存配置失败");
+				}
+			} catch (error) {
+				console.error("处理文件模式变更失败", error);
+				appMessage.error("更新配置失败");
 			}
-
-			const currentConfig = syncModeConfig;
-			const newConfig = {
-				...currentConfig,
-				settings: {
-					...currentConfig.settings,
-					includeImages: enabled,
-					includeFiles: enabled,
-				},
-			};
-
-			// 先更新globalStore状态（这样useEffect读取到的是最新值）
-			globalStore.cloudSync.fileSync.lightweightMode = !enabled;
-
-			const saved = saveSyncModeConfig(newConfig);
-			if (saved) {
-				// 最后才更新组件状态，避免触发多余的useEffect
-				setSyncModeConfig(newConfig);
-				appMessage.success(enabled ? "文件模式已启用" : "文件模式已关闭");
-			} else {
-				console.error("❌ 保存文件模式配置失败");
-				appMessage.error("保存配置失败");
-				// 回滚globalStore状态
-				globalStore.cloudSync.fileSync.lightweightMode = enabled;
-			}
-		} catch (error) {
-			console.error("❌ 处理文件模式变更失败", error);
-			appMessage.error("更新配置失败");
-		}
-	};
+		},
+		[syncModeConfig, appMessage],
+	);
 
 	// 处理文件大小限制变更
-	const handleMaxFileSizeChange = (value: number | null) => {
-		if (value === null || value < 1) return;
+	const handleMaxFileSizeChange = useCallback(
+		(value: number | null) => {
+			if (value === null || value < 1) return;
 
-		try {
-			globalStore.cloudSync.fileSync.maxFileSize = value;
-			appMessage.success(`文件限制已更新为 ${value}MB`);
-		} catch (error) {
-			console.error("❌ 处理文件限制变更失败", error);
-			appMessage.error("更新配置失败");
-		}
-	};
+			try {
+				globalStore.cloudSync.fileSync.maxFileSize = value;
+				appMessage.success(`文件限制已更新为 ${value}MB`);
+			} catch (error) {
+				console.error("处理文件限制变更失败", error);
+				appMessage.error("更新配置失败");
+			}
+		},
+		[appMessage],
+	);
+
+	// 使用 ref 存储函数，避免依赖变化
+	const loadServerConfigRef = useRef(loadServerConfig);
+	const loadSyncModeRef = useRef(loadSyncMode);
+	const saveLastSyncTimeRef = useRef(saveLastSyncTime);
+
+	useEffect(() => {
+		loadServerConfigRef.current = loadServerConfig;
+	}, [loadServerConfig]);
+
+	useEffect(() => {
+		loadSyncModeRef.current = loadSyncMode;
+	}, [loadSyncMode]);
+
+	useEffect(() => {
+		saveLastSyncTimeRef.current = saveLastSyncTime;
+	}, [saveLastSyncTime]);
 
 	// 初始化时加载配置
 	useEffect(() => {
@@ -398,7 +436,7 @@ const CloudSync = () => {
 				if (event.payload?.type === "auto_sync") {
 					const timestamp = event.payload.timestamp;
 					setLastSyncTime(timestamp);
-					saveLastSyncTime(timestamp); // 持久化保存
+					saveLastSyncTimeRef.current(timestamp); // 持久化保存
 				}
 			},
 		);
@@ -410,31 +448,28 @@ const CloudSync = () => {
 		}
 
 		// 加载配置
-		loadServerConfig();
-		loadSyncMode();
+		loadServerConfigRef.current();
+		loadSyncModeRef.current();
 
 		// 清理函数
 		return () => {
 			unlisten.then((fn) => fn());
 		};
-	}, [loadSyncMode, saveLastSyncTime, loadServerConfig]);
+	}, []); // 空依赖数组，只在组件挂载时执行一次
 
 	// 更新同步引擎的同步模式配置（使用防抖优化）
 	useEffect(() => {
 		if (syncModeConfig) {
 			const timeoutId = setTimeout(() => {
-				syncEngine.setSyncModeConfig(syncModeConfig);
-			}, 100); // 100ms 防抖，避免快速连续更新
+				try {
+					syncEngine.setSyncModeConfig(syncModeConfig);
+				} catch (_error) {
+					// 同步引擎尚未初始化，配置将在引擎初始化后应用
+				}
+			}, 300); // 300ms 防抖，避免快速连续更新
 			return () => clearTimeout(timeoutId);
 		}
-	}, [syncModeConfig]);
-
-	// 同步配置到开关状态
-	useEffect(() => {
-		if (syncModeConfig) {
-			setFavoritesModeEnabled(syncModeConfig.settings.onlyFavorites);
-		}
-	}, [syncModeConfig]);
+	}, [syncModeConfig]); // 使用 syncModeConfig 作为依赖，但通过其他方式避免循环
 
 	// 自动同步初始化 - 独立于连接状态加载
 	useEffect(() => {
@@ -452,7 +487,7 @@ const CloudSync = () => {
 				console.error("自动同步初始化失败:", error);
 			}
 		}
-	}, [connectionStatus, autoSyncEnabled, syncInterval, webdavConfig]);
+	}, [connectionStatus, autoSyncEnabled, syncInterval, webdavConfig.url]); // 只依赖 url 字段，避免整个对象变化导致的循环
 
 	// 保存服务器配置
 	const saveServerConfig = async (config: WebDAVConfig) => {
@@ -797,7 +832,7 @@ const CloudSync = () => {
 				{/* 收藏模式 */}
 				<ProListItem title="收藏模式" description="只同步收藏的剪贴板内容">
 					<Switch
-						checked={favoritesModeEnabled}
+						checked={syncModeConfig.settings.onlyFavorites}
 						onChange={handleFavoritesModeChange}
 					/>
 				</ProListItem>
@@ -854,9 +889,9 @@ const CloudSync = () => {
 				</ProListItem>
 
 				{/* 立即同步 */}
-				<ProListItem
-					title={
-						lastSyncTime > 0 ? (
+				{lastSyncTime > 0 ? (
+					<ProListItem
+						title={
 							<Flex
 								align="center"
 								gap={8}
@@ -877,23 +912,42 @@ const CloudSync = () => {
 									上次同步：{formatSyncTime(lastSyncTime)}
 								</Text>
 							</Flex>
-						) : (
-							"立即同步"
-						)
-					}
-				>
-					<Button
-						type="primary"
-						size="middle"
-						icon={<CloudSyncOutlined />}
-						loading={isSyncing}
-						onClick={handleImmediateSync}
-						disabled={connectionStatus !== "success"}
-						style={{ minWidth: 120 }}
+						}
 					>
-						立即同步
-					</Button>
-				</ProListItem>
+						<Button
+							type="primary"
+							size="middle"
+							icon={<CloudSyncOutlined />}
+							loading={isSyncing}
+							onClick={handleImmediateSync}
+							disabled={connectionStatus !== "success"}
+							style={{ minWidth: 120 }}
+						>
+							立即同步
+						</Button>
+					</ProListItem>
+				) : (
+					// 当没有同步历史时，只显示按钮，不使用ProListItem包装
+					<div
+						style={{
+							padding: "12px 16px",
+							display: "flex",
+							justifyContent: "flex-end",
+						}}
+					>
+						<Button
+							type="primary"
+							size="middle"
+							icon={<CloudSyncOutlined />}
+							loading={isSyncing}
+							onClick={handleImmediateSync}
+							disabled={connectionStatus !== "success"}
+							style={{ minWidth: 120 }}
+						>
+							立即同步
+						</Button>
+					</div>
+				)}
 			</ProList>
 
 			{/* 开发环境专用：数据库管理工具 */}
