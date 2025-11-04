@@ -74,13 +74,13 @@ const ImmediateSyncButton = ({
 		onLog?.(level, message, data);
 	};
 
-	// 监听间隔同步触发事件
+	// 监听自动同步触发事件
 	useTauriListen(LISTEN_KEY.TRIGGER_MANUAL_SYNC, (event) => {
-		console.info("🎯 收到间隔同步触发事件:", event.payload);
+		console.info("🎯 收到自动同步触发事件:", event.payload);
 
-		// 只有在间隔同步触发时才执行
-		if (event.payload?.type === "interval_trigger") {
-			addLog("info", "⏰ 间隔同步自动触发立即同步");
+		// 只有在自动同步触发时才执行
+		if (event.payload?.type === "auto_trigger") {
+			addLog("info", "⏰ 自动同步触发");
 			// 调用同步处理函数
 			handleImmediateSync();
 		}
@@ -93,17 +93,17 @@ const ImmediateSyncButton = ({
 		}
 
 		if (connectionStatus !== "success") {
-			message.error("请先确保网络连接正常");
+			message.error("请先检查网络连接");
 			return;
 		}
 
 		setLocalIsSyncing(true);
 		onSyncStart?.();
-		addLog("info", "🚀 开始智能同步...");
+		addLog("info", "🚀 开始同步...");
 
 		try {
 			// 使用统一的同步引擎方法
-			addLog("info", "🔄 使用统一的同步方法进行双向同步...");
+			addLog("info", "🔄 执行双向同步...");
 			const syncResult = await syncEngine.performBidirectionalSync();
 
 			if (syncResult.success) {
@@ -114,29 +114,19 @@ const ImmediateSyncButton = ({
 				onSyncComplete?.(timestamp);
 
 				// 显示成功消息
-				let successMessage = "同步完成";
-				if (syncResult.downloaded > 0 && syncResult.uploaded > 0) {
-					successMessage += `，下载 ${syncResult.downloaded} 条，上传 ${syncResult.uploaded} 条`;
-				} else if (syncResult.downloaded > 0) {
-					successMessage += `，下载 ${syncResult.downloaded} 条`;
-				} else if (syncResult.uploaded > 0) {
-					successMessage += `，上传 ${syncResult.uploaded} 条`;
+				const totalCount = syncResult.downloaded + syncResult.uploaded;
+				let successMessage: string;
+				if (totalCount === 0) {
+					successMessage = "无需同步";
+				} else {
+					successMessage = `已同步 ${totalCount} 条数据`;
 				}
 
 				message.success(successMessage);
-				addLog("success", "✅ 智能同步完成", {
+				addLog("success", "✅ 同步完成", {
 					uploaded: syncResult.uploaded,
 					downloaded: syncResult.downloaded,
 					duration: `${syncResult.duration}ms`,
-				});
-
-				// 添加详细的调试信息
-				addLog("info", "🔥 调试：同步流程详情", {
-					使用的同步方法: "performBidirectionalSync",
-					上传数量: syncResult.uploaded,
-					下载数量: syncResult.downloaded,
-					同步时间: new Date(syncResult.timestamp).toISOString(),
-					同步状态: "成功",
 				});
 			} else {
 				throw new Error(syncResult.errors?.join(", ") || "同步失败");
@@ -145,7 +135,7 @@ const ImmediateSyncButton = ({
 			addLog("error", "❌ 同步失败", {
 				error: error instanceof Error ? error.message : String(error),
 			});
-			message.error("同步出错，请查看日志");
+			message.error("同步失败，请查看日志");
 		} finally {
 			setLocalIsSyncing(false);
 		}

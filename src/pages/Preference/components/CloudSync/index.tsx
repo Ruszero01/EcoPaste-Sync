@@ -104,7 +104,7 @@ const CloudSync = () => {
 	>("idle");
 	const [isSyncing, setIsSyncing] = useState(false);
 	const [lastSyncTime, setLastSyncTime] = useState<number>(0);
-	const [intervalSyncEnabled, setIntervalSyncEnabled] = useState(false);
+	const [autoSyncEnabled, setAutoSyncEnabled] = useState(false);
 	const [syncInterval, setSyncInterval] = useState<SyncInterval>(1); // 默认1小时
 	const [webdavConfig, setWebdavConfig] = useState<WebDAVConfig>({
 		url: "",
@@ -169,8 +169,8 @@ const CloudSync = () => {
 					// 设置同步模式配置
 					syncEngine.setSyncModeConfig(syncModeConfig);
 
-					// 如果间隔同步已启用，重新初始化它
-					if (intervalSyncEnabled) {
+					// 如果自动同步已启用，重新初始化它
+					if (autoSyncEnabled) {
 						realtimeSync.initialize({
 							enabled: true,
 							intervalHours: syncInterval,
@@ -178,14 +178,14 @@ const CloudSync = () => {
 					}
 
 					if (showMessage) {
-						appMessage.success("连接验证成功，云同步已就绪");
+						appMessage.success("连接成功，云同步已就绪");
 					}
 				} else {
 					setConnectionStatus("failed");
 					await saveConnectionState("failed", config);
 
 					if (showMessage) {
-						appMessage.warning("连接失败，请检查网络或服务器配置");
+						appMessage.warning("连接失败，请检查配置");
 					}
 				}
 			} catch (testError) {
@@ -202,7 +202,7 @@ const CloudSync = () => {
 			}
 		},
 		[
-			intervalSyncEnabled,
+			autoSyncEnabled,
 			syncInterval,
 			syncModeConfig,
 			saveConnectionState,
@@ -325,7 +325,7 @@ const CloudSync = () => {
 
 			const saved = saveSyncModeConfig(newConfig);
 			if (saved) {
-				appMessage.success(enabled ? "已启用收藏模式" : "已关闭收藏模式");
+				appMessage.success(enabled ? "收藏模式已启用" : "收藏模式已关闭");
 			} else {
 				appMessage.error("保存配置失败");
 			}
@@ -363,7 +363,7 @@ const CloudSync = () => {
 			if (saved) {
 				// 最后才更新组件状态，避免触发多余的useEffect
 				setSyncModeConfig(newConfig);
-				appMessage.success(enabled ? "已启用文件模式" : "已关闭文件模式");
+				appMessage.success(enabled ? "文件模式已启用" : "文件模式已关闭");
 			} else {
 				console.error("❌ 保存文件模式配置失败");
 				appMessage.error("保存配置失败");
@@ -382,20 +382,20 @@ const CloudSync = () => {
 
 		try {
 			globalStore.cloudSync.fileSync.maxFileSize = value;
-			appMessage.success(`文件大小限制已更新为 ${value}MB`);
+			appMessage.success(`文件限制已更新为 ${value}MB`);
 		} catch (error) {
-			console.error("❌ 处理文件大小限制变更失败", error);
+			console.error("❌ 处理文件限制变更失败", error);
 			appMessage.error("更新配置失败");
 		}
 	};
 
 	// 初始化时加载配置
 	useEffect(() => {
-		// 监听间隔同步完成事件
+		// 监听自动同步完成事件
 		const unlisten = listen(
 			LISTEN_KEY.REALTIME_SYNC_COMPLETED,
 			(event: any) => {
-				if (event.payload?.type === "interval_sync") {
+				if (event.payload?.type === "auto_sync") {
 					const timestamp = event.payload.timestamp;
 					setLastSyncTime(timestamp);
 					saveLastSyncTime(timestamp); // 持久化保存
@@ -436,11 +436,11 @@ const CloudSync = () => {
 		}
 	}, [syncModeConfig]);
 
-	// 间隔同步初始化 - 独立于连接状态加载
+	// 自动同步初始化 - 独立于连接状态加载
 	useEffect(() => {
 		if (connectionStatus === "success" && webdavConfig.url) {
 			try {
-				if (intervalSyncEnabled) {
+				if (autoSyncEnabled) {
 					realtimeSync.initialize({
 						enabled: true,
 						intervalHours: syncInterval,
@@ -449,10 +449,10 @@ const CloudSync = () => {
 					realtimeSync.setEnabled(false);
 				}
 			} catch (error) {
-				console.error("间隔同步初始化失败:", error);
+				console.error("自动同步初始化失败:", error);
 			}
 		}
-	}, [connectionStatus, intervalSyncEnabled, syncInterval, webdavConfig]);
+	}, [connectionStatus, autoSyncEnabled, syncInterval, webdavConfig]);
 
 	// 保存服务器配置
 	const saveServerConfig = async (config: WebDAVConfig) => {
@@ -474,14 +474,14 @@ const CloudSync = () => {
 			const result = await testConnection(webdavConfig);
 			if (result.success) {
 				setConnectionStatus("success");
-				appMessage.success("连接测试成功");
+				appMessage.success("连接成功");
 			} else {
 				setConnectionStatus("failed");
-				appMessage.error("连接测试失败");
+				appMessage.error("连接失败");
 			}
 		} catch (_error) {
 			setConnectionStatus("failed");
-			appMessage.error("连接测试异常");
+			appMessage.error("连接测试失败");
 		}
 	};
 
@@ -500,7 +500,7 @@ const CloudSync = () => {
 			// 保存配置到本地
 			const saved = await saveServerConfig(config);
 			if (!saved) {
-				appMessage.error("配置保存失败");
+				appMessage.error("保存失败");
 				return;
 			}
 
@@ -508,7 +508,7 @@ const CloudSync = () => {
 			await validateConnectionStatus(config);
 		} catch (error) {
 			setConnectionStatus("failed");
-			appMessage.error("配置保存失败");
+			appMessage.error("保存失败");
 			console.error("❌ 配置处理失败", {
 				error: error instanceof Error ? error.message : String(error),
 			});
@@ -524,13 +524,13 @@ const CloudSync = () => {
 		}
 
 		if (connectionStatus !== "success") {
-			appMessage.error("请先确保网络连接正常");
+			appMessage.error("请先检查网络连接");
 			return;
 		}
 
 		// 检查WebDAV配置是否有效
 		if (!webdavConfig.url || !webdavConfig.username || !webdavConfig.password) {
-			appMessage.error("WebDAV配置不完整，请先配置云同步");
+			appMessage.error("配置不完整，请先完成设置");
 			return;
 		}
 
@@ -590,46 +590,46 @@ const CloudSync = () => {
 			console.error("❌ 同步失败", {
 				error: error instanceof Error ? error.message : String(error),
 			});
-			appMessage.error("同步出错，请查看控制台");
+			appMessage.error("同步失败，请查看日志");
 		} finally {
 			setIsSyncing(false);
 		}
 	};
 
-	// 处理间隔同步开关
-	const handleIntervalSyncToggle = async (enabled: boolean) => {
-		setIntervalSyncEnabled(enabled);
+	// 处理自动同步开关
+	const handleAutoSyncToggle = async (enabled: boolean) => {
+		setAutoSyncEnabled(enabled);
 		try {
 			if (enabled) {
 				realtimeSync.initialize({
 					enabled: true,
 					intervalHours: syncInterval,
 				});
-				appMessage.success(`间隔同步已启用，每${syncInterval}小时自动同步`);
+				appMessage.success(`自动同步已启用，每${syncInterval}小时同步一次`);
 			} else {
 				realtimeSync.setEnabled(false);
-				appMessage.info("间隔同步已禁用");
+				appMessage.info("自动同步已禁用");
 			}
 		} catch (error) {
-			console.error("间隔同步操作失败", {
+			console.error("自动同步操作失败", {
 				error: error instanceof Error ? error.message : String(error),
 			});
-			appMessage.error("间隔同步操作失败");
+			appMessage.error("自动同步操作失败");
 		}
 	};
 
 	// 处理同步间隔变更
 	const handleSyncIntervalChange = async (hours: SyncInterval) => {
 		setSyncInterval(hours);
-		if (intervalSyncEnabled) {
+		if (autoSyncEnabled) {
 			try {
 				realtimeSync.setIntervalHours(hours);
-				appMessage.success(`同步间隔已更新为每${hours}小时`);
+				appMessage.success(`同步间隔已更新为每${hours}小时一次`);
 			} catch (error) {
 				console.error("更新同步间隔失败", {
 					error: error instanceof Error ? error.message : String(error),
 				});
-				appMessage.error("更新同步间隔失败");
+				appMessage.error("更新间隔失败");
 			}
 		}
 	};
@@ -646,7 +646,7 @@ const CloudSync = () => {
 				try {
 					const success = await clearHistoryTable();
 					if (success) {
-						appMessage.success("历史记录已清空");
+						appMessage.success("清空成功");
 						emit(LISTEN_KEY.REFRESH_CLIPBOARD_LIST);
 					} else {
 						appMessage.error("清空失败");
@@ -671,7 +671,7 @@ const CloudSync = () => {
 				try {
 					const success = await resetDatabase();
 					if (success) {
-						appMessage.success("数据库已重置");
+						appMessage.success("重置成功");
 						emit(LISTEN_KEY.REFRESH_CLIPBOARD_LIST);
 					} else {
 						appMessage.error("重置失败");
@@ -695,7 +695,7 @@ const CloudSync = () => {
 					initialValues={webdavConfig}
 				>
 					{/* 服务器地址 */}
-					<ProListItem title="服务器地址" description="WebDAV服务器地址">
+					<ProListItem title="服务器地址">
 						<Form.Item
 							name="url"
 							style={{ margin: 0, minWidth: 300, maxWidth: 400 }}
@@ -705,7 +705,7 @@ const CloudSync = () => {
 					</ProListItem>
 
 					{/* 用户名 */}
-					<ProListItem title="用户名" description="WebDAV服务器用户名">
+					<ProListItem title="用户名">
 						<Form.Item
 							name="username"
 							style={{ margin: 0, minWidth: 300, maxWidth: 400 }}
@@ -715,7 +715,7 @@ const CloudSync = () => {
 					</ProListItem>
 
 					{/* 密码 */}
-					<ProListItem title="密码" description="WebDAV服务器密码">
+					<ProListItem title="密码">
 						<Form.Item
 							name="password"
 							style={{ margin: 0, minWidth: 300, maxWidth: 400 }}
@@ -725,10 +725,7 @@ const CloudSync = () => {
 					</ProListItem>
 
 					{/* 同步路径 */}
-					<ProListItem
-						title="同步路径"
-						description="云端同步目录，默认为 /EcoPaste"
-					>
+					<ProListItem title="同步路径">
 						<Form.Item
 							name="path"
 							style={{ margin: 0, minWidth: 300, maxWidth: 400 }}
@@ -819,7 +816,7 @@ const CloudSync = () => {
 							syncModeConfig.settings.includeFiles && (
 								<Flex align="center" gap={8} style={{ width: "auto" }}>
 									<Text type="secondary" style={{ fontSize: "12px" }}>
-										最大文件大小：
+										文件限制：
 									</Text>
 									<InputNumber
 										size="small"
@@ -836,13 +833,10 @@ const CloudSync = () => {
 				</ProListItem>
 
 				{/* 间隔同步 */}
-				<ProListItem title="间隔同步" description="每隔一段时间自动同步数据">
+				<ProListItem title="自动同步" description="按设定间隔自动同步数据">
 					<Flex vertical gap={8} align="flex-end">
-						<Switch
-							checked={intervalSyncEnabled}
-							onChange={handleIntervalSyncToggle}
-						/>
-						{intervalSyncEnabled && (
+						<Switch checked={autoSyncEnabled} onChange={handleAutoSyncToggle} />
+						{autoSyncEnabled && (
 							<Select
 								value={syncInterval}
 								onChange={handleSyncIntervalChange}

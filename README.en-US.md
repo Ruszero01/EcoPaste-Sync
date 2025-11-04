@@ -140,10 +140,14 @@ pnpm tauri build
 - **Data Recovery**: Support for data recovery from backup files
 
 ### ☁️ Cloud Sync Features (This Branch's Specialty)
-- **WebDAV Sync**: Multi-device data synchronization through WebDAV protocol
-- **Smart Sync Mode**: Multiple sync strategies with selective sync by content type, favorite status, etc.
-- **Conflict Resolution**: Intelligent conflict detection and automatic resolution mechanisms
-- **Bidirectional Sync**: Support for bidirectional data synchronization across multiple devices
+- **Three Sync Modes**: Lightweight, complete, and favorites sync to meet different needs
+- **Multi-type Support**: Support for various data types including text, images, and files
+- **Bidirectional Sync**: Support for bidirectional data synchronization and incremental updates across multiple devices
+- **Auto Sync**: Configurable sync intervals for automatic data synchronization
+- **WebDAV Protocol**: Based on standard WebDAV protocol, compatible with various cloud storage services
+- **Data Security**: Support for data encryption and compression to ensure secure transmission
+- **Error Handling**: Comprehensive error handling and retry mechanisms to ensure sync reliability
+- **Simple Interface**: Clean user interface and status display for easy operation
 
 ### ⚙️ Personalization Settings
 - **Theme Customization**: Light/dark themes, follow system or manual switching
@@ -168,7 +172,7 @@ pnpm tauri build
 
 ### Cloud Sync Configuration (This Branch)
 1. **Prepare WebDAV Service**: Ensure you have an available WebDAV service
-2. **Configure Connection**: Fill in server information in preferences' "Cloud Sync" section and test connection
+2. **Configure Connection**: Configure server information in preferences' "Cloud Sync" section
 3. **Start Syncing**: Select appropriate sync strategy and start synchronization
 
 ## Feedback

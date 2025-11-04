@@ -3,13 +3,13 @@ import { emit } from "@tauri-apps/api/event";
 
 export type SyncInterval = 1 | 2 | 6 | 12 | 24; // 小时
 
-export interface IntervalSyncConfig {
+export interface AutoSyncConfig {
 	enabled: boolean;
 	intervalHours: SyncInterval; // 同步间隔（小时）
 }
 
-class IntervalSyncEngine {
-	private config: IntervalSyncConfig = {
+class AutoSyncEngine {
+	private config: AutoSyncConfig = {
 		enabled: false,
 		intervalHours: 1, // 默认1小时
 	};
@@ -23,25 +23,25 @@ class IntervalSyncEngine {
 	}
 
 	/**
-	 * 初始化间隔同步
+	 * 初始化自动同步
 	 */
-	initialize(config: Partial<IntervalSyncConfig>): void {
+	initialize(config: Partial<AutoSyncConfig>): void {
 		this.config = { ...this.config, ...config };
 
 		if (this.config.enabled) {
-			this.startIntervalSync();
+			this.startAutoSync();
 		}
 	}
 
 	/**
-	 * 启用/禁用间隔同步
+	 * 启用/禁用自动同步
 	 */
 	setEnabled(enabled: boolean): void {
 		this.config.enabled = enabled;
 		if (!enabled) {
 			this.clearSyncTimer();
 		} else {
-			this.startIntervalSync();
+			this.startAutoSync();
 		}
 	}
 
@@ -51,14 +51,14 @@ class IntervalSyncEngine {
 	setIntervalHours(hours: SyncInterval): void {
 		this.config.intervalHours = hours;
 		if (this.config.enabled) {
-			this.restartIntervalSync();
+			this.restartAutoSync();
 		}
 	}
 
 	/**
-	 * 启动间隔同步
+	 * 启动自动同步
 	 */
-	startIntervalSync(): void {
+	startAutoSync(): void {
 		if (!this.config.enabled) return;
 
 		this.clearSyncTimer(); // 清除现有定时器
@@ -75,11 +75,11 @@ class IntervalSyncEngine {
 	}
 
 	/**
-	 * 重启间隔同步（当间隔时间改变时）
+	 * 重启自动同步（当间隔时间改变时）
 	 */
-	private restartIntervalSync(): void {
+	private restartAutoSync(): void {
 		if (this.config.enabled) {
-			this.startIntervalSync();
+			this.startAutoSync();
 		}
 	}
 
@@ -96,12 +96,12 @@ class IntervalSyncEngine {
 		try {
 			// 发送事件，触发立即同步按钮的点击
 			emit(LISTEN_KEY.TRIGGER_MANUAL_SYNC, {
-				type: "interval_trigger",
+				type: "auto_trigger",
 				timestamp: Date.now(),
 				intervalHours: this.config.intervalHours,
 			});
 		} catch (error) {
-			console.error("❌ 间隔同步触发失败:", error);
+			console.error("❌ 自动同步触发失败:", error);
 		} finally {
 			// 短暂延迟后重置同步状态
 			setTimeout(() => {
@@ -132,7 +132,7 @@ class IntervalSyncEngine {
 	/**
 	 * 获取当前配置
 	 */
-	getConfig(): IntervalSyncConfig {
+	getConfig(): AutoSyncConfig {
 		return { ...this.config };
 	}
 
@@ -154,10 +154,10 @@ class IntervalSyncEngine {
 }
 
 // 创建单例实例
-export const realtimeSync = new IntervalSyncEngine();
+export const realtimeSync = new AutoSyncEngine();
 
 // 导出类型和工具函数
-export type { IntervalSyncEngine };
+export type { AutoSyncEngine };
 
 /**
  * 设置同步事件监听器
