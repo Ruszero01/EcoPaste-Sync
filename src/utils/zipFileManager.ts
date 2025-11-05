@@ -1,7 +1,5 @@
 import type { WebDAVConfig } from "@/plugins/webdav";
-import { deleteFile, downloadSyncData, uploadSyncData } from "@/plugins/webdav";
-import { appDataDir, join } from "@tauri-apps/api/path";
-import { mkdir, writeFile } from "@tauri-apps/plugin-fs";
+import { downloadSyncData, uploadSyncData } from "@/plugins/webdav";
 import JSZip from "jszip";
 
 interface ZipFileInfo {
@@ -110,7 +108,10 @@ export class ZipFileManager {
 		const zipData = await this.currentZip.generateAsync({
 			type: "uint8array",
 		});
-		const base64Content = this.arrayBufferToBase64(zipData.buffer);
+		const zipBuffer = zipData.buffer.slice(0);
+		const arrayBuffer = new ArrayBuffer(zipBuffer.byteLength);
+		new Uint8Array(arrayBuffer).set(new Uint8Array(zipBuffer));
+		const base64Content = this.arrayBufferToBase64(arrayBuffer);
 
 		let uploadAttempts = 0;
 		const maxAttempts = 3;
@@ -273,7 +274,10 @@ export class ZipFileManager {
 			}
 
 			const fileData = await file.async("uint8array");
-			return fileData.buffer;
+			const fileBuffer = fileData.buffer.slice(0);
+			const arrayBuffer = new ArrayBuffer(fileBuffer.byteLength);
+			new Uint8Array(arrayBuffer).set(new Uint8Array(fileBuffer));
+			return arrayBuffer;
 		} catch (error) {
 			console.error(`❌ 从ZIP包中提取文件失败: ${fileName}`, error);
 			return null;
@@ -356,39 +360,10 @@ export class ZipFileManager {
 	private async ensureZipDirectoryExists(config: WebDAVConfig): Promise<void> {
 		try {
 			const { createDirectory } = await import("@/plugins/webdav");
-			const _result = await createDirectory(config, "/EcoPaste/zip_files");
+			await createDirectory(config, "/EcoPaste/zip_files");
 		} catch (_error) {
 			// 忽略目录创建错误，因为目录可能已经存在
 		}
-	}
-
-	/**
-	 * 保存ZIP包索引
-	 */
-	private async saveZipIndex(
-		zipName: string,
-		size: number,
-		files: string[],
-	): Promise<void> {
-		const appDataPath = await appDataDir();
-		const indexDir = await join(appDataPath, "zip_files");
-
-		try {
-			await mkdir(indexDir, { recursive: true });
-		} catch {
-			// 目录可能已存在
-		}
-
-		const indexPath = await join(indexDir, `${zipName}.json`);
-		const indexData = {
-			zipName,
-			webdavPath: this.getZipWebDAVPath(zipName),
-			totalSize: size,
-			files,
-			createdAt: Date.now(),
-		};
-
-		await writeFile(indexPath, JSON.stringify(indexData, null, 2));
 	}
 
 	/**
@@ -450,23 +425,6 @@ export class ZipFileManager {
 			bytes[i] = binaryString.charCodeAt(i);
 		}
 		return bytes.buffer;
-	}
-
-	/**
-	 * 删除文件（如果存在）
-	 */
-	private async deleteFileIfExists(
-		config: WebDAVConfig,
-		filePath: string,
-	): Promise<void> {
-		try {
-			const result = await deleteFile(config, filePath);
-			if (result) {
-			} else {
-			}
-		} catch (_error) {
-			// 忽略删除错误，因为文件可能本来就不存在
-		}
 	}
 
 	/**

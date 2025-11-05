@@ -9,7 +9,7 @@ export interface ReadImage {
 export interface ClipboardPayload {
 	type?: "text" | "rtf" | "html" | "image" | "files";
 	group: "text" | "image" | "files";
-	subtype?: "url" | "email" | "color" | "path";
+	subtype?: "url" | "email" | "color" | "path" | "image";
 	count: number;
 	value: string;
 	search: string;

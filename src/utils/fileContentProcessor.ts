@@ -16,7 +16,11 @@ export class FileContentProcessor {
 
 			// 检查是否在浏览器环境中
 			if (typeof window === "undefined" || typeof document === "undefined") {
-				return originalBuffer;
+				// Convert Uint8Array to ArrayBuffer by copying the data
+				const newArrayBuffer = new ArrayBuffer(originalBuffer.length);
+				const view = new Uint8Array(newArrayBuffer);
+				view.set(originalBuffer);
+				return newArrayBuffer;
 			}
 
 			// 使用Canvas压缩图片
@@ -73,7 +77,9 @@ export class FileContentProcessor {
 				};
 
 				try {
-					img.src = URL.createObjectURL(new Blob([originalBuffer]));
+					// Create a copy of the Uint8Array to ensure it has a regular ArrayBuffer
+					const copiedBuffer = new Uint8Array(originalBuffer);
+					img.src = URL.createObjectURL(new Blob([copiedBuffer]));
 				} catch (blobError) {
 					console.error("[FileContentProcessor] 创建Blob URL失败:", blobError);
 					reject(new Error(`创建Blob URL失败: ${blobError}`));
@@ -105,13 +111,22 @@ export class FileContentProcessor {
 				return zipContent;
 			} catch (jszipError) {
 				console.error("[FileContentProcessor] JSZip压缩失败:", jszipError);
-				return originalBuffer;
+				// Convert Uint8Array to ArrayBuffer by copying the data
+				const newArrayBuffer = new ArrayBuffer(originalBuffer.length);
+				const view = new Uint8Array(newArrayBuffer);
+				view.set(originalBuffer);
+				return newArrayBuffer;
 			}
 		} catch (error) {
 			console.error("[FileContentProcessor] 文件压缩过程失败:", error);
 			// 如果所有压缩方法都失败，尝试返回原始缓冲区
 			try {
-				return await readFile(filePath);
+				const fallbackBuffer = await readFile(filePath);
+				// Convert Uint8Array to ArrayBuffer by copying the data
+				const newArrayBuffer = new ArrayBuffer(fallbackBuffer.length);
+				const view = new Uint8Array(newArrayBuffer);
+				view.set(fallbackBuffer);
+				return newArrayBuffer;
 			} catch (readError) {
 				console.error("[FileContentProcessor] 读取原始文件也失败:", readError);
 				throw new Error(`文件压缩失败: ${error}`);

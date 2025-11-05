@@ -672,13 +672,6 @@ export class FilePackageManager {
 		}
 	}
 
-	private formatFileSize(bytes: number): string {
-		const sizes = ["B", "KB", "MB", "GB"];
-		if (bytes === 0) return "0 B";
-		const i = Math.floor(Math.log(bytes) / Math.log(1024));
-		return `${Math.round((bytes / 1024 ** i) * 100) / 100} ${sizes[i]}`;
-	}
-
 	private async calculateTotalSize(paths: string[]): Promise<number> {
 		let totalSize = 0;
 		const { lstat } = await import("@tauri-apps/plugin-fs");
@@ -1104,40 +1097,6 @@ export class FilePackageManager {
 			if (await exists(originalPath)) {
 				recoveredPaths.push(originalPath);
 			}
-		}
-
-		return recoveredPaths;
-	}
-
-	private async recoverLocalPaths(originalPaths: string[]): Promise<string[]> {
-		const recoveredPaths: string[] = [];
-		const { exists } = await import("@tauri-apps/plugin-fs");
-
-		for (let i = 0; i < originalPaths.length; i++) {
-			let originalPath = originalPaths[i];
-
-			if (Array.isArray(originalPath)) {
-				const foundPath = originalPath.find(
-					(item) =>
-						typeof item === "string" &&
-						(item.includes(":") || item.includes("/") || item.includes("\\")),
-				);
-				if (foundPath) {
-					originalPath = foundPath;
-				} else {
-					originalPath = originalPath[0];
-				}
-			}
-
-			if (typeof originalPath !== "string") {
-				continue;
-			}
-
-			try {
-				if (await exists(originalPath)) {
-					recoveredPaths.push(originalPath);
-				}
-			} catch {}
 		}
 
 		return recoveredPaths;

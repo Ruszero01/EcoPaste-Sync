@@ -1,5 +1,5 @@
 import { LISTEN_KEY } from "@/constants";
-import { useTauriListen } from "@/hooks";
+import { useTauriListen } from "@/hooks/useTauriListen";
 import { syncEngine } from "@/utils/syncEngine";
 import { CloudSyncOutlined, ScheduleOutlined } from "@ant-design/icons";
 import { Button, Flex, List, Typography, message } from "antd";
@@ -75,16 +75,19 @@ const ImmediateSyncButton = ({
 	};
 
 	// 监听自动同步触发事件
-	useTauriListen(LISTEN_KEY.TRIGGER_MANUAL_SYNC, (event) => {
-		console.info("🎯 收到自动同步触发事件:", event.payload);
+	useTauriListen(
+		LISTEN_KEY.TRIGGER_MANUAL_SYNC,
+		(event: { payload?: { type?: string } }) => {
+			console.info("🎯 收到自动同步触发事件:", event.payload);
 
-		// 只有在自动同步触发时才执行
-		if (event.payload?.type === "auto_trigger") {
-			addLog("info", "⏰ 自动同步触发");
-			// 调用同步处理函数
-			handleImmediateSync();
-		}
-	});
+			// 只有在自动同步触发时才执行
+			if (event.payload?.type === "auto_trigger") {
+				addLog("info", "⏰ 自动同步触发");
+				// 调用同步处理函数
+				handleImmediateSync();
+			}
+		},
+	);
 
 	// 立即同步处理函数
 	const handleImmediateSync = async () => {
