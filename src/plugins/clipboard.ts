@@ -11,6 +11,7 @@ import { listen } from "@tauri-apps/api/event";
 import { exists } from "@tauri-apps/plugin-fs";
 import { isEmpty, isEqual } from "lodash-es";
 import { fullName, metadata } from "tauri-plugin-fs-pro-api";
+import { paste } from "./paste";
 import { getServerConfig } from "./webdav";
 
 const COMMAND = {
@@ -31,7 +32,6 @@ const COMMAND = {
 	WRITE_HTML: "plugin:eco-clipboard|write_html",
 	WRITE_RTF: "plugin:eco-clipboard|write_rtf",
 	WRITE_TEXT: "plugin:eco-clipboard|write_text",
-	PASTE: "plugin:eco-clipboard|paste",
 	CLIPBOARD_UPDATE: "plugin:eco-clipboard://clipboard_update",
 };
 
@@ -91,13 +91,6 @@ export const hasRTF = () => {
  */
 export const hasText = () => {
 	return invoke<boolean>(COMMAND.HAS_TEXT);
-};
-
-/**
- * 粘贴剪贴板内容
- */
-export const paste = () => {
-	return invoke(COMMAND.PASTE);
 };
 
 /**

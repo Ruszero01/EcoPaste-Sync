@@ -158,10 +158,3 @@ export const realtimeSync = new AutoSyncEngine();
 
 // 导出类型和工具函数
 export type { AutoSyncEngine };
-
-/**
- * 设置同步事件监听器
- */
-export const setSyncEventListener = (_listener: () => void) => {
-	// 保留此函数以保持向后兼容性
-};
