@@ -33,7 +33,7 @@ import { emit } from "@tauri-apps/api/event";
 export function calculateUnifiedChecksum(
 	item: any,
 	includeMetadata = false,
-	includeFavorite = true, // 修复：默认包含收藏状态以检测收藏状态变化
+	includeFavorite = true,
 ): string {
 	// 提取核心字段，排除同步相关的临时字段
 	const coreFields: any = {
@@ -42,15 +42,13 @@ export function calculateUnifiedChecksum(
 		value: item.value,
 	};
 
-	// 如果需要包含元数据，添加一些稳定的元数据字段
 	if (includeMetadata) {
 		coreFields.createTime = item.createTime;
 		coreFields.favorite = !!item.favorite;
 		coreFields.note = item.note || "";
 	}
 
-	// 修复：统一收藏状态处理逻辑，避免重复添加
-	// 如果需要包含收藏状态（用于检测收藏状态变化）
+	// 统一收藏状态处理逻辑
 	if (includeFavorite) {
 		coreFields.favorite = !!item.favorite;
 	}
@@ -65,27 +63,7 @@ export function calculateUnifiedChecksum(
 
 	// 使用稳定的JSON序列化
 	const checksumSource = JSON.stringify(orderedObject);
-
-	// 计算校验和
 	const checksum = calculateStringChecksum(checksumSource);
-
-	// 添加详细的调试日志
-	// biome-ignore lint/suspicious/noConsoleLog: 允许在校验和计算时使用日志
-	console.log("🔍 [calculateUnifiedChecksum] 统一校验和计算:", {
-		项ID: item.id,
-		项类型: item.type,
-		包含元数据: includeMetadata,
-		包含收藏状态: includeFavorite,
-		原始收藏状态: item.favorite,
-		核心字段: coreFields,
-		排序后对象: orderedObject,
-		校验和源字符串: checksumSource,
-		计算出的校验和: checksum,
-		调用堆栈: new Error().stack
-			?.split("\n")
-			.slice(1, 4)
-			.map((line) => line.trim()),
-	});
 
 	return checksum;
 }
@@ -95,7 +73,6 @@ export function calculateUnifiedChecksum(
  * 用于比较内容变化，忽略收藏状态差异
  */
 export function calculateContentChecksum(item: any): string {
-	// 使用不包含收藏状态的校验和计算
 	return calculateUnifiedChecksum(item, false, false);
 }
 
@@ -104,7 +81,6 @@ export function calculateContentChecksum(item: any): string {
  * 用于检测收藏状态变化
  */
 export function calculateFavoriteAwareChecksum(item: any): string {
-	// 使用包含收藏状态的校验和计算
 	return calculateUnifiedChecksum(item, false, true);
 }
 
@@ -299,37 +275,21 @@ class MetadataManager {
 
 	/**
 	 * 生成数据指纹
-	 * 修复：始终使用不包含收藏状态的校验和，确保收藏模式切换前后校验和一致
-	 * 这样可以避免收藏模式切换导致同一条数据被误判为新增项
+	 * 始终使用不包含收藏状态的校验和，确保收藏模式切换前后校验和一致
 	 */
 	generateFingerprint(item: SyncItem): DataFingerprint {
-		// 修复：始终使用不包含收藏状态的校验和，确保收藏模式切换前后校验和一致
-		// 这样可以避免收藏模式切换导致同一条数据被误判为新增项
 		const checksum = calculateContentChecksum(item);
 
 		// 计算数据大小
 		let size: number;
 		if (item.type === "image" || item.type === "files") {
-			// 对于文件项，使用value字段的长度
 			size =
 				typeof item.value === "string"
 					? item.value.length
 					: JSON.stringify(item.value).length;
 		} else {
-			// 对于其他类型，使用整个对象的JSON字符串长度
 			size = JSON.stringify(item).length;
 		}
-
-		// biome-ignore lint/suspicious/noConsoleLog: 允许在指纹生成时使用日志
-		console.log("🔍 [MetadataManager.generateFingerprint] 生成数据指纹:", {
-			项ID: item.id,
-			项类型: item.type,
-			校验和: checksum,
-			时间戳: item.lastModified || Date.now(),
-			数据大小: size,
-			校验和类型: "内容校验和（不包含收藏状态）",
-			说明: "确保收藏模式切换前后校验和一致，避免误判为新增项",
-		});
 
 		return {
 			id: item.id,
@@ -345,35 +305,18 @@ class MetadataManager {
 	 * 用于检测收藏状态变化
 	 */
 	generateFavoriteAwareFingerprint(item: SyncItem): DataFingerprint {
-		// 修复：使用专门的包含收藏状态的校验和计算函数
 		const checksum = calculateFavoriteAwareChecksum(item);
 
 		// 计算数据大小
 		let size: number;
 		if (item.type === "image" || item.type === "files") {
-			// 对于文件项，使用value字段的长度
 			size =
 				typeof item.value === "string"
 					? item.value.length
 					: JSON.stringify(item.value).length;
 		} else {
-			// 对于其他类型，使用整个对象的JSON字符串长度
 			size = JSON.stringify(item).length;
 		}
-
-		// biome-ignore lint/suspicious/noConsoleLog: 允许在指纹生成时使用日志
-		console.log(
-			"🔍 [MetadataManager.generateFavoriteAwareFingerprint] 生成包含收藏状态的数据指纹:",
-			{
-				项ID: item.id,
-				项类型: item.type,
-				收藏状态: item.favorite,
-				校验和: checksum,
-				时间戳: item.lastModified || Date.now(),
-				数据大小: size,
-				校验和类型: "收藏状态感知校验和（包含收藏状态）",
-			},
-		);
 
 		return {
 			id: item.id,
@@ -386,35 +329,24 @@ class MetadataManager {
 
 	/**
 	 * 比较指纹差异
-	 * 修复：增加对删除项的支持，确保删除项不会被误判为未变更项
-	 * 修复：增加对收藏状态变化的智能判断，避免收藏状态变化被误判为内容修改
+	 * 支持删除项和收藏状态变化的智能判断
 	 */
 	compareFingerprints(
 		local: Map<string, DataFingerprint>,
 		remote: Map<string, DataFingerprint>,
-		deletedItemIds: string[] = [], // 新增参数：已删除项的ID列表
-		localDataItems?: any[], // 新增参数：本地原始数据项，用于检测收藏状态变化
+		deletedItemIds: string[] = [],
+		localDataItems?: any[],
 	): {
 		added: DataFingerprint[];
 		modified: DataFingerprint[];
 		unchanged: string[];
-		favoriteChanged: string[]; // 新增：收藏状态变化的项ID列表
+		favoriteChanged: string[];
 	} {
 		const added: DataFingerprint[] = [];
 		const modified: DataFingerprint[] = [];
 		const unchanged: string[] = [];
-		const favoriteChanged: string[] = []; // 新增：收藏状态变化的项
+		const favoriteChanged: string[] = [];
 		const deletedSet = new Set(deletedItemIds);
-
-		// 添加调试日志：记录指纹比较的初始状态
-		// biome-ignore lint/suspicious/noConsoleLog: 允许在关键指纹比较时使用日志
-		console.log("🔍 [MetadataManager.compareFingerprints] 开始指纹比较:", {
-			本地指纹数量: local.size,
-			远程指纹数量: remote.size,
-			已删除项数量: deletedItemIds.length,
-			已删除项ID列表: deletedItemIds,
-			本地数据项数量: localDataItems?.length || 0,
-		});
 
 		// 创建本地数据项的映射，便于查找
 		const localDataMap = new Map<string, any>();
@@ -426,62 +358,23 @@ class MetadataManager {
 
 		// 检查本地新增和修改的项
 		for (const [id, localFp] of local) {
-			// 如果该项已被标记为删除，则不参与指纹比较
+			// 跳过已标记为删除的项
 			if (deletedSet.has(id)) {
-				// biome-ignore lint/suspicious/noConsoleLog: 允许在关键删除项处理时使用日志
-				console.log("🗑️ [MetadataManager] 指纹比较跳过已删除项:", {
-					项ID: id,
-					项类型: localFp.type,
-					原因: "该项已被标记为软删除，不参与指纹比较",
-				});
 				continue;
 			}
 
 			const remoteFp = remote.get(id);
 			if (!remoteFp) {
-				// 修复：当远程指纹为空时，不要直接标记为新增，而是进行更详细的验证
-				// 检查是否是因为远程指纹数据不完整导致的误判
-				if (remote.size === 0) {
-					// 如果远程指纹数据完全为空，可能是首次同步或数据丢失
-					// 记录详细信息，但不立即标记为新增
-					// biome-ignore lint/suspicious/noConsoleLog: 允许在关键指纹比较时使用日志
-					console.log("⚠️ [MetadataManager] 远程指纹数据为空，可能首次同步:", {
-						项ID: id,
-						项类型: localFp.type,
-						本地校验和: localFp.checksum,
-						原因: "远程指纹数据为空，可能首次同步或数据丢失",
-					});
-				}
-
-				// 检查本地项是否真的是新增的，还是因为远程指纹数据不完整
-				// 如果本地项有有效的校验和且不是空数据，则认为是新增
+				// 如果本地项有有效的校验和，则认为是新增
 				if (localFp.checksum && localFp.checksum.length > 0) {
 					added.push(localFp);
-
-					// biome-ignore lint/suspicious/noConsoleLog: 允许在关键指纹比较时使用日志
-					console.log("➕ [MetadataManager] 确认为新增项:", {
-						项ID: id,
-						项类型: localFp.type,
-						本地校验和: localFp.checksum,
-						原因: "远程指纹不存在且本地有有效校验和",
-						可能原因: "可能是收藏模式切换导致的校验和不匹配",
-					});
-				} else {
-					// biome-ignore lint/suspicious/noConsoleLog: 允许在关键指纹比较时使用日志
-					console.log("⏭️ [MetadataManager] 跳过无效校验和的项:", {
-						项ID: id,
-						项类型: localFp.type,
-						本地校验和: localFp.checksum,
-						原因: "本地校验和无效，跳过处理",
-					});
 				}
 			} else {
-				// 修复：智能判断校验和差异的原因
+				// 检查校验和差异
 				if (localFp.checksum !== remoteFp.checksum) {
-					// 获取本地数据项，用于检测收藏状态变化
 					const localDataItem = localDataMap.get(id);
 
-					// 修复：检查是否只是收藏状态变化导致的校验和差异
+					// 检查是否只是收藏状态变化导致的校验和差异
 					if (
 						localDataItem &&
 						this.isChecksumDifferenceOnlyDueToFavorite(
@@ -490,173 +383,47 @@ class MetadataManager {
 							remoteFp,
 						)
 					) {
-						// 如果只是收藏状态变化，标记为收藏状态变化，而不是内容修改
 						favoriteChanged.push(id);
-
-						// biome-ignore lint/suspicious/noConsoleLog: 允许在关键收藏状态检测时使用日志
-						console.log("⭐ [MetadataManager] 检测到收藏状态变化:", {
-							项ID: id,
-							项类型: localFp.type,
-							本地校验和: localFp.checksum,
-							远程校验和: remoteFp.checksum,
-							本地收藏状态: localDataItem.favorite,
-							操作: "标记为收藏状态变化，不触发内容同步",
-						});
 					} else {
-						// 真正的内容变化，标记为修改项
 						modified.push(localFp);
-
-						// biome-ignore lint/suspicious/noConsoleLog: 允许在关键校验和比较时使用日志
-						console.log("🔍 [MetadataManager] 检测到内容变化:", {
-							项ID: id,
-							项类型: localFp.type,
-							本地校验和: localFp.checksum,
-							远程校验和: remoteFp.checksum,
-							本地时间戳: localFp.timestamp,
-							远程时间戳: remoteFp.timestamp,
-							操作: "标记为修改项",
-							原因: "检测到真实的内容变化，需要同步",
-						});
 					}
 				} else {
-					// 校验和匹配，标记为未变更
 					unchanged.push(id);
-
-					// biome-ignore lint/suspicious/noConsoleLog: 允许在关键校验和比较时使用日志
-					console.log("✅ [MetadataManager] 校验和匹配:", {
-						项ID: id,
-						项类型: localFp.type,
-						本地校验和: localFp.checksum,
-						远程校验和: remoteFp.checksum,
-						操作: "标记为未变更项",
-					});
 				}
 			}
 		}
-
-		// 修复：移除基于数据差异的删除检测逻辑
-		// 删除检测现在完全基于软删除标记，不再比较本地和远程的数据量差异
-		// 这样可以避免将"设备B没有设备A的数据"误判为删除操作
-
-		// 添加指纹比较日志，帮助调试
-		// biome-ignore lint/suspicious/noConsoleLog: 允许在关键指纹比较时使用日志
-		console.log("🔍 [MetadataManager] 指纹比较结果:", {
-			本地数据量: local.size,
-			远程数据量: remote.size,
-			已删除项数量: deletedItemIds.length,
-			已删除项ID列表: deletedItemIds,
-			新增项数量: added.length,
-			修改项数量: modified.length,
-			未变更项数量: unchanged.length,
-			收藏状态变化项数量: favoriteChanged.length,
-			收藏状态变化项ID列表: favoriteChanged,
-			删除检测方式: "完全基于软删除标记，删除项不参与指纹比较",
-		});
 
 		return { added, modified, unchanged, favoriteChanged };
 	}
 
 	/**
 	 * 检查校验和差异是否仅由收藏状态变化引起
-	 * 修复：新增方法，用于智能判断校验和差异的原因
 	 */
 	private isChecksumDifferenceOnlyDueToFavorite(
 		localDataItem: any,
 		localFp: DataFingerprint,
 		remoteFp: DataFingerprint,
 	): boolean {
-		// 如果没有本地数据项，无法判断，返回false
 		if (!localDataItem) {
 			return false;
 		}
 
-		// 计算不包含收藏状态的内容校验和
 		const contentChecksum = calculateContentChecksum(localDataItem);
-
-		// 计算包含收藏状态的完整校验和
 		const favoriteAwareChecksum = calculateFavoriteAwareChecksum(localDataItem);
 
-		// biome-ignore lint/suspicious/noConsoleLog: 允许在关键校验和比较时使用日志
-		console.log(
-			"🔍 [MetadataManager.isChecksumDifferenceOnlyDueToFavorite] 分析校验和差异:",
-			{
-				项ID: localDataItem.id,
-				项类型: localDataItem.type,
-				本地收藏状态: localDataItem.favorite,
-				内容校验和: contentChecksum,
-				收藏状态感知校验和: favoriteAwareChecksum,
-				本地指纹校验和: localFp.checksum,
-				远程指纹校验和: remoteFp.checksum,
-			},
-		);
-
-		// 情况1：远程校验和与内容校验和匹配，但与本地校验和不匹配
-		// 这表明本地校验和包含了收藏状态，而远程校验和不包含
+		// 检查四种可能的收藏状态变化模式
 		if (
-			remoteFp.checksum === contentChecksum &&
-			localFp.checksum !== contentChecksum
+			(remoteFp.checksum === contentChecksum &&
+				localFp.checksum !== contentChecksum) ||
+			(localFp.checksum === contentChecksum &&
+				remoteFp.checksum !== contentChecksum) ||
+			(localFp.checksum === favoriteAwareChecksum &&
+				remoteFp.checksum === contentChecksum) ||
+			(localFp.checksum === contentChecksum &&
+				remoteFp.checksum === favoriteAwareChecksum)
 		) {
-			// biome-ignore lint/suspicious/noConsoleLog: 允许在关键判断结果时使用日志
-			console.log("✅ [MetadataManager] 确认收藏状态变化情况1:", {
-				项ID: localDataItem.id,
-				判断: "远程校验和与内容校验和匹配，但与本地校验和不匹配",
-				结论: "校验和差异仅由收藏状态变化引起",
-			});
 			return true;
 		}
-
-		// 情况2：本地校验和与内容校验和匹配，但与远程校验和不匹配
-		// 这表明远程校验和包含了收藏状态，而本地校验和不包含
-		if (
-			localFp.checksum === contentChecksum &&
-			remoteFp.checksum !== contentChecksum
-		) {
-			// biome-ignore lint/suspicious/noConsoleLog: 允许在关键判断结果时使用日志
-			console.log("✅ [MetadataManager] 确认收藏状态变化情况2:", {
-				项ID: localDataItem.id,
-				判断: "本地校验和与内容校验和匹配，但与远程校验和不匹配",
-				结论: "校验和差异仅由收藏状态变化引起",
-			});
-			return true;
-		}
-
-		// 情况3：本地校验和与收藏状态感知校验和匹配，远程校验和与内容校验和匹配
-		// 这表明本地是包含收藏状态的校验和，远程是不包含收藏状态的校验和
-		if (
-			localFp.checksum === favoriteAwareChecksum &&
-			remoteFp.checksum === contentChecksum
-		) {
-			// biome-ignore lint/suspicious/noConsoleLog: 允许在关键判断结果时使用日志
-			console.log("✅ [MetadataManager] 确认收藏状态变化情况3:", {
-				项ID: localDataItem.id,
-				判断: "本地校验和包含收藏状态，远程校验和不包含收藏状态",
-				结论: "校验和差异仅由收藏状态变化引起",
-			});
-			return true;
-		}
-
-		// 情况4：本地校验和与内容校验和匹配，远程校验和与收藏状态感知校验和匹配
-		// 这表明本地是不包含收藏状态的校验和，远程是包含收藏状态的校验和
-		if (
-			localFp.checksum === contentChecksum &&
-			remoteFp.checksum === favoriteAwareChecksum
-		) {
-			// biome-ignore lint/suspicious/noConsoleLog: 允许在关键判断结果时使用日志
-			console.log("✅ [MetadataManager] 确认收藏状态变化情况4:", {
-				项ID: localDataItem.id,
-				判断: "本地校验和不包含收藏状态，远程校验和包含收藏状态",
-				结论: "校验和差异仅由收藏状态变化引起",
-			});
-			return true;
-		}
-
-		// 如果以上情况都不匹配，则认为是真实的内容变化
-		// biome-ignore lint/suspicious/noConsoleLog: 允许在关键判断结果时使用日志
-		console.log("❌ [MetadataManager] 确认内容变化:", {
-			项ID: localDataItem.id,
-			判断: "校验和差异不符合收藏状态变化的特征",
-			结论: "检测到真实的内容变化，需要同步",
-		});
 
 		return false;
 	}
@@ -664,31 +431,18 @@ class MetadataManager {
 	/**
 	 * 比较包含收藏状态的指纹差异
 	 * 用于检测收藏状态变化
-	 * 修复：改进收藏状态变化检测逻辑，使用新的智能判断方法
 	 */
 	compareFavoriteAwareFingerprints(
 		local: Map<string, DataFingerprint>,
 		remote: Map<string, DataFingerprint>,
-		deletedItemIds: string[] = [], // 已删除项的ID列表
-		localDataItems?: any[], // 本地原始数据项，用于检测收藏状态变化
+		deletedItemIds: string[] = [],
+		localDataItems?: any[],
 	): {
 		added: DataFingerprint[];
 		modified: DataFingerprint[];
 		unchanged: string[];
-		favoriteChanged: string[]; // 收藏状态发生变化的项ID列表
+		favoriteChanged: string[];
 	} {
-		// 修复：直接使用改进的compareFingerprints方法，它已经包含了智能的收藏状态变化检测
-		// biome-ignore lint/suspicious/noConsoleLog: 允许在关键指纹比较时使用日志
-		console.log(
-			"🔍 [MetadataManager.compareFavoriteAwareFingerprints] 使用改进的指纹比较方法:",
-			{
-				本地指纹数量: local.size,
-				远程指纹数量: remote.size,
-				已删除项数量: deletedItemIds.length,
-				本地数据项数量: localDataItems?.length || 0,
-			},
-		);
-
 		return this.compareFingerprints(
 			local,
 			remote,
@@ -772,48 +526,38 @@ class IncrementalSyncManager {
 
 		// 2. 下载远程指纹
 		let remoteFingerprints = await this.metadataManager.downloadFingerprints();
-
-		// 修复：如果远程指纹数据为空，尝试多种方式获取
 		if (remoteFingerprints.size === 0) {
-			// 1. 首先尝试从缓存获取
+			// 尝试从缓存获取
 			const cachedFingerprints = this.metadataManager.getCachedFingerprints();
 			if (cachedFingerprints.size > 0) {
 				remoteFingerprints = new Map(cachedFingerprints);
 			} else {
-				// 2. 如果缓存也为空，尝试从远程数据重建指纹
+				// 尝试从远程数据重建指纹
 				const remoteData = await this.syncEngine.downloadRemoteData();
 				if (remoteData?.items?.length) {
 					remoteFingerprints =
 						await this.rebuildFingerprintsFromRemoteData(remoteData);
 					if (remoteFingerprints.size > 0) {
-						// 上传重建的指纹数据
 						await this.metadataManager.uploadFingerprints(remoteFingerprints);
 					}
 				}
 			}
 		}
 
-		// 修复：先检测本地删除操作，确保删除项不参与指纹比较
+		// 3. 检测本地删除操作
 		const localDeletions = this.syncEngine.detectLocalDeletions(localData);
 
-		// biome-ignore lint/suspicious/noConsoleLog: 允许在关键删除检测时使用日志
-		console.log("🗑️ [IncrementalSyncManager] 早期检测本地软删除操作:", {
-			当前本地数据量: localData.length,
-			检测到的删除项数量: localDeletions.length,
-			删除项ID列表: localDeletions,
-		});
-
-		// 3. 比较差异（传递删除项信息，确保删除项不参与比较）
+		// 4. 比较差异
 		const diff = this.metadataManager.compareFingerprints(
 			localFingerprints,
 			remoteFingerprints,
-			localDeletions, // 传递删除项ID列表
+			localDeletions,
 		);
 		statistics.addedItems = diff.added.length;
 		statistics.modifiedItems = diff.modified.length;
 		statistics.skippedItems = diff.unchanged.length;
 
-		// 4. 筛选需要同步的项
+		// 5. 筛选需要同步的项
 		const itemsToSync: SyncItem[] = [];
 		const deletedIds: string[] = [];
 
@@ -821,36 +565,25 @@ class IncrementalSyncManager {
 		for (const fp of [...diff.added, ...diff.modified]) {
 			const item = localData.find((i) => i.id === fp.id);
 			if (item) {
-				// 检查是否是收藏状态变更
 				const isFavoriteChange =
 					diff.favoriteChanged?.includes(item.id) || false;
 
-				// 如果是收藏状态变更，允许在收藏模式下同步
 				if (this.shouldSyncItem(item, syncModeConfig, isFavoriteChange)) {
 					itemsToSync.push(item);
 				}
 			}
 		}
 
-		// 将检测到的本地删除操作添加到删除列表
+		// 添加删除项
 		for (const deletedId of localDeletions) {
 			if (!deletedIds.includes(deletedId)) {
 				deletedIds.push(deletedId);
 			}
 		}
 
-		// 更新删除项统计
 		statistics.deletedItems = localDeletions.length;
 
-		// 修复：完全移除基于数据差异的删除检测逻辑
-		// 删除操作现在完全基于软删除标记，不再比较本地和远程的数据量差异
-		// biome-ignore lint/suspicious/noConsoleLog: 允许在关键删除检测时使用日志
-		console.log("ℹ️ [IncrementalSyncManager] 删除检测已完全基于软删除标记:", {
-			删除项数量: localDeletions.length,
-			原因: "删除操作现在完全基于软删除标记，删除项不参与指纹比较",
-		});
-
-		// 5. 创建同步数据
+		// 6. 创建同步数据
 		const syncData: SyncData = {
 			version: 2,
 			timestamp: Date.now(),
@@ -862,7 +595,7 @@ class IncrementalSyncManager {
 			checksum: calculateStringChecksum(JSON.stringify(itemsToSync)),
 		};
 
-		// 6. 更新统计信息
+		// 7. 更新统计信息
 		statistics.uploadSize = JSON.stringify(syncData).length;
 		statistics.duration = Date.now() - startTime;
 
@@ -871,43 +604,21 @@ class IncrementalSyncManager {
 
 	/**
 	 * 判断是否应该同步该项
-	 * 修复：允许收藏状态变更在收藏模式下同步，确保收藏状态变更能够正确同步到远程
-	 * 修复：优化收藏模式下的同步策略，只上传不下载
+	 * 允许收藏状态变更在收藏模式下同步
 	 */
 	private shouldSyncItem(
 		item: SyncItem,
 		syncModeConfig: SyncModeConfig | null,
-		allowFavoriteChanges = false, // 新增参数：是否允许收藏状态变更
+		allowFavoriteChanges = false,
 	): boolean {
 		if (!syncModeConfig?.settings) return true;
 
 		const settings = syncModeConfig.settings;
 
-		// 修复：收藏模式检查 - 允许收藏状态变更同步，但过滤其他非收藏项
+		// 收藏模式检查
 		if (settings.onlyFavorites && !item.favorite) {
 			// 如果是收藏状态变更，则允许同步
-			if (allowFavoriteChanges) {
-				// biome-ignore lint/suspicious/noConsoleLog: 允许在关键过滤逻辑时使用日志
-				console.log(
-					"⭐ [IncrementalSyncManager] 收藏模式下允许收藏状态变更同步:",
-					{
-						项ID: item.id,
-						项类型: item.type,
-						收藏状态: item.favorite,
-						处理方式: "允许同步收藏状态变更",
-					},
-				);
-				return true;
-			}
-
-			// biome-ignore lint/suspicious/noConsoleLog: 允许在关键过滤逻辑时使用日志
-			console.log("⭐ [IncrementalSyncManager] 收藏模式下跳过非收藏项:", {
-				项ID: item.id,
-				项类型: item.type,
-				收藏状态: item.favorite,
-				处理方式: "完全跳过同步，非收藏项不应该上传到远程",
-			});
-			return false;
+			return allowFavoriteChanges;
 		}
 
 		// 类型检查
@@ -2388,19 +2099,12 @@ class FileSyncManager {
 
 	/**
 	 * 更新数据库中的文件路径
-	 * 修复：此方法已弃用，更新逻辑移至filePackageManager.syncFilesIntelligently中
-	 * 保留此方法仅为向后兼容
-	 * @deprecated 请使用filePackageManager.syncFilesIntelligently中的自动更新逻辑
+	 * @deprecated 此方法已弃用，更新逻辑移至filePackageManager.syncFilesIntelligently中
 	 */
 	private async updateFilePathsInDatabase(
 		itemId: string,
 		filePaths: string[],
 	): Promise<void> {
-		// biome-ignore lint/suspicious/noConsoleLog: 允许在弃用方法调用时使用日志
-		console.warn(
-			"⚠️ [FileSyncManager] updateFilePathsInDatabase方法已弃用，请使用filePackageManager.syncFilesIntelligently中的自动更新逻辑",
-		);
-
 		try {
 			await updateSQL("history", {
 				id: itemId,
@@ -2806,20 +2510,9 @@ export class SyncEngineV2 {
 		this.syncModeConfig = config;
 		this.fileSyncManager.setSyncModeConfig(config);
 
-		// 修复：如果文件模式或收藏模式发生变化，清除缓存以确保数据重新计算
+		// 如果文件模式或收藏模式发生变化，清除缓存以确保数据重新计算
 		if (fileModeChanged || favoriteModeChanged) {
-			// biome-ignore lint/suspicious/noConsoleLog: 允许在关键缓存清除时使用日志
-			console.log("🔄 [SyncEngine] 检测到模式变化，清除缓存:", {
-				文件模式变化: fileModeChanged,
-				收藏模式变化: favoriteModeChanged,
-				之前的收藏模式: this.syncModeConfig?.settings.onlyFavorites,
-				当前的收藏模式: config.settings.onlyFavorites,
-				原因: "模式变化可能导致校验和计算不一致，需要清除缓存重新计算",
-			});
-
 			this.clearCache();
-
-			// 修复：额外清除指纹缓存，确保校验和重新计算
 			this.metadataManager.clearFingerprintCache();
 		}
 	}
@@ -2832,40 +2525,12 @@ export class SyncEngineV2 {
 		previousOnlyFavorites: boolean,
 		currentOnlyFavorites: boolean,
 	): void {
-		// biome-ignore lint/suspicious/noConsoleLog: 允许在关键模式切换时使用日志
-		console.log("⭐ [SyncEngine] 检测到收藏模式变化:", {
-			之前的收藏模式: previousOnlyFavorites,
-			当前的收藏模式: currentOnlyFavorites,
-			变化类型: previousOnlyFavorites
-				? currentOnlyFavorites
-					? "无变化"
-					: "从收藏模式切换到全部模式"
-				: currentOnlyFavorites
-					? "从全部模式切换到收藏模式"
-					: "无变化",
-			潜在问题: "模式切换可能导致校验和计算不一致",
-		});
-
-		// 如果是从全部模式切换到收藏模式，需要特殊处理
+		// 从全部模式切换到收藏模式
 		if (!previousOnlyFavorites && currentOnlyFavorites) {
-			// biome-ignore lint/suspicious/noConsoleLog: 允许在关键模式切换时使用日志
-			console.log("⭐ [SyncEngine] 从全部模式切换到收藏模式，设置特殊标记", {
-				警告: "避免远程收藏数据覆盖本地非收藏数据",
-				处理策略: "在下次同步时优先保留本地收藏状态",
-			});
-
-			// 设置特殊标记，表示刚刚从全部模式切换到收藏模式
 			this.isTransitioningToFavoriteMode = true;
 		}
-		// 如果是从收藏模式切换到全部模式，需要特殊处理
+		// 从收藏模式切换到全部模式
 		else if (previousOnlyFavorites && !currentOnlyFavorites) {
-			// biome-ignore lint/suspicious/noConsoleLog: 允许在关键模式切换时使用日志
-			console.log("⭐ [SyncEngine] 从收藏模式切换到全部模式，设置特殊标记", {
-				警告: "避免远程非收藏数据覆盖本地收藏数据",
-				处理策略: "在下次同步时优先保留本地收藏状态",
-			});
-
-			// 设置特殊标记，表示刚刚从收藏模式切换到全部模式
 			this.isTransitioningFromFavoriteMode = true;
 		}
 	}
@@ -2911,7 +2576,7 @@ export class SyncEngineV2 {
 	}
 
 	/**
-	 * 执行双向同步 - 重构后的高效同步流程
+	 * 执行双向同步
 	 */
 	async performBidirectionalSync(): Promise<SyncResult> {
 		// 防止并发同步
@@ -2943,15 +2608,6 @@ export class SyncEngineV2 {
 			timestamp: startTime,
 		};
 
-		// biome-ignore lint/suspicious/noConsoleLog: 允许在关键同步开始时使用日志
-		console.log("🚀 [SyncEngine] 开始双向同步:", {
-			同步模式: this.syncModeConfig?.mode,
-			包含图片: this.syncModeConfig?.settings.includeImages,
-			包含文件: this.syncModeConfig?.settings.includeFiles,
-			包含文本: this.syncModeConfig?.settings.includeText,
-			收藏模式: this.syncModeConfig?.settings.onlyFavorites,
-		});
-
 		// 声明在方法作用域内，以便在末尾日志中访问
 		let diffResult: {
 			itemsToSync: any[];
@@ -2964,58 +2620,41 @@ export class SyncEngineV2 {
 		};
 
 		try {
-			// 1. 优先获取云端数据和指纹，避免不必要的本地数据处理
+			// 1. 获取云端数据和指纹
 			let remoteData = await this.getCachedRemoteData();
 			let remoteFingerprints =
 				await this.metadataManager.downloadFingerprints();
 
-			// biome-ignore lint/suspicious/noConsoleLog: 允许在关键数据获取时使用日志
-			console.log("📥 [SyncEngine] 远程数据获取结果:", {
-				远程数据项数: remoteData?.items?.length || 0,
-				远程指纹数量: remoteFingerprints.size,
-			});
-
-			// 修复：检测远程数据缓存问题，如果远程数据为空但指纹数据不为空，强制刷新缓存
+			// 检测数据不一致并修复
 			if (
 				(!remoteData?.items?.length || remoteData.items.length === 0) &&
 				remoteFingerprints.size > 0
 			) {
-				// biome-ignore lint/suspicious/noConsoleLog: 允许在关键缓存修复时使用日志
-				console.log("🔄 [SyncEngine] 检测到数据不一致，强制刷新缓存");
 				remoteData = await this.refreshRemoteDataCache();
-
-				// 修复：强制清除指纹缓存并重新获取指纹数据以确保一致性
 				this.metadataManager.clearFingerprintCache();
 				remoteFingerprints = await this.metadataManager.downloadFingerprints();
 			}
 
-			// 修复：确保远程数据和指纹数据的一致性
+			// 确保远程数据和指纹数据的一致性
 			if (remoteData?.items?.length && remoteFingerprints.size === 0) {
-				// biome-ignore lint/suspicious/noConsoleLog: 允许在关键指纹重建时使用日志
-				console.log("🔧 [SyncEngine] 远程数据存在但指纹为空，重建指纹数据");
-				// 修复：强制清除指纹缓存，确保获取最新数据
 				this.metadataManager.clearFingerprintCache();
 				const retryFingerprints =
 					await this.metadataManager.downloadFingerprints();
 				if (retryFingerprints.size > 0) {
-					// 如果重新获取成功，更新remoteFingerprints引用
 					remoteFingerprints = retryFingerprints;
 				} else {
-					// 修复：如果仍然无法获取指纹数据，尝试从远程数据重建指纹
 					remoteFingerprints =
 						await this.rebuildFingerprintsFromRemoteData(remoteData);
 					if (remoteFingerprints.size > 0) {
-						// 上传重建的指纹数据
 						await this.metadataManager.uploadFingerprints(remoteFingerprints);
 					}
 				}
 			}
 
-			// 2. 轻量级获取本地数据，只获取基本信息用于比较
-			// 修复：在删除检测阶段，需要包含软删除的项
+			// 2. 获取本地数据
 			const localLightweightData = await this.getLightweightLocalData(false);
 
-			// 3. 快速比较差异，确定需要同步的项
+			// 3. 比较差异，确定需要同步的项
 			diffResult = await this.performSelectiveDiff(
 				localLightweightData,
 				remoteData,
@@ -3028,13 +2667,6 @@ export class SyncEngineV2 {
 
 			// 5. 下载远程数据并合并
 			if (remoteData && itemsToDownload.length > 0) {
-				// biome-ignore lint/suspicious/noConsoleLog: 允许在关键下载操作时使用日志
-				console.log("🔄 [SyncEngine] 开始下载远程数据:", {
-					需要下载项数量: itemsToDownload.length,
-					下载项ID列表: itemsToDownload,
-					远程数据总项数: remoteData.items.length,
-				});
-
 				// 筛选出需要下载的远程数据项
 				const filteredRemoteData: SyncData = {
 					...remoteData,
@@ -3043,46 +2675,21 @@ export class SyncEngineV2 {
 					),
 				};
 
-				// biome-ignore lint/suspicious/noConsoleLog: 允许在关键下载操作时使用日志
-				console.log("📋 [SyncEngine] 筛选后的下载数据:", {
-					筛选后项数量: filteredRemoteData.items.length,
-					筛选后项ID列表: filteredRemoteData.items.map((item) => item.id),
-				});
-
 				const { mergedData, conflicts } =
 					await this.incrementalSyncManager.mergeRemoteIncrementalData(
 						filteredRemoteData,
 						fullLocalData,
 					);
 
-				// biome-ignore lint/suspicious/noConsoleLog: 允许在关键合并操作时使用日志
-				console.log("🔀 [SyncEngine] 远程数据合并完成:", {
-					合并后数据项数量: mergedData.length,
-					冲突数量: conflicts.length,
-					合并后项ID列表: mergedData.map((item) => item.id),
-				});
-
 				// 解决冲突
 				if (conflicts.length > 0) {
 					const resolvedConflicts =
 						this.conflictResolver.resolveConflicts(conflicts);
 					result.conflicts = resolvedConflicts;
-
-					// biome-ignore lint/suspicious/noConsoleLog: 允许在冲突解决时使用日志
-					console.log("⚔️ [SyncEngine] 冲突解决完成:", {
-						解决冲突数量: resolvedConflicts.length,
-					});
 				}
 
 				// 更新本地数据
 				const updateResult = await this.updateLocalData(mergedData);
-
-				// biome-ignore lint/suspicious/noConsoleLog: 允许在关键数据更新时使用日志
-				console.log("💾 [SyncEngine] 本地数据更新完成:", {
-					成功数量: updateResult.success,
-					失败数量: updateResult.failed,
-					致命错误数量: updateResult.errors.length,
-				});
 
 				// 将致命错误添加到结果中
 				if (updateResult.errors.length > 0) {
@@ -3092,44 +2699,12 @@ export class SyncEngineV2 {
 				// 同步远程文件
 				await this.fileSyncManager.syncRemoteFiles(mergedData);
 
-				// biome-ignore lint/suspicious/noConsoleLog: 允许在文件同步完成时使用日志
-				console.log("📁 [SyncEngine] 远程文件同步完成");
-
 				result.downloaded = itemsToDownload.length;
-
-				// biome-ignore lint/suspicious/noConsoleLog: 允许在下载完成时使用日志
-				console.log("✅ [SyncEngine] 下载操作完成:", {
-					实际下载数量: result.downloaded,
-					预期下载数量: itemsToDownload.length,
-				});
-			} else {
-				// biome-ignore lint/suspicious/noConsoleLog: 允许在跳过下载时使用日志
-				console.log("⏭️ [SyncEngine] 跳过下载操作:", {
-					远程数据存在: !!remoteData,
-					需要下载项数量: itemsToDownload.length,
-					原因: !remoteData ? "远程数据为空" : "没有需要下载的项",
-				});
 			}
 
 			// 6. 上传本地变更
 			if (itemsToSync.length > 0 || deletedIds.length > 0) {
-				// 修复：只上传真正需要同步的项目，而不是所有本地数据
-				// fullLocalData 已经是经过选择性处理的数据，只包含需要同步的项目
 				const actualUploadCount = fullLocalData.length;
-
-				// biome-ignore lint/suspicious/noConsoleLog: 允许在关键上传操作时使用日志
-				console.log("⬆️ [SyncEngine] 准备上传本地变更:", {
-					需要上传项数量: itemsToSync.length,
-					实际处理项数量: actualUploadCount,
-					需要删除项数量: deletedIds.length,
-					上传项类型分布: fullLocalData.reduce(
-						(acc, item) => {
-							acc[item.type] = (acc[item.type] || 0) + 1;
-							return acc;
-						},
-						{} as Record<string, number>,
-					),
-				});
 
 				const syncData: SyncData = {
 					version: 2,
@@ -3145,7 +2720,6 @@ export class SyncEngineV2 {
 				const uploadSuccess = await this.uploadSyncData(syncData);
 
 				if (uploadSuccess) {
-					// 修复：使用实际需要上传的项目数作为上传计数
 					result.uploaded = actualUploadCount;
 
 					// 删除远程文件包
@@ -3153,20 +2727,12 @@ export class SyncEngineV2 {
 						const deleteResult = await this.deleteRemoteFiles(deletedIds);
 
 						if (deleteResult.failed > 0) {
-							// 文件删除失败通常是非致命错误，只记录日志
 							const errorMsg = `部分远程文件包删除失败: ${deleteResult.failed} 个`;
 							const classification = this.classifyError(new Error(errorMsg));
 							this.logError(classification, "远程文件包删除");
 
-							// 只有在大量删除失败时才认为是致命错误
 							if (deleteResult.failed > deletedIds.length / 2) {
 								result.errors.push(errorMsg);
-							} else {
-								// biome-ignore lint/suspicious/noConsoleLog: 允许在非致命错误处理时使用日志
-								console.log("ℹ️ [SyncEngine] 部分文件删除失败但继续同步:", {
-									失败数量: deleteResult.failed,
-									总数量: deletedIds.length,
-								});
 							}
 						}
 
@@ -3176,7 +2742,6 @@ export class SyncEngineV2 {
 					}
 
 					// 更新指纹数据
-					// 修复：重新获取最新的远程指纹数据，然后合并本地指纹
 					const currentRemoteFingerprints =
 						await this.metadataManager.downloadFingerprints();
 
@@ -3189,7 +2754,7 @@ export class SyncEngineV2 {
 						);
 					}
 
-					// 修复：从远程指纹中移除已删除的项目
+					// 从远程指纹中移除已删除的项目
 					for (const deletedId of deletedIds) {
 						currentRemoteFingerprints.delete(deletedId);
 					}
@@ -3200,39 +2765,16 @@ export class SyncEngineV2 {
 					}
 
 					// 上传合并后的指纹数据
-					const uploadSuccess = await this.metadataManager.uploadFingerprints(
+					await this.metadataManager.uploadFingerprints(
 						currentRemoteFingerprints,
 					);
-					if (!uploadSuccess) {
-						// 指纹数据上传失败通常是非致命错误
-						const errorMsg = "指纹数据上传失败";
-						const classification = this.classifyError(new Error(errorMsg));
-						this.logError(classification, "指纹数据上传");
-
-						// 指纹上传失败通常不是致命错误，不影响同步成功
-						// biome-ignore lint/suspicious/noConsoleLog: 允许在非致命错误处理时使用日志
-						console.log("ℹ️ [SyncEngine] 指纹数据上传失败但同步继续:", {
-							错误: errorMsg,
-							错误分类: classification.type,
-							严重程度: classification.severity,
-						});
-					}
 				} else {
-					// 上传同步数据失败需要检查是否是致命错误
 					const errorMsg = "上传同步数据失败";
 					const classification = this.classifyError(new Error(errorMsg));
 					this.logError(classification, "同步数据上传");
 
-					// 只有致命错误才添加到结果中
 					if (this.isFatalError(new Error(errorMsg))) {
 						result.errors.push(errorMsg);
-					} else {
-						// biome-ignore lint/suspicious/noConsoleLog: 允许在非致命错误处理时使用日志
-						console.log("ℹ️ [SyncEngine] 上传同步数据失败但继续同步:", {
-							错误: errorMsg,
-							错误分类: classification.type,
-							严重程度: classification.severity,
-						});
 					}
 				}
 			}
@@ -3245,50 +2787,19 @@ export class SyncEngineV2 {
 				await this.permanentlyDeleteItems(deletedIds);
 			}
 
-			// 修复：只考虑致命错误，忽略非致命错误
+			// 只考虑致命错误，忽略非致命错误
 			const fatalErrors = result.errors.filter((error) =>
 				this.isFatalError(error),
 			);
-			const nonFatalErrors = result.errors.filter(
-				(error) => !this.isFatalError(error),
-			);
 
-			// 记录错误统计信息
-			// biome-ignore lint/suspicious/noConsoleLog: 允许在错误统计时使用日志
-			console.log("📊 [SyncEngine] 错误统计:", {
-				总错误数量: result.errors.length,
-				致命错误数量: fatalErrors.length,
-				非致命错误数量: nonFatalErrors.length,
-				致命错误列表: fatalErrors,
-				非致命错误列表: nonFatalErrors,
-			});
-
-			// 只有致命错误才导致同步失败
 			result.success = fatalErrors.length === 0;
-
-			// 如果有非致命错误，记录但不影响同步结果
-			if (nonFatalErrors.length > 0) {
-				// biome-ignore lint/suspicious/noConsoleLog: 允许在非致命错误处理时使用日志
-				console.log("⚠️ [SyncEngine] 同步完成但有非致命错误:", {
-					非致命错误数量: nonFatalErrors.length,
-					非致命错误列表: nonFatalErrors,
-				});
-			}
-
 			this.lastSyncTime = Date.now();
 
-			// 修复：同步完成后重置模式切换标记
+			// 重置模式切换标记
 			if (
 				this.isTransitioningToFavoriteMode ||
 				this.isTransitioningFromFavoriteMode
 			) {
-				// biome-ignore lint/suspicious/noConsoleLog: 允许在关键状态重置时使用日志
-				console.log("🔄 [SyncEngine] 同步完成，重置模式切换标记:", {
-					之前是从全部模式切换到收藏模式: this.isTransitioningToFavoriteMode,
-					之前是从收藏模式切换到全部模式: this.isTransitioningFromFavoriteMode,
-					原因: "同步已完成，模式切换的特殊处理不再需要",
-				});
-
 				this.resetModeTransitionFlags();
 			}
 
