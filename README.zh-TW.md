@@ -70,11 +70,6 @@
 - 🔐 **數據安全保障**：本地存儲為主，雲端同步為輔的混合模式，數據完全可控
 - ⚡ **即時同步引擎**：智慧衝突檢測與解決，支援雙向同步和增量更新
 
-### 🚀 未來規劃
-
-- 📌 **多協定雲端存儲支援**：支援 OneDrive、Google Drive、Dropbox 等更多雲端存儲協定
-- ⚡ **雲端數據庫即時同步**：基於雲端數據庫的即時同步功能，多設備間即時更新
-
 ### 📦 使用說明
 
 本分支主要面向急需跨設備同步功能的用戶，作為官方雲端同步功能發布前的臨時解決方案。如果您只需要本地剪貼板管理功能，建議使用 [官方主分支](https://github.com/EcoPasteHub/EcoPaste)。
@@ -95,8 +90,7 @@
 
 ```bash
 # 克隆本分支
-git clone -b add-sync https://github.com/EcoPasteHub/EcoPaste.git
-cd EcoPaste
+git clone https://github.com/Ruszero01/EcoPaste-Sync.git
 
 # 安裝依賴
 pnpm install
@@ -110,35 +104,6 @@ pnpm tauri build
 
 > ⚠️ **注意**：本分支為開發分支，可能包含實驗性功能。生產使用建議選擇官方穩定版本。
 
-## 核心功能
-
-### 📋 剪貼板管理
-- **多格式支援**：支援純文字、富文字、HTML、圖片、檔案等多種剪貼板格式
-- **智慧去重**：自動識別重複內容，避免冗餘存儲
-- **歷史記錄**：完整保存剪貼板歷史，支援按時間、類型、收藏狀態篩選
-- **快速搜尋**：強大的搜尋功能，快速定位所需內容
-- **分組管理**：按內容類型自動分組（文字、圖片、檔案等）
-- **收藏系統**：標記重要內容為收藏，永久保存不被清理
-
-### 🎨 介面與互動
-- **現代化設計**：基於 Ant Design 的美觀介面，支援亮色/暗色主題
-- **多種視窗模式**：浮動視窗、停靠視窗等多種顯示方式
-- **快捷操作**：一鍵複製、貼上、刪除等快捷操作
-- **快捷鍵支援**：全域快捷鍵快速喚出，快速貼上鍵（1-9）高效操作
-
-### 🔧 系統整合
-- **多平臺支援**：Windows、macOS、Linux（x11）全平臺兼容
-- **開機自啟**：支援開機自動啟動，後台靜默運行
-- **系統托盤**：最小化到系統托盤，不佔用工作列空間
-- **全域熱鍵**：自訂全域快捷鍵，隨時快速存取
-
-### 📊 數據管理
-- **本地資料庫**：基於 SQLite 的可靠本地存儲
-- **自動清理**：可配置的歷史記錄自動清理策略
-- **數據匯出**：支援數據備份和匯出功能
-- **容量管理**：智慧管理存儲空間，避免過度佔用
-- **數據恢復**：支援從備份檔案恢復數據
-
 ### ☁️ 雲端同步功能（本分支特色）
 - **三種同步模式**：輕量級、完整、收藏同步，滿足不同需求
 - **多類型支援**：支援文字、圖片、檔案等多種數據類型同步
@@ -149,37 +114,10 @@ pnpm tauri build
 - **錯誤處理**：完善的錯誤處理和重試機制，確保同步可靠性
 - **簡潔介面**：簡潔的用戶介面和狀態顯示，操作便捷
 
-### ⚙️ 個性化設定
-- **主題定制**：亮色/暗色主題，跟隨系統或手動切換
-- **語言支援**：中文簡體、繁體、英文、日文等多語言
-- **行為配置**：豐富的行為選項，滿足不同使用習慣
-- **效能優化**：可配置的效能參數，平衡功能與資源佔用
-- **更新管理**：自動檢查更新，支援增量更新
-
-### 🔒 隱私與安全
-- **本地優先**：數據主要存儲在本地，完全可控
-- **隱私保護**：敏感數據不上傳，或僅在用戶授權下同步
-- **權限管理**：最小權限原則，僅請求必要的系統權限
-- **安全審計**：程式碼開源透明，接受社群安全審查
-
-## 📖 使用指南
-
-### 快速開始
-1. **下載安裝**：從 [Releases](https://github.com/EcoPasteHub/EcoPaste/releases) 頁面下載對應平臺的安裝包
-2. **啟動應用**：首次啟動會自動開始監聽剪貼板
-3. **配置設定**：透過偏好設定自訂行為和外觀
-4. **開始使用**：使用快捷鍵喚出介面，開始管理剪貼板
-
 ### 雲端同步配置（本分支）
 1. **準備 WebDAV 服務**：確保你有可用的 WebDAV 服務
 2. **配置連接**：在偏好設定的"雲端同步"中配置伺服器資訊
 3. **開始同步**：選擇合適的同步策略並開始同步
-
-## 問題迴響
-
-1. 🔍 優先查閱[常見問題](https://ecopaste.cn/problem/macos/damage)或瀏覽已有 [issues](https://github.com/EcoPasteHub/EcoPaste/issues)。
-
-2. ❓ 如果問題仍未解决，請提交新的 [issue](https://github.com/EcoPasteHub/EcoPaste/issues/new/choose)，並附上詳細描述，方便我們快速定位和解决。
 
 ## 歷史星標
 
@@ -191,45 +129,6 @@ pnpm tauri build
  </picture>
 </a>
 
-## 社區交流
-
-⚠️ 溫馨提示：群聊僅限日常討論和經驗分享，如需迴響問題或提交新需求，請查看[問題迴響](#問題迴響)。
-
-<table>
-  <thead>
-    <tr>
-      <th width="33.3%">微信群</th>
-      <th width="33.3%">QQ 群</th>
-      <th width="33.3%">Telegram</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>
-        <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="https://ecopaste.cn/community/wechat-group-dark.png" />
-          <source media="(prefers-color-scheme: light)" srcset="https://ecopaste.cn/community/wechat-group-light.png" />
-          <img src="https://ecopaste.cn/community/wechat-group-light.png" />
-        </picture>
-      </td>
-      <td>
-        <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="https://ecopaste.cn/community/qq-group-dark.png" />
-          <source media="(prefers-color-scheme: light)" srcset="https://ecopaste.cn/community/qq-group-light.png" />
-          <img src="https://ecopaste.cn/community/qq-group-light.png" />
-        </picture>
-      </td>
-      <td>
-        <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="https://ecopaste.cn/community/telegram-chat-dark.png" />
-          <source media="(prefers-color-scheme: light)" srcset="https://ecopaste.cn/community/telegram-chat-light.png" />
-          <img src="https://ecopaste.cn/community/telegram-chat-light.png" />
-        </picture>
-      </td>
-    </tr>
-  </tbody>
-</table>
-
 ## 貢獻者
 
 感謝大家為 EcoPaste 做出的寶貴貢獻！如果你也希望為 EcoPaste 做出貢獻，請查閱[貢獻指南](./.github/CONTRIBUTING/zh-TW.md)。
@@ -237,13 +136,3 @@ pnpm tauri build
 <a href="https://github.com/EcoPasteHub/EcoPaste/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=EcoPasteHub/EcoPaste" />
 </a>
-
-## 贊助
-
-如果您覺得這個項目對您有幫助，可以考慮贊助支持我們！您的支持將幫助我們更好地維護和發展項目，讓 EcoPaste 持續為社區創造價值。
-
-贊助時請務必填寫留言，以便我們收錄到[贊助名單](https://ecopaste.cn/sponsor/index)中，感謝您的支持與鼓勵！
-
-|                           微信                            |                       支付寶                        |
-| :-------------------------------------------------------: | :-------------------------------------------------: |
-| ![wehcat-pay](https://ecopaste.cn/sponsor/wechat-pay.png) | ![ali-pay](https://ecopaste.cn/sponsor/ali-pay.png) |

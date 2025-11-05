@@ -70,11 +70,6 @@
 - 🔐 **Data Security**: Hybrid mode with local storage as primary and cloud sync as secondary, data fully controlled
 - ⚡ **Real-time Sync Engine**: Smart conflict detection and resolution, supporting bidirectional and incremental sync
 
-### 🚀 Future Plans
-
-- 📌 **Multi-protocol Cloud Storage Support**: Support for OneDrive, Google Drive, Dropbox and more cloud storage protocols
-- ⚡ **Cloud Database Real-time Sync**: Real-time synchronization based on cloud database for instant updates across devices
-
 ### 📦 Usage Instructions
 
 This branch is primarily for users who urgently need cross-device sync functionality, serving as a temporary solution until the official cloud sync feature is released. If you only need local clipboard management, we recommend using the [official main branch](https://github.com/EcoPasteHub/EcoPaste).
@@ -95,8 +90,7 @@ This branch is primarily for users who urgently need cross-device sync functiona
 
 ```bash
 # Clone this branch
-git clone -b add-sync https://github.com/EcoPasteHub/EcoPaste.git
-cd EcoPaste
+git clone https://github.com/Ruszero01/EcoPaste-Sync.git
 
 # Install dependencies
 pnpm install
@@ -110,35 +104,6 @@ pnpm tauri build
 
 > ⚠️ **Note**: This is a development branch and may contain experimental features. For production use, we recommend choosing the official stable version.
 
-## Core Features
-
-### 📋 Clipboard Management
-- **Multi-format Support**: Supports various clipboard formats including plain text, rich text, HTML, images, and files
-- **Smart Deduplication**: Automatically identifies duplicate content to avoid redundant storage
-- **History Recording**: Complete clipboard history with filtering by time, type, and favorite status
-- **Quick Search**: Powerful search functionality to quickly locate needed content
-- **Group Management**: Automatic grouping by content type (text, images, files, etc.)
-- **Favorites System**: Mark important content as favorites to prevent automatic cleanup
-
-### 🎨 Interface & Interaction
-- **Modern Design**: Beautiful interface based on Ant Design, supporting light/dark themes
-- **Multiple Window Modes**: Various display modes including floating and docked windows
-- **Quick Operations**: One-click copy, paste, delete and other quick operations
-- **Shortcut Support**: Global hotkeys for quick access and quick paste keys (1-9) for efficient operation
-
-### 🔧 System Integration
-- **Cross-platform Support**: Full compatibility with Windows, macOS, Linux (X11)
-- **Auto-start**: Support for automatic startup at boot with silent background operation
-- **System Tray**: Minimize to system tray without taking up taskbar space
-- **Global Hotkeys**: Customizable global hotkeys for quick access anytime
-
-### 📊 Data Management
-- **Local Database**: Reliable local storage based on SQLite
-- **Auto Cleanup**: Configurable automatic cleanup strategies for history records
-- **Data Export**: Support for data backup and export functionality
-- **Capacity Management**: Intelligent storage space management to avoid overuse
-- **Data Recovery**: Support for data recovery from backup files
-
 ### ☁️ Cloud Sync Features (This Branch's Specialty)
 - **Three Sync Modes**: Lightweight, complete, and favorites sync to meet different needs
 - **Multi-type Support**: Support for various data types including text, images, and files
@@ -149,37 +114,10 @@ pnpm tauri build
 - **Error Handling**: Comprehensive error handling and retry mechanisms to ensure sync reliability
 - **Simple Interface**: Clean user interface and status display for easy operation
 
-### ⚙️ Personalization Settings
-- **Theme Customization**: Light/dark themes, follow system or manual switching
-- **Language Support**: Multiple languages including Simplified Chinese, Traditional Chinese, English, Japanese
-- **Behavior Configuration**: Rich behavior options to meet different usage habits
-- **Performance Optimization**: Configurable performance parameters balancing functionality and resource usage
-- **Update Management**: Automatic update checking with incremental update support
-
-### 🔒 Privacy & Security
-- **Local First**: Data primarily stored locally with full user control
-- **Privacy Protection**: Sensitive data not uploaded, or only synced with user authorization
-- **Permission Management**: Minimum permission principle, only requesting necessary system permissions
-- **Security Audit**: Open-source transparent code accepting community security reviews
-
-## 📖 Usage Guide
-
-### Quick Start
-1. **Download & Install**: Download the appropriate installation package for your platform from the [Releases](https://github.com/EcoPasteHub/EcoPaste/releases) page
-2. **Launch Application**: First launch will automatically start monitoring clipboard
-3. **Configure Settings**: Customize behavior and appearance through preferences
-4. **Start Using**: Use hotkeys to bring up the interface and start managing your clipboard
-
 ### Cloud Sync Configuration (This Branch)
 1. **Prepare WebDAV Service**: Ensure you have an available WebDAV service
 2. **Configure Connection**: Configure server information in preferences' "Cloud Sync" section
 3. **Start Syncing**: Select appropriate sync strategy and start synchronization
-
-## Feedback
-
-1. 🔍 First, check out the [FAQ](https://ecopaste.cn/problem/macos/damage) or browse through the existing [issues](https://github.com/EcoPasteHub/EcoPaste/issues).
-
-2. ❓ If your issue remains unresolved, please submit a new [issue](https://github.com/EcoPasteHub/EcoPaste/issues/new/choose) with a detailed description to help us quickly identify and address the problem.
 
 ## Star History
 
@@ -191,45 +129,6 @@ pnpm tauri build
  </picture>
 </a>
 
-## Community
-
-⚠️ Friendly Reminder: Group chats are for casual discussions and experience sharing only. For issue reporting or submitting new feature requests, please refer to [Feedback](#Feedback).
-
-<table>
-  <thead>
-    <tr>
-      <th width="33.3%">WeChat Group</th>
-      <th width="33.3%">QQ Group</th>
-      <th width="33.3%">Telegram</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>
-        <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="https://ecopaste.cn/community/wechat-group-dark.png" />
-          <source media="(prefers-color-scheme: light)" srcset="https://ecopaste.cn/community/wechat-group-light.png" />
-          <img src="https://ecopaste.cn/community/wechat-group-light.png" />
-        </picture>
-      </td>
-      <td>
-        <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="https://ecopaste.cn/community/qq-group-dark.png" />
-          <source media="(prefers-color-scheme: light)" srcset="https://ecopaste.cn/community/qq-group-light.png" />
-          <img src="https://ecopaste.cn/community/qq-group-light.png" />
-        </picture>
-      </td>
-      <td>
-        <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="https://ecopaste.cn/community/telegram-chat-dark.png" />
-          <source media="(prefers-color-scheme: light)" srcset="https://ecopaste.cn/community/telegram-chat-light.png" />
-          <img src="https://ecopaste.cn/community/telegram-chat-light.png" />
-        </picture>
-      </td>
-    </tr>
-  </tbody>
-</table>
-
 ## Contributors
 
 Thank you to everyone who has contributed to EcoPaste! If you’d like to contribute, check out the [Contributing Guide](./.github/CONTRIBUTING/en-US.md).
@@ -237,13 +136,3 @@ Thank you to everyone who has contributed to EcoPaste! If you’d like to contri
 <a href="https://github.com/EcoPasteHub/EcoPaste/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=EcoPasteHub/EcoPaste" />
 </a>
-
-## Sponsors
-
-If you find this project helpful, consider sponsoring us! Your support helps us maintain and improve EcoPaste, bringing more value to the community.
-
-Please leave a message when sponsoring so we can include you in our [Sponsors List](https://ecopaste.cn/sponsor/list). Thank you for your support and encouragement!
-
-|                        WeChat Pay                         |                       Alipay                        |
-| :-------------------------------------------------------: | :-------------------------------------------------: |
-| ![wehcat-pay](https://ecopaste.cn/sponsor/wechat-pay.png) | ![ali-pay](https://ecopaste.cn/sponsor/ali-pay.png) |

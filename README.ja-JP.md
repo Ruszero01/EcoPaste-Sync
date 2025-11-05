@@ -70,11 +70,6 @@
 - 🔐 **データセキュリティ保障**：ローカル保存を主とし、クラウド同期を補助とするハイブリッドモード、データ完全制御
 - ⚡ **リアルタイム同期エンジン**：スマート競合検出と解決、双方向同期と増分更新をサポート
 
-### 🚀 今後の計画
-
-- 📌 **マルチプロトコルクラウドストレージ対応**：OneDrive、Google Drive、Dropboxなどより多くのクラウドストレージプロトコルをサポート
-- ⚡ **クラウドデータベースリアルタイム同期**：クラウドデータベースベースのリアルタイム同期機能で、複数デバイス間で即時更新
-
 ### 📦 使用説明
 
 このブランチは主にクロスデバイス同期機能を緊急に必要とするユーザー向けで、公式のクラウド同期機能がリリースされるまでの一時的なソリューションとして提供されます。ローカルクリップボード管理機能のみが必要な場合は、[公式メインブランチ](https://github.com/EcoPasteHub/EcoPaste)の使用をお勧めします。
@@ -95,8 +90,7 @@
 
 ```bash
 # このブランチをクローン
-git clone -b add-sync https://github.com/EcoPasteHub/EcoPaste.git
-cd EcoPaste
+git clone https://github.com/Ruszero01/EcoPaste-Sync.git
 
 # 依存関係をインストール
 pnpm install
@@ -130,12 +124,6 @@ pnpm tauri build
 - 🤝 完善なドキュメントとコミュニティ機能をサポート、開発者と共に成長を目指す。
 - 🧩 継続的な最適化し、もっと驚きの機能があなたの発見を待っている。
 
-## 問題のフィードバック
-
-1. 🔍 まず、[よくある質問](https://ecopaste.cn/problem/macos/damage)を確認するか、既存の [issues](https://github.com/EcoPasteHub/EcoPaste/issues) をご覧ください。
-
-2. ❓ 問題が解決しない場合は、新しい [issue](https://github.com/EcoPasteHub/EcoPaste/issues/new/choose) を提出し、詳細な説明を添えてください。迅速な解決に役立てます。
-
 ## 履歴スター
 
 <a href="https://star-history.com/#EcoPasteHub/EcoPaste&Date">
@@ -146,45 +134,6 @@ pnpm tauri build
  </picture>
 </a>
 
-## コミュニティ交流
-
-⚠️ ご注意: グループチャットは日常的な議論と経験の共有に限ります。問題のフィードバックや新しい機能のリクエストが必要な場合は、[問題のフィードバック](#問題のフィードバック)をご確認ください。
-
-<table>
-  <thead>
-    <tr>
-      <th width="33.3%">WeChat Group</th>
-      <th width="33.3%">QQ Group</th>
-      <th width="33.3%">Telegram</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>
-        <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="https://ecopaste.cn/community/wechat-group-dark.png" />
-          <source media="(prefers-color-scheme: light)" srcset="https://ecopaste.cn/community/wechat-group-light.png" />
-          <img src="https://ecopaste.cn/community/wechat-group-light.png" />
-        </picture>
-      </td>
-      <td>
-        <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="https://ecopaste.cn/community/qq-group-dark.png" />
-          <source media="(prefers-color-scheme: light)" srcset="https://ecopaste.cn/community/qq-group-light.png" />
-          <img src="https://ecopaste.cn/community/qq-group-light.png" />
-        </picture>
-      </td>
-      <td>
-        <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="https://ecopaste.cn/community/telegram-chat-dark.png" />
-          <source media="(prefers-color-scheme: light)" srcset="https://ecopaste.cn/community/telegram-chat-light.png" />
-          <img src="https://ecopaste.cn/community/telegram-chat-light.png" />
-        </picture>
-      </td>
-    </tr>
-  </tbody>
-</table>
-
 ## 貢献者
 
 EcoPaste へ貴重なご貢献をいただいた皆様に感謝します！もし EcoPaste にご協力のご希望があれば、[貢献ガイド](./.github/CONTRIBUTING/ja-JP.md)をご覧ください。
@@ -192,13 +141,3 @@ EcoPaste へ貴重なご貢献をいただいた皆様に感謝します！も�
 <a href="https://github.com/EcoPasteHub/EcoPaste/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=EcoPasteHub/EcoPaste" />
 </a>
-
-## 寄付
-
-このプロジェクトがお役に立てば光栄に思い、応援しいただければ助かります！貴重なご寄付を頂戴していただければ，プロジェクトの維持と発展に活用させていただい、EcoPaste はコミュニティに価値を提供し続けるようになります。
-
-ご寄付の場合には必ずメッセージしていただき、[寄附者名簿](https://ecopaste.cn/sponsor/list)に記載させていただきます。ご支援とご協力を賜り御礼申し上げます。
-
-|                        WeChat Pay                         |                       Alipay                        |
-| :-------------------------------------------------------: | :-------------------------------------------------: |
-| ![wehcat-pay](https://ecopaste.cn/sponsor/wechat-pay.png) | ![ali-pay](https://ecopaste.cn/sponsor/ali-pay.png) |
