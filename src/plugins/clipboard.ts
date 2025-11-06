@@ -2,7 +2,6 @@ import { systemOCR } from "@/plugins/ocr";
 import { clipboardStore } from "@/stores/clipboard";
 import type { HistoryTablePayload } from "@/types/database";
 import type { ClipboardPayload, ReadImage, WindowsOCR } from "@/types/plugin";
-import { fileContentProcessor } from "@/utils/fileContentProcessor";
 import { isColor, isEmail, isURL } from "@/utils/is";
 import { resolveImagePath } from "@/utils/path";
 import { getSaveImagePath } from "@/utils/path";
@@ -12,7 +11,6 @@ import { exists } from "@tauri-apps/plugin-fs";
 import { isEmpty, isEqual } from "lodash-es";
 import { fullName, metadata } from "tauri-plugin-fs-pro-api";
 import { paste } from "./paste";
-import { getServerConfig } from "./webdav";
 
 const COMMAND = {
 	START_LISTEN: "plugin:eco-clipboard|start_listen",
@@ -306,10 +304,28 @@ export const writeFiles = (value: string) => {
 /**
  * 图片写入剪贴板
  */
-export const writeImage = (value: string) => {
-	return invoke(COMMAND.WRITE_IMAGE, {
-		value,
-	});
+export const writeImage = async (value: string) => {
+	try {
+		// 确保路径是有效的
+		if (!value || value.trim() === "") {
+			throw new Error("图片路径为空");
+		}
+
+		// 检查文件是否存在
+		const { exists } = await import("@tauri-apps/plugin-fs");
+		const fileExists = await exists(value);
+
+		if (!fileExists) {
+			throw new Error(`图片文件不存在: ${value}`);
+		}
+
+		return await invoke(COMMAND.WRITE_IMAGE, {
+			value,
+		});
+	} catch (error) {
+		console.error("写入图片到剪贴板失败:", error);
+		throw error;
+	}
 };
 
 /**
@@ -444,7 +460,7 @@ export const onClipboardUpdate = (fn: (payload: ClipboardPayload) => void) => {
  * 将数据写入剪贴板
  * @param data 数据
  */
-export const writeClipboard = (data?: HistoryTablePayload) => {
+export const writeClipboard = async (data?: HistoryTablePayload) => {
 	if (!data) return;
 
 	const { type, value, search } = data;
@@ -457,7 +473,7 @@ export const writeClipboard = (data?: HistoryTablePayload) => {
 		case "html":
 			return writeHTML(search, value);
 		case "image":
-			return writeImage(resolveImagePath(value));
+			return await writeImage(resolveImagePath(value));
 		case "files":
 			return writeFiles(value);
 	}
@@ -520,7 +536,7 @@ export const getClipboardSubtype = async (data: ClipboardPayload) => {
 };
 
 /**
- * 智能粘贴剪贴板数据（支持懒下载文件）
+ * 智能粘贴剪贴板数据
  */
 export const smartPasteClipboard = async (
 	data?: HistoryTablePayload,
@@ -528,92 +544,6 @@ export const smartPasteClipboard = async (
 ) => {
 	if (!data) return;
 
-	const { type, value, lazyDownload } = data;
-
-	// 如果不是按需下载文件，直接使用原有逻辑
-	if (!lazyDownload || (type !== "image" && type !== "files")) {
-		return pasteClipboard(data, plain);
-	}
-
-	try {
-		// 获取WebDAV配置
-		const webdavConfig = await getServerConfig();
-		if (!webdavConfig) {
-			console.warn("WebDAV配置未设置，无法下载文件");
-			return pasteClipboard(data, plain);
-		}
-
-		// 转换为SyncItem格式
-		const syncItem = {
-			id: data.id,
-			type: type as any,
-			group: data.group as any,
-			value: value,
-			search: data.search,
-			count: data.count,
-			width: data.width,
-			height: data.height,
-			favorite: data.favorite,
-			createTime: data.createTime,
-			note: data.note,
-			subtype: data.subtype,
-			lastModified: Date.now(),
-			deviceId: "local",
-			lazyDownload: lazyDownload,
-			fileSize: data.fileSize,
-			fileType: data.fileType,
-		} as any;
-
-		// 根据类型处理按需下载
-		let processedValue: string | null = null;
-
-		if (type === "image") {
-			processedValue = await fileContentProcessor.processImageContent(
-				syncItem,
-				webdavConfig,
-				(_progress) => {},
-			);
-		} else if (type === "files") {
-			processedValue = await fileContentProcessor.processFilesContent(
-				syncItem,
-				webdavConfig,
-				(_progress) => {},
-			);
-		}
-
-		if (processedValue) {
-			// 下载成功，使用下载后的文件路径
-			const updatedData = {
-				...data,
-				value: processedValue,
-				lazyDownload: false,
-			};
-
-			// 更新数据库记录，移除lazyDownload标记并更新value
-			try {
-				const { updateSQL } = await import("@/database");
-				await updateSQL("history", {
-					id: data.id,
-					value: processedValue,
-					lazyDownload: false,
-				});
-
-				// 触发界面刷新事件
-				const { emit } = await import("@tauri-apps/api/event");
-				const { LISTEN_KEY } = await import("@/constants");
-				emit(LISTEN_KEY.REFRESH_CLIPBOARD_LIST);
-			} catch (updateError) {
-				console.error("❌ 更新数据库记录失败:", updateError);
-			}
-
-			return pasteClipboard(updatedData, plain);
-		}
-		// 下载失败，回退到原有逻辑
-		console.warn("文件下载失败，使用原有数据");
-		return pasteClipboard(data, plain);
-	} catch (error) {
-		console.error("智能粘贴过程中出错:", error);
-		// 出错时回退到原有逻辑
-		return pasteClipboard(data, plain);
-	}
+	// 直接使用原有逻辑，同步阶段已确保所有文件都是本地可用的
+	return pasteClipboard(data, plain);
 };

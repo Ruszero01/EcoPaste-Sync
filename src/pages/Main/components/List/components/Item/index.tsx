@@ -15,6 +15,7 @@ import type { HookAPI } from "antd/es/modal/useModal";
 import clsx from "clsx";
 import { find, findIndex, isNil, remove } from "lodash-es";
 import type { DragEvent, FC, MouseEvent } from "react";
+import { useContext } from "react";
 import { useSnapshot } from "valtio";
 import Files from "./components/Files";
 import HTML from "./components/HTML";
@@ -78,31 +79,28 @@ const Item: FC<ItemProps> = (props) => {
 
 	// 复制
 	const copy = async () => {
-		// 如果是按需下载的图片或文件，先自动下载
-		if (data.lazyDownload && (data.type === "image" || data.type === "files")) {
-			console.info(
-				`🔄 复制时检测到按需下载${data.type}，开始自动下载: ${data.id}`,
-			);
-
-			try {
-				// 使用smartPasteClipboard来处理按需下载和复制
-				await smartPasteClipboard(data, false);
-
-				// 检查是否需要更新数据库记录
-				const index = findIndex(state.list, { id });
-				if (index !== -1) {
-					// 重新从数据库获取最新数据，检查是否已经下载
-					// 这里我们暂时不更新界面，让后续的逻辑处理
-					console.info(`✅ 按需下载${data.type}复制成功: ${data.id}`);
-				}
-			} catch (error) {
-				console.error(`❌ 按需下载${data.type}复制失败:`, error);
-				// 如果自动下载失败，回退到普通复制
-				await writeClipboard(data);
-			}
-		} else {
-			// 非按需下载文件，直接复制
+		try {
+			// 直接复制，同步阶段已确保所有文件都是本地可用的
 			await writeClipboard(data);
+		} catch (error) {
+			console.error("❌ 复制操作失败:", error);
+
+			// 如果是图片复制失败且文件不存在，提示用户
+			if (data.type === "image" && error instanceof Error) {
+				if (
+					error.message.includes("图片文件不存在") ||
+					error.message.includes("No such file or directory")
+				) {
+					message.error("图片文件已被删除或移动，无法复制");
+					return;
+				}
+			}
+
+			// 其他类型的错误也显示提示
+			message.error(
+				`复制失败: ${error instanceof Error ? error.message : "未知错误"}`,
+			);
+			return;
 		}
 
 		const index = findIndex(state.list, { id });

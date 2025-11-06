@@ -44,11 +44,24 @@ export const getSaveImagePath = () => {
 
 /**
  * 解析完整的存储图片路径
- * @param file 文件名
+ * @param file 文件名或路径
  */
 export const resolveImagePath = (file: string) => {
+	// 如果已经是完整路径且存在，直接返回
 	if (file.startsWith(getSaveImagePath())) return file;
 
+	// 如果已经是绝对路径（如截图工具生成的路径），直接返回
+	if (
+		file.includes(":") &&
+		(file.startsWith("C:") ||
+			file.startsWith("D:") ||
+			file.startsWith("/") ||
+			file.startsWith("\\"))
+	) {
+		return file;
+	}
+
+	// 否则拼接到保存图片目录下
 	return joinPath(getSaveImagePath(), file);
 };
 

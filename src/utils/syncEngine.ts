@@ -2758,13 +2758,17 @@ export class SyncEngineV2 {
 				group: item.group,
 				value: item.value,
 				search: item.search,
-				count: item.count,
+				count: item.fileSize || item.count, // 优先使用fileSize，回退到count
 				width: item.width,
 				height: item.height,
 				favorite: item.favorite,
 				createTime: item.createTime,
 				note: item.note,
 				subtype: item.subtype,
+				// 添加按需下载相关字段
+				lazyDownload: item.lazyDownload,
+				fileSize: item.fileSize,
+				fileType: item.fileType,
 			};
 
 			const existingRecords = (await selectSQL("history", {
