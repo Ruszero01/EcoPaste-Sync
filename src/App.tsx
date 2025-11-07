@@ -33,7 +33,6 @@ const App = () => {
 			// 先检查是否已存在托盘
 			const existingTray = await TrayIcon.getById("app-tray");
 			if (existingTray) {
-				console.info("托盘已存在，跳过创建");
 				return;
 			}
 

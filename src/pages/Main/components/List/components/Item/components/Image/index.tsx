@@ -51,8 +51,6 @@ const Image: FC<ImageProps> = (props) => {
 
 	// 正常的图片显示（单个文件路径）
 	try {
-		// biome-ignore lint/suspicious/noConsoleLog: 调试日志需要输出到控制台
-		console.log("🖼️ 显示普通路径图片:", value);
 		return <img src={convertFileSrc(value)} className={className} />;
 	} catch (error) {
 		console.error("❌ 图片显示失败:", error, { value });

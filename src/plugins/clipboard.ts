@@ -218,16 +218,21 @@ export const readImage = async (): Promise<ClipboardPayload> => {
 	let search = "";
 
 	if (clipboardStore.content.ocr) {
-		search = await systemOCR(image);
+		try {
+			search = await systemOCR(image);
 
-		if (isWin) {
-			const { content, qr } = JSON.parse(search) as WindowsOCR;
+			if (isWin) {
+				const { content, qr } = JSON.parse(search) as WindowsOCR;
 
-			if (isEmpty(qr)) {
-				search = content;
-			} else {
-				search = qr[0].content;
+				if (isEmpty(qr)) {
+					search = content;
+				} else {
+					search = qr[0].content;
+				}
 			}
+		} catch (error) {
+			// OCR失败时静默处理，不影响正常的图片读取功能
+			console.warn("OCR识别失败，将保存为无搜索文本的图片:", error);
 		}
 	}
 

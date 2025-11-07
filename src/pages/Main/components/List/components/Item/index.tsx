@@ -273,25 +273,15 @@ const Item: FC<ItemProps> = (props) => {
 		}
 
 		try {
-			console.info(
-				`🗑️ 准备删除条目: ${id}, type: ${data.type}, value: ${data.value?.substring(0, 50)}...`,
-			);
 			await deleteSQL("history", data);
-			console.info(`✅ 数据库删除成功: ${id}`);
 
 			// 使用强制刷新函数，确保缓存和lastQueryParams都被正确重置
 			if (forceRefreshList) {
-				console.info("🔄 触发强制刷新（重置缓存和lastQueryParams）");
 				forceRefreshList();
-				console.info("✅ 强制刷新已执行");
 			}
 
 			// 从本地状态中移除
-			const originalLength = state.list.length;
 			remove(state.list, { id });
-			console.info(
-				`📝 本地状态更新: 从 ${originalLength} 条减少到 ${state.list.length} 条`,
-			);
 		} catch (error) {
 			console.error(`❌ 删除条目失败: ${id}`, error);
 			message.error("删除失败，请重试");
