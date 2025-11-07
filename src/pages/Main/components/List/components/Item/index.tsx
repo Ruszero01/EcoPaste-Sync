@@ -111,13 +111,6 @@ const Item: FC<ItemProps> = (props) => {
 			// 获取当前的自动排序设置
 			const currentAutoSort = clipboardStore.content.autoSort;
 
-			// console.log("🔄 复制已有条目", {
-			// 	currentIndex: index,
-			// 	itemId: id,
-			// 	currentTime: createTime,
-			// 	autoSort: currentAutoSort,
-			// });
-
 			if (currentAutoSort) {
 				// 自动排序开启：移动到顶部
 				const [targetItem] = state.list.splice(index, 1);
@@ -125,22 +118,12 @@ const Item: FC<ItemProps> = (props) => {
 
 				// 聚焦到移动后的条目
 				state.activeId = id;
-
-				// console.log("✅ 自动排序开启：条目已移动到顶部", {
-				// 	newIndex: 0,
-				// 	topItemId: state.list[0]?.id,
-				// });
 			} else {
 				// 自动排序关闭：保持原位置，只更新时间
 				state.list[index] = { ...state.list[index], createTime };
 
 				// 聚焦到当前条目
 				state.activeId = id;
-
-				// console.log("✅ 自动排序关闭：条目保持原位置，仅更新时间", {
-				// 	unchangedIndex: index,
-				// 	itemId: id,
-				// });
 			}
 
 			// 更新数据库
@@ -158,38 +141,12 @@ const Item: FC<ItemProps> = (props) => {
 	const toggleFavorite = async () => {
 		const nextFavorite = !favorite;
 
-		// biome-ignore lint/suspicious/noConsoleLog: 允许在关键收藏状态变更时使用日志
-		console.log("⭐ [Item.toggleFavorite] 收藏状态变更:", {
-			项ID: id,
-			项类型: type,
-			之前收藏状态: favorite,
-			之后收藏状态: nextFavorite,
-			时间戳: Date.now(),
-		});
-
 		find(state.list, { id })!.favorite = nextFavorite;
-
-		// biome-ignore lint/suspicious/noConsoleLog: 允许在关键数据库操作时使用日志
-		console.log("💾 [Item.toggleFavorite] 准备更新数据库收藏状态:", {
-			项ID: id,
-			新收藏状态: nextFavorite,
-		});
 
 		try {
 			await updateSQL("history", { id, favorite: nextFavorite });
-
-			// biome-ignore lint/suspicious/noConsoleLog: 允许在关键数据库操作成功时使用日志
-			console.log("✅ [Item.toggleFavorite] 数据库收藏状态更新成功:", {
-				项ID: id,
-				新收藏状态: nextFavorite,
-			});
 		} catch (error) {
-			// biome-ignore lint/suspicious/noConsoleLog: 允许在关键数据库操作失败时使用日志
-			console.error("❌ [Item.toggleFavorite] 数据库收藏状态更新失败:", {
-				项ID: id,
-				新收藏状态: nextFavorite,
-				错误: error instanceof Error ? error.message : String(error),
-			});
+			console.error("收藏状态更新失败:", error);
 		}
 	};
 
@@ -298,12 +255,6 @@ const Item: FC<ItemProps> = (props) => {
 		if (index !== -1) {
 			const createTime = formatDate();
 
-			// console.log("🔄 粘贴已有条目，准备移动到顶部", {
-			// 	currentIndex: index,
-			// 	itemId: id,
-			// 	currentTime: createTime,
-			// });
-
 			// 从原位置移除
 			const [targetItem] = state.list.splice(index, 1);
 
@@ -312,12 +263,6 @@ const Item: FC<ItemProps> = (props) => {
 
 			// 更新数据库
 			await updateSQL("history", { id, createTime });
-
-			// console.log("✅ 粘贴已有条目已移动到顶部并更新时间", {
-			// 	newIndex: 0,
-			// 	listLength: state.list.length,
-			// 	topItemId: state.list[0]?.id,
-			// });
 		}
 	};
 
