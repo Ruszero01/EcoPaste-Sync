@@ -22,6 +22,82 @@ import { getGlobalSyncErrorTracker } from "@/utils/syncErrorTracker";
 import { emit } from "@tauri-apps/api/event";
 
 /**
+ * 简单的同步日志工具
+ */
+const syncLog = (
+	level: "info" | "success" | "warning" | "error",
+	message: string,
+	data?: any,
+): void => {
+	const timestamp = new Date().toLocaleTimeString();
+	const prefix = `[${timestamp}] [SyncEngine]`;
+
+	switch (level) {
+		case "info":
+			// eslint-disable-next-line no-console
+			console.info(`${prefix} ℹ️ ${message}`, data || "");
+			break;
+		case "success":
+			// eslint-disable-next-line no-console
+			console.info(`${prefix} ✅ ${message}`, data || "");
+			break;
+		case "warning":
+			// eslint-disable-next-line no-console
+			console.warn(`${prefix} ⚠️ ${message}`, data || "");
+			break;
+		case "error":
+			// eslint-disable-next-line no-console
+			console.error(`${prefix} ❌ ${message}`, data || "");
+			break;
+	}
+};
+
+/**
+ * 提取文件项的核心内容用于校验和计算
+ */
+function extractFileCoreValue(item: any): string {
+	// 如果是文件包格式，提取原始路径信息
+	if (item._syncType === "package_files" && typeof item.value === "string") {
+		try {
+			const packageInfo = JSON.parse(item.value);
+			if (
+				packageInfo.originalPaths &&
+				Array.isArray(packageInfo.originalPaths)
+			) {
+				// 对于文件包，使用原始路径数组作为核心内容
+				if (item.type === "image" && packageInfo.originalPaths.length === 1) {
+					return packageInfo.originalPaths[0]; // 图片单个路径
+				}
+				return JSON.stringify(packageInfo.originalPaths.sort()); // 文件数组路径
+			}
+		} catch {
+			// 解析失败，继续使用原始逻辑
+		}
+	}
+
+	// 如果是JSON格式的路径数组，直接使用
+	if (
+		typeof item.value === "string" &&
+		item.value.startsWith("[") &&
+		item.value.endsWith("]")
+	) {
+		try {
+			const paths = JSON.parse(item.value);
+			if (Array.isArray(paths)) {
+				return JSON.stringify(paths.sort());
+			}
+		} catch {
+			// 解析失败，继续使用原始逻辑
+		}
+	}
+
+	// 默认情况：直接使用value
+	return typeof item.value === "string"
+		? item.value
+		: JSON.stringify(item.value);
+}
+
+/**
  * 统一的校验和计算函数
  */
 export function calculateUnifiedChecksum(
@@ -32,8 +108,26 @@ export function calculateUnifiedChecksum(
 	const coreFields: any = {
 		id: item.id,
 		type: item.type,
-		value: item.value,
 	};
+
+	// 对于文件类型，使用核心内容而不是格式化字符串
+	if (item.type === "image" || item.type === "files") {
+		const coreValue = extractFileCoreValue(item);
+		coreFields.value = coreValue;
+
+		syncLog("info", `文件类型校验和计算: ${item.id}`, {
+			type: item.type,
+			valueType: typeof item.value,
+			originalLength: item.value?.length || 0,
+			coreValueLength: coreValue.length,
+			isPackageFormat: item._syncType === "package_files",
+			coreValuePreview:
+				coreValue.substring(0, 100) + (coreValue.length > 100 ? "..." : ""),
+		});
+	} else {
+		// 其他类型保持原有逻辑
+		coreFields.value = item.value;
+	}
 
 	if (includeMetadata) {
 		coreFields.createTime = item.createTime;
@@ -229,11 +323,11 @@ class MetadataManager {
 
 		let size: number;
 		if (item.type === "image" || item.type === "files") {
-			size =
-				typeof item.value === "string"
-					? item.value.length
-					: JSON.stringify(item.value).length;
+			// 使用核心内容计算大小，确保与校验和计算一致
+			const coreValue = extractFileCoreValue(item);
+			size = coreValue.length;
 		} else {
+			// 其他类型保持原有逻辑
 			size = JSON.stringify(item).length;
 		}
 
@@ -251,11 +345,11 @@ class MetadataManager {
 
 		let size: number;
 		if (item.type === "image" || item.type === "files") {
-			size =
-				typeof item.value === "string"
-					? item.value.length
-					: JSON.stringify(item.value).length;
+			// 使用核心内容计算大小，确保与校验和计算一致
+			const coreValue = extractFileCoreValue(item);
+			size = coreValue.length;
 		} else {
+			// 其他类型保持原有逻辑
 			size = JSON.stringify(item).length;
 		}
 
@@ -292,6 +386,11 @@ class MetadataManager {
 			}
 		}
 
+		syncLog(
+			"info",
+			`开始比较本地${local.size}项 vs 远程${remote.size}项，删除项${deletedItemIds.length}个`,
+		);
+
 		for (const [id, localFp] of local) {
 			if (deletedSet.has(id)) {
 				continue;
@@ -300,11 +399,22 @@ class MetadataManager {
 			const remoteFp = remote.get(id);
 			if (!remoteFp) {
 				if (localFp.checksum && localFp.checksum.length > 0) {
+					syncLog(
+						"info",
+						`新增项: ${id} (${localFp.type}) - 本地校验和: ${localFp.checksum.substring(0, 16)}...`,
+					);
 					added.push(localFp);
 				}
 			} else {
 				if (localFp.checksum !== remoteFp.checksum) {
 					const localDataItem = localDataMap.get(id);
+
+					syncLog("warning", `校验和不匹配: ${id} (${localFp.type})`, {
+						localChecksum: localFp.checksum.substring(0, 16),
+						remoteChecksum: remoteFp.checksum.substring(0, 16),
+						localSize: localFp.size,
+						remoteSize: remoteFp.size,
+					});
 
 					if (
 						localDataItem &&
@@ -314,15 +424,25 @@ class MetadataManager {
 							remoteFp,
 						)
 					) {
+						syncLog("info", `收藏状态变化: ${id}`);
 						favoriteChanged.push(id);
 					} else {
+						syncLog("warning", `内容修改: ${id}`);
 						modified.push(localFp);
 					}
 				} else {
+					syncLog("info", `未变更: ${id} (${localFp.type})`);
 					unchanged.push(id);
 				}
 			}
 		}
+
+		syncLog("success", "指纹比较结果", {
+			added: added.length,
+			modified: modified.length,
+			unchanged: unchanged.length,
+			favoriteChanged: favoriteChanged.length,
+		});
 
 		return { added, modified, unchanged, favoriteChanged };
 	}
@@ -590,11 +710,14 @@ class IncrementalSyncManager {
 			return true;
 		}
 
+		// 改进：同时检查fileSize和checksum的存在性，更准确地识别文件包
 		if (
 			item.fileSize &&
-			item.checksum &&
 			typeof item.fileSize === "number" &&
-			item.fileSize > 0
+			item.fileSize > 0 &&
+			item.checksum &&
+			typeof item.checksum === "string" &&
+			item.checksum.length > 0
 		) {
 			return true;
 		}
@@ -1929,6 +2052,8 @@ export class SyncEngineV2 {
 		};
 
 		try {
+			syncLog("info", "开始执行双向同步");
+
 			let remoteData = await this.getCachedRemoteData();
 			let remoteFingerprints =
 				await this.metadataManager.downloadFingerprints();
@@ -1959,12 +2084,24 @@ export class SyncEngineV2 {
 
 			const localLightweightData = await this.getLightweightLocalData(false);
 
+			syncLog("info", "开始执行选择性差异检测", {
+				localDataCount: localLightweightData.length,
+				remoteDataCount: remoteData?.items?.length || 0,
+				remoteFingerprintsCount: remoteFingerprints.size,
+			});
+
 			diffResult = await this.performSelectiveDiff(
 				localLightweightData,
 				remoteData,
 				remoteFingerprints,
 			);
 			const { itemsToSync, itemsToDownload, deletedIds } = diffResult;
+
+			syncLog("success", "差异检测完成", {
+				itemsToSync: itemsToSync.length,
+				itemsToDownload: itemsToDownload.length,
+				deletedIds: deletedIds.length,
+			});
 
 			const fullLocalData = await this.convertToSyncItemsSelective(itemsToSync);
 
@@ -1997,6 +2134,9 @@ export class SyncEngineV2 {
 				await this.fileSyncManager.syncRemoteFiles(mergedData);
 
 				result.downloaded = itemsToDownload.length;
+				syncLog("success", "数据下载成功", {
+					downloadedCount: itemsToDownload.length,
+				});
 			}
 
 			if (itemsToSync.length > 0 || deletedIds.length > 0) {
@@ -2017,6 +2157,10 @@ export class SyncEngineV2 {
 
 				if (uploadSuccess) {
 					result.uploaded = actualUploadCount;
+					syncLog("success", "数据上传成功", {
+						uploadedCount: actualUploadCount,
+						deletedIdsCount: deletedIds.length,
+					});
 
 					if (deletedIds.length > 0) {
 						const deleteResult = await this.deleteRemoteFiles(deletedIds);
@@ -2081,6 +2225,15 @@ export class SyncEngineV2 {
 			result.success = fatalErrors.length === 0;
 			this.lastSyncTime = Date.now();
 
+			syncLog("success", "同步完成", {
+				success: result.success,
+				uploaded: result.uploaded,
+				downloaded: result.downloaded,
+				conflicts: result.conflicts.length,
+				errors: result.errors.length,
+				duration: Date.now() - startTime,
+			});
+
 			if (
 				this.isTransitioningToFavoriteMode ||
 				this.isTransitioningFromFavoriteMode
@@ -2135,6 +2288,16 @@ export class SyncEngineV2 {
 			const lightweightData = filteredItems.map((item) => {
 				const checksum = calculateContentChecksum(item);
 
+				// 统一大小计算，确保与指纹生成逻辑一致
+				let size: number;
+				if (item.type === "image" || item.type === "files") {
+					// 使用核心内容计算大小，确保与校验和计算一致
+					const coreValue = extractFileCoreValue(item);
+					size = coreValue.length;
+				} else {
+					size = JSON.stringify(item).length;
+				}
+
 				return {
 					id: item.id,
 					type: item.type,
@@ -2144,6 +2307,7 @@ export class SyncEngineV2 {
 					favorite: item.favorite,
 					deleted: item.deleted || false,
 					checksum,
+					size, // 添加size字段以保持一致性
 				};
 			});
 
@@ -2166,6 +2330,12 @@ export class SyncEngineV2 {
 			}
 		}
 
+		syncLog("info", "开始转换同步项", {
+			totalItems: items.length,
+			fileItems: fileItems.length,
+			nonFileItems: nonFileItems.length,
+		});
+
 		for (const item of nonFileItems) {
 			try {
 				const syncItem = this.convertToSyncItem(item);
@@ -2182,15 +2352,24 @@ export class SyncEngineV2 {
 			const item = fileItems[i];
 			const promise = (async () => {
 				try {
+					syncLog("info", `处理文件项: ${item.id} (${item.type})`);
 					const syncItem = this.convertToSyncItem(item);
 					const processedSyncItem =
 						await this.fileSyncManager.processFileSyncItem(syncItem);
 
 					if (processedSyncItem) {
 						syncItems.push(processedSyncItem);
+						syncLog("success", `文件项处理成功: ${item.id}`, {
+							originalType: item.type,
+							hasSyncType: !!processedSyncItem._syncType,
+							valueLength: processedSyncItem.value?.length || 0,
+						});
 					}
-				} catch {
-					// 处理文件项失败
+				} catch (error) {
+					syncLog("error", `处理文件项失败: ${item.id}`, {
+						error: error instanceof Error ? error.message : String(error),
+						type: item.type,
+					});
 				}
 			})();
 
@@ -2212,6 +2391,10 @@ export class SyncEngineV2 {
 		}
 
 		await Promise.allSettled(fileProcessPromises);
+
+		syncLog("success", "同步项转换完成", {
+			totalProcessed: syncItems.length,
+		});
 
 		return syncItems;
 	}
@@ -2246,14 +2429,21 @@ export class SyncEngineV2 {
 		for (const item of localData) {
 			const checksum = calculateContentChecksum(item);
 
+			// 统一大小计算，确保与指纹生成逻辑一致
+			let size: number;
+			if (item.type === "image" || item.type === "files") {
+				// 使用核心内容计算大小，确保与校验和计算一致
+				const coreValue = extractFileCoreValue(item);
+				size = coreValue.length;
+			} else {
+				size = JSON.stringify(item).length;
+			}
+
 			localFingerprints.set(item.id, {
 				id: item.id,
 				checksum,
 				timestamp: item.lastModified || item.createTime,
-				size:
-					typeof item.value === "string"
-						? item.value.length
-						: JSON.stringify(item.value).length,
+				size,
 				type: item.type,
 			});
 		}
@@ -2457,27 +2647,36 @@ export class SyncEngineV2 {
 
 		// 更新本地快照
 		this.updateLocalSnapshot(
-			localData.map((item) => ({
-				id: item.id,
-				type: item.type,
-				value: item.value,
-				group: item.group || "",
-				search: item.search || "",
-				count: item.count || 0,
-				width: item.width || 0,
-				height: item.height || 0,
-				favorite: item.favorite,
-				createTime: item.createTime,
-				note: item.note || "",
-				subtype: item.subtype || "",
-				lastModified: item.lastModified,
-				deviceId: this.deviceId,
-				size:
-					typeof item.value === "string"
-						? item.value.length
-						: JSON.stringify(item.value).length,
-				checksum: item.checksum,
-			})),
+			localData.map((item) => {
+				// 统一大小计算，确保与指纹生成逻辑一致
+				let size: number;
+				if (item.type === "image" || item.type === "files") {
+					// 使用核心内容计算大小，确保与校验和计算一致
+					const coreValue = extractFileCoreValue(item);
+					size = coreValue.length;
+				} else {
+					size = JSON.stringify(item).length;
+				}
+
+				return {
+					id: item.id,
+					type: item.type,
+					value: item.value,
+					group: item.group || "",
+					search: item.search || "",
+					count: item.count || 0,
+					width: item.width || 0,
+					height: item.height || 0,
+					favorite: item.favorite,
+					createTime: item.createTime,
+					note: item.note || "",
+					subtype: item.subtype || "",
+					lastModified: item.lastModified,
+					deviceId: this.deviceId,
+					size,
+					checksum: item.checksum,
+				};
+			}),
 		);
 
 		// 简化操作冲突检测和解决逻辑
@@ -2653,11 +2852,11 @@ export class SyncEngineV2 {
 
 		let size: number;
 		if (item.type === "image" || item.type === "files") {
-			size =
-				typeof item.value === "string"
-					? item.value.length
-					: JSON.stringify(item.value).length;
+			// 使用核心内容计算大小，确保与校验和计算一致
+			const coreValue = extractFileCoreValue(item);
+			size = coreValue.length;
 		} else {
+			// 其他类型保持原有逻辑
 			size = JSON.stringify(item).length;
 		}
 
@@ -2752,6 +2951,12 @@ export class SyncEngineV2 {
 
 	private async insertOrUpdateItem(item: SyncItem): Promise<void> {
 		try {
+			// 确定用于查询的值，对于文件包使用核心内容
+			let queryValue = item.value;
+			if (item.type === "image" || item.type === "files") {
+				queryValue = extractFileCoreValue(item);
+			}
+
 			const localItem: any = {
 				id: item.id,
 				type: item.type,
@@ -2771,13 +2976,17 @@ export class SyncEngineV2 {
 				fileType: item.fileType,
 			};
 
-			const existingRecords = (await selectSQL("history", {
-				type: item.type,
-				value: item.value,
+			// 首先尝试按ID查询现有记录
+			const existingById = (await selectSQL("history", {
+				id: item.id,
 			})) as any[];
 
-			if (existingRecords && existingRecords.length > 0) {
-				const existing = existingRecords[0];
+			if (existingById && existingById.length > 0) {
+				syncLog("info", `按ID找到现有记录: ${item.id}`, {
+					itemType: item.type,
+					existingId: existingById[0].id,
+				});
+				const existing = existingById[0];
 				const updateItem = {
 					...localItem,
 					id: existing.id,
@@ -2787,7 +2996,44 @@ export class SyncEngineV2 {
 				};
 
 				await updateSQL("history", updateItem);
+				return;
+			}
+
+			// 如果按ID找不到，再尝试按内容和类型查询
+			const existingRecords = (await selectSQL("history", {
+				type: item.type,
+				value: queryValue,
+			})) as any[];
+
+			if (existingRecords && existingRecords.length > 0) {
+				syncLog(
+					"info",
+					`按内容找到现有记录，使用原ID: ${existingRecords[0].id}`,
+					{
+						itemId: item.id,
+						itemType: item.type,
+						existingId: existingRecords[0].id,
+						queryValueLength: queryValue.length,
+					},
+				);
+				const existing = existingRecords[0];
+				const updateItem = {
+					...localItem,
+					id: existing.id, // 使用现有记录的ID
+					favorite: this.resolveFavoriteStatus(existing, item),
+					count: Math.max(existing.count || 0, item.count || 0),
+					createTime: existing.createTime,
+				};
+
+				await updateSQL("history", updateItem);
 			} else {
+				syncLog("info", `插入新记录: ${item.id}`, {
+					itemType: item.type,
+					queryValueLength: queryValue.length,
+					queryValuePreview:
+						queryValue.substring(0, 100) +
+						(queryValue.length > 100 ? "..." : ""),
+				});
 				await this.insertForSync("history", localItem);
 			}
 		} catch (error) {
