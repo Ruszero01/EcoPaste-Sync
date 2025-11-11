@@ -224,6 +224,11 @@ const List = () => {
 						const data = state.list[index];
 						let { type, value } = data;
 
+						// 确保 value 不为 null 或 undefined
+						if (!value) {
+							value = "";
+						}
+
 						// 检查是否为临时文件路径（截图软件生成的文件）
 						const isTempFile =
 							value.includes("\\Temp\\") || value.includes("\\temp\\");

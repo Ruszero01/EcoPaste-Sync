@@ -1,6 +1,5 @@
 // 同步数据包结构
 export interface SyncData {
-	version: number; // 同步协议版本
 	timestamp: number; // 数据时间戳
 	deviceId: string; // 设备唯一标识
 	dataType: "full" | "incremental"; // 数据类型
@@ -53,18 +52,42 @@ export interface SyncItem {
 	deleted?: boolean; // 是否已删除
 }
 
-// 同步元数据
-export interface SyncMetadata {
-	lastSyncTime: number; // 最后同步时间
-	deviceId: string; // 设备ID
-	syncVersion: number; // 同步版本号
-	conflictResolution: "local" | "remote" | "merge" | "prompt"; // 冲突解决策略
-	networkQuality: "high" | "medium" | "low"; // 网络质量评估
+// 统一的云端同步索引
+export interface CloudSyncIndex {
+	format: "unified";
+	timestamp: number;
+	deviceId: string;
+	lastSyncTime: number;
+	conflictResolution: "local" | "remote" | "merge" | "prompt";
+	networkQuality: "high" | "medium" | "low";
 	performanceMetrics: {
-		avgUploadSpeed: number; // 平均上传速度
-		avgDownloadSpeed: number; // 平均下载速度
-		avgLatency: number; // 平均延迟
+		avgUploadSpeed: number;
+		avgDownloadSpeed: number;
+		avgLatency: number;
 	};
+	items: CloudItemFingerprint[];
+	totalItems: number;
+	dataChecksum: string;
+	deletedItems: string[];
+	statistics: {
+		typeCounts: Record<string, number>;
+		totalSize: number;
+		favoriteCount: number;
+		lastModified: number;
+	};
+}
+
+// 云端项目指纹
+export interface CloudItemFingerprint {
+	id: string;
+	type: "text" | "image" | "files" | "html" | "rtf";
+	checksum: string;
+	favoriteChecksum?: string;
+	size: number;
+	timestamp: number;
+	favorite: boolean;
+	deleted?: boolean;
+	note?: string;
 }
 
 // 同步配置
@@ -117,6 +140,21 @@ export interface WebDAVFileInfo {
 	lastModified: Date;
 	isDirectory: boolean;
 	etag?: string;
+}
+
+// 同步差异结果
+export interface SyncDiffResult {
+	added: CloudItemFingerprint[];
+	modified: CloudItemFingerprint[];
+	favoriteChanged: CloudItemFingerprint[];
+	deleted: string[];
+	toDownload: CloudItemFingerprint[];
+	unchanged: string[];
+	statistics: {
+		totalLocal: number;
+		totalRemote: number;
+		conflicts: number;
+	};
 }
 
 // 同步结果
