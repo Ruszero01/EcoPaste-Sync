@@ -1,15 +1,24 @@
-import { downloadSyncData, uploadSyncData } from "@/plugins/webdav";
+import { deleteFile, downloadSyncData, uploadSyncData } from "@/plugins/webdav";
 import type { WebDAVConfig } from "@/plugins/webdav";
 import type {
 	CloudItemFingerprint,
 	CloudSyncIndex,
-	SyncDiffResult,
+	SyncItem,
+	SyncModeConfig,
 } from "@/types/sync";
 import { calculateChecksum } from "@/utils/shared";
+import { filterItemsBySyncMode } from "./localDataManager";
 
 /**
  * 云端数据管理器
- * 负责云端索引和数据文件的上传、下载、缓存和差异检测
+ *
+ * 职责：
+ * - 处理云端数据操作（新增、更新、删除）
+ * - 云端索引和数据文件的上传、下载、缓存
+ * - 云端数据差异检测
+ * - 根据当前同步模式筛选需要同步的数据
+ *
+ * 本地数据筛选和删除策略由 localDataManager 处理
  */
 export class CloudDataManager {
 	private webdavConfig: WebDAVConfig | null = null;
@@ -115,36 +124,6 @@ export class CloudDataManager {
 	}
 
 	/**
-	 * 检测同步差异
-	 */
-	detectSyncDifferences(
-		localItems: any[],
-		remoteIndex: CloudSyncIndex | null,
-		deletedItemIds: string[] = [],
-	): SyncDiffResult {
-		if (!remoteIndex) {
-			return {
-				added: localItems.map((item) => this.generateItemFingerprint(item)),
-				modified: [],
-				favoriteChanged: [],
-				deleted: deletedItemIds,
-				toDownload: [],
-				unchanged: [],
-				statistics: {
-					totalLocal: localItems.length,
-					totalRemote: 0,
-					conflicts: 0,
-				},
-			};
-		}
-
-		const localFingerprints = this.generateLocalFingerprints(localItems);
-		const deletedSet = new Set(deletedItemIds);
-
-		return this.detectDiff(localFingerprints, remoteIndex, deletedSet);
-	}
-
-	/**
 	 * 使用本地数据更新云端索引
 	 */
 	updateIndexWithLocalChanges(
@@ -212,22 +191,6 @@ export class CloudDataManager {
 	}
 
 	/**
-	 * 生成本地项目指纹
-	 */
-	private generateLocalFingerprints(
-		localItems: any[],
-	): Map<string, CloudItemFingerprint> {
-		const fingerprintMap = new Map<string, CloudItemFingerprint>();
-
-		for (const item of localItems) {
-			const fingerprint = this.generateItemFingerprint(item);
-			fingerprintMap.set(item.id, fingerprint);
-		}
-
-		return fingerprintMap;
-	}
-
-	/**
 	 * 生成单个项目指纹
 	 */
 	private generateItemFingerprint(item: any): CloudItemFingerprint {
@@ -239,99 +202,21 @@ export class CloudDataManager {
 			}),
 		);
 
-		const favoriteAwareChecksum = calculateChecksum(
-			JSON.stringify({
-				favorite: !!item.favorite,
-			}),
-		);
-
 		const size = JSON.stringify(item).length;
 
 		return {
 			id: item.id,
 			type: item.type,
 			checksum: contentChecksum,
-			favoriteChecksum: item.favorite ? favoriteAwareChecksum : undefined,
+			favoriteChecksum: item.favorite
+				? calculateChecksum(JSON.stringify({ favorite: !!item.favorite }))
+				: undefined,
 			size,
 			timestamp: item.lastModified || Date.now(),
 			favorite: !!item.favorite,
 			deleted: item.deleted || false,
 			note: item.note || "",
 		};
-	}
-
-	/**
-	 * 检测差异（核心算法）
-	 */
-	private detectDiff(
-		localFingerprints: Map<string, CloudItemFingerprint>,
-		remoteIndex: CloudSyncIndex,
-		localDeletedIds: Set<string>,
-	): SyncDiffResult {
-		const remoteMap = new Map(remoteIndex.items.map((item) => [item.id, item]));
-
-		const result: SyncDiffResult = {
-			added: [],
-			modified: [],
-			favoriteChanged: [],
-			deleted: [],
-			toDownload: [],
-			unchanged: [],
-			statistics: {
-				totalLocal: localFingerprints.size,
-				totalRemote: remoteIndex.items.length,
-				conflicts: 0,
-			},
-		};
-
-		for (const [id, localFp] of localFingerprints) {
-			if (localDeletedIds.has(id)) continue;
-
-			const remoteFp = remoteMap.get(id);
-			if (!remoteFp) {
-				result.added.push(localFp);
-			} else {
-				const contentChanged = localFp.checksum !== remoteFp.checksum;
-				const favoriteChanged = localFp.favorite !== remoteFp.favorite;
-
-				if (contentChanged && favoriteChanged) {
-					result.modified.push(localFp);
-				} else if (contentChanged) {
-					result.modified.push(localFp);
-				} else if (favoriteChanged) {
-					result.favoriteChanged.push(localFp);
-				} else {
-					result.unchanged.push(id);
-				}
-			}
-		}
-
-		for (const [id, remoteFp] of remoteMap) {
-			const localFp = localFingerprints.get(id);
-
-			if (!localFp && !remoteFp.deleted) {
-				result.toDownload.push(remoteFp);
-			} else if (localFp && this.needsDownload(localFp, remoteFp)) {
-				result.toDownload.push(remoteFp);
-			}
-		}
-
-		return result;
-	}
-
-	/**
-	 * 判断是否需要下载
-	 */
-	private needsDownload(
-		localFp: CloudItemFingerprint,
-		remoteFp: CloudItemFingerprint,
-	): boolean {
-		if (remoteFp.deleted) return false;
-
-		return (
-			remoteFp.timestamp > localFp.timestamp &&
-			remoteFp.checksum !== localFp.checksum
-		);
 	}
 
 	/**
@@ -408,6 +293,84 @@ export class CloudDataManager {
 	}
 
 	/**
+	 * 删除云端数据项目
+	 * @param itemIds 要删除的项目ID列表
+	 * @returns 删除结果
+	 */
+	async deleteCloudItems(itemIds: string[]): Promise<{
+		success: number;
+		failed: number;
+		errors: string[];
+	}> {
+		if (itemIds.length === 0 || !this.webdavConfig) {
+			return { success: 0, failed: 0, errors: [] };
+		}
+
+		const errors: string[] = [];
+		let successCount = 0;
+		let failedCount = 0;
+
+		try {
+			// 1. 删除文件包（异步并发处理）
+			const packageDeletePromises = itemIds.map(async (itemId) => {
+				try {
+					const packagePath = this.getPackagePath(itemId);
+					const result = await deleteFile(this.webdavConfig!, packagePath);
+					return result;
+				} catch {
+					return false;
+				}
+			});
+
+			await Promise.allSettled(packageDeletePromises);
+
+			// 2. 更新云端索引，移除已删除的项目
+			const currentIndex = await this.downloadSyncIndex();
+			if (currentIndex) {
+				const updatedItems = currentIndex.items.filter(
+					(item) => !itemIds.includes(item.id),
+				);
+
+				const updatedIndex: CloudSyncIndex = {
+					...currentIndex,
+					items: updatedItems,
+					deletedItems: [...currentIndex.deletedItems, ...itemIds],
+					totalItems: updatedItems.length,
+					timestamp: Date.now(),
+					dataChecksum: "", // 重新计算校验和
+				};
+
+				const indexUpdateSuccess = await this.uploadSyncIndex(updatedIndex);
+
+				if (indexUpdateSuccess) {
+					successCount = itemIds.length;
+				} else {
+					failedCount = itemIds.length;
+					errors.push("更新云端索引失败");
+				}
+			} else {
+				failedCount = itemIds.length;
+				errors.push("无法获取云端索引");
+			}
+		} catch (error) {
+			failedCount = itemIds.length;
+			errors.push(`删除操作异常: ${error}`);
+		}
+
+		return { success: successCount, failed: failedCount, errors };
+	}
+
+	/**
+	 * 获取文件包路径
+	 */
+	private getPackagePath(itemId: string): string {
+		const basePath = this.webdavConfig?.path || "";
+		return basePath && basePath !== "/"
+			? `${basePath.replace(/\/$/, "")}/packages/${itemId}.json`
+			: `packages/${itemId}.json`;
+	}
+
+	/**
 	 * 获取完整文件路径
 	 */
 	private getFullPath(filename: string): string {
@@ -417,6 +380,274 @@ export class CloudDataManager {
 		return basePath && basePath !== "/"
 			? `${basePath.replace(/\/$/, "")}/${filename}`
 			: filename;
+	}
+
+	/**
+	 * 根据同步模式配置筛选云端数据
+	 * @param remoteIndex 云端同步索引
+	 * @param syncConfig 同步模式配置
+	 * @returns 筛选后的云端同步项数据
+	 */
+	filterCloudDataForSync(
+		remoteIndex: CloudSyncIndex | null,
+		syncConfig: SyncModeConfig | null,
+	): SyncItem[] {
+		if (!remoteIndex || !remoteIndex.items.length) {
+			return [];
+		}
+
+		// 将云端指纹转换为 SyncItem 格式
+		const cloudItems: SyncItem[] = remoteIndex.items.map((item) => ({
+			id: item.id,
+			type: item.type,
+			value: "", // 云端指纹只包含元数据，不包含完整内容
+			search: "",
+			createTime: new Date(item.timestamp).toISOString(),
+			lastModified: item.timestamp,
+			favorite: item.favorite,
+			note: item.note,
+			checksum: item.checksum,
+			size: item.size,
+			deviceId: "",
+			group: this.determineGroup(item.type),
+			count: 0,
+		}));
+
+		// 根据同步模式过滤数据
+		const filteredItems = filterItemsBySyncMode(
+			cloudItems as any[], // 需要类型转换，因为 filterItemsBySyncMode 需要 HistoryItem[]
+			syncConfig,
+		);
+
+		return filteredItems.map((item) => item as SyncItem);
+	}
+
+	/**
+	 * 获取云端数据指纹列表
+	 * @param remoteIndex 云端同步索引
+	 * @returns 云端数据指纹列表
+	 */
+	getCloudItemFingerprints(
+		remoteIndex: CloudSyncIndex | null,
+	): CloudItemFingerprint[] {
+		return remoteIndex?.items || [];
+	}
+
+	/**
+	 * 应用同步变更到云端
+	 * @param currentIndex 当前云端索引
+	 * @param syncResult 同步处理结果
+	 * @param deviceId 当前设备ID
+	 * @returns 是否成功
+	 */
+	async applySyncChanges(
+		currentIndex: CloudSyncIndex | null,
+		syncResult: {
+			itemsToAdd: SyncItem[];
+			itemsToUpdate: SyncItem[];
+			itemsToDelete: string[];
+		},
+		deviceId: string,
+	): Promise<boolean> {
+		try {
+			// 1. 上传实际的数据到云端
+			if (
+				syncResult.itemsToAdd.length > 0 ||
+				syncResult.itemsToUpdate.length > 0
+			) {
+				const allItemsToUpload = [
+					...syncResult.itemsToAdd,
+					...syncResult.itemsToUpdate,
+				];
+
+				// 处理文件项目（如果有）
+				const processedItems = await this.processUploadItems(allItemsToUpload);
+
+				// 创建同步数据包
+				const syncData = {
+					timestamp: Date.now(),
+					deviceId,
+					dataType: "incremental",
+					items: processedItems,
+					deleted: syncResult.itemsToDelete,
+					compression: "none",
+					checksum: calculateChecksum(JSON.stringify(processedItems)),
+				};
+
+				// 上传数据
+				const uploadSuccess = await this.uploadSyncData(syncData);
+				if (!uploadSuccess) {
+					console.error("上传云端数据失败");
+					return false;
+				}
+			}
+
+			// 2. 使用 cloudDataManager 应用同步结果到云端索引
+			const updatedIndex = this.applySyncResultToCloud(
+				currentIndex,
+				syncResult,
+				deviceId,
+			);
+
+			// 3. 上传更新后的索引
+			return await this.uploadSyncIndex(updatedIndex);
+		} catch (error) {
+			console.error("应用云端变更失败:", error);
+			return false;
+		}
+	}
+
+	/**
+	 * 处理上传的项目（包括文件）
+	 */
+	private async processUploadItems(items: SyncItem[]): Promise<any[]> {
+		const fileItems = items.filter(
+			(item) => item.type === "image" || item.type === "files",
+		);
+		const nonFileItems = items.filter(
+			(item) => item.type !== "image" && item.type !== "files",
+		);
+
+		const processedItems = [...nonFileItems];
+
+		// 处理文件项目
+		if (fileItems.length > 0) {
+			const { fileSyncManager } = await import("./fileSyncManager");
+			const MAX_CONCURRENT_FILE_PROCESSING = 3;
+			const processPromises: Promise<void>[] = [];
+
+			for (const item of fileItems) {
+				const promise = (async () => {
+					try {
+						const processed = await fileSyncManager.processFileSyncItem(item);
+						if (processed) {
+							processedItems.push(processed);
+						}
+					} catch (error) {
+						console.error("处理上传文件项目失败:", error);
+					}
+				})();
+
+				processPromises.push(promise);
+
+				if (processPromises.length >= MAX_CONCURRENT_FILE_PROCESSING) {
+					await Promise.race(processPromises);
+					for (let j = processPromises.length - 1; j >= 0; j--) {
+						if (
+							await processPromises[j].then(
+								() => true,
+								() => true,
+							)
+						) {
+							processPromises.splice(j, 1);
+						}
+					}
+				}
+			}
+
+			await Promise.allSettled(processPromises);
+		}
+
+		return processedItems;
+	}
+
+	/**
+	 * 应用同步结果到云端索引
+	 * @param currentIndex 当前云端索引
+	 * @param syncResult 同步处理结果
+	 * @param deviceId 当前设备ID
+	 * @returns 更新后的云端索引
+	 */
+	applySyncResultToCloud(
+		currentIndex: CloudSyncIndex | null,
+		syncResult: {
+			itemsToAdd: SyncItem[];
+			itemsToUpdate: SyncItem[];
+			itemsToDelete: string[];
+		},
+		deviceId: string,
+	): CloudSyncIndex {
+		const baseIndex = currentIndex || this.createEmptyIndex(deviceId);
+		const updatedIndex = { ...baseIndex };
+
+		// 1. 从索引中移除需要删除的项目
+		updatedIndex.items = updatedIndex.items.filter(
+			(item) => !syncResult.itemsToDelete.includes(item.id),
+		);
+
+		// 2. 更新现有项目
+		for (const updateItem of syncResult.itemsToUpdate) {
+			const index = updatedIndex.items.findIndex(
+				(item) => item.id === updateItem.id,
+			);
+			if (index !== -1) {
+				updatedIndex.items[index] =
+					this.convertSyncItemToFingerprint(updateItem);
+			}
+		}
+
+		// 3. 添加新项目
+		for (const addItem of syncResult.itemsToAdd) {
+			const exists = updatedIndex.items.find((item) => item.id === addItem.id);
+			if (!exists) {
+				updatedIndex.items.push(this.convertSyncItemToFingerprint(addItem));
+			}
+		}
+
+		// 4. 更新索引元数据
+		updatedIndex.totalItems = updatedIndex.items.length;
+		updatedIndex.deletedItems = [
+			...updatedIndex.deletedItems.filter(
+				(id) => !syncResult.itemsToDelete.includes(id),
+			),
+			...syncResult.itemsToDelete,
+		];
+		updatedIndex.dataChecksum = this.calculateIndexChecksum(updatedIndex);
+		updatedIndex.statistics = this.calculateStatistics(updatedIndex);
+		updatedIndex.timestamp = Date.now();
+
+		return updatedIndex;
+	}
+
+	/**
+	 * 将 SyncItem 转换为 CloudItemFingerprint
+	 * @param item 同步项
+	 * @returns 云端数据指纹
+	 */
+	private convertSyncItemToFingerprint(item: SyncItem): CloudItemFingerprint {
+		return {
+			id: item.id,
+			type: item.type,
+			checksum: item.checksum || "",
+			favoriteChecksum: item.favorite
+				? calculateChecksum(JSON.stringify({ favorite: !!item.favorite }))
+				: undefined,
+			size: item.size || 0,
+			timestamp: item.lastModified || Date.now(),
+			favorite: item.favorite,
+			deleted: false,
+			note: item.note || "",
+		};
+	}
+
+	/**
+	 * 根据类型确定分组
+	 * @param type 类型
+	 * @returns 分组
+	 */
+	private determineGroup(type: string): "text" | "image" | "files" {
+		switch (type) {
+			case "text":
+			case "html":
+			case "rtf":
+				return "text";
+			case "image":
+				return "image";
+			case "files":
+				return "files";
+			default:
+				return "text";
+		}
 	}
 }
 
