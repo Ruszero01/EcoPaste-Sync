@@ -2763,9 +2763,6 @@ export class SyncEngineV2 {
 				case "files":
 					groupValue = "files";
 					break;
-				case "html":
-				case "rtf":
-				case "text":
 				default:
 					groupValue = "text";
 					break;
@@ -2881,9 +2878,6 @@ export class SyncEngineV2 {
 					case "files":
 						groupValue = "files";
 						break;
-					case "html":
-					case "rtf":
-					case "text":
 					default:
 						groupValue = "text";
 						break;
@@ -2892,7 +2886,10 @@ export class SyncEngineV2 {
 
 			// 修复：为文本类型数据计算正确的字符数
 			let calculatedCount = item.fileSize || item.count || 0;
-			if ((item.type === "text" || item.type === "html" || item.type === "rtf") && item.value) {
+			if (
+				(item.type === "text" || item.type === "html" || item.type === "rtf") &&
+				item.value
+			) {
 				calculatedCount = item.value.length;
 			}
 
@@ -2929,7 +2926,7 @@ export class SyncEngineV2 {
 					count: Math.max(existing.count || 0, item.count || 0),
 					createTime: existing.createTime,
 					// 修复：保留注释，优先使用远程注释（如果存在且不为空）
-					note: item.note?.trim() ? item.note : (existing.note || ""),
+					note: item.note?.trim() ? item.note : existing.note || "",
 				};
 
 				await updateSQL("history", updateItem);
@@ -2951,7 +2948,7 @@ export class SyncEngineV2 {
 					count: Math.max(existing.count || 0, item.count || 0),
 					createTime: existing.createTime,
 					// 修复：保留注释，优先使用远程注释（如果存在且不为空）
-					note: item.note?.trim() ? item.note : (existing.note || ""),
+					note: item.note?.trim() ? item.note : existing.note || "",
 				};
 
 				await updateSQL("history", updateItem);
@@ -3121,16 +3118,15 @@ export class SyncEngineV2 {
 			for (const [id, fingerprint] of fingerprints) {
 				// 修复：根据类型正确设置group字段
 				let groupValue: "text" | "image" | "files";
-				switch (fingerprint.type as "text" | "image" | "files" | "html" | "rtf") {
+				switch (
+					fingerprint.type as "text" | "image" | "files" | "html" | "rtf"
+				) {
 					case "image":
 						groupValue = "image";
 						break;
 					case "files":
 						groupValue = "files";
 						break;
-					case "html":
-					case "rtf":
-					case "text":
 					default:
 						groupValue = "text";
 						break;
@@ -3143,7 +3139,7 @@ export class SyncEngineV2 {
 					group: groupValue,
 					search: "",
 					// 修复：根据类型设置合理的count值
-					count: fingerprint.type === "text" ? (fingerprint.size || 0) : 0,
+					count: fingerprint.type === "text" ? fingerprint.size || 0 : 0,
 					favorite: false,
 					createTime: fingerprint.timestamp.toString(),
 					lastModified: fingerprint.timestamp,
