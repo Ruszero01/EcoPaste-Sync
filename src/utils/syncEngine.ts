@@ -133,12 +133,13 @@ export class SyncEngine {
 			}
 
 			// 5. 把本地和云端的数据统一发送给 syncConflictResolver 处理冲突
+			// 只处理真正有冲突的项目（ID相同但内容不同）
 			const conflictContexts = localSyncItems
 				.map((localItem) => {
 					const remoteItem = cloudSyncItems.find(
 						(item) => item.id === localItem.id,
 					);
-					if (remoteItem) {
+					if (remoteItem && this.hasRealConflict(localItem, remoteItem)) {
 						return {
 							localItem,
 							remoteItem,
@@ -244,8 +245,16 @@ export class SyncEngine {
 		}
 
 		// 处理冲突解决结果
+		const processedConflictIds = new Set<string>();
+
 		for (const conflictResult of conflictResults) {
 			const { resolvedItem, strategy } = conflictResult;
+
+			// 避免重复处理同一个项目
+			if (processedConflictIds.has(resolvedItem.id)) {
+				continue;
+			}
+			processedConflictIds.add(resolvedItem.id);
 
 			if (strategy === "remote") {
 				// 远程优先，更新本地
@@ -253,9 +262,21 @@ export class SyncEngine {
 					(item) => item.id === resolvedItem.id,
 				);
 				if (localExists) {
-					localResult.itemsToUpdate.push(resolvedItem);
+					// 检查是否已经在待更新列表中
+					if (
+						!localResult.itemsToUpdate.some(
+							(item) => item.id === resolvedItem.id,
+						)
+					) {
+						localResult.itemsToUpdate.push(resolvedItem);
+					}
 				} else {
-					localResult.itemsToAdd.push(resolvedItem);
+					// 检查是否已经在待添加列表中
+					if (
+						!localResult.itemsToAdd.some((item) => item.id === resolvedItem.id)
+					) {
+						localResult.itemsToAdd.push(resolvedItem);
+					}
 				}
 			} else if (strategy === "local") {
 				// 本地优先，更新云端
@@ -263,9 +284,21 @@ export class SyncEngine {
 					(item) => item.id === resolvedItem.id,
 				);
 				if (cloudExists) {
-					cloudResult.itemsToUpdate.push(resolvedItem);
+					// 检查是否已经在待更新列表中
+					if (
+						!cloudResult.itemsToUpdate.some(
+							(item) => item.id === resolvedItem.id,
+						)
+					) {
+						cloudResult.itemsToUpdate.push(resolvedItem);
+					}
 				} else {
-					cloudResult.itemsToAdd.push(resolvedItem);
+					// 检查是否已经在待添加列表中
+					if (
+						!cloudResult.itemsToAdd.some((item) => item.id === resolvedItem.id)
+					) {
+						cloudResult.itemsToAdd.push(resolvedItem);
+					}
 				}
 			} else if (strategy === "merge") {
 				// 合并策略，双向更新
@@ -277,15 +310,39 @@ export class SyncEngine {
 				);
 
 				if (localExists) {
-					localResult.itemsToUpdate.push(resolvedItem);
+					// 检查是否已经在待更新列表中
+					if (
+						!localResult.itemsToUpdate.some(
+							(item) => item.id === resolvedItem.id,
+						)
+					) {
+						localResult.itemsToUpdate.push(resolvedItem);
+					}
 				} else {
-					localResult.itemsToAdd.push(resolvedItem);
+					// 检查是否已经在待添加列表中
+					if (
+						!localResult.itemsToAdd.some((item) => item.id === resolvedItem.id)
+					) {
+						localResult.itemsToAdd.push(resolvedItem);
+					}
 				}
 
 				if (cloudExists) {
-					cloudResult.itemsToUpdate.push(resolvedItem);
+					// 检查是否已经在待更新列表中
+					if (
+						!cloudResult.itemsToUpdate.some(
+							(item) => item.id === resolvedItem.id,
+						)
+					) {
+						cloudResult.itemsToUpdate.push(resolvedItem);
+					}
 				} else {
-					cloudResult.itemsToAdd.push(resolvedItem);
+					// 检查是否已经在待添加列表中
+					if (
+						!cloudResult.itemsToAdd.some((item) => item.id === resolvedItem.id)
+					) {
+						cloudResult.itemsToAdd.push(resolvedItem);
+					}
 				}
 			}
 		}
@@ -323,6 +380,33 @@ export class SyncEngine {
 			cloudResult,
 			this.deviceId,
 		);
+	}
+
+	/**
+	 * 检查是否真的有冲突
+	 * @param localItem 本地项目
+	 * @param remoteItem 云端项目
+	 * @returns 是否有真正冲突
+	 */
+	private hasRealConflict(localItem: SyncItem, remoteItem: SyncItem): boolean {
+		// 比较内容
+		if (localItem.value !== remoteItem.value) {
+			return true;
+		}
+
+		// 比较收藏状态
+		if (localItem.favorite !== remoteItem.favorite) {
+			return true;
+		}
+
+		// 比较注释
+		const localNote = localItem.note || "";
+		const remoteNote = remoteItem.note || "";
+		if (localNote !== remoteNote) {
+			return true;
+		}
+
+		return false;
 	}
 
 	getSyncStatus() {

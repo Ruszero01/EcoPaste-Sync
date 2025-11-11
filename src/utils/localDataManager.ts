@@ -759,31 +759,64 @@ export class LocalDataManager {
 	 * 插入或更新数据库项目
 	 */
 	private async insertOrUpdateItemToDatabase(item: HistoryItem): Promise<void> {
-		const { updateSQL } = await import("@/database");
+		const { updateSQL, selectSQL } = await import("@/database");
 
 		try {
-			// 确保收藏状态转换为数据库兼容的格式（0/1）
-			const favoriteValue = item.favorite ? 1 : 0;
-
-			const localItem: any = {
+			// 检查项目是否已存在
+			const existingItems = (await selectSQL("history", {
 				id: item.id,
-				type: item.type,
-				group: item.group,
-				value: item.value || "",
-				search: item.search || "",
-				count: item.count || 0,
-				width: item.width,
-				height: item.height,
-				favorite: favoriteValue,
-				createTime: item.createTime,
-				note: item.note || "",
-				subtype: item.subtype,
-				lastModified: item.lastModified || Date.now(),
-				deviceId: item.deviceId || "",
-				size: item.size || 0,
-			};
+			})) as any[];
 
-			await updateSQL("history", localItem);
+			if (existingItems && existingItems.length > 0) {
+				// 项目已存在，执行更新
+				const existing = existingItems[0];
+
+				// 确保收藏状态转换为数据库兼容的格式（0/1）
+				const favoriteValue = item.favorite ? 1 : 0;
+
+				const updateItem: any = {
+					id: item.id,
+					type: item.type,
+					group: item.group,
+					value: item.value || "",
+					search: item.search || "",
+					count: Math.max(existing.count || 0, item.count || 0),
+					width: item.width,
+					height: item.height,
+					favorite: favoriteValue,
+					createTime: existing.createTime, // 保持原有的创建时间
+					note: item.note?.trim() ? item.note : existing.note || "",
+					subtype: item.subtype,
+					deleted: item.deleted || 0,
+					fileSize: item.fileSize,
+					fileType: item.fileType,
+				};
+
+				await updateSQL("history", updateItem);
+			} else {
+				// 项目不存在，执行插入
+				const favoriteValue = item.favorite ? 1 : 0;
+
+				const insertItem: any = {
+					id: item.id,
+					type: item.type,
+					group: item.group,
+					value: item.value || "",
+					search: item.search || "",
+					count: item.count || 0,
+					width: item.width,
+					height: item.height,
+					favorite: favoriteValue,
+					createTime: item.createTime,
+					note: item.note || "",
+					subtype: item.subtype,
+					deleted: item.deleted || 0,
+					fileSize: item.fileSize,
+					fileType: item.fileType,
+				};
+
+				await updateSQL("history", insertItem);
+			}
 		} catch (error) {
 			throw new Error(
 				`插入或更新项失败 (ID: ${item.id}): ${error instanceof Error ? error.message : String(error)}`,
