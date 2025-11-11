@@ -8,7 +8,11 @@ export interface AutoSyncConfig {
 	intervalHours: SyncInterval; // 同步间隔（小时）
 }
 
-class AutoSyncEngine {
+/**
+ * 自动同步引擎
+ * 简单的定时同步功能，每隔指定时间自动触发同步
+ */
+class AutoSyncManager {
 	private config: AutoSyncConfig = {
 		enabled: false,
 		intervalHours: 1, // 默认1小时
@@ -58,14 +62,14 @@ class AutoSyncEngine {
 	/**
 	 * 启动自动同步
 	 */
-	startAutoSync(): void {
+	private startAutoSync(): void {
 		if (!this.config.enabled) return;
 
 		this.clearSyncTimer(); // 清除现有定时器
 
 		const intervalMs = this.config.intervalHours * 60 * 60 * 1000; // 转换为毫秒
 
-		// 设置定时同步，立即触发一次同步按钮点击事件
+		// 设置定时同步，立即触发一次同步
 		this.triggerManualSync();
 
 		// 设置定时同步
@@ -84,7 +88,7 @@ class AutoSyncEngine {
 	}
 
 	/**
-	 * 触发手动同步按钮点击事件
+	 * 触发手动同步事件
 	 */
 	private triggerManualSync(): void {
 		if (this.isSyncing) {
@@ -94,7 +98,7 @@ class AutoSyncEngine {
 		this.isSyncing = true;
 
 		try {
-			// 发送事件，触发立即同步按钮的点击
+			// 发送事件，触发同步
 			emit(LISTEN_KEY.TRIGGER_MANUAL_SYNC, {
 				type: "auto_trigger",
 				timestamp: Date.now(),
@@ -121,9 +125,9 @@ class AutoSyncEngine {
 	}
 
 	/**
-	 * 强制停止所有同步
+	 * 停止所有同步
 	 */
-	forceStopAllSync(): void {
+	stop(): void {
 		this.config.enabled = false;
 		this.clearSyncTimer();
 		this.isSyncing = false;
@@ -153,8 +157,8 @@ class AutoSyncEngine {
 	}
 }
 
-// 创建单例实例
-export const realtimeSync = new AutoSyncEngine();
+// 导出单例实例
+export const autoSync = new AutoSyncManager();
 
-// 导出类型和工具函数
-export type { AutoSyncEngine };
+// 导出类型
+export type { AutoSyncManager };

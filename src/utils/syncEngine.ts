@@ -7,20 +7,20 @@ import {
 } from "@/plugins/webdav";
 import type {
 	CloudItemFingerprint,
-	CloudSyncIndex,
 	ConflictInfo,
 	SyncData,
-	SyncDiffResult,
 	SyncItem,
 	SyncModeConfig,
 	SyncResult,
 } from "@/types/sync";
-import { filePackageManager } from "@/utils/filePackageManager";
 import {
 	calculateChecksum as calculateStringChecksum,
 	generateDeviceId,
 } from "@/utils/shared";
 import { emit } from "@tauri-apps/api/event";
+import { cloudDataManager } from "./cloudDataManager";
+import { fileSyncManager } from "./fileSyncManager";
+import { syncConflictResolver } from "./syncConflictResolver";
 import {
 	detectLocalDeletions,
 	extractFileCoreValue,
@@ -88,644 +88,6 @@ export const setSyncEventListener = (listener: () => void) => {
 	syncEventEmitter = listener;
 };
 
-function detectDiff(
-	localFingerprints: Map<string, CloudItemFingerprint>,
-	remoteIndex: CloudSyncIndex,
-	localDeletedIds: Set<string>,
-): SyncDiffResult {
-	const remoteMap = new Map(remoteIndex.items.map((item) => [item.id, item]));
-
-	const result: SyncDiffResult = {
-		added: [],
-		modified: [],
-		favoriteChanged: [],
-		deleted: [],
-		toDownload: [],
-		unchanged: [],
-		statistics: {
-			totalLocal: localFingerprints.size,
-			totalRemote: remoteIndex.items.length,
-			conflicts: 0,
-		},
-	};
-
-	for (const [id, localFp] of localFingerprints) {
-		if (localDeletedIds.has(id)) continue;
-
-		const remoteFp = remoteMap.get(id);
-		if (!remoteFp) {
-			result.added.push(localFp);
-		} else {
-			const contentChanged = localFp.checksum !== remoteFp.checksum;
-			const favoriteChanged = localFp.favorite !== remoteFp.favorite;
-
-			if (contentChanged && favoriteChanged) {
-				result.modified.push(localFp);
-			} else if (contentChanged) {
-				result.modified.push(localFp);
-			} else if (favoriteChanged) {
-				result.favoriteChanged.push(localFp);
-			} else {
-				result.unchanged.push(id);
-			}
-		}
-	}
-
-	for (const [id, remoteFp] of remoteMap) {
-		const localFp = localFingerprints.get(id);
-
-		if (!localFp && !remoteFp.deleted) {
-			result.toDownload.push(remoteFp);
-		} else if (localFp && needsDownload(localFp, remoteFp)) {
-			result.toDownload.push(remoteFp);
-		}
-	}
-
-	return result;
-}
-
-function needsDownload(
-	localFp: CloudItemFingerprint,
-	remoteFp: CloudItemFingerprint,
-): boolean {
-	if (remoteFp.deleted) return false;
-
-	return (
-		remoteFp.timestamp > localFp.timestamp &&
-		remoteFp.checksum !== localFp.checksum
-	);
-}
-
-class UnifiedCloudDataManager {
-	private webdavConfig: WebDAVConfig | null = null;
-	private cachedIndex: CloudSyncIndex | null = null;
-	private indexCacheTime = 0;
-	private readonly INDEX_CACHE_TTL = 30000;
-
-	constructor(deviceId: string) {
-		void deviceId;
-	}
-
-	setWebDAVConfig(config: WebDAVConfig): void {
-		this.webdavConfig = config;
-	}
-
-	private getIndexFilePath(): string {
-		if (!this.webdavConfig) return "/sync-index.json";
-		const basePath = this.webdavConfig.path.startsWith("/")
-			? this.webdavConfig.path
-			: `/${this.webdavConfig.path}`;
-		return `${basePath}/sync-index.json`;
-	}
-
-	async downloadSyncIndex(): Promise<CloudSyncIndex | null> {
-		if (!this.webdavConfig) return null;
-
-		try {
-			const filePath = this.getIndexFilePath();
-			const result = await downloadSyncData(this.webdavConfig, filePath);
-
-			if (result.success && result.data) {
-				const index = JSON.parse(result.data) as CloudSyncIndex;
-
-				if (this.isValidIndexFormat(index)) {
-					this.cachedIndex = index;
-					this.indexCacheTime = Date.now();
-					return index;
-				}
-			}
-		} catch {}
-
-		return null;
-	}
-
-	async uploadSyncIndex(index: CloudSyncIndex): Promise<boolean> {
-		if (!this.webdavConfig) return false;
-
-		try {
-			const filePath = this.getIndexFilePath();
-			const result = await uploadSyncData(
-				this.webdavConfig,
-				filePath,
-				JSON.stringify(index, null, 2),
-			);
-
-			if (result.success) {
-				this.cachedIndex = index;
-				this.indexCacheTime = Date.now();
-				return true;
-			}
-		} catch {}
-
-		return false;
-	}
-
-	getCachedIndex(): CloudSyncIndex | null {
-		const now = Date.now();
-
-		if (
-			this.cachedIndex &&
-			this.indexCacheTime &&
-			now - this.indexCacheTime < this.INDEX_CACHE_TTL
-		) {
-			return this.cachedIndex;
-		}
-
-		return null;
-	}
-
-	generateLocalFingerprints(
-		localItems: any[],
-	): Map<string, CloudItemFingerprint> {
-		const fingerprintMap = new Map<string, CloudItemFingerprint>();
-
-		for (const item of localItems) {
-			const fingerprint = this.generateItemFingerprint(item);
-			fingerprintMap.set(item.id, fingerprint);
-		}
-
-		return fingerprintMap;
-	}
-
-	generateItemFingerprint(item: any): CloudItemFingerprint {
-		const contentChecksum = calculateContentChecksum(item);
-		const favoriteAwareChecksum = calculateFavoriteAwareChecksum(item);
-
-		let size: number;
-		if (item.type === "image" || item.type === "files") {
-			const coreValue = extractFileCoreValue(item);
-			size = coreValue.length;
-		} else {
-			size = JSON.stringify(item).length;
-		}
-
-		return {
-			id: item.id,
-			type: item.type,
-			checksum: contentChecksum,
-			favoriteChecksum: item.favorite ? favoriteAwareChecksum : undefined,
-			size,
-			timestamp: item.lastModified || Date.now(),
-			favorite: !!item.favorite,
-			deleted: item.deleted || false,
-			note: item.note || "",
-		};
-	}
-
-	detectSyncDifferences(
-		localItems: any[],
-		remoteIndex: CloudSyncIndex | null,
-		deletedItemIds: string[] = [],
-	): SyncDiffResult {
-		if (!remoteIndex) {
-			return {
-				added: localItems.map((item) => this.generateItemFingerprint(item)),
-				modified: [],
-				favoriteChanged: [],
-				deleted: deletedItemIds,
-				toDownload: [],
-				unchanged: [],
-				statistics: {
-					totalLocal: localItems.length,
-					totalRemote: 0,
-					conflicts: 0,
-				},
-			};
-		}
-
-		const localFingerprints = this.generateLocalFingerprints(localItems);
-		const deletedSet = new Set(deletedItemIds);
-
-		return detectDiff(localFingerprints, remoteIndex, deletedSet);
-	}
-
-	updateIndexWithLocalChanges(
-		index: CloudSyncIndex,
-		localItems: any[],
-		deletedIds: string[] = [],
-	): CloudSyncIndex {
-		const updatedIndex = { ...index };
-
-		const activeItems = localItems.filter(
-			(item) => !deletedIds.includes(item.id),
-		);
-		updatedIndex.items = activeItems.map((item) =>
-			this.generateItemFingerprint(item),
-		);
-
-		updatedIndex.deletedItems = [
-			...index.deletedItems.filter((id) => !deletedIds.includes(id)),
-			...deletedIds,
-		];
-
-		updatedIndex.totalItems = updatedIndex.items.length;
-		updatedIndex.dataChecksum = this.calculateIndexChecksum(updatedIndex);
-		updatedIndex.statistics = this.calculateStatistics(updatedIndex);
-
-		updatedIndex.timestamp = Date.now();
-
-		return updatedIndex;
-	}
-
-	private isValidIndexFormat(index: any): index is CloudSyncIndex {
-		return (
-			index &&
-			index.format === "unified" &&
-			Array.isArray(index.items) &&
-			typeof index.timestamp === "number" &&
-			typeof index.deviceId === "string"
-		);
-	}
-
-	private calculateIndexChecksum(index: CloudSyncIndex): string {
-		const checksumData = {
-			items: index.items.map((item) => ({
-				id: item.id,
-				checksum: item.checksum,
-				timestamp: item.timestamp,
-			})),
-			deletedItems: index.deletedItems.sort(),
-			timestamp: index.timestamp,
-		};
-
-		return calculateStringChecksum(JSON.stringify(checksumData));
-	}
-
-	private calculateStatistics(
-		index: CloudSyncIndex,
-	): CloudSyncIndex["statistics"] {
-		const typeCounts: Record<string, number> = {};
-		let totalSize = 0;
-		let favoriteCount = 0;
-		let lastModified = 0;
-
-		for (const item of index.items) {
-			typeCounts[item.type] = (typeCounts[item.type] || 0) + 1;
-			totalSize += item.size;
-			if (item.favorite) favoriteCount++;
-			if (item.timestamp > lastModified) lastModified = item.timestamp;
-		}
-
-		return {
-			typeCounts,
-			totalSize,
-			favoriteCount,
-			lastModified,
-		};
-	}
-
-	clearCache(): void {
-		this.cachedIndex = null;
-		this.indexCacheTime = 0;
-	}
-}
-
-class FileSyncManager {
-	private webdavConfig: WebDAVConfig | null = null;
-	private syncModeConfig: SyncModeConfig | null = null;
-
-	setWebDAVConfig(config: WebDAVConfig): void {
-		this.webdavConfig = config;
-		filePackageManager.setWebDAVConfig(config);
-	}
-
-	setSyncModeConfig(config: SyncModeConfig | null): void {
-		this.syncModeConfig = config;
-		filePackageManager.setSyncModeConfig(config);
-	}
-
-	async processFileSyncItem(item: SyncItem): Promise<SyncItem | null> {
-		if (!this.isFileItem(item) || !this.webdavConfig) {
-			return item;
-		}
-
-		try {
-			if (item.type === "image") {
-				return await this.processImageItem(item);
-			}
-			if (item.type === "files") {
-				return await this.processFilesItem(item);
-			}
-		} catch {}
-
-		return item;
-	}
-
-	private isFileItem(item: SyncItem): boolean {
-		return item.type === "image" || item.type === "files";
-	}
-
-	private async processImageItem(item: SyncItem): Promise<SyncItem | null> {
-		try {
-			if (item._syncType === "package_files") {
-				return item;
-			}
-
-			let imagePath = item.value;
-
-			if (typeof imagePath === "string" && imagePath.startsWith("{")) {
-				try {
-					const parsed = JSON.parse(imagePath);
-					if (parsed.packageId && parsed.originalPaths) {
-						return {
-							...item,
-							_syncType: "package_files",
-						};
-					}
-				} catch {}
-
-				try {
-					const parsed = JSON.parse(imagePath);
-					if (
-						parsed.originalPaths &&
-						Array.isArray(parsed.originalPaths) &&
-						parsed.originalPaths.length > 0
-					) {
-						const recoveredPath = parsed.originalPaths[0];
-						if (typeof recoveredPath === "string" && recoveredPath.length > 0) {
-							return {
-								...item,
-								value: recoveredPath,
-								_syncType: undefined,
-							};
-						}
-					}
-				} catch {}
-
-				return item;
-			}
-
-			if (typeof imagePath === "string" && imagePath.startsWith("[")) {
-				try {
-					const parsed = JSON.parse(imagePath);
-					if (Array.isArray(parsed) && parsed.length > 0) {
-						const validPath = parsed.find(
-							(pathItem: any) =>
-								typeof pathItem === "string" &&
-								(pathItem.includes(":") ||
-									pathItem.includes("/") ||
-									pathItem.includes("\\")),
-						);
-
-						if (validPath) {
-							imagePath = validPath;
-						} else {
-							imagePath = parsed[0];
-						}
-					}
-				} catch {}
-			}
-
-			if (typeof imagePath !== "string") {
-				return item;
-			}
-
-			if (
-				imagePath.includes('{"') ||
-				imagePath.includes('"}') ||
-				imagePath.includes("packageId")
-			) {
-				return item;
-			}
-
-			const maxSize = this.syncModeConfig?.fileLimits?.maxImageSize || 5;
-			const fileSize = await this.getFileSize(imagePath);
-
-			if (fileSize > maxSize * 1024 * 1024) {
-				return item;
-			}
-
-			const paths = Array.isArray(imagePath) ? imagePath : [imagePath];
-
-			const packageInfo = await filePackageManager.smartUploadPackage(
-				item.id,
-				item.type,
-				paths,
-				this.webdavConfig!,
-			);
-
-			if (packageInfo) {
-				return {
-					...item,
-					value: JSON.stringify(packageInfo),
-					_syncType: "package_files",
-					fileSize: packageInfo.size,
-					fileType: "image",
-				};
-			}
-		} catch {}
-
-		return item;
-	}
-
-	private async processFilesItem(item: SyncItem): Promise<SyncItem | null> {
-		try {
-			if (item._syncType === "package_files") {
-				return item;
-			}
-
-			let filePaths: string[];
-			try {
-				const parsedValue = JSON.parse(item.value);
-
-				if (!Array.isArray(parsedValue)) {
-					if (typeof parsedValue === "object" && parsedValue !== null) {
-						if (
-							parsedValue.originalPaths &&
-							Array.isArray(parsedValue.originalPaths)
-						) {
-							filePaths = parsedValue.originalPaths.filter(
-								(path: any) => typeof path === "string",
-							);
-						} else if (parsedValue.paths && Array.isArray(parsedValue.paths)) {
-							filePaths = parsedValue.paths.filter(
-								(path: any) => typeof path === "string",
-							);
-						} else if (
-							parsedValue.path &&
-							typeof parsedValue.path === "string"
-						) {
-							filePaths = [parsedValue.path];
-						} else if (
-							parsedValue.fileName &&
-							typeof parsedValue.fileName === "string"
-						) {
-							filePaths = [parsedValue.fileName];
-						} else {
-							return item;
-						}
-					} else {
-						return item;
-					}
-				} else {
-					filePaths = parsedValue.filter((path) => typeof path === "string");
-				}
-
-				if (filePaths.length === 0) {
-					return item;
-				}
-			} catch {
-				return item;
-			}
-
-			const maxSize = this.syncModeConfig?.fileLimits?.maxFileSize || 10;
-			const validPaths: string[] = [];
-
-			for (const filePath of filePaths) {
-				try {
-					const fileSize = await this.getFileSize(filePath);
-					if (fileSize <= maxSize * 1024 * 1024) {
-						validPaths.push(filePath);
-					}
-				} catch {}
-			}
-
-			if (validPaths.length === 0) {
-				return item;
-			}
-
-			try {
-				const packageInfo = await filePackageManager.smartUploadPackage(
-					item.id,
-					item.type,
-					validPaths,
-					this.webdavConfig!,
-				);
-
-				if (packageInfo) {
-					return {
-						...item,
-						value: JSON.stringify(packageInfo),
-						_syncType: "package_files",
-						fileSize: packageInfo.size,
-						fileType: "files",
-					};
-				}
-
-				return item;
-			} catch {
-				return item;
-			}
-		} catch {}
-
-		return item;
-	}
-
-	private async getFileSize(filePath: string): Promise<number> {
-		try {
-			const { lstat } = await import("@tauri-apps/plugin-fs");
-			const stat = await lstat(filePath);
-			return stat.size || 0;
-		} catch {
-			return 0;
-		}
-	}
-
-	async syncRemoteFiles(items: SyncItem[]): Promise<void> {
-		const packageItems = items.filter(
-			(item) => item._syncType === "package_files" && this.isFileItem(item),
-		);
-
-		if (packageItems.length === 0 || !this.webdavConfig) {
-			return;
-		}
-
-		const MAX_CONCURRENT_SYNC = 3;
-		const syncPromises: Promise<void>[] = [];
-
-		for (let i = 0; i < packageItems.length; i++) {
-			const item = packageItems[i];
-
-			let packageInfo: any;
-			try {
-				packageInfo = JSON.parse(item.value);
-			} catch {
-				continue;
-			}
-
-			const syncPromise = (async () => {
-				try {
-					await filePackageManager.syncFilesIntelligently(
-						packageInfo,
-						this.webdavConfig!,
-					);
-				} catch {}
-			})();
-
-			syncPromises.push(syncPromise);
-
-			if (syncPromises.length >= MAX_CONCURRENT_SYNC) {
-				await Promise.race(syncPromises);
-
-				for (let j = syncPromises.length - 1; j >= 0; j--) {
-					if (
-						await syncPromises[j].then(
-							() => true,
-							() => true,
-						)
-					) {
-						syncPromises.splice(j, 1);
-					}
-				}
-			}
-		}
-		await Promise.allSettled(syncPromises);
-	}
-}
-
-class ConflictResolver {
-	resolveConflicts(conflicts: ConflictInfo[]): ConflictInfo[] {
-		return conflicts.map((conflict) => this.resolveConflict(conflict));
-	}
-
-	private resolveConflict(conflict: ConflictInfo): ConflictInfo {
-		switch (conflict.type) {
-			case "modify":
-				return this.resolveModifyConflict(conflict);
-			case "delete":
-				return this.resolveDeleteConflict(conflict);
-			case "create":
-				return this.resolveCreateConflict(conflict);
-			default:
-				return conflict;
-		}
-	}
-
-	private resolveModifyConflict(conflict: ConflictInfo): ConflictInfo {
-		const localTime = new Date(conflict.localVersion.createTime).getTime();
-		const remoteTime = new Date(conflict.remoteVersion.createTime).getTime();
-
-		if (remoteTime > localTime) {
-			return { ...conflict, resolution: "remote", reason: "远程版本较新" };
-		}
-		if (localTime > remoteTime) {
-			return { ...conflict, resolution: "local", reason: "本地版本较新" };
-		}
-
-		return {
-			...conflict,
-			resolution: "local",
-			reason: "时间戳相同，保留本地版本",
-		};
-	}
-
-	private resolveDeleteConflict(conflict: ConflictInfo): ConflictInfo {
-		return {
-			...conflict,
-			resolution: "local",
-			reason: "删除冲突，保留本地数据",
-		};
-	}
-
-	private resolveCreateConflict(conflict: ConflictInfo): ConflictInfo {
-		return {
-			...conflict,
-			resolution: "remote",
-			reason: "创建冲突，使用远程版本",
-		};
-	}
-}
-
 export class SyncEngine {
 	private webdavConfig: WebDAVConfig | null = null;
 	private deviceId: string = generateDeviceId();
@@ -734,10 +96,6 @@ export class SyncEngine {
 	private syncModeConfig: SyncModeConfig | null = null;
 	private isInitialized = false;
 
-	private cloudManager: UnifiedCloudDataManager;
-	private fileSyncManager: FileSyncManager;
-	private conflictResolver: ConflictResolver;
-
 	private syncInProgress = false;
 
 	private isTransitioningToFavoriteMode = false;
@@ -745,9 +103,6 @@ export class SyncEngine {
 
 	constructor() {
 		this.deviceId = generateDeviceId();
-		this.cloudManager = new UnifiedCloudDataManager(this.deviceId);
-		this.fileSyncManager = new FileSyncManager();
-		this.conflictResolver = new ConflictResolver();
 		setDefaultSyncListener();
 	}
 
@@ -762,11 +117,10 @@ export class SyncEngine {
 
 		this.webdavConfig = config;
 		this.isOnline = true;
-		this.cloudManager.setWebDAVConfig(config);
-		this.fileSyncManager.setWebDAVConfig(config);
-		this.fileSyncManager.setSyncModeConfig(this.syncModeConfig);
+		cloudDataManager.setWebDAVConfig(config);
+		fileSyncManager.setWebDAVConfig(config);
 
-		const index = await this.cloudManager.downloadSyncIndex();
+		const index = await cloudDataManager.downloadSyncIndex();
 		this.isInitialized = true;
 
 		return index !== null;
@@ -796,11 +150,10 @@ export class SyncEngine {
 		}
 
 		this.syncModeConfig = config;
-		this.fileSyncManager.setSyncModeConfig(config);
 
 		if (fileModeChanged || favoriteModeChanged) {
 			this.clearCache();
-			this.cloudManager.clearCache();
+			cloudDataManager.clearCache();
 		}
 	}
 
@@ -887,9 +240,9 @@ export class SyncEngine {
 			}
 			const localDeletedItems = detectLocalDeletions(localLightweightData);
 
-			const remoteIndex = await this.cloudManager.downloadSyncIndex();
+			const remoteIndex = await cloudDataManager.downloadSyncIndex();
 
-			const diffResult = this.cloudManager.detectSyncDifferences(
+			const diffResult = cloudDataManager.detectSyncDifferences(
 				localLightweightData,
 				remoteIndex,
 				localDeletedItems,
@@ -959,37 +312,57 @@ export class SyncEngine {
 		);
 
 		if (conflicts.length > 0) {
-			this.conflictResolver.resolveConflicts(conflicts);
+			// 使用新的冲突解决器
+			for (const conflict of conflicts) {
+				syncConflictResolver.resolveConflict({
+					localItem: conflict.localVersion,
+					remoteItem: conflict.remoteVersion,
+					deviceId: this.deviceId,
+				});
+			}
 		}
 
 		await this.updateLocalData(mergedData);
-		await this.fileSyncManager.syncRemoteFiles(mergedData);
+		// 文件同步现在通过 processFileSyncItem 自动处理
 
 		return itemsToProcess.length;
 	}
 
 	private async uploadLocalItems(
-		itemsToUpload: CloudItemFingerprint[],
+		_itemsToUpload: CloudItemFingerprint[],
 		deletedItems: string[],
 	): Promise<number> {
-		// 从数据库获取完整的本地数据
+		// 获取所有符合同步模式的本地数据
 		const localRawData = await getHistoryData(false);
-		const fullLocalItems = localRawData.filter((item) =>
-			itemsToUpload.some((fp) => fp.id === item.id),
-		);
+		let allSyncableData = localRawData;
 
-		const fullLocalData = await this.convertToSyncItems(fullLocalItems);
+		// 应用同步模式过滤
+		if (this.syncModeConfig) {
+			const { filterItemsBySyncMode } = await import("./syncFilter");
+			allSyncableData = filterItemsBySyncMode(
+				allSyncableData,
+				this.syncModeConfig,
+				{ includeDeleted: false },
+			);
+		}
 
+		// 转换为同步项格式
+		const fullLocalData = await this.convertToSyncItems(allSyncableData);
 		const processedData = await this.processFileItems(fullLocalData);
+
+		// 处理删除的项目：从完整数据中移除已删除的项目
+		const finalData = processedData.filter(
+			(item) => !deletedItems.includes(item.id),
+		);
 
 		const syncData: SyncData = {
 			timestamp: Date.now(),
 			deviceId: this.deviceId,
-			dataType: "incremental",
-			items: processedData,
+			dataType: "full", // 使用完整数据，确保云端包含所有同步数据
+			items: finalData,
 			deleted: deletedItems,
 			compression: "none",
-			checksum: calculateStringChecksum(JSON.stringify(processedData)),
+			checksum: calculateStringChecksum(JSON.stringify(finalData)),
 		};
 
 		const uploadSuccess = await this.uploadSyncData(syncData);
@@ -998,14 +371,14 @@ export class SyncEngine {
 			if (deletedItems.length > 0) {
 				await this.deleteRemoteFiles(deletedItems);
 			}
-			return processedData.length;
+			return finalData.length;
 		}
 
 		return 0;
 	}
 
 	private async updateRemoteIndex(_deletedItems: string[]): Promise<void> {
-		const currentIndex = await this.cloudManager.downloadSyncIndex();
+		const currentIndex = await cloudDataManager.downloadSyncIndex();
 		const localRawData = await getHistoryData(false);
 		let currentLocalData = generateLightweightLocalData(localRawData, false);
 
@@ -1019,39 +392,13 @@ export class SyncEngine {
 			);
 		}
 
-		const updatedIndex = this.cloudManager.updateIndexWithLocalChanges(
-			currentIndex || this.createEmptyIndex(),
+		const updatedIndex = cloudDataManager.updateIndexWithLocalChanges(
+			currentIndex || cloudDataManager.createEmptyIndex(this.deviceId),
 			currentLocalData,
 			_deletedItems,
 		);
 
-		await this.cloudManager.uploadSyncIndex(updatedIndex);
-	}
-
-	private createEmptyIndex(): CloudSyncIndex {
-		return {
-			format: "unified",
-			timestamp: Date.now(),
-			deviceId: this.deviceId,
-			lastSyncTime: Date.now(),
-			conflictResolution: "merge",
-			networkQuality: "medium",
-			performanceMetrics: {
-				avgUploadSpeed: 0,
-				avgDownloadSpeed: 0,
-				avgLatency: 0,
-			},
-			items: [],
-			totalItems: 0,
-			dataChecksum: "",
-			deletedItems: [],
-			statistics: {
-				typeCounts: {},
-				totalSize: 0,
-				favoriteCount: 0,
-				lastModified: 0,
-			},
-		};
+		await cloudDataManager.uploadSyncIndex(updatedIndex);
 	}
 
 	async downloadRemoteData(): Promise<SyncData | null> {
@@ -1119,7 +466,7 @@ export class SyncEngine {
 				try {
 					const syncItem = this.convertToSyncItem(item);
 					const processedSyncItem =
-						await this.fileSyncManager.processFileSyncItem(syncItem);
+						await fileSyncManager.processFileSyncItem(syncItem);
 
 					if (processedSyncItem) {
 						syncItems.push(processedSyncItem);
@@ -1207,8 +554,7 @@ export class SyncEngine {
 			const item = items[i];
 			const promise = (async () => {
 				try {
-					const processed =
-						await this.fileSyncManager.processFileSyncItem(item);
+					const processed = await fileSyncManager.processFileSyncItem(item);
 					if (processed) {
 						processedItems.push(processed);
 					}
@@ -1469,12 +815,15 @@ export class SyncEngine {
 			return results;
 		}
 
-		const deleteResults = await filePackageManager.deleteRemotePackages(
-			filePackagesToDelete,
-			this.webdavConfig,
+		const deleteSuccess = await fileSyncManager.deleteRemoteFiles(
+			filePackagesToDelete.map((pkg) => pkg.packageId),
 		);
 
-		return deleteResults;
+		return {
+			success: deleteSuccess ? filePackagesToDelete.length : 0,
+			failed: deleteSuccess ? 0 : filePackagesToDelete.length,
+			errors: deleteSuccess ? [] : ["删除远程文件失败"],
+		};
 	}
 
 	getSyncStatus() {
@@ -1489,7 +838,7 @@ export class SyncEngine {
 	}
 
 	clearCache(): void {
-		this.cloudManager.clearCache();
+		cloudDataManager.clearCache();
 	}
 
 	canSync(): boolean {

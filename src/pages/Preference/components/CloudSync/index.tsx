@@ -14,8 +14,8 @@ import {
 	type SyncMode,
 	type SyncModeConfig,
 } from "@/types/sync.d";
+import { type SyncInterval, autoSync } from "@/utils/autoSync";
 import { isDev } from "@/utils/is";
-import { type SyncInterval, realtimeSync } from "@/utils/realtimeSync";
 import { syncEngine } from "@/utils/syncEngine";
 import {
 	CheckCircleOutlined,
@@ -170,7 +170,7 @@ const CloudSync = () => {
 
 					// 如果自动同步已启用，重新初始化它
 					if (autoSyncEnabled) {
-						realtimeSync.initialize({
+						autoSync.initialize({
 							enabled: true,
 							intervalHours: syncInterval,
 						});
@@ -476,12 +476,12 @@ const CloudSync = () => {
 		if (connectionStatus === "success" && webdavConfig.url) {
 			try {
 				if (autoSyncEnabled) {
-					realtimeSync.initialize({
+					autoSync.initialize({
 						enabled: true,
 						intervalHours: syncInterval,
 					});
 				} else {
-					realtimeSync.setEnabled(false);
+					autoSync.setEnabled(false);
 				}
 			} catch (error) {
 				console.error("自动同步初始化失败:", error);
@@ -636,13 +636,13 @@ const CloudSync = () => {
 		setAutoSyncEnabled(enabled);
 		try {
 			if (enabled) {
-				realtimeSync.initialize({
+				autoSync.initialize({
 					enabled: true,
 					intervalHours: syncInterval,
 				});
 				appMessage.success(`自动同步已启用，每${syncInterval}小时同步一次`);
 			} else {
-				realtimeSync.setEnabled(false);
+				autoSync.setEnabled(false);
 				appMessage.info("自动同步已禁用");
 			}
 		} catch (error) {
@@ -658,7 +658,7 @@ const CloudSync = () => {
 		setSyncInterval(hours);
 		if (autoSyncEnabled) {
 			try {
-				realtimeSync.setIntervalHours(hours);
+				autoSync.setIntervalHours(hours);
 				appMessage.success(`同步间隔已更新为每${hours}小时一次`);
 			} catch (error) {
 				console.error("更新同步间隔失败", {

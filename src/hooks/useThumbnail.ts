@@ -113,18 +113,18 @@ export const useThumbnail = () => {
 						const data = JSON.parse(item.value);
 
 						if (data.packageId && data.originalPaths) {
-							const { filePackageManager } = await import(
-								"@/utils/filePackageManager"
+							const { fileSyncManager } = await import(
+								"@/utils/fileSyncManager"
 							);
-							const paths = await filePackageManager.syncFilesIntelligently(
+							const syncSuccess = await fileSyncManager.syncFilesIntelligently(
 								data,
 								webdavConfig,
 							);
 
-							if (paths.paths.length > 0) {
+							if (syncSuccess && data.originalPaths.length > 0) {
 								// 使用第一个文件创建缩略图
 								const { readFile } = await import("@tauri-apps/plugin-fs");
-								const fileData = await readFile(paths.paths[0]);
+								const fileData = await readFile(data.originalPaths[0]);
 								imageData = fileData.buffer;
 							}
 						}
