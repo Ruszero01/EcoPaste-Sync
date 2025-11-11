@@ -1054,21 +1054,8 @@ class IncrementalSyncManager {
 			localMap.delete(remoteItem.id);
 		}
 
-		for (const remoteItem of remoteData.items) {
-			if (!processedRemoteIds.has(remoteItem.id)) {
-				const localItem = localMap.get(remoteItem.id);
-
-				if (!localItem) {
-					const isPackageItem = this.identifyPackageItem(remoteItem);
-
-					if (isPackageItem) {
-						packageItems.push(remoteItem);
-					} else {
-						regularItems.push(remoteItem);
-					}
-				}
-			}
-		}
+		// 修复：删除重复处理逻辑，避免产生重复数据
+		// 所有远程项已经在第一个循环中处理完毕
 
 		if (packageItems.length > 0) {
 			for (const packageItem of packageItems) {
@@ -2215,6 +2202,8 @@ export class SyncEngineV2 {
 					deleted: item.deleted || false,
 					checksum,
 					size, // 添加size字段以保持一致性
+					// 修复：包含注释字段，确保同步过程中注释不会丢失
+					note: item.note || "",
 				};
 			});
 
@@ -2490,7 +2479,9 @@ export class SyncEngineV2 {
 						if (this.checkTransitioningToFavoriteMode()) {
 							shouldDownload = false;
 						} else if (isFavoriteMode) {
-							shouldDownload = false;
+							// 修复：在收藏模式下，只下载收藏的项目
+							const remoteFavorite = !!(remoteItem as any).favorite;
+							shouldDownload = remoteFavorite;
 						}
 
 						if (shouldDownload) {
@@ -2673,13 +2664,23 @@ export class SyncEngineV2 {
 
 	private deduplicateItems(items: any[]): any[] {
 		const uniqueItems: any[] = [];
+		const seenIds = new Set<string>();
 		const seenKeys = new Set<string>();
 
+		// 修复：优先基于ID去重，确保相同ID的项不会被重复添加
 		for (const item of items) {
-			const key = `${item.type}:${item.value}`;
-			if (!seenKeys.has(key)) {
-				seenKeys.add(key);
-				uniqueItems.push(item);
+			if (item.id) {
+				if (!seenIds.has(item.id)) {
+					seenIds.add(item.id);
+					uniqueItems.push(item);
+				}
+			} else {
+				// 对于没有ID的项，使用原有的type:value去重逻辑作为后备
+				const key = `${item.type}:${item.value}`;
+				if (!seenKeys.has(key)) {
+					seenKeys.add(key);
+					uniqueItems.push(item);
+				}
 			}
 		}
 
@@ -2750,10 +2751,31 @@ export class SyncEngineV2 {
 			size = JSON.stringify(item).length;
 		}
 
+		// 修复：根据类型正确设置group字段的默认值
+		let groupValue: "text" | "image" | "files";
+		if (item.group) {
+			groupValue = item.group;
+		} else {
+			switch (item.type as "text" | "image" | "files" | "html" | "rtf") {
+				case "image":
+					groupValue = "image";
+					break;
+				case "files":
+					groupValue = "files";
+					break;
+				case "html":
+				case "rtf":
+				case "text":
+				default:
+					groupValue = "text";
+					break;
+			}
+		}
+
 		return {
 			id: item.id,
 			type: item.type,
-			group: item.group,
+			group: groupValue,
 			value: item.value,
 			search: item.search,
 			count: item.count,
@@ -2847,13 +2869,40 @@ export class SyncEngineV2 {
 				queryValue = extractFileCoreValue(item);
 			}
 
+			// 修复：根据类型正确设置group字段的默认值
+			let groupValue: "text" | "image" | "files";
+			if (item.group) {
+				groupValue = item.group;
+			} else {
+				switch (item.type as "text" | "image" | "files" | "html" | "rtf") {
+					case "image":
+						groupValue = "image";
+						break;
+					case "files":
+						groupValue = "files";
+						break;
+					case "html":
+					case "rtf":
+					case "text":
+					default:
+						groupValue = "text";
+						break;
+				}
+			}
+
+			// 修复：为文本类型数据计算正确的字符数
+			let calculatedCount = item.fileSize || item.count || 0;
+			if ((item.type === "text" || item.type === "html" || item.type === "rtf") && item.value) {
+				calculatedCount = item.value.length;
+			}
+
 			const localItem: any = {
 				id: item.id,
 				type: item.type,
-				group: item.group,
+				group: groupValue,
 				value: item.value,
 				search: item.search,
-				count: item.fileSize || item.count, // 优先使用fileSize，回退到count
+				count: calculatedCount,
 				width: item.width,
 				height: item.height,
 				favorite: item.favorite,
@@ -2879,6 +2928,8 @@ export class SyncEngineV2 {
 					favorite: this.resolveFavoriteStatus(existing, item),
 					count: Math.max(existing.count || 0, item.count || 0),
 					createTime: existing.createTime,
+					// 修复：保留注释，优先使用远程注释（如果存在且不为空）
+					note: item.note?.trim() ? item.note : (existing.note || ""),
 				};
 
 				await updateSQL("history", updateItem);
@@ -2899,6 +2950,8 @@ export class SyncEngineV2 {
 					favorite: this.resolveFavoriteStatus(existing, item),
 					count: Math.max(existing.count || 0, item.count || 0),
 					createTime: existing.createTime,
+					// 修复：保留注释，优先使用远程注释（如果存在且不为空）
+					note: item.note?.trim() ? item.note : (existing.note || ""),
 				};
 
 				await updateSQL("history", updateItem);
@@ -3066,13 +3119,31 @@ export class SyncEngineV2 {
 			};
 
 			for (const [id, fingerprint] of fingerprints) {
+				// 修复：根据类型正确设置group字段
+				let groupValue: "text" | "image" | "files";
+				switch (fingerprint.type as "text" | "image" | "files" | "html" | "rtf") {
+					case "image":
+						groupValue = "image";
+						break;
+					case "files":
+						groupValue = "files";
+						break;
+					case "html":
+					case "rtf":
+					case "text":
+					default:
+						groupValue = "text";
+						break;
+				}
+
 				const basicItem: SyncItem = {
 					id,
 					type: fingerprint.type as "text" | "image" | "files" | "html" | "rtf",
 					value: "",
-					group: "text" as "text" | "image" | "files",
+					group: groupValue,
 					search: "",
-					count: 0,
+					// 修复：根据类型设置合理的count值
+					count: fingerprint.type === "text" ? (fingerprint.size || 0) : 0,
 					favorite: false,
 					createTime: fingerprint.timestamp.toString(),
 					lastModified: fingerprint.timestamp,
