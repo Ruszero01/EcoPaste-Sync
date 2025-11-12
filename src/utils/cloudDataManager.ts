@@ -459,7 +459,7 @@ export class CloudDataManager {
 			if (currentCloudData?.items) {
 				// 保留现有数据，排除要删除的项目
 				allItems = currentCloudData.items.filter(
-					(item) => !syncResult.itemsToDelete.includes(item.id),
+					(item: SyncItem) => !syncResult.itemsToDelete.includes(item.id),
 				);
 			}
 
