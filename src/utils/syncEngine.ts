@@ -120,7 +120,7 @@ export class SyncEngine {
 			const localSyncItems = localDataManager.filterLocalDataForSync(
 				localRawData,
 				this.syncModeConfig,
-				{ includeDeleted: false },
+				{ includeDeleted: false, syncFavoriteChanges: true },
 			);
 
 			// 3. cloudDataManager 检查云端是否有数据
@@ -132,6 +132,7 @@ export class SyncEngine {
 				cloudSyncItems = cloudDataManager.filterCloudDataForSync(
 					remoteIndex,
 					this.syncModeConfig,
+					{ includeDeleted: false, syncFavoriteChanges: true },
 				);
 			}
 

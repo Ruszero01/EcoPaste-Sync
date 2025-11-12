@@ -391,6 +391,7 @@ export class CloudDataManager {
 	filterCloudDataForSync(
 		remoteIndex: CloudSyncIndex | null,
 		syncConfig: SyncModeConfig | null,
+		options: { includeDeleted?: boolean; syncFavoriteChanges?: boolean } = {},
 	): SyncItem[] {
 		if (!remoteIndex || !remoteIndex.items.length) {
 			return [];
@@ -417,6 +418,7 @@ export class CloudDataManager {
 		const filteredItems = filterItemsBySyncMode(
 			cloudItems as any[], // 需要类型转换，因为 filterItemsBySyncMode 需要 HistoryItem[]
 			syncConfig,
+			options,
 		);
 
 		return filteredItems.map((item) => item as SyncItem);
