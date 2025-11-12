@@ -15,6 +15,8 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::create_directory,
             commands::upload_sync_data,
             commands::download_sync_data,
+            commands::upload_file,
+            commands::download_file,
             commands::delete_file
         ])
         .build()

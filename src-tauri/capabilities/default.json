@@ -82,6 +82,22 @@
 					"cmd": "delete_file"
 				}
 			]
+		},
+		{
+			"identifier": "eco-webdav:allow-upload-file",
+			"allow": [
+				{
+					"cmd": "upload_file"
+				}
+			]
+		},
+		{
+			"identifier": "eco-webdav:allow-download-file",
+			"allow": [
+				{
+					"cmd": "download_file"
+				}
+			]
 		}
 	]
 }

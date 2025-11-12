@@ -14,11 +14,42 @@ const Image: FC<ImageProps> = (props) => {
 		return null;
 	}
 
-	// 检查value是否是JSON数组（多图片格式）
-	if (typeof value === "string" && value.startsWith("[")) {
+	// 智能图片路径解析（支持新旧格式）
+	if (
+		typeof value === "string" &&
+		(value.startsWith("[") || value.startsWith("{"))
+	) {
 		try {
-			const filePaths = JSON.parse(value);
-			if (Array.isArray(filePaths) && filePaths.length > 0) {
+			const parsed = JSON.parse(value);
+			let filePaths: string[] = [];
+
+			if (Array.isArray(parsed)) {
+				if (parsed.length > 0 && typeof parsed[0] === "object") {
+					// 新格式：文件元数据数组，提取文件路径
+					filePaths = parsed
+						.map(
+							(item: any) =>
+								item.originalPath || item.path || item.fileName || "",
+						)
+						.filter((path: string) => path);
+				} else if (parsed.length > 0 && typeof parsed[0] === "string") {
+					// 旧格式：文件路径数组
+					filePaths = parsed;
+				}
+			} else if (parsed.files && Array.isArray(parsed.files)) {
+				// 新包模式：提取文件路径
+				filePaths = parsed.files
+					.map(
+						(file: any) =>
+							file.originalPath || file.path || file.fileName || "",
+					)
+					.filter((path: string) => path);
+			} else if (parsed.originalPaths && Array.isArray(parsed.originalPaths)) {
+				// 旧包模式：提取originalPaths
+				filePaths = parsed.originalPaths;
+			}
+
+			if (filePaths.length > 0) {
 				// 使用第一个文件路径显示图片
 				const imagePath = filePaths[0];
 

@@ -144,7 +144,7 @@ const Item: FC<ItemProps> = (props) => {
 		find(state.list, { id })!.favorite = nextFavorite;
 
 		try {
-			await updateSQL("history", { id, favorite: nextFavorite });
+			await updateSQL("history", { id, favorite: nextFavorite ? 1 : 0 } as any);
 		} catch (error) {
 			console.error("收藏状态更新失败:", error);
 		}

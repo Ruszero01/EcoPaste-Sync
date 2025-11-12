@@ -110,7 +110,15 @@ export const selectSQL = async <List,>(
 		values,
 	);
 
-	return (list ?? []) as List;
+	// 转换integer字段为boolean，确保UI组件能正确处理
+	const processedList = (Array.isArray(list) ? list : []).map((item: any) => ({
+		...item,
+		favorite: Boolean(item.favorite),
+		deleted: Boolean(item.deleted),
+		lazyDownload: Boolean(item.lazyDownload),
+	}));
+
+	return processedList as List;
 };
 
 /**
@@ -291,12 +299,6 @@ export const updateSQL = (tableName: TableName, payload: TablePayload) => {
 export const deleteSQL = async (tableName: TableName, item: TablePayload) => {
 	const { id, type, value } = item;
 
-	// 先检查删除前的状态
-	const _beforeResult = (await executeSQL(
-		`SELECT deleted FROM ${tableName} WHERE id = ?;`,
-		[id],
-	)) as any[];
-
 	// 使用软删除：更新 deleted 标记而不是真正删除
 	await executeSQL(`UPDATE ${tableName} SET deleted = 1 WHERE id = ?;`, [id]);
 
@@ -306,22 +308,11 @@ export const deleteSQL = async (tableName: TableName, item: TablePayload) => {
 		[id],
 	)) as any[];
 
-	// 同时检查该项的当前状态
-	const _currentState = (await executeSQL(
-		`SELECT deleted FROM ${tableName} WHERE id = ?;`,
-		[id],
-	)) as any[];
-
 	// 检查软删除是否真的成功
 	if (verifyResult.length > 0 && verifyResult[0].count === 0) {
 		console.error("❌ 软删除失败", { id, verifyResult });
 		throw new Error(`Failed to soft delete record with id: ${id}`);
 	}
-
-	// 检查删除后的数据状态
-	const _afterResult = await executeSQL(
-		`SELECT COUNT(*) as totalCount FROM ${tableName} WHERE deleted = 0;`,
-	);
 
 	// 注意：我们不再删除本地文件系统中的原始文件
 	// 因为剪切板是复制操作，删除源文件容易导致原本的数据丢失
@@ -446,22 +437,35 @@ export const getHistoryData = async (includeDeleted = false) => {
 
 	if (includeDeleted) {
 		// 获取所有数据，包括已删除项
-		result = (await executeSQL(
+		const rawData = (await executeSQL(
 			"SELECT * FROM history ORDER BY createTime DESC;",
 		)) as any[];
+
+		// 转换integer字段为boolean
+		result = rawData.map((item: any) => ({
+			...item,
+			favorite: Boolean(item.favorite),
+			deleted: Boolean(item.deleted),
+			lazyDownload: Boolean(item.lazyDownload),
+		}));
 	} else {
 		// 只获取未删除项
-		result = (await executeSQL(
+		const rawData = (await executeSQL(
 			"SELECT * FROM history WHERE deleted = 0 ORDER BY createTime DESC;",
 		)) as any[];
+
+		// 转换integer字段为boolean
+		result = rawData.map((item: any) => ({
+			...item,
+			favorite: Boolean(item.favorite),
+			deleted: Boolean(item.deleted),
+			lazyDownload: Boolean(item.lazyDownload),
+		}));
 	}
 
 	// 同时检查数据库中的总数据状态
 	const totalResult = (await executeSQL(
 		`SELECT COUNT(*) as total FROM ${"history"};`,
-	)) as any[];
-	const _deletedResult = (await executeSQL(
-		`SELECT COUNT(*) as deleted FROM ${"history"} WHERE deleted = 1;`,
 	)) as any[];
 	const activeResult = (await executeSQL(
 		`SELECT COUNT(*) as active FROM ${"history"} WHERE deleted = 0;`,
@@ -475,11 +479,6 @@ export const getHistoryData = async (includeDeleted = false) => {
 		if (duplicateCheck.length > 0) {
 			console.warn("⚠️ 发现重复记录", duplicateCheck);
 		}
-
-		// 显示前几条数据的详情
-		const _sampleData = await executeSQL(
-			`SELECT id, type, deleted, createTime FROM ${"history"} ORDER BY createTime DESC LIMIT 5;`,
-		);
 	}
 
 	return result;
@@ -708,17 +707,6 @@ export const cleanupInvalidData = async () => {
 		for (const record of emptyRecords) {
 			await executeSQL("DELETE FROM history WHERE id = ?;", [record.id]);
 		}
-
-		// 3. 显示清理后的状态
-		const _totalResult = await executeSQL(
-			"SELECT COUNT(*) as total FROM history;",
-		);
-		const _activeResult = await executeSQL(
-			"SELECT COUNT(*) as active FROM history WHERE deleted = 0;",
-		);
-		const _deletedResult = await executeSQL(
-			"SELECT COUNT(*) as deleted FROM history WHERE deleted = 1;",
-		);
 
 		return true;
 	} catch (error) {

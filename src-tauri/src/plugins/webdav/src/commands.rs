@@ -2,9 +2,9 @@ use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 use tauri::command;
 use anyhow::Result;
-use base64::Engine;
 use std::fs;
 use std::path::PathBuf;
+use base64::Engine;
 
 // 配置文件路径
 const CONFIG_FILE_NAME: &str = "webdav_config.json";
@@ -49,6 +49,50 @@ fn build_auth_header(username: &str, password: &str) -> String {
     let credentials = format!("{}:{}", username, password);
     let encoded = base64::engine::general_purpose::STANDARD.encode(credentials);
     format!("Basic {}", encoded)
+}
+
+/// 确保指定路径的目录存在（递归创建）
+async fn ensure_directory_exists_for_path(config: &WebDAVConfig, dir_path: &str) -> Result<()> {
+    let base_url = config.url.trim_end_matches('/');
+    let full_path = if dir_path.starts_with('/') {
+        format!("{}{}", base_url, dir_path)
+    } else {
+        format!("{}/{}", base_url, dir_path)
+    };
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_millis(config.timeout))
+        .build()?;
+
+    let auth_header = build_auth_header(&config.username, &config.password);
+
+    // 首先检查目录是否已存在
+    if test_directory_exists_internal(config, &full_path, &auth_header).await.is_ok() {
+        return Ok(());
+    }
+
+    // 尝试创建目录
+    let response = client
+        .request(reqwest::Method::from_bytes(b"MKCOL").unwrap(), &full_path)
+        .header("Authorization", &auth_header)
+        .header("User-Agent", "EcoPaste-WebDAV/1.0")
+        .send()
+        .await?;
+
+    let status = response.status();
+
+    if status.as_u16() == 201 {
+        Ok(())
+    } else if status.as_u16() == 405 || status.as_u16() == 409 {
+        // 405或409可能表示目录已存在，再次验证
+        if test_directory_exists_internal(config, &full_path, &auth_header).await.is_ok() {
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("无法创建或访问目录 {}: HTTP {}", dir_path, status.as_u16()))
+        }
+    } else {
+        Err(anyhow::anyhow!("创建目录失败 {}: HTTP {} {}", dir_path, status.as_u16(), status.canonical_reason().unwrap_or("Unknown")))
+    }
 }
 
 async fn ensure_directory_exists(config: &WebDAVConfig) -> Result<()> {
@@ -417,7 +461,7 @@ async fn upload_file_single_attempt(config: &WebDAVConfig, file_path: &str, cont
     }
 }
 
-async fn upload_file(config: &WebDAVConfig, file_path: &str, content: String) -> Result<FileUploadResult> {
+async fn upload_sync_data_file(config: &WebDAVConfig, file_path: &str, content: String) -> Result<FileUploadResult> {
     // 默认重试3次
     upload_file_with_retry(config, file_path, content, 3).await
 }
@@ -572,7 +616,7 @@ async fn download_file_single_attempt(config: &WebDAVConfig, file_path: &str, ti
     }
 }
 
-async fn download_file(config: &WebDAVConfig, file_path: &str) -> Result<FileDownloadResult> {
+async fn download_sync_data_file(config: &WebDAVConfig, file_path: &str) -> Result<FileDownloadResult> {
     // 默认重试3次
     download_file_with_retry(config, file_path, 3).await
 }
@@ -580,14 +624,14 @@ async fn download_file(config: &WebDAVConfig, file_path: &str) -> Result<FileDow
 
 #[command]
 pub async fn upload_sync_data(config: WebDAVConfig, file_path: String, content: String) -> Result<FileUploadResult, String> {
-    upload_file(&config, &file_path, content)
+    upload_sync_data_file(&config, &file_path, content)
         .await
         .map_err(|e| e.to_string())
 }
 
 #[command]
 pub async fn download_sync_data(config: WebDAVConfig, file_path: String) -> Result<FileDownloadResult, String> {
-    download_file(&config, &file_path)
+    download_sync_data_file(&config, &file_path)
         .await
         .map_err(|e| e.to_string())
 }
@@ -604,6 +648,177 @@ pub async fn delete_file(config: WebDAVConfig, file_path: String) -> Result<bool
     delete_webdav_file(&config, &file_path)
         .await
         .map_err(|e| e.to_string())
+}
+
+#[command]
+pub async fn upload_file(config: WebDAVConfig, local_path: String, remote_path: String) -> Result<bool, String> {
+    use std::fs;
+
+    // 读取本地文件
+    let file_data = match fs::read(&local_path) {
+        Ok(data) => data,
+        Err(e) => return Err(format!("读取文件失败 {}: {}", local_path, e)),
+    };
+
+    // 上传到WebDAV
+    upload_webdav_file(&config, &remote_path, &file_data)
+        .await
+        .map_err(|e| format!("WebDAV上传失败 {}: {}", e, remote_path))
+}
+
+#[command]
+pub async fn download_file(config: WebDAVConfig, remote_path: String, local_path: String) -> Result<bool, String> {
+    use std::fs;
+    use std::path::Path;
+
+    // 确保目录存在
+    if let Some(parent) = Path::new(&local_path).parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("创建目录失败: {}", e))?;
+    }
+
+    // 从WebDAV下载文件
+    let file_data = download_webdav_file(&config, &remote_path)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // 写入本地文件
+    fs::write(&local_path, file_data)
+        .map_err(|e| format!("写入文件失败: {}", e))?;
+
+    Ok(true)
+}
+
+async fn upload_webdav_file(config: &WebDAVConfig, file_path: &str, file_data: &[u8]) -> Result<bool> {
+    let base_url = config.url.trim_end_matches('/');
+    let full_path = if file_path.starts_with('/') {
+        format!("{}{}", base_url, file_path)
+    } else {
+        format!("{}/{}", base_url, file_path)
+    };
+
+    // 确保父目录存在 - 这是解决HTTP 409的关键
+    if let Some(parent_path) = std::path::Path::new(file_path).parent() {
+        let parent_path_str = parent_path.to_string_lossy();
+        if !parent_path_str.is_empty() && parent_path_str != "/" {
+            // 静默尝试创建目录，失败不阻止上传
+            let _ = ensure_directory_exists_for_path(config, &parent_path_str).await;
+        }
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_millis(config.timeout))
+        .build()?;
+
+    let auth_header = build_auth_header(&config.username, &config.password);
+
+    // 方法1：标准WebDAV PUT上传
+    let response = client
+        .put(&full_path)
+        .header("Authorization", &auth_header)
+        .header("User-Agent", "EcoPaste-WebDAV/1.0")
+        .header("Content-Type", "application/octet-stream")
+        .header("Content-Length", file_data.len().to_string())
+        .body(file_data.to_vec())
+        .send()
+        .await?;
+
+    let status = response.status();
+
+    if status.is_success() || status.as_u16() == 201 || status.as_u16() == 204 {
+        return Ok(true);
+    }
+
+    // 如果PUT失败，检查具体原因并尝试恢复
+    match status.as_u16() {
+        409 => {
+            // 尝试使用PUT with Overwrite:F (强制覆盖)
+            let overwrite_response = client
+                .put(&full_path)
+                .header("Authorization", &auth_header)
+                .header("User-Agent", "EcoPaste-WebDAV/1.0")
+                .header("Content-Type", "application/octet-stream")
+                .header("Content-Length", file_data.len().to_string())
+                .header("Overwrite", "F") // 强制覆盖
+                .body(file_data.to_vec())
+                .send()
+                .await?;
+
+            let overwrite_status = overwrite_response.status();
+
+            if overwrite_status.is_success() || overwrite_status.as_u16() == 201 || overwrite_status.as_u16() == 204 {
+                return Ok(true);
+            }
+
+            // 尝试删除文件后重新上传
+            let _ = client
+                .delete(&full_path)
+                .header("Authorization", &auth_header)
+                .header("User-Agent", "EcoPaste-WebDAV/1.0")
+                .send()
+                .await;
+
+            // 短暂延迟
+            tokio::time::sleep(Duration::from_millis(200)).await;
+
+            let retry_response = client
+                .put(&full_path)
+                .header("Authorization", &auth_header)
+                .header("User-Agent", "EcoPaste-WebDAV/1.0")
+                .header("Content-Type", "application/octet-stream")
+                .header("Content-Length", file_data.len().to_string())
+                .body(file_data.to_vec())
+                .send()
+                .await?;
+
+            let retry_status = retry_response.status();
+
+            if retry_status.is_success() || retry_status.as_u16() == 201 || retry_status.as_u16() == 204 {
+                return Ok(true);
+            }
+
+            Err(anyhow::anyhow!("文件上传失败，所有PUT方法都失败 - HTTP: {}", status.as_u16()))
+        },
+        404 => {
+            Err(anyhow::anyhow!("文件路径不存在: {} - HTTP 404", file_path))
+        },
+        401 | 403 => {
+            Err(anyhow::anyhow!("认证或权限不足: HTTP {}", status.as_u16()))
+        },
+        _ => {
+            Err(anyhow::anyhow!("上传失败 - HTTP {}: {}", status.as_u16(), status.canonical_reason().unwrap_or("Unknown")))
+        }
+    }
+}
+
+async fn download_webdav_file(config: &WebDAVConfig, file_path: &str) -> Result<Vec<u8>> {
+    let base_url = config.url.trim_end_matches('/');
+    let full_path = if file_path.starts_with('/') {
+        format!("{}{}", base_url, file_path)
+    } else {
+        format!("{}/{}", base_url, file_path)
+    };
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_millis(config.timeout))
+        .build()?;
+
+    let auth_header = build_auth_header(&config.username, &config.password);
+
+    let response = client
+        .get(&full_path)
+        .header("Authorization", auth_header)
+        .header("User-Agent", "EcoPaste-WebDAV/1.0")
+        .send()
+        .await?;
+
+    let status = response.status();
+    if status.is_success() {
+        let file_data = response.bytes().await?;
+        Ok(file_data.to_vec())
+    } else {
+        Err(anyhow::anyhow!("下载文件失败: HTTP {}", status))
+    }
 }
 
 async fn delete_webdav_file(config: &WebDAVConfig, file_path: &str) -> Result<bool> {

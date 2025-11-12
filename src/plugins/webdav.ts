@@ -53,6 +53,8 @@ const COMMAND = {
 	CREATE_DIRECTORY: "plugin:eco-webdav|create_directory",
 	UPLOAD_SYNC_DATA: "plugin:eco-webdav|upload_sync_data",
 	DOWNLOAD_SYNC_DATA: "plugin:eco-webdav|download_sync_data",
+	UPLOAD_FILE: "plugin:eco-webdav|upload_file",
+	DOWNLOAD_FILE: "plugin:eco-webdav|download_file",
 	DELETE_FILE: "plugin:eco-webdav|delete_file",
 } as const;
 
@@ -123,5 +125,35 @@ export const deleteFile = (config: WebDAVConfig, filePath: string) => {
 	return invoke<boolean>(COMMAND.DELETE_FILE, {
 		config,
 		filePath,
+	});
+};
+
+/**
+ * 上传文件到WebDAV
+ */
+export const uploadFile = (
+	config: WebDAVConfig,
+	localPath: string,
+	remotePath: string,
+) => {
+	return invoke<boolean>(COMMAND.UPLOAD_FILE, {
+		config,
+		localPath,
+		remotePath,
+	});
+};
+
+/**
+ * 从WebDAV下载文件
+ */
+export const downloadFile = (
+	config: WebDAVConfig,
+	remotePath: string,
+	localPath: string,
+) => {
+	return invoke<boolean>(COMMAND.DOWNLOAD_FILE, {
+		config,
+		remotePath,
+		localPath,
 	});
 };

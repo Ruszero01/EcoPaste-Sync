@@ -46,7 +46,7 @@ const NoteModal = forwardRef<NoteModalRef>((_, ref) => {
 			if (clipboardStore.content.autoFavorite && !favorite) {
 				item.favorite = true;
 
-				updateSQL("history", { id, favorite: true });
+				updateSQL("history", { id, favorite: 1 } as any);
 			}
 		}
 

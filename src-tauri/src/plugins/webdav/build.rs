@@ -5,7 +5,10 @@ const COMMANDS: &[&str] = &[
     "test_webdav_operations",
     "create_directory",
     "upload_sync_data",
-    "download_sync_data"
+    "download_sync_data",
+    "upload_file",
+    "download_file",
+    "delete_file"
 ];
 
 fn main() {

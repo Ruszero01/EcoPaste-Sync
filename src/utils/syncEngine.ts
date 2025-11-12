@@ -5,6 +5,7 @@ import type { SyncItem, SyncModeConfig, SyncResult } from "@/types/sync";
 import { generateDeviceId } from "@/utils/shared";
 import { emit } from "@tauri-apps/api/event";
 import { cloudDataManager } from "./cloudDataManager";
+import { fileSyncManager } from "./fileSyncManager";
 import { localDataManager } from "./localDataManager";
 import {
 	detectRealConflicts,
@@ -38,6 +39,8 @@ export class SyncEngine {
 	constructor() {
 		this.deviceId = generateDeviceId();
 		setDefaultSyncListener();
+		// 初始化文件同步管理器
+		fileSyncManager.setWebDAVConfig(null);
 	}
 
 	async initialize(config: WebDAVConfig): Promise<boolean> {
@@ -52,6 +55,7 @@ export class SyncEngine {
 		this.webdavConfig = config;
 		this.isOnline = true;
 		cloudDataManager.setWebDAVConfig(config);
+		fileSyncManager.setWebDAVConfig(config);
 
 		const index = await cloudDataManager.downloadSyncIndex();
 		this.isInitialized = true;
@@ -77,11 +81,10 @@ export class SyncEngine {
 
 	/**
 	 * 执行完整的双向同步流程
-	 * 按照新的统一流程设计：
-	 * 1. localDataManager 筛选本地数据
-	 * 2. cloudDataManager 检查云端数据
-	 * 3. syncConflictResolver 处理冲突
-	 * 4. localDataManager 和 cloudDataManager 分别处理结果
+	 * 优化的统一流程设计：
+	 * 1. 根据文件模式筛选和过滤数据
+	 * 2. 同步数据（不包含文件内容）
+	 * 3. 按需处理文件包上传和下载
 	 */
 	async performBidirectionalSync(): Promise<SyncResult> {
 		if (this.syncInProgress) {
@@ -116,8 +119,8 @@ export class SyncEngine {
 			// 1. 获取原始本地数据
 			const localRawData = await getHistoryData(false);
 
-			// 2. localDataManager 根据同步模式筛选出符合条件的本地数据，生成同步项和校验和
-			const localSyncItems = localDataManager.filterLocalDataForSync(
+			// 2. localDataManager 根据同步模式和文件限制筛选本地数据
+			const filteredLocalData = localDataManager.filterLocalDataForSync(
 				localRawData,
 				this.syncModeConfig,
 				{ includeDeleted: false },
@@ -139,16 +142,19 @@ export class SyncEngine {
 			// 5. 检测收藏状态变更（处理收藏模式下的状态变更同步）
 			const favoriteStatusChanges = await this.detectFavoriteStatusChanges(
 				localRawData,
-				localSyncItems,
+				filteredLocalData,
 				remoteIndex,
 			);
 
 			// 6. 将收藏状态变更的项目加入同步列表
-			localSyncItems.push(...favoriteStatusChanges.localItems);
+			filteredLocalData.push(...favoriteStatusChanges.localItems);
 			cloudSyncItems.push(...favoriteStatusChanges.cloudItems);
 
 			// 7. 只处理真正有冲突的项目（ID相同但内容不同）
-			const realConflicts = detectRealConflicts(localSyncItems, cloudSyncItems);
+			const realConflicts = detectRealConflicts(
+				filteredLocalData,
+				cloudSyncItems,
+			);
 			const conflictContexts = realConflicts.map(
 				(conflict: {
 					localItem: SyncItem;
@@ -167,14 +173,25 @@ export class SyncEngine {
 				"merge",
 			);
 
-			// 6. 处理同步结果
+			// 8. 处理同步结果
 			const { localResult, cloudResult } = this.processSyncResults(
-				localSyncItems,
+				filteredLocalData,
 				cloudSyncItems,
 				conflictResults,
 			);
 
-			// 7. localDataManager 接收处理后的本地数据，对本地数据库进行操作
+			// 9. 处理需要上传的文件包
+			const fileUploadResult = await fileSyncManager.handleFilePackageUploads(
+				localRawData,
+				cloudResult,
+			);
+
+			// 10. 处理需要下载的文件包
+			await fileSyncManager.handleFilePackageDownloads(
+				localResult.itemsToAdd.concat(localResult.itemsToUpdate),
+			);
+
+			// 11. localDataManager 接收处理后的本地数据，对本地数据库进行操作
 			if (
 				localResult.itemsToAdd.length > 0 ||
 				localResult.itemsToUpdate.length > 0
@@ -184,16 +201,23 @@ export class SyncEngine {
 					localResult.itemsToAdd.length + localResult.itemsToUpdate.length;
 			}
 
-			// 8. cloudDataManager 接收处理后的云端数据，对云端数据进行操作
+			// 12. cloudDataManager 接收处理后的云端数据，对云端数据进行操作
 			if (
 				cloudResult.itemsToAdd.length > 0 ||
 				cloudResult.itemsToUpdate.length > 0
 			) {
 				const uploadSuccess = await this.applyCloudChanges(cloudResult);
 				if (uploadSuccess) {
+					// 只计算数据上传，不包括文件包上传
 					result.uploaded =
 						cloudResult.itemsToAdd.length + cloudResult.itemsToUpdate.length;
 				}
+			}
+
+			// 13. 添加文件包上传结果（独立于数据上传计数）
+			if (fileUploadResult.uploaded > 0) {
+				// 文件包上传是额外的操作，已经通过 fileUploadResult.uploaded 统计
+				// 不再累加到 result.uploaded 中避免重复计数
 			}
 
 			try {

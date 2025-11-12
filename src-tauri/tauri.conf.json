@@ -92,7 +92,9 @@
 				"allow-test-connection",
 				"allow-test-webdav-operations",
 				"allow-upload-sync-data",
-				"allow-download-sync-data"
+				"allow-download-sync-data",
+				"allow-upload-file",
+				"allow-download-file"
 			]
 		},
 		"eco-window": {
