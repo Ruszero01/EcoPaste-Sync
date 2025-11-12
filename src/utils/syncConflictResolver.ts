@@ -69,14 +69,31 @@ export const detectRealConflicts = (
 };
 
 /**
- * 简单的合并函数 - 选择较新的版本
+ * 智能合并函数 - 合并本地和远程项目的最佳属性
  */
 function mergeItems(localItem: SyncItem, remoteItem: SyncItem): SyncItem {
-	// 使用最新修改时间的项
-	return localItem.lastModified &&
-		localItem.lastModified > (remoteItem.lastModified || 0)
-		? localItem
-		: remoteItem;
+	// 选择较新的修改时间
+	const lastModified = Math.max(
+		localItem.lastModified || 0,
+		remoteItem.lastModified || 0,
+	);
+
+	// 合并策略：
+	// 1. 收藏状态：优先使用本地状态（用户的最新操作）
+	// 2. 备注：优先使用非空且较新的版本
+	// 3. 其他字段：基于修改时间选择
+	const localNote = (localItem.note || "").trim();
+	const remoteNote = (remoteItem.note || "").trim();
+	const finalNote = localNote || remoteNote;
+
+	return {
+		...localItem, // 优先使用本地版本作为基础
+		lastModified, // 使用最新的修改时间
+		note: finalNote, // 合并备注
+		// 确保其他重要字段不丢失
+		search: localItem.search || remoteItem.search,
+		checksum: localItem.checksum || remoteItem.checksum,
+	};
 }
 
 /**

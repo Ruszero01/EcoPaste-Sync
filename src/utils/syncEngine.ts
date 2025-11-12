@@ -316,7 +316,7 @@ export class SyncEngine {
 					}
 				}
 			} else if (strategy === "merge") {
-				// 合并策略，双向更新
+				// 智能合并策略：只更新真正需要更新的方向
 				const localExists = localSyncItems.find(
 					(item) => item.id === resolvedItem.id,
 				);
@@ -324,8 +324,19 @@ export class SyncEngine {
 					(item) => item.id === resolvedItem.id,
 				);
 
-				if (localExists) {
-					// 检查是否已经在待更新列表中
+				// 检查哪些字段需要更新
+				const needsLocalUpdate =
+					localExists &&
+					(resolvedItem.favorite !== localExists.favorite ||
+						resolvedItem.note !== (localExists.note || ""));
+
+				const needsCloudUpdate =
+					cloudExists &&
+					(resolvedItem.favorite !== cloudExists.favorite ||
+						resolvedItem.note !== (cloudExists.note || ""));
+
+				// 本地更新：只有当本地存在且确实需要更新时
+				if (localExists && needsLocalUpdate) {
 					if (
 						!localResult.itemsToUpdate.some(
 							(item) => item.id === resolvedItem.id,
@@ -333,8 +344,8 @@ export class SyncEngine {
 					) {
 						localResult.itemsToUpdate.push(resolvedItem);
 					}
-				} else {
-					// 检查是否已经在待添加列表中
+				} else if (!localExists) {
+					// 本地不存在，需要添加
 					if (
 						!localResult.itemsToAdd.some((item) => item.id === resolvedItem.id)
 					) {
@@ -342,8 +353,8 @@ export class SyncEngine {
 					}
 				}
 
-				if (cloudExists) {
-					// 检查是否已经在待更新列表中
+				// 云端更新：只有当云端存在且确实需要更新时
+				if (cloudExists && needsCloudUpdate) {
 					if (
 						!cloudResult.itemsToUpdate.some(
 							(item) => item.id === resolvedItem.id,
@@ -351,8 +362,8 @@ export class SyncEngine {
 					) {
 						cloudResult.itemsToUpdate.push(resolvedItem);
 					}
-				} else {
-					// 检查是否已经在待添加列表中
+				} else if (!cloudExists) {
+					// 云端不存在，需要添加
 					if (
 						!cloudResult.itemsToAdd.some((item) => item.id === resolvedItem.id)
 					) {
