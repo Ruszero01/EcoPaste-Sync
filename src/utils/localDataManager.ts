@@ -15,7 +15,6 @@ import { calculateChecksum } from "./shared";
 
 export interface SyncFilterOptions {
 	includeDeleted?: boolean;
-	syncFavoriteChanges?: boolean;
 }
 
 // ================================
@@ -38,7 +37,7 @@ export const filterItemsBySyncMode = (
 		return items;
 	}
 
-	const { includeDeleted = false, syncFavoriteChanges = false } = options;
+	const { includeDeleted = false } = options;
 	const settings = syncConfig.settings;
 
 	return items.filter((item) => {
@@ -52,10 +51,7 @@ export const filterItemsBySyncMode = (
 
 		// 2. 收藏模式过滤
 		if (settings.onlyFavorites) {
-			if (syncFavoriteChanges) {
-				return true;
-			}
-
+			// syncFavoriteChanges 只影响收藏状态变化的同步行为，不影响收藏模式的筛选逻辑
 			if (!item.favorite) {
 				return false;
 			}
@@ -106,16 +102,14 @@ export const isItemSyncable = (
 };
 
 /**
- * 判断项目是否应该同步（包含收藏状态变化的特殊处理）
+ * 判断项目是否应该同步
  * @param item 历史数据项
  * @param syncConfig 同步模式配置
- * @param allowFavoriteChanges 是否允许收藏状态变化
  * @returns 是否应该同步
  */
 export const shouldSyncItem = (
 	item: HistoryItem,
 	syncConfig: SyncModeConfig | null,
-	allowFavoriteChanges = false,
 ): boolean => {
 	if (!syncConfig?.settings) return true;
 
@@ -123,9 +117,6 @@ export const shouldSyncItem = (
 
 	// 收藏模式检查
 	if (settings.onlyFavorites) {
-		if (allowFavoriteChanges) {
-			return true;
-		}
 		if (!item.favorite) {
 			return false;
 		}

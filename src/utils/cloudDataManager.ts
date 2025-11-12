@@ -391,7 +391,7 @@ export class CloudDataManager {
 	filterCloudDataForSync(
 		remoteIndex: CloudSyncIndex | null,
 		syncConfig: SyncModeConfig | null,
-		options: { includeDeleted?: boolean; syncFavoriteChanges?: boolean } = {},
+		options: { includeDeleted?: boolean } = {},
 	): SyncItem[] {
 		if (!remoteIndex || !remoteIndex.items.length) {
 			return [];

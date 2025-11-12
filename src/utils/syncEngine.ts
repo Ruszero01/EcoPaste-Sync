@@ -120,7 +120,7 @@ export class SyncEngine {
 			const localSyncItems = localDataManager.filterLocalDataForSync(
 				localRawData,
 				this.syncModeConfig,
-				{ includeDeleted: false, syncFavoriteChanges: true },
+				{ includeDeleted: false },
 			);
 
 			// 3. cloudDataManager 检查云端是否有数据
@@ -132,11 +132,22 @@ export class SyncEngine {
 				cloudSyncItems = cloudDataManager.filterCloudDataForSync(
 					remoteIndex,
 					this.syncModeConfig,
-					{ includeDeleted: false, syncFavoriteChanges: true },
+					{ includeDeleted: false },
 				);
 			}
 
-			// 5. 只处理真正有冲突的项目（ID相同但内容不同）
+			// 5. 检测收藏状态变更（处理收藏模式下的状态变更同步）
+			const favoriteStatusChanges = await this.detectFavoriteStatusChanges(
+				localRawData,
+				localSyncItems,
+				remoteIndex,
+			);
+
+			// 6. 将收藏状态变更的项目加入同步列表
+			localSyncItems.push(...favoriteStatusChanges.localItems);
+			cloudSyncItems.push(...favoriteStatusChanges.cloudItems);
+
+			// 7. 只处理真正有冲突的项目（ID相同但内容不同）
 			const realConflicts = detectRealConflicts(localSyncItems, cloudSyncItems);
 			const conflictContexts = realConflicts.map(
 				(conflict: {
@@ -406,6 +417,78 @@ export class SyncEngine {
 			cloudResult,
 			this.deviceId,
 		);
+	}
+
+	/**
+	 * 检测收藏状态变更（处理收藏模式下的状态变更同步）
+	 * @param localRawData 本地原始数据
+	 * @param localSyncItems 筛选后的本地同步项
+	 * @param remoteIndex 云端索引
+	 * @returns 收藏状态变更的项目
+	 */
+	private async detectFavoriteStatusChanges(
+		localRawData: any[],
+		localSyncItems: SyncItem[],
+		remoteIndex: any,
+	): Promise<{ localItems: SyncItem[]; cloudItems: SyncItem[] }> {
+		const result = { localItems: [], cloudItems: [] } as {
+			localItems: SyncItem[];
+			cloudItems: SyncItem[];
+		};
+
+		// 如果没有开启收藏模式，不需要检测
+		if (!this.syncModeConfig?.settings?.onlyFavorites || !remoteIndex?.items) {
+			return result;
+		}
+
+		// 获取云端所有符合类型条件的数据（不应用收藏过滤）
+		const allCloudItems = cloudDataManager.filterCloudDataForSync(
+			remoteIndex,
+			{
+				...this.syncModeConfig,
+				settings: { ...this.syncModeConfig.settings, onlyFavorites: false },
+			},
+			{ includeDeleted: false },
+		);
+
+		// 创建本地同步项ID映射
+		const localSyncItemIds = new Set(localSyncItems.map((item) => item.id));
+
+		// 遍历云端数据，找出被收藏模式过滤掉的本地项目
+		for (const cloudItem of allCloudItems) {
+			// 如果云端项目不在本地筛选列表中，可能是因为收藏状态变更
+			if (!localSyncItemIds.has(cloudItem.id)) {
+				// 在本地原始数据中查找该项目
+				const localOriginalItem = localRawData.find(
+					(item) => item.id === cloudItem.id,
+				);
+
+				if (localOriginalItem) {
+					// 本地存在该项目但被过滤掉，检查收藏状态是否发生变化
+					if (localOriginalItem.favorite !== cloudItem.favorite) {
+						// 收藏状态发生变化，加入同步列表
+						const localSyncItem = localDataManager.filterLocalDataForSync(
+							[localOriginalItem],
+							{
+								...this.syncModeConfig,
+								settings: {
+									...this.syncModeConfig.settings,
+									onlyFavorites: false,
+								},
+							},
+							{ includeDeleted: false },
+						)[0];
+
+						if (localSyncItem) {
+							result.localItems.push(localSyncItem);
+							result.cloudItems.push(cloudItem);
+						}
+					}
+				}
+			}
+		}
+
+		return result;
 	}
 
 	getSyncStatus() {
