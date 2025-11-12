@@ -1,343 +1,235 @@
-import { deleteFile, uploadSyncData } from "@/plugins/webdav";
+import { downloadFile, uploadFile } from "@/plugins/webdav";
 import type { WebDAVConfig } from "@/plugins/webdav";
-import type { SyncItem } from "@/types/sync";
+import type { HistoryItem, SyncItem } from "@/types/sync";
+import { appDataDir, join } from "@tauri-apps/api/path";
+import { exists } from "@tauri-apps/plugin-fs";
 import { lstat } from "@tauri-apps/plugin-fs";
+
+interface FileMetadata {
+	fileName: string;
+	originalPath: string;
+	remotePath: string;
+	size: number;
+	timestamp: number;
+	md5?: string; // 用于文件完整性校验
+}
 
 /**
  * 文件同步管理器
- * 负责文件上传、下载、包管理和同步协调
+ * 新架构：
+ * - sync-data.json: 记录所有元数据
+ * - files/: 直接保存原始文件，使用 ${itemId}_${timestamp}_${originalName} 命名
  */
 export class FileSyncManager {
 	private webdavConfig: WebDAVConfig | null = null;
+	private cacheDir: string | null = null;
 
 	setWebDAVConfig(config: WebDAVConfig | null): void {
 		this.webdavConfig = config;
 	}
 
 	/**
-	 * 智能上传文件包
+	 * 获取本地缓存目录
 	 */
-	async smartUploadPackage(
-		itemId: string,
-		type: "image" | "files",
-		paths: string[],
-		webdavConfig: WebDAVConfig,
-	): Promise<any> {
-		try {
-			const validPaths = paths.filter((path) => path && path.length > 0);
-			if (validPaths.length === 0) {
-				return null;
-			}
-
-			// 检查文件大小限制
-			const maxSize = type === "image" ? 5 : 10; // MB
-			const validSizedPaths: string[] = [];
-			for (const path of validPaths) {
-				const size = await this.getFileSize(path);
-				if (size <= maxSize * 1024 * 1024) {
-					validSizedPaths.push(path);
-				} else {
-					console.warn(`文件过大，跳过: ${path}`);
-				}
-			}
-
-			const packageInfo = {
-				packageId: itemId,
-				originalPaths: validSizedPaths,
-				timestamp: Date.now(),
-				size: validSizedPaths.length * 1024 * 100, // 估算每个文件100KB
-			};
-
-			// 上传包信息到云端
-			const filePath = this.getPackagePath(itemId);
-			const result = await uploadSyncData(
-				webdavConfig,
-				filePath,
-				JSON.stringify(packageInfo, null, 2),
-			);
-
-			if (result.success) {
-				return packageInfo;
-			}
-		} catch (error) {
-			console.error("文件包上传失败:", error);
+	private async getCacheDir(): Promise<string> {
+		if (!this.cacheDir) {
+			const dataDir = await appDataDir();
+			this.cacheDir = await join(dataDir, "files", "cache");
 		}
+		return this.cacheDir;
+	}
 
+	/**
+	 * 构建远程文件路径
+	 */
+	private buildRemotePath(
+		itemId: string,
+		fileName: string,
+		timestamp: number,
+	): string {
+		const basePath = this.webdavConfig?.path || "";
+		const remoteFileName = `${itemId}_${timestamp}_${fileName}`;
+		return basePath && basePath !== "/"
+			? `${basePath.replace(/\/$/, "")}/files/${remoteFileName}`
+			: `files/${remoteFileName}`;
+	}
+
+	/**
+	 * 从远程路径解析文件信息
+	 */
+	private parseRemotePath(remotePath: string): {
+		itemId: string;
+		timestamp: number;
+		fileName: string;
+	} | null {
+		const fileName = remotePath.split(/[/\\]/).pop() || "";
+		const match = fileName.match(/^([^_]+)_(\d+)_(.+)$/);
+		if (match) {
+			return {
+				itemId: match[1],
+				timestamp: Number.parseInt(match[2], 10),
+				fileName: match[3],
+			};
+		}
 		return null;
 	}
 
 	/**
-	 * 智能同步文件
+	 * 上传文件
+	 * @param itemId 剪切板项ID
+	 * @param localPaths 本地文件路径数组
+	 * @returns 文件元数据数组
 	 */
-	async syncFilesIntelligently(
-		packageInfo: any,
-		webdavConfig: WebDAVConfig,
-	): Promise<boolean> {
-		if (!webdavConfig || !packageInfo) return false;
+	async uploadFiles(
+		itemId: string,
+		localPaths: string[],
+	): Promise<FileMetadata[]> {
+		if (!this.webdavConfig || localPaths.length === 0) {
+			return [];
+		}
 
+		const metadata: FileMetadata[] = [];
+		const timestamp = Date.now();
+
+		for (const localPath of localPaths) {
+			try {
+				// 检查文件大小限制
+				const size = await this.getFileSize(localPath);
+				const maxSize = 10 * 1024 * 1024; // 10MB
+				if (size > maxSize) {
+					console.warn(`文件过大，跳过: ${localPath}`);
+					continue;
+				}
+
+				const fileName = localPath.split(/[/\\]/).pop() || "unknown";
+				const remotePath = this.buildRemotePath(itemId, fileName, timestamp);
+
+				// 上传文件
+				const success = await uploadFile(
+					this.webdavConfig,
+					localPath,
+					remotePath,
+				);
+				if (success) {
+					metadata.push({
+						fileName,
+						originalPath: localPath,
+						remotePath,
+						size,
+						timestamp,
+					});
+				} else {
+					console.warn(`文件上传失败: ${localPath}`);
+				}
+			} catch (error) {
+				console.error(`处理文件失败: ${localPath}`, error);
+			}
+		}
+
+		return metadata;
+	}
+
+	/**
+	 * 下载文件
+	 * 按照设计逻辑：
+	 * 1. 检查原始路径有效性
+	 * 2. 比对文件时间，保留最新版本
+	 * 3. 路径无效时下载到缓存目录
+	 */
+	async downloadFile(metadata: FileMetadata): Promise<string> {
+		const { originalPath, remotePath, timestamp } = metadata;
+
+		// 1. 检查原始路径是否有效
+		const originalPathValid = await this.isValidPath(originalPath);
+
+		if (originalPathValid) {
+			// 2. 检查本地文件是否存在
+			if (await exists(originalPath)) {
+				try {
+					const localStat = await lstat(originalPath);
+
+					// 3. 比对时间戳，保留最新文件
+					if (localStat.mtime?.getTime()! >= timestamp) {
+						// 本地文件较新，不需要下载
+						return originalPath;
+					}
+
+					// 本地文件较旧，下载覆盖
+					const success = await downloadFile(
+						this.webdavConfig!,
+						remotePath,
+						originalPath,
+					);
+					if (success) {
+						return originalPath;
+					}
+				} catch (error) {
+					console.warn(`检查本地文件失败: ${originalPath}`, error);
+				}
+			} else {
+				// 路径有效但文件不存在，直接下载
+				const success = await downloadFile(
+					this.webdavConfig!,
+					remotePath,
+					originalPath,
+				);
+				if (success) {
+					return originalPath;
+				}
+			}
+		}
+
+		// 4. 原始路径无效，下载到缓存目录
+		const cacheDir = await this.getCacheDir();
+		const fileName = originalPath.split(/[/\\]/).pop() || "unknown";
+		const cacheFileName = `${timestamp}_${fileName}`;
+		const cachePath = await join(cacheDir, cacheFileName);
+
+		const success = await downloadFile(
+			this.webdavConfig!,
+			remotePath,
+			cachePath,
+		);
+
+		if (success) {
+			return cachePath;
+		}
+
+		throw new Error(`下载文件失败: ${remotePath}`);
+	}
+
+	/**
+	 * 批量下载文件
+	 */
+	async downloadFiles(metadataList: FileMetadata[]): Promise<string[]> {
+		const downloadedPaths: string[] = [];
+
+		for (const metadata of metadataList) {
+			try {
+				const localPath = await this.downloadFile(metadata);
+				downloadedPaths.push(localPath);
+			} catch (error) {
+				console.error(`下载文件失败: ${metadata.remotePath}`, error);
+			}
+		}
+
+		return downloadedPaths;
+	}
+
+	/**
+	 * 检查路径是否有效
+	 */
+	private async isValidPath(path: string): Promise<boolean> {
 		try {
-			// 这里可以实现更复杂的文件同步逻辑
-			// 例如：文件变化检测、增量同步等
-			return true;
+			// 检查父目录是否存在
+			const lastSlash = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+			if (lastSlash === -1) return false;
+
+			const parentDir = path.substring(0, lastSlash);
+			return await exists(parentDir);
 		} catch {
 			return false;
 		}
-	}
-
-	/**
-	 * 处理文件同步项
-	 */
-	async processFileSyncItem(item: SyncItem): Promise<SyncItem | null> {
-		try {
-			if (item.type === "image") {
-				return await this.processImageItem(item);
-			}
-			if (item.type === "files") {
-				return await this.processFilesItem(item);
-			}
-		} catch (error) {
-			console.error("处理文件项失败:", error);
-		}
-
-		return item;
-	}
-
-	/**
-	 * 处理图片项
-	 */
-	private async processImageItem(item: SyncItem): Promise<SyncItem | null> {
-		if (!item.value) return item;
-
-		try {
-			let imagePath = item.value;
-
-			// 处理已打包的图片
-			if (item._syncType === "package_files") {
-				return item;
-			}
-
-			// 解析JSON格式的路径
-			if (typeof imagePath === "string" && imagePath.startsWith("{")) {
-				try {
-					const parsed = JSON.parse(imagePath);
-					if (parsed.packageId && parsed.originalPaths) {
-						return {
-							...item,
-							_syncType: "package_files",
-						};
-					}
-				} catch {
-					// 解析失败，继续处理
-				}
-			}
-
-			if (typeof imagePath === "string" && imagePath.startsWith("[")) {
-				try {
-					const parsed = JSON.parse(imagePath);
-					if (Array.isArray(parsed) && parsed.length > 0) {
-						const validPath = parsed.find(
-							(pathItem: any) =>
-								typeof pathItem === "string" &&
-								(pathItem.includes(":") ||
-									pathItem.includes("/") ||
-									pathItem.includes("\\")),
-						);
-
-						if (validPath) {
-							imagePath = validPath;
-						} else {
-							imagePath = parsed[0];
-						}
-					}
-				} catch {
-					// 解析失败，使用原始路径
-				}
-			}
-
-			// 跳过无效路径
-			if (typeof imagePath !== "string" || !imagePath.trim()) {
-				return item;
-			}
-
-			// 检查文件大小
-			const maxSize = 5; // MB
-			const fileSize = await this.getFileSize(imagePath);
-			if (fileSize > maxSize * 1024 * 1024) {
-				return item;
-			}
-
-			// 上传文件包
-			const packageInfo = await this.smartUploadPackage(
-				item.id,
-				"image",
-				[imagePath],
-				this.webdavConfig!,
-			);
-
-			if (packageInfo) {
-				return {
-					...item,
-					value: JSON.stringify(packageInfo),
-					_syncType: "package_files",
-					fileSize: packageInfo.size,
-					fileType: "image",
-				};
-			}
-		} catch (error) {
-			console.error("处理图片项失败:", error);
-		}
-
-		return item;
-	}
-
-	/**
-	 * 处理文件项
-	 */
-	private async processFilesItem(item: SyncItem): Promise<SyncItem | null> {
-		if (!item.value) return item;
-
-		try {
-			let filePaths: string[] = [];
-
-			// 解析文件路径
-			try {
-				const parsedValue = JSON.parse(item.value);
-
-				if (!Array.isArray(parsedValue)) {
-					if (typeof parsedValue === "object" && parsedValue !== null) {
-						if (
-							parsedValue.originalPaths &&
-							Array.isArray(parsedValue.originalPaths)
-						) {
-							filePaths = parsedValue.originalPaths.filter(
-								(path: any) => typeof path === "string",
-							);
-						} else if (parsedValue.paths && Array.isArray(parsedValue.paths)) {
-							filePaths = parsedValue.paths.filter(
-								(path: any) => typeof path === "string",
-							);
-						} else if (
-							parsedValue.path &&
-							typeof parsedValue.path === "string"
-						) {
-							filePaths = [parsedValue.path];
-						} else if (
-							parsedValue.fileName &&
-							typeof parsedValue.fileName === "string"
-						) {
-							filePaths = [parsedValue.fileName];
-						} else {
-							return item;
-						}
-					} else {
-						return item;
-					}
-				} else {
-					filePaths = parsedValue.filter((path) => typeof path === "string");
-				}
-			} catch {
-				return item;
-			}
-
-			if (filePaths.length === 0) {
-				return item;
-			}
-
-			// 检查文件大小限制
-			const maxSize = 10; // MB
-			const validPaths: string[] = [];
-
-			for (const filePath of filePaths) {
-				try {
-					const fileSize = await this.getFileSize(filePath);
-					if (fileSize <= maxSize * 1024 * 1024) {
-						validPaths.push(filePath);
-					}
-				} catch {
-					// 跳过无法访问的文件
-				}
-			}
-
-			if (validPaths.length === 0) {
-				return item;
-			}
-
-			// 上传文件包
-			const packageInfo = await this.smartUploadPackage(
-				item.id,
-				"files",
-				validPaths,
-				this.webdavConfig!,
-			);
-
-			if (packageInfo) {
-				return {
-					...item,
-					value: JSON.stringify(packageInfo),
-					_syncType: "package_files",
-					fileSize: packageInfo.size,
-					fileType: "files",
-				};
-			}
-		} catch (error) {
-			console.error("处理文件项失败:", error);
-		}
-
-		return item;
-	}
-
-	/**
-	 * 删除远程文件
-	 */
-	async deleteRemoteFiles(itemIds: string[]): Promise<boolean> {
-		if (!this.webdavConfig || itemIds.length === 0) {
-			return true;
-		}
-
-		const MAX_CONCURRENT_DELETES = 3;
-		let successCount = 0;
-		let failedCount = 0;
-		const errors: string[] = [];
-
-		// 并发删除文件
-		const deletePromises: Promise<void>[] = [];
-
-		for (const itemId of itemIds) {
-			const promise = (async () => {
-				try {
-					const filePath = this.getPackagePath(itemId);
-					const result = await deleteFile(this.webdavConfig!, filePath);
-					if (result) {
-						successCount++;
-					} else {
-						failedCount++;
-						errors.push(`删除文件失败: ${itemId}`);
-					}
-				} catch (error) {
-					failedCount++;
-					errors.push(`删除文件异常: ${itemId} - ${error}`);
-				}
-			})();
-
-			deletePromises.push(promise);
-
-			// 控制并发数量
-			if (deletePromises.length >= MAX_CONCURRENT_DELETES) {
-				await Promise.allSettled(deletePromises);
-				deletePromises.length = 0;
-			}
-		}
-
-		// 等待剩余的删除任务完成
-		if (deletePromises.length > 0) {
-			await Promise.allSettled(deletePromises);
-		}
-
-		if (errors.length > 0) {
-			console.warn("文件删除警告:", errors);
-		}
-
-		return successCount > 0 && failedCount === 0;
 	}
 
 	/**
@@ -353,15 +245,265 @@ export class FileSyncManager {
 	}
 
 	/**
-	 * 获取文件包路径
+	 * 从 SyncItem 提取文件元数据
 	 */
-	private getPackagePath(itemId: string): string {
-		if (!this.webdavConfig) return `packages/${itemId}.json`;
+	extractFileMetadata(item: SyncItem): FileMetadata[] {
+		if (!item.value || (item.type !== "image" && item.type !== "files")) {
+			return [];
+		}
 
-		const basePath = this.webdavConfig.path || "";
-		return basePath && basePath !== "/"
-			? `${basePath.replace(/\/$/, "")}/packages/${itemId}.json`
-			: `packages/${itemId}.json`;
+		try {
+			const parsed = JSON.parse(item.value);
+			if (Array.isArray(parsed) && typeof parsed[0] === "object") {
+				// 新格式：文件元数据数组
+				return parsed as FileMetadata[];
+			}
+
+			if (Array.isArray(parsed)) {
+				// 旧格式：文件路径数组，无法转换为元数据
+				console.warn("检测到旧格式文件路径，无法提取元数据");
+				return [];
+			}
+		} catch (error) {
+			console.error("解析文件元数据失败:", error);
+		}
+
+		return [];
+	}
+
+	/**
+	 * 将文件元数据转换回 SyncItem 格式
+	 */
+	async createSyncItemWithFiles(
+		item: SyncItem,
+		localPaths: string[],
+	): Promise<SyncItem> {
+		if (localPaths.length === 0) {
+			return item;
+		}
+
+		const metadata = await this.uploadFiles(item.id, localPaths);
+		if (metadata.length === 0) {
+			return item;
+		}
+
+		return {
+			...item,
+			value: JSON.stringify(metadata),
+			_syncType: "files",
+		};
+	}
+
+	/**
+	 * 从原始数据中提取文件路径数组
+	 * 支持多种数据格式：单个文件路径、文件路径数组、复合对象等
+	 */
+	private extractFilePaths(originalItem: HistoryItem): string[] {
+		if (!originalItem.value) {
+			return [];
+		}
+
+		const filePaths: string[] = [];
+
+		try {
+			// 尝试解析为JSON
+			const parsed = JSON.parse(originalItem.value);
+
+			if (Array.isArray(parsed)) {
+				// 处理数组格式
+				for (const item of parsed) {
+					if (typeof item === "string") {
+						// 简单字符串路径
+						if (item.trim()) {
+							filePaths.push(item);
+						}
+					} else if (typeof item === "object" && item !== null) {
+						// 处理对象格式，优先使用 originalPath，然后是 path，最后是 fileName
+						if (item.originalPath && typeof item.originalPath === "string") {
+							filePaths.push(item.originalPath);
+						} else if (item.path && typeof item.path === "string") {
+							filePaths.push(item.path);
+						} else if (item.fileName && typeof item.fileName === "string") {
+							filePaths.push(item.fileName);
+						}
+					}
+				}
+			} else if (typeof parsed === "object" && parsed !== null) {
+				// 处理单个对象格式，优先使用 originalPath，然后是 path，最后是 fileName
+				if (parsed.originalPath && typeof parsed.originalPath === "string") {
+					filePaths.push(parsed.originalPath);
+				} else if (parsed.path && typeof parsed.path === "string") {
+					filePaths.push(parsed.path);
+				} else if (parsed.fileName && typeof parsed.fileName === "string") {
+					filePaths.push(parsed.fileName);
+				} else if (parsed.paths && Array.isArray(parsed.paths)) {
+					// 处理 {paths: ["...", "..."]} 格式
+					for (const path of parsed.paths) {
+						if (typeof path === "string" && path.trim()) {
+							filePaths.push(path);
+						}
+					}
+				} else if (
+					parsed.originalPaths &&
+					Array.isArray(parsed.originalPaths)
+				) {
+					// 处理 {originalPaths: ["...", "..."]} 格式
+					for (const path of parsed.originalPaths) {
+						if (typeof path === "string" && path.trim()) {
+							filePaths.push(path);
+						}
+					}
+				}
+			}
+		} catch {
+			// JSON解析失败，可能是简单的文件路径字符串
+			const value = originalItem.value.trim();
+			if (value) {
+				// 检查是否是文件路径（包含路径分隔符或文件扩展名）
+				if (
+					value.includes("/") ||
+					value.includes("\\") ||
+					value.includes(".")
+				) {
+					filePaths.push(value);
+				}
+			}
+		}
+
+		// 去重并过滤无效路径
+		const uniquePaths = [...new Set(filePaths)].filter((path) => {
+			return path && path.length > 0 && !path.includes("://");
+		});
+
+		return uniquePaths;
+	}
+
+	/**
+	 * 处理需要上传的文件包
+	 * 支持多种文件场景：单文件、文件数组、复合文件结构等
+	 */
+	async handleFilePackageUploads(
+		localRawData: HistoryItem[],
+		cloudResult: {
+			itemsToAdd: SyncItem[];
+			itemsToUpdate: SyncItem[];
+			itemsToDelete: string[];
+		},
+	): Promise<{ uploaded: number; errors: string[] }> {
+		const result = { uploaded: 0, errors: [] as string[] };
+
+		if (!this.webdavConfig) {
+			return result;
+		}
+
+		// 获取需要处理文件的项目
+		const fileItems = [
+			...cloudResult.itemsToAdd,
+			...cloudResult.itemsToUpdate,
+		].filter((item) => item.type === "image" || item.type === "files");
+
+		// 去重：基于项目ID，避免重复处理同一个项目
+		const uniqueItems = fileItems.filter(
+			(item, index, self) => index === self.findIndex((t) => t.id === item.id),
+		);
+
+		for (const syncItem of uniqueItems) {
+			try {
+				// 从本地原始数据中找到对应的完整数据
+				const originalItem = localRawData.find(
+					(data) => data.id === syncItem.id,
+				);
+				if (!originalItem) {
+					console.warn(`找不到原始数据: ${syncItem.id}`);
+					continue;
+				}
+
+				// 从原始数据中提取文件路径数组
+				const filePaths = this.extractFilePaths(originalItem);
+
+				if (filePaths.length === 0) {
+					console.warn(`没有找到有效的文件路径: ${syncItem.id}`);
+					continue;
+				}
+
+				// console.log(`处理文件上传: ${syncItem.id}, 类型: ${syncItem.type}, 文件数量: ${filePaths.length}`, filePaths);
+
+				// 上传文件并创建元数据
+				const updatedItem = await this.createSyncItemWithFiles(
+					syncItem,
+					filePaths,
+				);
+
+				if (updatedItem._syncType === "files") {
+					result.uploaded++;
+					// 更新原始 syncItem 的值为文件元数据
+					syncItem.value = updatedItem.value;
+					syncItem._syncType = updatedItem._syncType;
+					// console.log(`文件上传成功: ${syncItem.id}, 元数据:`, updatedItem.value);
+				} else {
+					console.warn(`文件上传失败，没有创建元数据: ${syncItem.id}`);
+				}
+			} catch (error) {
+				const errorMessage = `文件上传失败 (${syncItem.id}): ${error instanceof Error ? error.message : String(error)}`;
+				result.errors.push(errorMessage);
+				console.error(errorMessage);
+			}
+		}
+
+		return result;
+	}
+
+	/**
+	 * 处理需要下载的文件包
+	 * 支持从文件元数据恢复到本地文件路径
+	 */
+	async handleFilePackageDownloads(itemsToAdd: SyncItem[]): Promise<void> {
+		if (!this.webdavConfig) return;
+
+		// 检查所有文件类型的项目，不只是包含元数据的
+		const fileItems = itemsToAdd.filter(
+			(item) => item.type === "files" || item.type === "image",
+		);
+
+		if (fileItems.length === 0) return;
+
+		for (const item of fileItems) {
+			try {
+				const metadata = this.extractFileMetadata(item);
+
+				if (metadata.length === 0) {
+					item.value = JSON.stringify([]);
+					continue;
+				}
+
+				// 批量下载文件
+				const downloadedPaths = await this.downloadFiles(metadata);
+
+				if (downloadedPaths.length > 0) {
+					// 更新 item 的值为本地文件路径数组，确保使用实际下载后的路径
+					item.value = JSON.stringify(downloadedPaths);
+				} else {
+					item.value = JSON.stringify([]);
+				}
+			} catch (error) {
+				console.error(`下载文件失败 (${item.id}):`, error);
+				item.value = JSON.stringify([]);
+			}
+		}
+	}
+
+	/**
+	 * 删除远程文件
+	 */
+	async deleteRemoteFiles(itemIds: string[]): Promise<boolean> {
+		if (!this.webdavConfig || itemIds.length === 0) {
+			return true;
+		}
+
+		// TODO: 实现文件删除逻辑
+		// 需要从云端文件列表中找到对应项目并删除
+		console.warn("删除远程文件功能待实现:", itemIds);
+		return true;
 	}
 }
 

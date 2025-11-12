@@ -58,10 +58,19 @@ const Header: FC<HeaderProps> = (props) => {
 				try {
 					const parsed = JSON.parse(value);
 					if (Array.isArray(parsed)) {
-						fileCount = parsed.length;
+						if (parsed.length > 0 && typeof parsed[0] === "object") {
+							// 新格式：文件元数据数组
+							fileCount = parsed.length;
+						} else if (parsed.length > 0 && typeof parsed[0] === "string") {
+							// 旧格式：文件路径数组
+							fileCount = parsed.length;
+						}
 					} else if (parsed.packageId && parsed.originalPaths) {
-						// 包模式，使用originalPaths的长度
+						// 旧包模式，使用originalPaths的长度
 						fileCount = parsed.originalPaths.length;
+					} else if (parsed.files && Array.isArray(parsed.files)) {
+						// 新包模式，使用files数组的长度
+						fileCount = parsed.files.length;
 					}
 				} catch (error) {
 					console.warn("解析文件数量失败:", error);

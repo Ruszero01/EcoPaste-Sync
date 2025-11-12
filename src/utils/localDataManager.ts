@@ -58,20 +58,48 @@ export const filterItemsBySyncMode = (
 		}
 
 		// 3. 内容类型过滤
+		let typeAllowed = true;
 		switch (item.type) {
 			case "text":
-				return settings.includeText;
+				typeAllowed = settings.includeText;
+				break;
 			case "html":
-				return settings.includeHtml;
+				typeAllowed = settings.includeHtml;
+				break;
 			case "rtf":
-				return settings.includeRtf;
+				typeAllowed = settings.includeRtf;
+				break;
 			case "image":
-				return settings.includeImages;
+				typeAllowed = settings.includeImages;
+				break;
 			case "files":
-				return settings.includeFiles;
+				typeAllowed = settings.includeFiles;
+				break;
 			default:
-				return true;
+				typeAllowed = true;
 		}
+
+		if (!typeAllowed) {
+			return false;
+		}
+
+		// 4. 文件大小过滤（仅对图片和文件生效）
+		if (
+			syncConfig.fileLimits &&
+			(item.type === "image" || item.type === "files")
+		) {
+			const { maxImageSize, maxFileSize } = syncConfig.fileLimits;
+			const fileSize = item.count || 0; // count 字段存储文件大小
+
+			if (item.type === "image" && fileSize > maxImageSize * 1024 * 1024) {
+				return false;
+			}
+			if (item.type === "files" && fileSize > maxFileSize * 1024 * 1024) {
+				return false;
+			}
+		}
+
+		return true;
 	});
 };
 
@@ -543,9 +571,23 @@ export class LocalDataManager {
 				(item) => item.id === updateItem.id,
 			);
 			if (index !== -1) {
+				// 只更新特定字段，避免覆盖不必要的字段
 				processedData[index] = {
 					...processedData[index],
-					...updateItem,
+					// 明确列出需要更新的字段
+					value: updateItem.value || processedData[index].value,
+					favorite:
+						updateItem.favorite !== undefined
+							? updateItem.favorite
+							: processedData[index].favorite,
+					note:
+						updateItem.note !== undefined
+							? updateItem.note
+							: processedData[index].note,
+					lastModified:
+						updateItem.lastModified || processedData[index].lastModified,
+					checksum: updateItem.checksum || processedData[index].checksum,
+					// 不包含 deviceId, _syncType 等临时字段
 				};
 			}
 		}
@@ -571,7 +613,14 @@ export class LocalDataManager {
 		const group = this.determineGroup(item.type);
 
 		return {
-			...item,
+			// 只选择需要的字段，避免包含同步相关的内部字段
+			id: item.id,
+			type: item.type,
+			value: item.value || "",
+			search: item.search || "",
+			createTime: item.createTime,
+			favorite: item.favorite,
+			note: item.note || "",
 			group,
 			count: item.count || 0,
 			width: item.width || 0,
@@ -581,6 +630,7 @@ export class LocalDataManager {
 			deviceId: item.deviceId || "",
 			size: item.size || 0,
 			checksum: item.checksum || "",
+			deleted: item.deleted || false,
 		};
 	}
 
@@ -597,217 +647,129 @@ export class LocalDataManager {
 			itemsToDelete: string[];
 		},
 	): Promise<void> {
-		// 1. 如果需要从云端下载数据，先下载云端数据
-		if (
-			syncResult.itemsToAdd.length > 0 ||
-			syncResult.itemsToUpdate.length > 0
-		) {
-			const { cloudDataManager } = await import("./cloudDataManager");
-			const remoteData = await cloudDataManager.downloadSyncData();
+		try {
+			// 1. 处理需要删除的项目
+			if (syncResult.itemsToDelete.length > 0) {
+				await this.deleteItemsFromDatabase(syncResult.itemsToDelete);
+			}
 
-			if (remoteData?.items) {
-				// 从云端数据中筛选出需要的项目
-				const neededItems = remoteData.items.filter(
-					(item: any) =>
-						syncResult.itemsToAdd.some((addItem) => addItem.id === item.id) ||
-						syncResult.itemsToUpdate.some(
-							(updateItem) => updateItem.id === item.id,
-						),
+			// 2. 处理需要添加和更新的项目（文件包已在同步引擎中预处理）
+			const itemsToProcess = [
+				...syncResult.itemsToAdd,
+				...syncResult.itemsToUpdate,
+			];
+
+			if (itemsToProcess.length > 0) {
+				// 直接处理同步结果，文件包已经在 fileSyncManager 中处理过
+				const processedData = this.applySyncResultToLocal(
+					originalData,
+					syncResult,
 				);
 
-				if (neededItems.length > 0) {
-					// 处理下载的文件项目（如果有）
-					const processedItems = await this.processDownloadedItems(neededItems);
-
-					// 转换为 SyncItem 格式
-					const syncItems: SyncItem[] = processedItems.map((item: any) => ({
-						id: item.id,
-						type: item.type,
-						value: item.value || "",
-						search: item.search || "",
-						createTime: item.createTime,
-						lastModified: item.lastModified || Date.now(),
-						favorite: item.favorite,
-						note: item.note || "",
-						checksum: item.checksum || "",
-						size: item.size || 0,
-						deviceId: item.deviceId || "",
-						group: item.group || this.determineGroup(item.type),
-						count: item.count || 0,
-						width: item.width,
-						height: item.height,
-						subtype: item.subtype,
-					}));
-
-					// 创建增强的本地操作结果
-					const enhancedLocalResult = {
-						itemsToAdd: syncItems.filter((item) =>
-							syncResult.itemsToAdd.some((addItem) => addItem.id === item.id),
-						),
-						itemsToUpdate: syncItems.filter((item) =>
-							syncResult.itemsToUpdate.some(
-								(updateItem) => updateItem.id === item.id,
-							),
-						),
-						itemsToDelete: syncResult.itemsToDelete,
-					};
-
-					// 使用 localDataManager 应用同步结果到本地数据
-					const processedData = this.applySyncResultToLocal(
-						originalData,
-						enhancedLocalResult,
-					);
-
-					// 更新数据库
-					for (const item of processedData) {
-						await this.insertOrUpdateItemToDatabase(item);
-					}
-				} else {
-					// 没有需要处理的项目
-				}
-			} else {
-				// 没有需要添加或更新的项目
-			}
-		}
-	}
-
-	/**
-	 * 处理下载的项目（包括文件）
-	 */
-	private async processDownloadedItems(items: any[]): Promise<any[]> {
-		const fileItems = items.filter(
-			(item: any) => item.type === "image" || item.type === "files",
-		);
-		const nonFileItems = items.filter(
-			(item: any) => item.type !== "image" && item.type !== "files",
-		);
-
-		const processedItems = [...nonFileItems];
-
-		// 处理文件项目
-		if (fileItems.length > 0) {
-			const { fileSyncManager } = await import("./fileSyncManager");
-			const MAX_CONCURRENT_FILE_PROCESSING = 3;
-			const processPromises: Promise<void>[] = [];
-
-			for (const item of fileItems) {
-				const promise = (async () => {
-					try {
-						// 转换为 SyncItem 格式处理文件
-						const syncItem: SyncItem = {
-							id: item.id,
-							type: item.type,
-							value: item.value || "",
-							search: item.search || "",
-							createTime: item.createTime,
-							lastModified: item.lastModified || Date.now(),
-							favorite: item.favorite,
-							note: item.note || "",
-							checksum: item.checksum || "",
-							size: item.size || 0,
-							deviceId: item.deviceId || "",
-							group: item.group || this.determineGroup(item.type),
-							count: item.count || 0,
-							width: item.width,
-							height: item.height,
-							subtype: item.subtype,
-						};
-
-						const processed =
-							await fileSyncManager.processFileSyncItem(syncItem);
-						if (processed) {
-							processedItems.push(processed);
-						}
-					} catch (_error) {
-						// 处理下载文件项目失败
-					}
-				})();
-
-				processPromises.push(promise);
-
-				if (processPromises.length >= MAX_CONCURRENT_FILE_PROCESSING) {
-					await Promise.race(processPromises);
-					for (let j = processPromises.length - 1; j >= 0; j--) {
-						if (
-							await processPromises[j].then(
-								() => true,
-								() => true,
-							)
-						) {
-							processPromises.splice(j, 1);
-						}
-					}
-				}
-			}
-
-			await Promise.allSettled(processPromises);
-		}
-
-		return processedItems;
-	}
-
-	/**
-	 * 插入或更新数据库项目
-	 */
-	private async insertOrUpdateItemToDatabase(item: HistoryItem): Promise<void> {
-		const { updateSQL, selectSQL, insertSQL } = await import("@/database");
-
-		try {
-			// 检查项目是否已存在
-			const existingItems = (await selectSQL("history", {
-				id: item.id,
-			})) as any[];
-
-			if (existingItems && existingItems.length > 0) {
-				// 项目已存在，执行更新
-				const existing = existingItems[0];
-
-				// 确保收藏状态转换为数据库兼容的格式（0/1）
-				const favoriteValue = item.favorite ? 1 : 0;
-
-				const updateItem: any = {
-					id: item.id,
-					type: item.type,
-					group: item.group,
-					value: item.value || "",
-					search: item.search || "",
-					count: Math.max(existing.count || 0, item.count || 0),
-					width: item.width,
-					height: item.height,
-					favorite: favoriteValue,
-					createTime: existing.createTime, // 保持原有的创建时间
-					note: item.note?.trim() ? item.note : existing.note || "",
-					subtype: item.subtype,
-					deleted: item.deleted || 0,
-				};
-
-				await updateSQL("history", updateItem);
-			} else {
-				// 项目不存在，执行插入 - 使用正确的 insertSQL 函数
-				const favoriteValue = item.favorite ? 1 : 0;
-
-				const insertItem: any = {
-					id: item.id,
-					type: item.type,
-					group: item.group,
-					value: item.value || "",
-					search: item.search || "",
-					count: item.count || 0,
-					width: item.width,
-					height: item.height,
-					favorite: favoriteValue,
-					createTime: item.createTime,
-					note: item.note || "",
-					subtype: item.subtype,
-					deleted: item.deleted || 0,
-				};
-
-				await insertSQL("history", insertItem);
+				// 批量更新数据库
+				await this.batchUpdateDatabase(processedData, originalData);
 			}
 		} catch (error) {
 			throw new Error(
-				`插入或更新项失败 (ID: ${item.id}): ${error instanceof Error ? error.message : String(error)}`,
+				`应用同步变更失败: ${error instanceof Error ? error.message : String(error)}`,
 			);
+		}
+	}
+
+	/**
+	 * 从数据库删除项目
+	 * @param itemIds 要删除的项目ID列表
+	 */
+	private async deleteItemsFromDatabase(itemIds: string[]): Promise<void> {
+		const { updateSQL } = await import("@/database");
+
+		const deletePromises = itemIds.map(async (itemId) => {
+			try {
+				await updateSQL("history", {
+					id: itemId,
+					deleted: 1,
+				} as any);
+			} catch (error) {
+				console.error(`删除项目失败 (${itemId}):`, error);
+			}
+		});
+
+		await Promise.allSettled(deletePromises);
+	}
+
+	/**
+	 * 批量更新数据库
+	 * @param processedData 处理后的数据
+	 * @param originalData 原始数据
+	 */
+	private async batchUpdateDatabase(
+		processedData: HistoryItem[],
+		originalData: HistoryItem[],
+	): Promise<void> {
+		// 找出新增和更新的项目
+		const newItems = processedData.filter(
+			(item) => !originalData.some((original) => original.id === item.id),
+		);
+
+		const updatedItems = processedData.filter((item) =>
+			originalData.some((original) => original.id === item.id),
+		);
+
+		// 批量处理
+		const { insertSQL, updateSQL } = await import("@/database");
+
+		// 处理新增项目
+		if (newItems.length > 0) {
+			const insertPromises = newItems.map(async (item) => {
+				try {
+					const insertItem = {
+						id: item.id,
+						type: item.type,
+						group: item.group,
+						value: item.value || "",
+						search: item.search || "",
+						count: item.count || 0,
+						width: item.width,
+						height: item.height,
+						favorite: item.favorite ? 1 : 0,
+						createTime: item.createTime,
+						note: item.note || "",
+						subtype: item.subtype as any, // 类型断言以兼容数据库约束
+						deleted: item.deleted ? 1 : 0,
+					} as any; // 类型断言以处理boolean到integer的转换
+
+					await insertSQL("history", insertItem);
+				} catch (error) {
+					console.error(`插入项目失败 (${item.id}):`, error);
+				}
+			});
+
+			await Promise.allSettled(insertPromises);
+		}
+
+		// 处理更新项目
+		if (updatedItems.length > 0) {
+			const updatePromises = updatedItems.map(async (item) => {
+				try {
+					const updateItem = {
+						id: item.id,
+						type: item.type,
+						group: item.group,
+						value: item.value || "",
+						search: item.search || "",
+						favorite: item.favorite ? 1 : 0,
+						note: item.note?.trim() || "",
+						subtype: item.subtype as any, // 类型断言以兼容数据库约束
+						deleted: item.deleted ? 1 : 0,
+					} as any; // 类型断言以处理boolean到integer的转换
+
+					await updateSQL("history", updateItem);
+				} catch (error) {
+					console.error(`更新项目失败 (${item.id}):`, error);
+				}
+			});
+
+			await Promise.allSettled(updatePromises);
 		}
 	}
 

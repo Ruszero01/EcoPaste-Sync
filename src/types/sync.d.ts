@@ -196,6 +196,8 @@ export interface CloudItemFingerprint {
 	favorite: boolean;
 	deleted?: boolean;
 	note?: string;
+	// 对于文件和图片类型，包含文件元数据
+	value?: string;
 }
 
 // 同步配置

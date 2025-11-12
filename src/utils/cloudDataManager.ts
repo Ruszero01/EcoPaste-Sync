@@ -401,7 +401,7 @@ export class CloudDataManager {
 		const cloudItems: SyncItem[] = remoteIndex.items.map((item) => ({
 			id: item.id,
 			type: item.type,
-			value: "", // 云端指纹只包含元数据，不包含完整内容
+			value: item.value || "", // 对于文件和图片类型，从云端指纹中获取元数据
 			search: "",
 			createTime: new Date(item.timestamp).toISOString(),
 			lastModified: item.timestamp,
@@ -473,7 +473,7 @@ export class CloudDataManager {
 					...syncResult.itemsToUpdate,
 				];
 
-				// 处理文件项目（如果有）
+				// 处理项目元数据（实际文件上传由 fileSyncManager 处理）
 				const processedItems = await this.processUploadItems(itemsToMerge);
 
 				// 移除已存在的项目（将被更新）
@@ -521,57 +521,12 @@ export class CloudDataManager {
 	}
 
 	/**
-	 * 处理上传的项目（包括文件）
+	 * 处理上传的项目（元数据管理，不处理文件上传）
+	 * 实际的文件上传由 fileSyncManager 负责
 	 */
 	private async processUploadItems(items: SyncItem[]): Promise<any[]> {
-		const fileItems = items.filter(
-			(item) => item.type === "image" || item.type === "files",
-		);
-		const nonFileItems = items.filter(
-			(item) => item.type !== "image" && item.type !== "files",
-		);
-
-		const processedItems = [...nonFileItems];
-
-		// 处理文件项目
-		if (fileItems.length > 0) {
-			const { fileSyncManager } = await import("./fileSyncManager");
-			const MAX_CONCURRENT_FILE_PROCESSING = 3;
-			const processPromises: Promise<void>[] = [];
-
-			for (const item of fileItems) {
-				const promise = (async () => {
-					try {
-						const processed = await fileSyncManager.processFileSyncItem(item);
-						if (processed) {
-							processedItems.push(processed);
-						}
-					} catch (_error) {
-						// 处理上传文件项目失败
-					}
-				})();
-
-				processPromises.push(promise);
-
-				if (processPromises.length >= MAX_CONCURRENT_FILE_PROCESSING) {
-					await Promise.race(processPromises);
-					for (let j = processPromises.length - 1; j >= 0; j--) {
-						if (
-							await processPromises[j].then(
-								() => true,
-								() => true,
-							)
-						) {
-							processPromises.splice(j, 1);
-						}
-					}
-				}
-			}
-
-			await Promise.allSettled(processPromises);
-		}
-
-		return processedItems;
+		// 直接返回所有项目的元数据，文件项的实际文件由 fileSyncManager 处理
+		return items;
 	}
 
 	/**
@@ -662,7 +617,7 @@ export class CloudDataManager {
 			);
 		}
 
-		return {
+		const fingerprint: CloudItemFingerprint = {
 			id: item.id,
 			type: item.type,
 			checksum,
@@ -675,6 +630,13 @@ export class CloudDataManager {
 			deleted: false,
 			note: item.note || "",
 		};
+
+		// 对于文件和图片类型，包含文件元数据
+		if (item.type === "files" || item.type === "image") {
+			fingerprint.value = item.value;
+		}
+
+		return fingerprint;
 	}
 
 	/**
