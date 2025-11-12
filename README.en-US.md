@@ -105,6 +105,42 @@ pnpm tauri build
 > ⚠️ **Note**: This is a development branch and may contain experimental features. For production use, we recommend choosing the official stable version.
 
 ### ☁️ Cloud Sync Features (This Branch's Specialty)
+
+#### 🏗️ System Architecture
+Distributed cloud sync architecture based on WebDAV protocol, adopting a local-first design philosophy:
+
+```mermaid
+graph TB
+    subgraph "Multi-Device Environment"
+        D1[Device A]
+        D2[Device B]
+        D3[Device C]
+    end
+
+    subgraph "Cloud Sync Architecture"
+        SE[SyncEngine<br/>Sync Engine Core]
+        CD[CloudDataManager<br/>Cloud Data Manager]
+        FS[FileSyncManager<br/>File Sync Manager]
+        WD[WebDAV<br/>Cloud Storage Service]
+    end
+
+    subgraph "Local Storage"
+        DB[(SQLite<br/>Local Database)]
+        FS2[File System<br/>Local Cache]
+    end
+
+    D1 --> SE
+    D2 --> SE
+    D3 --> SE
+    SE --> CD
+    SE --> FS
+    CD --> WD
+    FS --> WD
+    SE --> DB
+    SE --> FS2
+```
+
+#### ✨ Core Features
 - **Three Sync Modes**: Lightweight, complete, and favorites sync to meet different needs
 - **Multi-type Support**: Support for various data types including text, images, and files
 - **Bidirectional Sync**: Support for bidirectional data synchronization and incremental updates across multiple devices
@@ -113,6 +149,30 @@ pnpm tauri build
 - **Data Security**: Support for data encryption and compression to ensure secure transmission
 - **Error Handling**: Comprehensive error handling and retry mechanisms to ensure sync reliability
 - **Simple Interface**: Clean user interface and status display for easy operation
+
+#### 📋 Technical Architecture Details
+
+**🔄 Sync Process**
+1. **Data Collection**: Collect clipboard data from local database
+2. **Smart Filtering**: Filter data based on sync mode
+3. **Conflict Detection**: Detect real conflicts based on checksums and timestamps
+4. **Conflict Resolution**: Support three strategies: local priority, remote priority, smart merge
+5. **File Processing**: Separate processing of metadata and original files
+6. **Cloud Sync**: Upload index and files to WebDAV server
+7. **Local Update**: Apply cloud changes to local database
+
+**💾 Storage Architecture**
+- **Local Storage**: SQLite database + file system cache
+- **Cloud Storage**: WebDAV server (sync-data.json + files/ directory)
+- **Data Format**: Hybrid architecture of lightweight index + complete metadata
+
+**🛡️ Security Guarantees**
+- Local-first storage, data fully controllable
+- HTTPS/TLS encrypted transmission
+- Smart conflict resolution to avoid data loss
+- Comprehensive error handling and recovery mechanisms
+
+📖 **Detailed Architecture Documentation**: View [Cloud Sync Architecture Documentation](./docs/CLOUD_SYNC_ARCHITECTURE.md) and [Architecture Diagram](./docs/architecture-diagram.md) for technical implementation details.
 
 ### Cloud Sync Configuration (This Branch)
 1. **Prepare WebDAV Service**: Ensure you have an available WebDAV service
