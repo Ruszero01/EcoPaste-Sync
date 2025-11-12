@@ -184,8 +184,8 @@ export const filterItemsByDeletionStrategy = <T extends HistoryItem>(
 	// 异步处理删除（如果提供了删除处理器）
 	if (itemsToDelete.length > 0 && deleteHandler) {
 		// 异步执行，不阻塞主流程
-		deleteHandler(itemsToDelete).catch((error) => {
-			console.error("删除处理器执行失败:", error);
+		deleteHandler(itemsToDelete).catch(() => {
+			// 删除处理器执行失败
 		});
 	}
 
@@ -669,13 +669,13 @@ export class LocalDataManager {
 
 					// 更新数据库
 					for (const item of processedData) {
-						try {
-							await this.insertOrUpdateItemToDatabase(item);
-						} catch (error) {
-							console.error("更新本地数据失败:", error);
-						}
+						await this.insertOrUpdateItemToDatabase(item);
 					}
+				} else {
+					// 没有需要处理的项目
 				}
+			} else {
+				// 没有需要添加或更新的项目
 			}
 		}
 	}
@@ -727,8 +727,8 @@ export class LocalDataManager {
 						if (processed) {
 							processedItems.push(processed);
 						}
-					} catch (error) {
-						console.error("处理下载文件项目失败:", error);
+					} catch (_error) {
+						// 处理下载文件项目失败
 					}
 				})();
 
@@ -759,7 +759,7 @@ export class LocalDataManager {
 	 * 插入或更新数据库项目
 	 */
 	private async insertOrUpdateItemToDatabase(item: HistoryItem): Promise<void> {
-		const { updateSQL, selectSQL } = await import("@/database");
+		const { updateSQL, selectSQL, insertSQL } = await import("@/database");
 
 		try {
 			// 检查项目是否已存在
@@ -788,13 +788,11 @@ export class LocalDataManager {
 					note: item.note?.trim() ? item.note : existing.note || "",
 					subtype: item.subtype,
 					deleted: item.deleted || 0,
-					fileSize: item.fileSize,
-					fileType: item.fileType,
 				};
 
 				await updateSQL("history", updateItem);
 			} else {
-				// 项目不存在，执行插入
+				// 项目不存在，执行插入 - 使用正确的 insertSQL 函数
 				const favoriteValue = item.favorite ? 1 : 0;
 
 				const insertItem: any = {
@@ -811,11 +809,9 @@ export class LocalDataManager {
 					note: item.note || "",
 					subtype: item.subtype,
 					deleted: item.deleted || 0,
-					fileSize: item.fileSize,
-					fileType: item.fileType,
 				};
 
-				await updateSQL("history", insertItem);
+				await insertSQL("history", insertItem);
 			}
 		} catch (error) {
 			throw new Error(

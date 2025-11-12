@@ -477,7 +477,6 @@ export class CloudDataManager {
 				// 上传数据
 				const uploadSuccess = await this.uploadSyncData(syncData);
 				if (!uploadSuccess) {
-					console.error("上传云端数据失败");
 					return false;
 				}
 			}
@@ -491,8 +490,7 @@ export class CloudDataManager {
 
 			// 3. 上传更新后的索引
 			return await this.uploadSyncIndex(updatedIndex);
-		} catch (error) {
-			console.error("应用云端变更失败:", error);
+		} catch (_error) {
 			return false;
 		}
 	}
@@ -523,8 +521,8 @@ export class CloudDataManager {
 						if (processed) {
 							processedItems.push(processed);
 						}
-					} catch (error) {
-						console.error("处理上传文件项目失败:", error);
+					} catch (_error) {
+						// 处理上传文件项目失败
 					}
 				})();
 
@@ -615,10 +613,22 @@ export class CloudDataManager {
 	 * @returns 云端数据指纹
 	 */
 	private convertSyncItemToFingerprint(item: SyncItem): CloudItemFingerprint {
+		// 确保有校验和，如果没有则重新计算
+		let checksum = item.checksum;
+		if (!checksum) {
+			checksum = calculateChecksum(
+				JSON.stringify({
+					type: item.type,
+					value: item.value,
+					note: item.note || "",
+				}),
+			);
+		}
+
 		return {
 			id: item.id,
 			type: item.type,
-			checksum: item.checksum || "",
+			checksum,
 			favoriteChecksum: item.favorite
 				? calculateChecksum(JSON.stringify({ favorite: !!item.favorite }))
 				: undefined,

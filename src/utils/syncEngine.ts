@@ -6,7 +6,10 @@ import { generateDeviceId } from "@/utils/shared";
 import { emit } from "@tauri-apps/api/event";
 import { cloudDataManager } from "./cloudDataManager";
 import { localDataManager } from "./localDataManager";
-import { syncConflictResolver } from "./syncConflictResolver";
+import {
+	detectRealConflicts,
+	syncConflictResolver,
+} from "./syncConflictResolver";
 
 let syncEventEmitter: (() => void) | null = null;
 
@@ -132,24 +135,19 @@ export class SyncEngine {
 				);
 			}
 
-			// 5. 把本地和云端的数据统一发送给 syncConflictResolver 处理冲突
-			// 只处理真正有冲突的项目（ID相同但内容不同）
-			const conflictContexts = localSyncItems
-				.map((localItem) => {
-					const remoteItem = cloudSyncItems.find(
-						(item) => item.id === localItem.id,
-					);
-					if (remoteItem && this.hasRealConflict(localItem, remoteItem)) {
-						return {
-							localItem,
-							remoteItem,
-							deviceId: this.deviceId,
-							mergePreference: "merge" as const,
-						};
-					}
-					return null;
-				})
-				.filter((item): item is NonNullable<typeof item> => item !== null);
+			// 5. 只处理真正有冲突的项目（ID相同但内容不同）
+			const realConflicts = detectRealConflicts(localSyncItems, cloudSyncItems);
+			const conflictContexts = realConflicts.map(
+				(conflict: {
+					localItem: SyncItem;
+					remoteItem: SyncItem;
+				}) => ({
+					localItem: conflict.localItem,
+					remoteItem: conflict.remoteItem,
+					deviceId: this.deviceId,
+					mergePreference: "merge" as const,
+				}),
+			);
 
 			const conflictResults = syncConflictResolver.resolveMultipleConflicts(
 				conflictContexts,
@@ -224,8 +222,19 @@ export class SyncEngine {
 			itemsToDelete: [] as string[],
 		};
 
-		// 处理本地独有的项目（需要上传到云端）
+		// 获取所有冲突项目的ID，避免重复处理
+		const conflictItemIds = new Set<string>();
+		for (const conflictResult of conflictResults) {
+			conflictItemIds.add(conflictResult.resolvedItem.id);
+		}
+
+		// 处理本地独有的项目（需要上传到云端）- 排除已解决冲突的项目
 		for (const localItem of localSyncItems) {
+			// 跳过已经在冲突处理中的项目
+			if (conflictItemIds.has(localItem.id)) {
+				continue;
+			}
+
 			const cloudExists = cloudSyncItems.find(
 				(item) => item.id === localItem.id,
 			);
@@ -234,8 +243,13 @@ export class SyncEngine {
 			}
 		}
 
-		// 处理云端独有的项目（需要下载到本地）
+		// 处理云端独有的项目（需要下载到本地）- 排除已解决冲突的项目
 		for (const cloudItem of cloudSyncItems) {
+			// 跳过已经在冲突处理中的项目
+			if (conflictItemIds.has(cloudItem.id)) {
+				continue;
+			}
+
 			const localExists = localSyncItems.find(
 				(item) => item.id === cloudItem.id,
 			);
@@ -380,33 +394,6 @@ export class SyncEngine {
 			cloudResult,
 			this.deviceId,
 		);
-	}
-
-	/**
-	 * 检查是否真的有冲突
-	 * @param localItem 本地项目
-	 * @param remoteItem 云端项目
-	 * @returns 是否有真正冲突
-	 */
-	private hasRealConflict(localItem: SyncItem, remoteItem: SyncItem): boolean {
-		// 比较内容
-		if (localItem.value !== remoteItem.value) {
-			return true;
-		}
-
-		// 比较收藏状态
-		if (localItem.favorite !== remoteItem.favorite) {
-			return true;
-		}
-
-		// 比较注释
-		const localNote = localItem.note || "";
-		const remoteNote = remoteItem.note || "";
-		if (localNote !== remoteNote) {
-			return true;
-		}
-
-		return false;
 	}
 
 	getSyncStatus() {

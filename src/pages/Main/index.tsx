@@ -63,13 +63,11 @@ const Main = () => {
 		// 设置同步事件监听器 - 确保在应用启动早期设置
 		setSyncEventListener(() => {
 			// 同步事件触发时刷新界面
-			console.info("=== 同步事件触发，刷新界面 ===");
 			// 使用项目标准的刷新事件
 			try {
 				emit(LISTEN_KEY.REFRESH_CLIPBOARD_LIST);
 			} catch {
 				// 备用方案：直接调用列表刷新
-				console.info("=== 刷新事件发送失败，使用备用方案 ===");
 				getListCache.current.clear();
 				getListDebounced(50);
 			}
@@ -411,6 +409,7 @@ const Main = () => {
 		// 根据自动排序设置决定排序方式
 		// 手动排序时也保持最新在前，只是不重新排列现有条目
 		const orderBy = "ORDER BY createTime DESC";
+
 		const rawData = await selectSQL<HistoryTablePayload[]>(
 			"history",
 			{
