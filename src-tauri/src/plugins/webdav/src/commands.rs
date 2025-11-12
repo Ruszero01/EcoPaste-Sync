@@ -20,7 +20,7 @@ fn get_config_file_path() -> Result<PathBuf> {
     // 确保配置目录存在
     if !config_dir.exists() {
         fs::create_dir_all(&config_dir)
-            .map_err(|e| anyhow::anyhow!("无法创建配置目录: {}", e))?;
+            .map_err(|_e| anyhow::anyhow!("无法创建配置目录"))?;
     }
 
     Ok(config_dir.join(CONFIG_FILE_NAME))

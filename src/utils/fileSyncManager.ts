@@ -55,26 +55,6 @@ export class FileSyncManager {
 	}
 
 	/**
-	 * 从远程路径解析文件信息
-	 */
-	private parseRemotePath(remotePath: string): {
-		itemId: string;
-		timestamp: number;
-		fileName: string;
-	} | null {
-		const fileName = remotePath.split(/[/\\]/).pop() || "";
-		const match = fileName.match(/^([^_]+)_(\d+)_(.+)$/);
-		if (match) {
-			return {
-				itemId: match[1],
-				timestamp: Number.parseInt(match[2], 10),
-				fileName: match[3],
-			};
-		}
-		return null;
-	}
-
-	/**
 	 * 上传文件
 	 * @param itemId 剪切板项ID
 	 * @param localPaths 本地文件路径数组
