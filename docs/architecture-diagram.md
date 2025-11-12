@@ -178,7 +178,7 @@ graph LR
     end
 
     subgraph "sync-data.json 内容"
-        G[CloudItemFingerprint[]<br/>轻量级数据指纹]
+        G["CloudItemFingerprint数组<br/>轻量级数据指纹"]
         H[id, type, checksum<br/>size, timestamp, favorite]
         I[value字段<br/>文件/图片元数据]
 
