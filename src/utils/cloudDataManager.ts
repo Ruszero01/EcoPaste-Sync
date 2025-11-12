@@ -450,45 +450,68 @@ export class CloudDataManager {
 		deviceId: string,
 	): Promise<boolean> {
 		try {
-			// 1. 上传实际的数据到云端
+			// 1. 首先获取当前的完整云端数据
+			const currentCloudData = await this.downloadSyncData();
+			let allItems: any[] = [];
+
+			if (currentCloudData?.items) {
+				// 保留现有数据，排除要删除的项目
+				allItems = currentCloudData.items.filter(
+					(item) => !syncResult.itemsToDelete.includes(item.id),
+				);
+			}
+
+			// 2. 合并新增和更新的项目
 			if (
 				syncResult.itemsToAdd.length > 0 ||
 				syncResult.itemsToUpdate.length > 0
 			) {
-				const allItemsToUpload = [
+				const itemsToMerge = [
 					...syncResult.itemsToAdd,
 					...syncResult.itemsToUpdate,
 				];
 
 				// 处理文件项目（如果有）
-				const processedItems = await this.processUploadItems(allItemsToUpload);
+				const processedItems = await this.processUploadItems(itemsToMerge);
 
-				// 创建同步数据包
+				// 移除已存在的项目（将被更新）
+				allItems = allItems.filter(
+					(existingItem) =>
+						!processedItems.some((newItem) => newItem.id === existingItem.id),
+				);
+
+				// 添加新项目
+				allItems.push(...processedItems);
+			}
+
+			// 3. 创建完整的同步数据包
+			if (allItems.length > 0 || syncResult.itemsToDelete.length > 0) {
 				const syncData = {
 					timestamp: Date.now(),
 					deviceId,
-					dataType: "incremental",
-					items: processedItems,
+					dataType: "full", // 改为full，确保包含完整数据
+					items: allItems,
 					deleted: syncResult.itemsToDelete,
 					compression: "none",
-					checksum: calculateChecksum(JSON.stringify(processedItems)),
+					checksum: calculateChecksum(JSON.stringify(allItems)),
 				};
 
-				// 上传数据
+				// 上传完整数据
 				const uploadSuccess = await this.uploadSyncData(syncData);
 				if (!uploadSuccess) {
 					return false;
 				}
 			}
 
-			// 2. 使用 cloudDataManager 应用同步结果到云端索引
+			// 4. 使用 cloudDataManager 应用同步结果到云端索引
 			const updatedIndex = this.applySyncResultToCloud(
 				currentIndex,
 				syncResult,
 				deviceId,
+				allItems, // 传递完整的数据列表
 			);
 
-			// 3. 上传更新后的索引
+			// 5. 上传更新后的索引
 			return await this.uploadSyncIndex(updatedIndex);
 		} catch (_error) {
 			return false;
@@ -554,6 +577,7 @@ export class CloudDataManager {
 	 * @param currentIndex 当前云端索引
 	 * @param syncResult 同步处理结果
 	 * @param deviceId 当前设备ID
+	 * @param completeData 完整的数据列表（确保索引与数据一致）
 	 * @returns 更新后的云端索引
 	 */
 	applySyncResultToCloud(
@@ -564,31 +588,42 @@ export class CloudDataManager {
 			itemsToDelete: string[];
 		},
 		deviceId: string,
+		completeData?: any[],
 	): CloudSyncIndex {
 		const baseIndex = currentIndex || this.createEmptyIndex(deviceId);
 		const updatedIndex = { ...baseIndex };
 
-		// 1. 从索引中移除需要删除的项目
-		updatedIndex.items = updatedIndex.items.filter(
-			(item) => !syncResult.itemsToDelete.includes(item.id),
-		);
-
-		// 2. 更新现有项目
-		for (const updateItem of syncResult.itemsToUpdate) {
-			const index = updatedIndex.items.findIndex(
-				(item) => item.id === updateItem.id,
+		if (completeData) {
+			// 基于完整数据生成索引，确保一致性
+			updatedIndex.items = completeData.map((item) =>
+				this.convertSyncItemToFingerprint(item),
 			);
-			if (index !== -1) {
-				updatedIndex.items[index] =
-					this.convertSyncItemToFingerprint(updateItem);
-			}
-		}
+		} else {
+			// 备用方案：使用原有逻辑（基于同步结果）
+			// 1. 从索引中移除需要删除的项目
+			updatedIndex.items = updatedIndex.items.filter(
+				(item) => !syncResult.itemsToDelete.includes(item.id),
+			);
 
-		// 3. 添加新项目
-		for (const addItem of syncResult.itemsToAdd) {
-			const exists = updatedIndex.items.find((item) => item.id === addItem.id);
-			if (!exists) {
-				updatedIndex.items.push(this.convertSyncItemToFingerprint(addItem));
+			// 2. 更新现有项目
+			for (const updateItem of syncResult.itemsToUpdate) {
+				const index = updatedIndex.items.findIndex(
+					(item) => item.id === updateItem.id,
+				);
+				if (index !== -1) {
+					updatedIndex.items[index] =
+						this.convertSyncItemToFingerprint(updateItem);
+				}
+			}
+
+			// 3. 添加新项目
+			for (const addItem of syncResult.itemsToAdd) {
+				const exists = updatedIndex.items.find(
+					(item) => item.id === addItem.id,
+				);
+				if (!exists) {
+					updatedIndex.items.push(this.convertSyncItemToFingerprint(addItem));
+				}
 			}
 		}
 
