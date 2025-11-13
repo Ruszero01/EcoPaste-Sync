@@ -427,6 +427,14 @@ const CloudSync = () => {
 		saveLastSyncTimeRef.current = saveLastSyncTime;
 	}, [saveLastSyncTime]);
 
+	// 刷新同步时间的函数
+	const refreshLastSyncTime = useCallback(() => {
+		const savedLastSyncTime = localStorage.getItem("ecopaste-last-sync-time");
+		if (savedLastSyncTime) {
+			setLastSyncTime(Number.parseInt(savedLastSyncTime, 10));
+		}
+	}, []);
+
 	// 初始化时加载配置
 	useEffect(() => {
 		// 监听自动同步完成事件
@@ -442,10 +450,7 @@ const CloudSync = () => {
 		);
 
 		// 加载持久化的同步时间
-		const savedLastSyncTime = localStorage.getItem("ecopaste-last-sync-time");
-		if (savedLastSyncTime) {
-			setLastSyncTime(Number.parseInt(savedLastSyncTime, 10));
-		}
+		refreshLastSyncTime();
 
 		// 加载配置
 		loadServerConfigRef.current();
@@ -455,7 +460,27 @@ const CloudSync = () => {
 		return () => {
 			unlisten.then((fn) => fn());
 		};
-	}, []); // 空依赖数组，只在组件挂载时执行一次
+	}, [refreshLastSyncTime]); // 添加refreshLastSyncTime依赖
+
+	// 监听页面可见性变化，当页面重新可见时刷新同步时间
+	useEffect(() => {
+		const handleVisibilityChange = () => {
+			if (!document.hidden) {
+				refreshLastSyncTime();
+			}
+		};
+
+		// 监听页面可见性变化
+		document.addEventListener("visibilitychange", handleVisibilityChange);
+
+		// 监听窗口获得焦点
+		window.addEventListener("focus", handleVisibilityChange);
+
+		return () => {
+			document.removeEventListener("visibilitychange", handleVisibilityChange);
+			window.removeEventListener("focus", handleVisibilityChange);
+		};
+	}, [refreshLastSyncTime]);
 
 	// 更新同步引擎的同步模式配置（使用防抖优化）
 	useEffect(() => {
