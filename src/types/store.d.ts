@@ -125,4 +125,10 @@ export interface ClipboardStore {
 		unit: number;
 		maxCount: number;
 	};
+
+	// 内部复制操作标志
+	internalCopy: {
+		isCopying: boolean;
+		itemId: string | null;
+	};
 }

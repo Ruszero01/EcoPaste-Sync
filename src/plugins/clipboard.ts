@@ -415,18 +415,23 @@ export const readClipboard = async () => {
 		text: await hasText(),
 	};
 
-	if (has.files) {
+	// 优化剪切板检测逻辑：避免图片内容的重复记录
+	if (has.image && !has.text) {
+		// 当有图片时优先处理图片（避免与单个图片文件的files类型重复）
+		const imagePayload = await readImage();
+		payload = { ...imagePayload, type: "image" };
+	} else if (has.files) {
 		const filesPayload = await readFiles();
 
 		// 智能检测文件类型已在readFiles中处理
-		// 如果是单个图片文件，readFiles会返回image类型的payload
-		// 如果是多个文件或非图片文件，会返回files类型的payload
+		// 但跳过单个图片文件（因为已在上面处理过）
 		if (filesPayload.group === "image") {
+			// 如果是单个图片文件但上面没有检测到image，说明可能有问题，但还是处理
 			payload = { ...filesPayload, type: "image" };
 		} else {
 			payload = { ...filesPayload, type: "files" };
 		}
-	} else if (has.image && !has.text) {
+	} else if (has.image) {
 		const imagePayload = await readImage();
 
 		payload = { ...imagePayload, type: "image" };

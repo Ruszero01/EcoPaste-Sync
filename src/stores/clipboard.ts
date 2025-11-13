@@ -36,4 +36,10 @@ export const clipboardStore = proxy<ClipboardStore>({
 		unit: 1,
 		maxCount: 0,
 	},
+
+	// 添加复制操作标志
+	internalCopy: {
+		isCopying: false,
+		itemId: null,
+	},
 });

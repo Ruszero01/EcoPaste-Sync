@@ -223,7 +223,7 @@ export const insertWithDeduplication = async (
 	if (tableName === "history") {
 		const { type, value, group } = payload;
 
-		// 对于图片和文件类型，基于文件路径进行智能去重
+		// 对于图片和文件类型，基于文件路径进行智能去重（支持跨类型去重）
 		if (type === "image" || type === "files") {
 			if (value !== undefined) {
 				let filePath = value;
@@ -238,22 +238,36 @@ export const insertWithDeduplication = async (
 					}
 				}
 
-				// 删除所有相同文件路径的记录（不管是files还是image类型），但只删除未删除的记录
-				const deleteSQL1 = `DELETE FROM ${tableName} WHERE value = ? AND type = "files" AND deleted = 0;`;
-				const deleteSQL2 = `DELETE FROM ${tableName} WHERE value = ? AND type = "image" AND deleted = 0;`;
+				// 标准化路径格式，确保一致的比较
+				const normalizedPath = filePath.toLowerCase().replace(/\\/g, "/");
+				const normalizedValue = value.toLowerCase().replace(/\\/g, "/");
 
-				await executeSQL(deleteSQL1, [value]);
-				await executeSQL(deleteSQL2, [value]);
+				// 查找所有相同文件路径的记录（使用LIKE匹配以处理路径格式差异）
+				const pathPattern1 = `%${normalizedPath}%`;
+				const pathPattern2 = `%${normalizedValue}%`;
+
+				// 删除所有相同文件路径的记录（不管是files还是image类型），但只删除未删除的记录
+				const deleteSQL1 = `DELETE FROM ${tableName} WHERE LOWER(REPLACE(value, '\\', '/')) LIKE ? AND type = "files" AND deleted = 0;`;
+				const deleteSQL2 = `DELETE FROM ${tableName} WHERE LOWER(REPLACE(value, '\\', '/')) LIKE ? AND type = "image" AND deleted = 0;`;
+
+				await executeSQL(deleteSQL1, [pathPattern1]);
+				await executeSQL(deleteSQL2, [pathPattern1]);
+
+				// 对于files类型，如果原始value与提取的路径不同，也要匹配原始value
+				if (type === "files" && normalizedValue !== normalizedPath) {
+					await executeSQL(deleteSQL1, [pathPattern2]);
+					await executeSQL(deleteSQL2, [pathPattern2]);
+				}
 
 				// 也检查是否有text类型记录包含相同文件路径，但只删除未删除的记录
 				const textRecords = (await executeSQL(
-					`SELECT id FROM ${tableName} WHERE type = "text" AND value LIKE ? AND deleted = 0;`,
-					[`%${filePath}%`],
+					`SELECT id FROM ${tableName} WHERE type = "text" AND LOWER(REPLACE(value, '\\', '/')) LIKE ? AND deleted = 0;`,
+					[`%${normalizedPath}%`],
 				)) as any[];
 
 				if (textRecords.length > 0) {
-					const deleteSQL3 = `DELETE FROM ${tableName} WHERE type = "text" AND value LIKE ? AND deleted = 0;`;
-					await executeSQL(deleteSQL3, [`%${filePath}%`]);
+					const deleteSQL3 = `DELETE FROM ${tableName} WHERE type = "text" AND LOWER(REPLACE(value, '\\', '/')) LIKE ? AND deleted = 0;`;
+					await executeSQL(deleteSQL3, [`%${normalizedPath}%`]);
 				}
 			}
 		} else {

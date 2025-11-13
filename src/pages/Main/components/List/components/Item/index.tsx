@@ -80,10 +80,19 @@ const Item: FC<ItemProps> = (props) => {
 
 	// 复制
 	const copy = async () => {
+		let hasError = false;
+
 		try {
+			// 设置内部复制标志，防止复制操作后触发重复处理
+			clipboardStore.internalCopy = {
+				isCopying: true,
+				itemId: id,
+			};
+
 			// 直接复制，同步阶段已确保所有文件都是本地可用的
 			await writeClipboard(data);
 		} catch (error) {
+			hasError = true;
 			console.error("❌ 复制操作失败:", error);
 
 			// 如果是图片复制失败且文件不存在，提示用户
@@ -101,6 +110,15 @@ const Item: FC<ItemProps> = (props) => {
 			message.error(
 				`复制失败: ${error instanceof Error ? error.message : "未知错误"}`,
 			);
+		} finally {
+			// 清除内部复制标志
+			clipboardStore.internalCopy = {
+				isCopying: false,
+				itemId: null,
+			};
+		}
+
+		if (hasError) {
 			return;
 		}
 

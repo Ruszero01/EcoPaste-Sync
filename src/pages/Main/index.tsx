@@ -89,8 +89,65 @@ const Main = () => {
 			// 检查是否有重复项 - 更严格的重复检测
 			const findItem = find(state.list, { type, value });
 
+			// 对于图片和文件类型，进行跨类型和同类型去重检测
+			let crossTypeDuplicateItem: HistoryTablePayload | undefined;
+			if (type === "image" || type === "files") {
+				// 检查是否存在相同文件路径的记录（包括不同类型和相同类型）
+				crossTypeDuplicateItem = state.list.find((item) => {
+					if (item.type === "image" || item.type === "files") {
+						let itemFilePath = item.value;
+						let currentFilePath = value;
+
+						// 如果是files类型，尝试从JSON中提取第一个文件路径
+						if (item.type === "files" && item.value?.startsWith("[")) {
+							try {
+								const filePaths = JSON.parse(item.value);
+								itemFilePath = filePaths[0];
+							} catch {
+								// 解析失败，使用原值
+							}
+						}
+
+						// 如果当前是files类型，尝试从JSON中提取第一个文件路径
+						if (type === "files" && value?.startsWith("[")) {
+							try {
+								const filePaths = JSON.parse(value);
+								currentFilePath = filePaths[0];
+							} catch {
+								// 解析失败，使用原值
+							}
+						}
+
+						// 标准化路径格式进行比较（处理大小写和路径分隔符差异）
+						const normalizedItemPath = itemFilePath
+							.toLowerCase()
+							.replace(/\\/g, "/");
+						const normalizedCurrentPath = currentFilePath
+							.toLowerCase()
+							.replace(/\\/g, "/");
+
+						return normalizedItemPath === normalizedCurrentPath;
+					}
+					return false;
+				});
+			}
+
 			// 检查是否需要去重（重复项）
-			const isDuplicate = !!findItem;
+			const isDuplicate = !!findItem || !!crossTypeDuplicateItem;
+			const existingDuplicateItem = findItem || crossTypeDuplicateItem;
+
+			// 检查是否是应用内部复制操作触发的剪切板更新
+			const isInternalCopy = clipboardStore.internalCopy.isCopying;
+			const internalCopyItemId = clipboardStore.internalCopy.itemId;
+
+			// 如果是内部复制操作且是重复项目，跳过处理（避免重复移动到顶部）
+			if (
+				isInternalCopy &&
+				isDuplicate &&
+				existingDuplicateItem?.id === internalCopyItemId
+			) {
+				return; // 跳过内部复制操作触发的重复处理
+			}
 
 			// 额外检查：防止短时间内处理相同内容
 			const now = Date.now();
@@ -114,9 +171,11 @@ const Main = () => {
 
 			if (isDuplicate && !currentAutoSort) {
 				// 自动排序关闭且发现重复项，不更新时间戳，只激活
-				const latestItem = findItem;
+				const latestItem = existingDuplicateItem;
 
-				state.activeId = latestItem.id;
+				if (latestItem) {
+					state.activeId = latestItem.id;
+				}
 
 				// 手动排序模式下不更新数据库时间戳，保持原有位置
 			} else {
@@ -129,10 +188,10 @@ const Main = () => {
 						data = {
 							...payload,
 							createTime,
-							id: findItem.id, // 使用现有ID
-							favorite: findItem.favorite || false, // 保持现有的收藏状态
-							note: findItem.note || "", // 保持现有的备注信息
-							subtype: findItem.subtype || undefined, // 保持现有的子类型信息
+							id: existingDuplicateItem!.id, // 使用现有ID
+							favorite: existingDuplicateItem!.favorite || false, // 保持现有的收藏状态
+							note: existingDuplicateItem!.note || "", // 保持现有的备注信息
+							subtype: existingDuplicateItem!.subtype || undefined, // 保持现有的子类型信息
 						};
 					} else {
 						// 新内容，生成新ID
@@ -180,14 +239,16 @@ const Main = () => {
 					) {
 						if (isDuplicate && !currentAutoSort) {
 							// 重复内容且自动排序关闭：保持原位置，只更新时间戳
-							const originalIndex = findIndex(state.list, { id: findItem.id });
+							const originalIndex = findIndex(state.list, {
+								id: existingDuplicateItem!.id,
+							});
 							if (originalIndex !== -1) {
 								// 直接在原位置更新数据
 								state.list[originalIndex] = {
 									...state.list[originalIndex],
 									createTime,
 								};
-								state.activeId = findItem.id;
+								state.activeId = existingDuplicateItem!.id;
 							}
 							// 不需要添加新项目，因为只是更新现有项目
 						} else {
@@ -195,7 +256,7 @@ const Main = () => {
 							// 对于重复内容，需要先移除原项目再添加到顶部
 							if (isDuplicate) {
 								const originalIndex = findIndex(state.list, {
-									id: findItem.id,
+									id: existingDuplicateItem!.id,
 								});
 								if (originalIndex !== -1) {
 									state.list.splice(originalIndex, 1);
@@ -217,10 +278,13 @@ const Main = () => {
 					// 数据库去重插入失败
 
 					// 如果是重复内容且去重失败，尝试简单的更新操作
-					if (isDuplicate) {
+					if (isDuplicate && existingDuplicateItem) {
 						try {
 							// 对于重复内容，只更新数据库时间戳，不改变UI位置
-							await updateSQL("history", { id: findItem.id, createTime });
+							await updateSQL("history", {
+								id: existingDuplicateItem.id,
+								createTime,
+							});
 						} catch (_updateError) {
 							// 更新时间戳也失败
 						}
@@ -334,7 +398,21 @@ const Main = () => {
 
 			if (!data) return;
 
-			await pasteClipboard(data);
+			// 设置内部复制标志，防止快速粘贴操作后触发重复处理
+			clipboardStore.internalCopy = {
+				isCopying: true,
+				itemId: data.id,
+			};
+
+			try {
+				await pasteClipboard(data);
+			} finally {
+				// 清除内部复制标志
+				clipboardStore.internalCopy = {
+					isCopying: false,
+					itemId: null,
+				};
+			}
 
 			// 快速粘贴已有条目后，也触发移动到顶部并更新时间
 			const itemIndex = findIndex(state.list, { id: data.id });
