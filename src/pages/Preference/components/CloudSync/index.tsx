@@ -46,32 +46,6 @@ import { loadSyncModeConfig, saveSyncModeConfig } from "./syncModeConfig";
 
 const { Text } = Typography;
 
-// 格式化同步时间显示
-const formatSyncTime = (timestamp: number): string => {
-	if (!timestamp || timestamp === 0) return "";
-
-	const date = new Date(timestamp);
-	const now = new Date();
-	const diffMs = now.getTime() - date.getTime();
-	const diffMins = Math.floor(diffMs / (1000 * 60));
-	const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-	const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-	if (diffMins < 1) {
-		return "刚刚";
-	}
-	if (diffMins < 60) {
-		return `${diffMins}分钟前`;
-	}
-	if (diffHours < 24) {
-		return `${diffHours}小时前`;
-	}
-	if (diffDays < 7) {
-		return `${diffDays}天前`;
-	}
-	return date.toLocaleDateString(); // 显示具体日期
-};
-
 const CloudSync = () => {
 	// 安全获取消息 API 实例
 	let appMessage: any;
@@ -104,6 +78,7 @@ const CloudSync = () => {
 	>("idle");
 	const [isSyncing, setIsSyncing] = useState(false);
 	const [lastSyncTime, setLastSyncTime] = useState<number>(0);
+	const [renderKey, setRenderKey] = useState(0); // 用于强制重新渲染
 	const [autoSyncEnabled, setAutoSyncEnabled] = useState(false);
 	const [syncInterval, setSyncInterval] = useState<SyncInterval>(1); // 默认1小时
 	const [webdavConfig, setWebdavConfig] = useState<WebDAVConfig>({
@@ -466,7 +441,15 @@ const CloudSync = () => {
 	useEffect(() => {
 		const handleVisibilityChange = () => {
 			if (!document.hidden) {
-				refreshLastSyncTime();
+				// 重新读取同步时间
+				const savedLastSyncTime = localStorage.getItem(
+					"ecopaste-last-sync-time",
+				);
+				if (savedLastSyncTime) {
+					setLastSyncTime(Number.parseInt(savedLastSyncTime, 10));
+				}
+				// 强制重新渲染以更新时间显示
+				setRenderKey((prev) => prev + 1);
 			}
 		};
 
@@ -480,7 +463,7 @@ const CloudSync = () => {
 			document.removeEventListener("visibilitychange", handleVisibilityChange);
 			window.removeEventListener("focus", handleVisibilityChange);
 		};
-	}, [refreshLastSyncTime]);
+	}, []);
 
 	// 更新同步引擎的同步模式配置（使用防抖优化）
 	useEffect(() => {
@@ -665,7 +648,7 @@ const CloudSync = () => {
 					enabled: true,
 					intervalHours: syncInterval,
 				});
-				appMessage.success(`自动同步已启用，每${syncInterval}小时同步一次`);
+				appMessage.success("自动同步已启用");
 			} else {
 				autoSync.setEnabled(false);
 				appMessage.info("自动同步已禁用");
@@ -684,7 +667,7 @@ const CloudSync = () => {
 		if (autoSyncEnabled) {
 			try {
 				autoSync.setIntervalHours(hours);
-				appMessage.success(`同步间隔已更新为每${hours}小时一次`);
+				appMessage.success("同步间隔已更新");
 			} catch (error) {
 				console.error("更新同步间隔失败", {
 					error: error instanceof Error ? error.message : String(error),
@@ -933,8 +916,35 @@ const CloudSync = () => {
 								<ScheduleOutlined
 									style={{ fontSize: "14px", color: "#52c41a" }}
 								/>
-								<Text type="secondary" style={{ fontSize: "12px" }}>
-									上次同步：{formatSyncTime(lastSyncTime)}
+								<Text
+									type="secondary"
+									style={{ fontSize: "12px" }}
+									key={renderKey}
+								>
+									上次同步：{(() => {
+										if (!lastSyncTime || lastSyncTime === 0) return "";
+
+										const date = new Date(lastSyncTime);
+										const now = new Date();
+										const diffMs = now.getTime() - date.getTime();
+										const diffMins = Math.floor(diffMs / (1000 * 60));
+										const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+										const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+										if (diffMins < 1) {
+											return "刚刚";
+										}
+										if (diffMins < 60) {
+											return `${diffMins}分钟前`;
+										}
+										if (diffHours < 24) {
+											return `${diffHours}小时前`;
+										}
+										if (diffDays < 7) {
+											return `${diffDays}天前`;
+										}
+										return date.toLocaleDateString();
+									})()}
 								</Text>
 							</Flex>
 						}
