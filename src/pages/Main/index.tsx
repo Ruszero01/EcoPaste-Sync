@@ -192,6 +192,8 @@ const Main = () => {
 							favorite: existingDuplicateItem!.favorite || false, // 保持现有的收藏状态
 							note: existingDuplicateItem!.note || "", // 保持现有的备注信息
 							subtype: existingDuplicateItem!.subtype || undefined, // 保持现有的子类型信息
+							syncStatus: existingDuplicateItem!.syncStatus, // 保持原有的同步状态
+							isCloudData: existingDuplicateItem!.isCloudData, // 保持原有的云端数据标记
 						};
 					} else {
 						// 新内容，生成新ID
@@ -214,14 +216,15 @@ const Main = () => {
 							error.message.includes("UNIQUE constraint failed")
 						) {
 							// 检测到ID冲突，尝试更新现有记录
-							// 使用更新而不是插入
+							// 使用更新而不是插入，保持原有的同步状态
 							await updateSQL("history", {
 								id: data.id,
 								createTime: data.createTime,
 								note: data.note,
 								subtype: data.subtype,
 								favorite: data.favorite,
-								syncStatus: "none", // 本地更新的项目重置为未同步状态
+								syncStatus: data.syncStatus, // 保持原有的同步状态
+								isCloudData: data.isCloudData, // 保持原有的云端数据标记
 							});
 						} else {
 							throw error; // 重新抛出其他错误
