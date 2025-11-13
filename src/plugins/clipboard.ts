@@ -148,6 +148,25 @@ export const readFiles = async (): Promise<ClipboardPayload> => {
 	if (files.length === 1 && (await isImageFile(files[0]))) {
 		const { size, name } = await metadata(files[0]);
 
+		// 获取图片尺寸信息
+		let width = 0;
+		let height = 0;
+		try {
+			// 使用 Tauri 命令获取图片尺寸
+			const dimensions = await invoke<{ width: number; height: number }>(
+				"plugin:eco-clipboard|get_image_dimensions",
+				{
+					path: files[0],
+				},
+			);
+
+			width = dimensions.width;
+			height = dimensions.height;
+		} catch (error) {
+			console.warn("Failed to get image dimensions for file:", files[0], error);
+			// 如果无法获取尺寸，保持为 0
+		}
+
 		// 为截图文件生成更友好的标题
 		let search = name;
 		if (files[0].includes("\\Temp\\") || files[0].includes("\\temp\\")) {
@@ -175,13 +194,15 @@ export const readFiles = async (): Promise<ClipboardPayload> => {
 			}
 		}
 
-		// 返回图片类型的payload
+		// 返回图片类型的payload，包含尺寸信息
 		return {
 			count: size,
 			search,
 			value: files[0],
 			group: "image",
 			subtype: "image",
+			width,
+			height,
 		};
 	}
 
@@ -209,9 +230,11 @@ export const readFiles = async (): Promise<ClipboardPayload> => {
  * 读取剪贴板图片
  */
 export const readImage = async (): Promise<ClipboardPayload> => {
-	const { image, ...rest } = await invoke<ReadImage>(COMMAND.READ_IMAGE, {
+	const imageData = await invoke<ReadImage>(COMMAND.READ_IMAGE, {
 		path: getSaveImagePath(),
 	});
+
+	const { image, width, height, ...rest } = imageData;
 
 	const { size: count } = await metadata(image);
 
@@ -244,6 +267,8 @@ export const readImage = async (): Promise<ClipboardPayload> => {
 		value,
 		search,
 		group: "image",
+		width,
+		height,
 	};
 };
 

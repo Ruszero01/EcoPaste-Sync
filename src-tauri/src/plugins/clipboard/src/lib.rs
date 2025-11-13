@@ -31,7 +31,8 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::write_image,
             commands::write_html,
             commands::write_rtf,
-            commands::write_text
+            commands::write_text,
+            commands::get_image_dimensions
         ])
         .build()
 }

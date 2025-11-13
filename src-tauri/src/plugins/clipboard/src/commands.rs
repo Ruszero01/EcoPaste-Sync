@@ -299,3 +299,18 @@ pub async fn write_text(manager: State<'_, ClipboardManager>, value: String) -> 
         .set_text(value)
         .map_err(|err| err.to_string())
 }
+
+#[command]
+pub async fn get_image_dimensions(path: String) -> Result<ReadImage, String> {
+    // 从文件路径创建 RustImageData
+    let image = RustImageData::from_path(&path).map_err(|err| err.to_string())?;
+
+    // 获取图片尺寸
+    let (width, height) = image.get_size();
+
+    Ok(ReadImage {
+        width,
+        height,
+        image: path,
+    })
+}

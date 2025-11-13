@@ -520,6 +520,9 @@ export class LocalDataManager {
 			deviceId: item.deviceId || "",
 			group: item.group,
 			count: item.count || 0,
+			width: item.width || 0,
+			height: item.height || 0,
+			subtype: item.subtype,
 		};
 	}
 

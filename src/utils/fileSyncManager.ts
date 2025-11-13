@@ -41,17 +41,42 @@ export class FileSyncManager {
 
 	/**
 	 * 构建远程文件路径
+	 * 使用固定的时间戳避免重复上传同一文件
 	 */
-	private buildRemotePath(
-		itemId: string,
-		fileName: string,
-		timestamp: number,
-	): string {
+	private buildRemotePath(itemId: string, fileName: string): string {
 		const basePath = this.webdavConfig?.path || "";
-		const remoteFileName = `${itemId}_${timestamp}_${fileName}`;
+		// 使用 itemId 的创建时间作为固定时间戳，避免每次同步都上传新文件
+		// 这里使用 itemId 作为固定标识，确保同一个文件总是使用相同的路径
+		const fixedTimestamp = this.extractFixedTimestampFromItemId(itemId);
+		const remoteFileName = `${itemId}_${fixedTimestamp}_${fileName}`;
 		return basePath && basePath !== "/"
 			? `${basePath.replace(/\/$/, "")}/files/${remoteFileName}`
 			: `files/${remoteFileName}`;
+	}
+
+	/**
+	 * 从 itemId 中提取固定时间戳
+	 * itemId 通常包含时间信息，我们可以基于此生成固定的时间戳
+	 */
+	private extractFixedTimestampFromItemId(itemId: string): number {
+		// 方法1：如果 itemId 本身包含时间戳信息，提取它
+		const timestampMatch = itemId.match(/(\d{13})/); // 匹配13位时间戳
+		if (timestampMatch) {
+			return Number.parseInt(timestampMatch[1], 10);
+		}
+
+		// 方法2：使用 itemId 的哈希值作为固定标识
+		// 这样确保相同的 itemId 总是生成相同的文件路径
+		let hash = 0;
+		for (let i = 0; i < itemId.length; i++) {
+			const char = itemId.charCodeAt(i);
+			hash = (hash << 5) - hash + char;
+			hash = hash & hash; // 转换为32位整数
+		}
+
+		// 使用一个基准时间戳 + 哈希值确保唯一性
+		const baseTimestamp = 1600000000000; // 2020年基准时间
+		return baseTimestamp + Math.abs(hash);
 	}
 
 	/**
@@ -82,7 +107,21 @@ export class FileSyncManager {
 				}
 
 				const fileName = localPath.split(/[/\\]/).pop() || "unknown";
-				const remotePath = this.buildRemotePath(itemId, fileName, timestamp);
+				const remotePath = this.buildRemotePath(itemId, fileName);
+
+				// 检查远程文件是否已存在，避免重复上传
+				const needsUpload = await this.needsUpload(localPath, remotePath);
+				if (!needsUpload) {
+					// 文件已存在且内容相同，直接创建元数据
+					metadata.push({
+						fileName,
+						originalPath: localPath,
+						remotePath,
+						size,
+						timestamp,
+					});
+					continue;
+				}
 
 				// 上传文件
 				const success = await uploadFile(
@@ -107,6 +146,30 @@ export class FileSyncManager {
 		}
 
 		return metadata;
+	}
+
+	/**
+	 * 检查文件是否需要上传
+	 * 通过比较本地文件和远程文件的大小或修改时间来判断
+	 */
+	private async needsUpload(
+		_localPath: string,
+		remotePath: string,
+	): Promise<boolean> {
+		try {
+			// 这里可以实现更复杂的去重逻辑，比如：
+			// 1. 检查远程文件是否存在
+			// 2. 比较文件大小
+			// 3. 比较文件哈希值
+
+			// 暂时简单实现：总是上传（在实际应用中可以添加去重逻辑）
+			// TODO: 实现文件存在性和内容比较逻辑
+			return true;
+		} catch (error) {
+			console.warn(`检查文件是否需要上传失败: ${remotePath}`, error);
+			// 出错时默认上传
+			return true;
+		}
 	}
 
 	/**
@@ -161,7 +224,9 @@ export class FileSyncManager {
 
 		// 4. 原始路径无效，下载到缓存目录
 		const cacheDir = await this.getCacheDir();
-		const fileName = originalPath.split(/[/\\]/).pop() || "unknown";
+		// 使用元数据中的原始文件名，而不是从 originalPath 提取
+		const fileName =
+			metadata.fileName || originalPath.split(/[/\\]/).pop() || "unknown";
 		const cacheFileName = `${timestamp}_${fileName}`;
 		const cachePath = await join(cacheDir, cacheFileName);
 
@@ -460,8 +525,25 @@ export class FileSyncManager {
 				const downloadedPaths = await this.downloadFiles(metadata);
 
 				if (downloadedPaths.length > 0) {
-					// 更新 item 的值为本地文件路径数组，确保使用实际下载后的路径
-					item.value = JSON.stringify(downloadedPaths);
+					// 为了保证跨设备文件名一致性，使用原始文件名而不是缓存路径
+					// 从元数据中提取原始文件名，构建统一的文件路径格式
+					const consistentPaths = downloadedPaths.map((path, index) => {
+						const meta = metadata[index];
+						if (meta?.fileName) {
+							// 如果下载到缓存目录，返回统一的文件名格式
+							const isCachePath = path.includes("cache");
+							if (isCachePath) {
+								// 返回原始文件名，确保跨设备一致性
+								return meta.fileName;
+							}
+							// 如果不是缓存路径，返回实际路径
+							return path;
+						}
+						return path;
+					});
+
+					// 更新 item 的值为保持一致性的文件路径/名称数组
+					item.value = JSON.stringify(consistentPaths);
 				} else {
 					item.value = JSON.stringify([]);
 				}
@@ -474,16 +556,77 @@ export class FileSyncManager {
 
 	/**
 	 * 删除远程文件
+	 * 根据项目ID删除对应的云端文件
 	 */
 	async deleteRemoteFiles(itemIds: string[]): Promise<boolean> {
 		if (!this.webdavConfig || itemIds.length === 0) {
 			return true;
 		}
 
-		// TODO: 实现文件删除逻辑
-		// 需要从云端文件列表中找到对应项目并删除
-		console.warn("删除远程文件功能待实现:", itemIds);
-		return true;
+		const { deleteFile } = await import("@/plugins/webdav");
+		const deletePromises: Promise<boolean>[] = [];
+
+		try {
+			// 首先下载云端索引以获取文件元数据
+			const { cloudDataManager } = await import("./cloudDataManager");
+			const remoteIndex = await cloudDataManager.downloadSyncIndex();
+
+			if (remoteIndex?.items) {
+				for (const itemId of itemIds) {
+					// 在云端数据中查找对应的文件项目
+					const cloudItem = remoteIndex.items.find(
+						(item: any) => item.id === itemId,
+					);
+
+					if (
+						cloudItem &&
+						(cloudItem.type === "files" || cloudItem.type === "image")
+					) {
+						try {
+							// 提取文件元数据
+							const metadata = this.extractFileMetadata(cloudItem as any);
+
+							for (const meta of metadata) {
+								// 构建远程文件路径
+								const remotePath = meta.remotePath;
+								if (remotePath) {
+									deletePromises.push(
+										deleteFile(this.webdavConfig!, remotePath).catch(
+											(error) => {
+												console.warn(`删除远程文件失败: ${remotePath}`, error);
+												return false;
+											},
+										),
+									);
+								}
+							}
+						} catch (error) {
+							console.warn(`处理项目 ${itemId} 的文件元数据失败:`, error);
+						}
+					}
+				}
+			}
+
+			// 等待所有删除操作完成
+			const deleteResults = await Promise.allSettled(deletePromises);
+
+			// 统计删除结果
+			const successCount = deleteResults.filter(
+				(result) => result.status === "fulfilled" && result.value === true,
+			).length;
+
+			const totalFiles = deletePromises.length;
+
+			// 记录删除结果
+			if (totalFiles > 0) {
+				console.info(`删除远程文件: ${successCount}/${totalFiles} 成功`);
+			}
+
+			return successCount === totalFiles;
+		} catch (error) {
+			console.error("删除远程文件时发生错误:", error);
+			return false;
+		}
 	}
 }
 

@@ -116,20 +116,25 @@ export class SyncEngine {
 		};
 
 		try {
-			// 1. 获取原始本地数据
+			// 1. 获取原始本地数据（包含已删除的项目）
 			const localRawData = await getHistoryData(false);
 
-			// 2. localDataManager 根据同步模式和文件限制筛选本地数据
+			// 2. 检测本地已删除的项目（软删除标记）
+			const localDeletedItems = localRawData.filter(
+				(item) => item.deleted === true || (item.deleted as any) === 1,
+			);
+
+			// 3. localDataManager 根据同步模式和文件限制筛选本地数据（不包括已删除的）
 			const filteredLocalData = localDataManager.filterLocalDataForSync(
 				localRawData,
 				this.syncModeConfig,
 				{ includeDeleted: false },
 			);
 
-			// 3. cloudDataManager 检查云端是否有数据
+			// 4. cloudDataManager 检查云端是否有数据
 			const remoteIndex = await cloudDataManager.downloadSyncIndex();
 
-			// 4. cloudDataManager 筛选出云端符合条件的数据
+			// 5. cloudDataManager 筛选出云端符合条件的数据（不包括已删除的）
 			let cloudSyncItems: SyncItem[] = [];
 			if (remoteIndex) {
 				cloudSyncItems = cloudDataManager.filterCloudDataForSync(
@@ -139,18 +144,37 @@ export class SyncEngine {
 				);
 			}
 
-			// 5. 检测收藏状态变更（处理收藏模式下的状态变更同步）
+			// 6. 处理本地删除的项目：从云端删除对应记录和文件
+			if (localDeletedItems.length > 0) {
+				const deletedItemIds = localDeletedItems.map((item) => item.id);
+
+				// 从云端删除记录
+				const cloudDeleteResult =
+					await cloudDataManager.deleteCloudItems(deletedItemIds);
+
+				// 删除云端文件
+				await fileSyncManager.deleteRemoteFiles(deletedItemIds);
+
+				if (cloudDeleteResult.success) {
+					result.uploaded += deletedItemIds.length; // 统计删除操作
+				}
+
+				// 从本地数据库中彻底删除已标记删除的项目（只删除数据库记录，不影响原始文件）
+				await this.cleanupDeletedItems(deletedItemIds);
+			}
+
+			// 7. 检测收藏状态变更（处理收藏模式下的状态变更同步）
 			const favoriteStatusChanges = await this.detectFavoriteStatusChanges(
 				localRawData,
 				filteredLocalData,
 				remoteIndex,
 			);
 
-			// 6. 将收藏状态变更的项目加入同步列表
+			// 8. 将收藏状态变更的项目加入同步列表
 			filteredLocalData.push(...favoriteStatusChanges.localItems);
 			cloudSyncItems.push(...favoriteStatusChanges.cloudItems);
 
-			// 7. 只处理真正有冲突的项目（ID相同但内容不同）
+			// 9. 只处理真正有冲突的项目（ID相同但内容不同）
 			const realConflicts = detectRealConflicts(
 				filteredLocalData,
 				cloudSyncItems,
@@ -173,25 +197,25 @@ export class SyncEngine {
 				"merge",
 			);
 
-			// 8. 处理同步结果
+			// 10. 处理同步结果
 			const { localResult, cloudResult } = this.processSyncResults(
 				filteredLocalData,
 				cloudSyncItems,
 				conflictResults,
 			);
 
-			// 9. 处理需要上传的文件包
+			// 11. 处理需要上传的文件包
 			const fileUploadResult = await fileSyncManager.handleFilePackageUploads(
 				localRawData,
 				cloudResult,
 			);
 
-			// 10. 处理需要下载的文件包
+			// 12. 处理需要下载的文件包
 			await fileSyncManager.handleFilePackageDownloads(
 				localResult.itemsToAdd.concat(localResult.itemsToUpdate),
 			);
 
-			// 11. localDataManager 接收处理后的本地数据，对本地数据库进行操作
+			// 13. localDataManager 接收处理后的本地数据，对本地数据库进行操作
 			if (
 				localResult.itemsToAdd.length > 0 ||
 				localResult.itemsToUpdate.length > 0
@@ -201,7 +225,7 @@ export class SyncEngine {
 					localResult.itemsToAdd.length + localResult.itemsToUpdate.length;
 			}
 
-			// 12. cloudDataManager 接收处理后的云端数据，对云端数据进行操作
+			// 14. cloudDataManager 接收处理后的云端数据，对云端数据进行操作
 			if (
 				cloudResult.itemsToAdd.length > 0 ||
 				cloudResult.itemsToUpdate.length > 0
@@ -544,6 +568,34 @@ export class SyncEngine {
 			return true;
 		} catch {
 			return false;
+		}
+	}
+
+	/**
+	 * 清理本地数据库中已删除的项目
+	 * 只删除数据库记录，不影响用户的原始文件
+	 */
+	private async cleanupDeletedItems(deletedItemIds: string[]): Promise<void> {
+		if (deletedItemIds.length === 0) {
+			return;
+		}
+
+		try {
+			const { executeSQL } = await import("@/database");
+
+			// 批量删除数据库记录（彻底删除，不是软删除）
+			const deletePromises = deletedItemIds.map(async (itemId) => {
+				try {
+					await executeSQL("DELETE FROM history WHERE id = ?;", [itemId]);
+				} catch (error) {
+					console.error(`删除数据库记录失败 (${itemId}):`, error);
+				}
+			});
+
+			await Promise.allSettled(deletePromises);
+			console.info(`已清理 ${deletedItemIds.length} 个本地删除项目`);
+		} catch (error) {
+			console.error("清理本地删除项目失败:", error);
 		}
 	}
 }
