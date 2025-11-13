@@ -48,7 +48,7 @@ export class ConfigSync {
 			if (uploadResult.success) {
 				return {
 					success: true,
-					message: "配置已上传到云端（包括所有开关和快捷键设置）",
+					message: "配置已上传到云端",
 				};
 			}
 
