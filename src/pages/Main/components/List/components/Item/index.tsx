@@ -263,7 +263,12 @@ const Item: FC<ItemProps> = (props) => {
 		}
 
 		try {
-			await deleteSQL("history", data);
+			// 统一使用软删除策略，让同步系统处理云端删除
+			await updateSQL("history", {
+				id,
+				deleted: 1, // 标记为已删除
+				syncStatus: "pending", // 标记为需要同步处理
+			} as any);
 
 			// 使用强制刷新函数，确保缓存和lastQueryParams都被正确重置
 			if (forceRefreshList) {
@@ -274,7 +279,6 @@ const Item: FC<ItemProps> = (props) => {
 			remove(state.list, { id });
 		} catch (error) {
 			console.error(`❌ 删除条目失败: ${id}`, error);
-			message.error("删除失败，请重试");
 		}
 	};
 

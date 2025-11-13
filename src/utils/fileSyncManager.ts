@@ -441,11 +441,21 @@ export class FileSyncManager {
 			return result;
 		}
 
-		// 获取需要处理文件的项目
+		// 获取需要处理文件的项目（排除已删除的项目）
 		const fileItems = [
 			...cloudResult.itemsToAdd,
 			...cloudResult.itemsToUpdate,
-		].filter((item) => item.type === "image" || item.type === "files");
+		].filter(
+			(item) =>
+				// 排除已删除的项目
+				!item.deleted &&
+				// 只处理文件类型
+				(item.type === "image" || item.type === "files"),
+		);
+
+		console.info(
+			`文件包上传筛选: 原始 ${[...cloudResult.itemsToAdd, ...cloudResult.itemsToUpdate].length} 个项目，过滤后 ${fileItems.length} 个文件项目`,
+		);
 
 		// 去重：基于项目ID，避免重复处理同一个项目
 		const uniqueItems = fileItems.filter(
@@ -578,6 +588,13 @@ export class FileSyncManager {
 						(item: any) => item.id === itemId,
 					);
 
+					if (!cloudItem) {
+						console.warn(`项目 ${itemId} 在云端索引中未找到`);
+						continue;
+					}
+
+					console.info(`检查项目 ${itemId}，类型: ${cloudItem.type}`);
+
 					if (
 						cloudItem &&
 						(cloudItem.type === "files" || cloudItem.type === "image")
@@ -585,11 +602,15 @@ export class FileSyncManager {
 						try {
 							// 提取文件元数据
 							const metadata = this.extractFileMetadata(cloudItem as any);
+							console.info(
+								`项目 ${itemId} 找到 ${metadata.length} 个文件元数据`,
+							);
 
 							for (const meta of metadata) {
 								// 构建远程文件路径
 								const remotePath = meta.remotePath;
 								if (remotePath) {
+									console.info(`准备删除远程文件: ${remotePath}`);
 									deletePromises.push(
 										deleteFile(this.webdavConfig!, remotePath).catch(
 											(error) => {
@@ -598,13 +619,21 @@ export class FileSyncManager {
 											},
 										),
 									);
+								} else {
+									console.warn(`项目 ${itemId} 的文件路径为空`);
 								}
 							}
 						} catch (error) {
 							console.warn(`处理项目 ${itemId} 的文件元数据失败:`, error);
 						}
+					} else {
+						console.info(
+							`项目 ${itemId} 不是文件类型 (${cloudItem.type})，跳过文件删除`,
+						);
 					}
 				}
+			} else {
+				console.warn("云端索引为空，无法查找文件元数据");
 			}
 
 			// 等待所有删除操作完成
@@ -620,6 +649,8 @@ export class FileSyncManager {
 			// 记录删除结果
 			if (totalFiles > 0) {
 				console.info(`删除远程文件: ${successCount}/${totalFiles} 成功`);
+			} else {
+				console.info("没有需要删除的远程文件（可能不是文件类型或已被删除）");
 			}
 
 			return successCount === totalFiles;

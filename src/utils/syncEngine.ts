@@ -117,7 +117,7 @@ export class SyncEngine {
 
 		try {
 			// 1. 获取原始本地数据（包含已删除的项目）
-			const localRawData = await getHistoryData(false);
+			const localRawData = await getHistoryData(true);
 
 			// 2. 检测本地已删除的项目（软删除标记）
 			const localDeletedItems = localRawData.filter(
@@ -148,19 +148,33 @@ export class SyncEngine {
 			if (localDeletedItems.length > 0) {
 				const deletedItemIds = localDeletedItems.map((item) => item.id);
 
-				// 从云端删除记录
+				// 先删除云端文件（在索引更新之前执行）
+				console.info(`准备删除云端文件，项目: ${deletedItemIds.join(", ")}`);
+				await fileSyncManager.deleteRemoteFiles(deletedItemIds);
+
+				// 再从云端删除记录和索引
 				const cloudDeleteResult =
 					await cloudDataManager.deleteCloudItems(deletedItemIds);
 
-				// 删除云端文件
-				await fileSyncManager.deleteRemoteFiles(deletedItemIds);
+				// 检查删除是否真正成功（success是数字，failed也必须为0）
+				const deleteSuccess =
+					cloudDeleteResult.success > 0 && cloudDeleteResult.failed === 0;
 
-				if (cloudDeleteResult.success) {
-					result.uploaded += deletedItemIds.length; // 统计删除操作
+				if (deleteSuccess) {
+					result.uploaded += cloudDeleteResult.success; // 统计实际删除成功的数量
+					console.info(`成功从云端删除 ${cloudDeleteResult.success} 个项目`);
+
+					// 只有云端删除成功时，才清理本地删除标记
+					await this.cleanupDeletedItems(deletedItemIds);
+				} else {
+					// 删除失败时记录详细错误信息
+					const errorMsg = `云端删除失败: 成功 ${cloudDeleteResult.success} 个，失败 ${cloudDeleteResult.failed} 个。错误: ${cloudDeleteResult.errors.join(", ")}`;
+					result.errors.push(errorMsg);
+					console.error(errorMsg);
+
+					// 不要清理本地删除标记，保留删除状态以便下次同步重试
+					// 这样可以确保下次同步时会再次尝试删除云端数据
 				}
-
-				// 从本地数据库中彻底删除已标记删除的项目（只删除数据库记录，不影响原始文件）
-				await this.cleanupDeletedItems(deletedItemIds);
 			}
 
 			// 7. 检测收藏状态变更（处理收藏模式下的状态变更同步）
@@ -210,10 +224,29 @@ export class SyncEngine {
 				cloudResult,
 			);
 
-			// 12. 处理需要下载的文件包
-			await fileSyncManager.handleFilePackageDownloads(
-				localResult.itemsToAdd.concat(localResult.itemsToUpdate),
+			// 12. 处理需要下载的文件包（排除已删除项目和文件包类型，避免重复下载）
+			const itemsToDownload = [
+				...localResult.itemsToAdd,
+				...localResult.itemsToUpdate,
+			].filter(
+				(item) =>
+					// 排除已删除的项目
+					!item.deleted &&
+					// 排除文件包类型的项目，因为文件包的数据应该已经在处理上传时处理过了
+					item._syncType !== "package_files" &&
+					// 排除文件类型，避免与文件包处理冲突
+					item.type !== "files",
 			);
+
+			if (itemsToDownload.length > 0) {
+				console.info(
+					`准备下载 ${itemsToDownload.length} 个文件包项目:`,
+					itemsToDownload.map((item) => ({ id: item.id, type: item.type })),
+				);
+				await fileSyncManager.handleFilePackageDownloads(itemsToDownload);
+			} else {
+				console.info("没有需要下载的文件包项目");
+			}
 
 			// 13. localDataManager 接收处理后的本地数据，对本地数据库进行操作
 			if (

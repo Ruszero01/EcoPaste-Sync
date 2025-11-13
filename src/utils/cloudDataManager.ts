@@ -79,18 +79,26 @@ export class CloudDataManager {
 
 		try {
 			const filePath = this.getFullPath("sync-data.json");
+			const jsonData = JSON.stringify(index, null, 2);
+			console.info(`上传云端索引，包含 ${index.items.length} 个项目`);
+
 			const result = await uploadSyncData(
 				this.webdavConfig,
 				filePath,
-				JSON.stringify(index, null, 2),
+				jsonData,
 			);
 
 			if (result.success) {
 				this.cachedIndex = index;
 				this.indexCacheTime = Date.now();
+				console.info("云端索引上传成功");
 				return true;
+			} else {
+				console.error(`云端索引上传失败: ${result.error_message}`);
 			}
-		} catch {}
+		} catch (error) {
+			console.error("云端索引上传异常:", error);
+		}
 
 		return false;
 	}
@@ -355,45 +363,66 @@ export class CloudDataManager {
 				try {
 					const packagePath = this.getPackagePath(itemId);
 					const result = await deleteFile(this.webdavConfig!, packagePath);
+					console.info(`删除云端文件包 ${itemId}: ${result ? "成功" : "失败"}`);
 					return result;
-				} catch {
+				} catch (error) {
+					console.error(`删除云端文件包异常 (${itemId}):`, error);
 					return false;
 				}
 			});
 
-			await Promise.allSettled(packageDeletePromises);
+			const packageDeleteResults = await Promise.allSettled(packageDeletePromises);
+			const packageSuccessCount = packageDeleteResults.filter(r => r.status === "fulfilled" && r.value).length;
+			console.info(`文件包删除结果: ${packageSuccessCount}/${itemIds.length} 成功`);
 
 			// 2. 更新云端索引，移除已删除的项目
+			console.info(`开始更新云端索引，要删除的项目: ${itemIds.join(", ")}`);
 			const currentIndex = await this.downloadSyncIndex();
+
 			if (currentIndex) {
+				console.info(`当前云端索引有 ${currentIndex.items.length} 个项目`);
+
 				const updatedItems = currentIndex.items.filter(
 					(item) => !itemIds.includes(item.id),
 				);
 
-				const updatedIndex: CloudSyncIndex = {
+				console.info(`过滤后的云端索引有 ${updatedItems.length} 个项目`);
+
+				// 创建更新后的索引，但先不计算校验和
+				const tempUpdatedIndex: CloudSyncIndex = {
 					...currentIndex,
 					items: updatedItems,
 					deletedItems: [...currentIndex.deletedItems, ...itemIds],
 					totalItems: updatedItems.length,
 					timestamp: Date.now(),
-					dataChecksum: "", // 重新计算校验和
+					dataChecksum: "", // 临时设为空
 				};
 
+				// 正确计算校验和
+				const updatedIndex: CloudSyncIndex = {
+					...tempUpdatedIndex,
+					dataChecksum: this.calculateIndexChecksum(tempUpdatedIndex), // 正确计算校验和
+				};
+
+				console.info(`准备上传更新后的云端索引，包含 ${updatedIndex.items.length} 个项目`);
 				const indexUpdateSuccess = await this.uploadSyncIndex(updatedIndex);
 
 				if (indexUpdateSuccess) {
 					successCount = itemIds.length;
+					console.info(`云端索引更新成功，成功删除 ${successCount} 个项目`);
 				} else {
 					failedCount = itemIds.length;
 					errors.push("更新云端索引失败");
+					console.error(`云端索引更新失败，无法删除 ${itemIds.length} 个项目`);
 				}
 			} else {
 				failedCount = itemIds.length;
 				errors.push("无法获取云端索引");
+				console.error(`无法获取云端索引，删除操作失败`);
 			}
 		} catch (error) {
 			failedCount = itemIds.length;
-			errors.push(`删除操作异常: ${error}`);
+			errors.push("删除操作异常: " + String(error));
 		}
 
 		return { success: successCount, failed: failedCount, errors };
