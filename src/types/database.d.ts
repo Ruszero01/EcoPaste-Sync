@@ -13,6 +13,9 @@ export interface HistoryTablePayload extends ClipboardPayload {
 	fileType?: string;
 	// 软删除字段
 	deleted?: boolean;
+	// 同步状态字段
+	syncStatus?: "none" | "synced" | "syncing" | "error";
+	isCloudData?: boolean;
 }
 
 export type TablePayload = Partial<HistoryTablePayload>;

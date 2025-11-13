@@ -235,6 +235,13 @@ export class SyncEngine {
 					// 只计算数据上传，不包括文件包上传
 					result.uploaded =
 						cloudResult.itemsToAdd.length + cloudResult.itemsToUpdate.length;
+
+					// 上传成功后，更新本地项目的同步状态为"已同步"
+					const uploadedItemIds = [
+						...cloudResult.itemsToAdd.map((item) => item.id),
+						...cloudResult.itemsToUpdate.map((item) => item.id),
+					];
+					await this.markItemsAsSynced(uploadedItemIds);
 				}
 			}
 
@@ -568,6 +575,27 @@ export class SyncEngine {
 			return true;
 		} catch {
 			return false;
+		}
+	}
+
+	/**
+	 * 标记项目为已同步状态
+	 * @param itemIds 要标记的项目ID列表
+	 */
+	private async markItemsAsSynced(itemIds: string[]): Promise<void> {
+		if (itemIds.length === 0) {
+			return;
+		}
+
+		try {
+			const { batchUpdateSyncStatus } = await import("@/database");
+
+			const success = await batchUpdateSyncStatus(itemIds, "synced");
+			if (success) {
+				console.info(`已标记 ${itemIds.length} 个项目为已同步状态`);
+			}
+		} catch (error) {
+			console.error("标记已同步状态失败:", error);
 		}
 	}
 

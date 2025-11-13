@@ -141,6 +141,8 @@ const Main = () => {
 							createTime,
 							id: nanoid(),
 							favorite: false,
+							syncStatus: "none", // 新项目默认为未同步状态
+							isCloudData: false, // 标记为本地数据
 						};
 					}
 
@@ -160,6 +162,7 @@ const Main = () => {
 								note: data.note,
 								subtype: data.subtype,
 								favorite: data.favorite,
+								syncStatus: "none", // 本地更新的项目重置为未同步状态
 							});
 						} else {
 							throw error; // 重新抛出其他错误

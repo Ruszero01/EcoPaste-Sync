@@ -33,9 +33,28 @@ export const initDatabase = async () => {
 			lazyDownload INTEGER DEFAULT 0,
 			fileSize INTEGER,
 			fileType TEXT,
-			deleted INTEGER DEFAULT 0
+			deleted INTEGER DEFAULT 0,
+			syncStatus TEXT DEFAULT 'none',
+			isCloudData INTEGER DEFAULT 0
 		);
         `);
+
+	// 检查并添加新字段（用于向后兼容）
+	try {
+		await executeSQL(
+			"ALTER TABLE history ADD COLUMN syncStatus TEXT DEFAULT 'none'",
+		);
+	} catch (_error) {
+		// 字段已存在，忽略错误
+	}
+
+	try {
+		await executeSQL(
+			"ALTER TABLE history ADD COLUMN isCloudData INTEGER DEFAULT 0",
+		);
+	} catch (_error) {
+		// 字段已存在，忽略错误
+	}
 };
 
 /**
@@ -116,6 +135,9 @@ export const selectSQL = async <List,>(
 		favorite: Boolean(item.favorite),
 		deleted: Boolean(item.deleted),
 		lazyDownload: Boolean(item.lazyDownload),
+		isCloudData: Boolean(item.isCloudData),
+		// 如果没有syncStatus，默认为'none'
+		syncStatus: item.syncStatus || "none",
 	}));
 
 	return processedList as List;
@@ -376,6 +398,88 @@ export const clearHistoryTable = async () => {
 	} catch (error) {
 		console.error("❌ 清空历史记录表失败:", error);
 		return false;
+	}
+};
+
+/**
+ * 更新单个记录的同步状态
+ * @param id 记录ID
+ * @param syncStatus 同步状态
+ * @param isCloudData 是否为云端数据
+ */
+export const updateSyncStatus = async (
+	id: string,
+	syncStatus: "none" | "synced" | "syncing" | "error",
+	isCloudData?: boolean,
+) => {
+	try {
+		const updates: any = { id, syncStatus };
+
+		if (isCloudData !== undefined) {
+			updates.isCloudData = Number(isCloudData);
+		}
+
+		await updateSQL("history", updates);
+		return true;
+	} catch (error) {
+		console.error(`❌ 更新同步状态失败: ${id}`, error);
+		return false;
+	}
+};
+
+/**
+ * 批量更新同步状态
+ * @param ids 记录ID数组
+ * @param syncStatus 同步状态
+ * @param isCloudData 是否为云端数据
+ */
+export const batchUpdateSyncStatus = async (
+	ids: string[],
+	syncStatus: "none" | "synced" | "syncing" | "error",
+	isCloudData?: boolean,
+) => {
+	try {
+		const placeholders = ids.map(() => "?").join(",");
+		const updates = [`syncStatus = '${syncStatus}'`];
+
+		if (isCloudData !== undefined) {
+			updates.push(`isCloudData = ${Number(isCloudData)}`);
+		}
+
+		await executeSQL(
+			`UPDATE history SET ${updates.join(", ")} WHERE id IN (${placeholders})`,
+			ids,
+		);
+		return true;
+	} catch (error) {
+		console.error("❌ 批量更新同步状态失败:", error);
+		return false;
+	}
+};
+
+/**
+ * 获取待同步的记录
+ * @param limit 限制数量
+ */
+export const getPendingSyncRecords = async (limit?: number) => {
+	try {
+		const limitClause = limit ? `LIMIT ${limit}` : "";
+
+		const records = (await executeSQL(
+			`SELECT * FROM history WHERE syncStatus = 'none' OR syncStatus = 'error' ORDER BY createTime DESC ${limitClause}`,
+		)) as any[];
+
+		return records.map((item: any) => ({
+			...item,
+			favorite: Boolean(item.favorite),
+			deleted: Boolean(item.deleted),
+			lazyDownload: Boolean(item.lazyDownload),
+			isCloudData: Boolean(item.isCloudData),
+			syncStatus: item.syncStatus || "none",
+		}));
+	} catch (error) {
+		console.error("❌ 获取待同步记录失败:", error);
+		return [];
 	}
 };
 

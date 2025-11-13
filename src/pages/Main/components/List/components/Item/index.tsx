@@ -13,7 +13,7 @@ import { openPath, openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { Flex, type FlexProps, message } from "antd";
 import type { HookAPI } from "antd/es/modal/useModal";
 import clsx from "clsx";
-import { find, findIndex, isNil, remove } from "lodash-es";
+import { findIndex, isNil, remove } from "lodash-es";
 import type { DragEvent, FC, MouseEvent } from "react";
 import { useContext } from "react";
 import { useSnapshot } from "valtio";
@@ -22,6 +22,7 @@ import HTML from "./components/HTML";
 import Header from "./components/Header";
 import Image from "./components/Image";
 import RTF from "./components/RTF";
+import SyncStatus from "./components/SyncStatus";
 import Text from "./components/Text";
 
 interface ItemProps extends Partial<FlexProps> {
@@ -141,12 +142,26 @@ const Item: FC<ItemProps> = (props) => {
 	const toggleFavorite = async () => {
 		const nextFavorite = !favorite;
 
-		find(state.list, { id })!.favorite = nextFavorite;
+		// 更新本地状态，确保界面响应
+		const itemIndex = findIndex(state.list, { id });
+		if (itemIndex !== -1) {
+			state.list[itemIndex] = {
+				...state.list[itemIndex],
+				favorite: nextFavorite,
+			};
+		}
 
 		try {
 			await updateSQL("history", { id, favorite: nextFavorite ? 1 : 0 } as any);
 		} catch (error) {
 			console.error("收藏状态更新失败:", error);
+			// 如果数据库更新失败，恢复本地状态
+			if (itemIndex !== -1) {
+				state.list[itemIndex] = {
+					...state.list[itemIndex],
+					favorite: favorite,
+				};
+			}
 		}
 	};
 
@@ -430,6 +445,9 @@ const Item: FC<ItemProps> = (props) => {
 			onDoubleClick={() => handleClick("double")}
 			onDragStart={handleDragStart}
 		>
+			{/* 同步状态指示灯 */}
+			<SyncStatus data={data} />
+
 			<Header
 				data={data}
 				copy={copy}

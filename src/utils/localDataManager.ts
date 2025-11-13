@@ -739,6 +739,8 @@ export class LocalDataManager {
 						note: item.note || "",
 						subtype: item.subtype as any, // 类型断言以兼容数据库约束
 						deleted: item.deleted ? 1 : 0,
+						syncStatus: "synced", // 从云端下载的数据标记为已同步
+						isCloudData: 1, // 标记为云端数据
 					} as any; // 类型断言以处理boolean到integer的转换
 
 					await insertSQL("history", insertItem);
@@ -764,6 +766,8 @@ export class LocalDataManager {
 						note: item.note?.trim() || "",
 						subtype: item.subtype as any, // 类型断言以兼容数据库约束
 						deleted: item.deleted ? 1 : 0,
+						syncStatus: "synced", // 从云端更新的数据标记为已同步
+						isCloudData: 1, // 标记为云端数据
 					} as any; // 类型断言以处理boolean到integer的转换
 
 					await updateSQL("history", updateItem);

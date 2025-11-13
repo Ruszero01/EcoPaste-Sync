@@ -85,11 +85,29 @@ const App = () => {
 		error(message);
 	});
 
+	// 自定义亮色主题配置，减少过白的色调
+	const lightThemeConfig = {
+		algorithm: defaultAlgorithm,
+		token: {
+			colorBgBase: "#f5f5f5", // 基础背景色，从纯白改为浅灰
+			colorBgContainer: "#ffffff", // 容器背景保持白色但稍微柔和
+			colorBgElevated: "#ffffff", // 浮层背景
+			colorBgLayout: "#f5f5f5", // 布局背景
+			colorText: "#262626", // 文字颜色，使用更深的灰色
+			colorTextSecondary: "#595959", // 次要文字颜色
+			colorBorder: "#d9d9d9", // 边框颜色
+			colorBorderSecondary: "#f0f0f0", // 次要边框颜色
+		},
+	};
+
 	return (
 		<ConfigProvider
 			locale={getAntdLocale(appearance.language)}
 			theme={{
-				algorithm: appearance.isDark ? darkAlgorithm : defaultAlgorithm,
+				algorithm: appearance.isDark
+					? darkAlgorithm
+					: lightThemeConfig.algorithm,
+				token: appearance.isDark ? undefined : lightThemeConfig.token,
 			}}
 		>
 			<AntdApp>
