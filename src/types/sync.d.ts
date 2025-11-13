@@ -160,8 +160,8 @@ export interface SyncData {
 	checksum?: string; // 数据校验和
 }
 
-// 统一的云端同步索引
-export interface CloudSyncIndex {
+// 统一的云端同步数据结构（合并索引和元数据）
+export interface CloudSyncData {
 	format: "unified";
 	timestamp: number;
 	deviceId: string;
@@ -173,7 +173,8 @@ export interface CloudSyncIndex {
 		avgDownloadSpeed: number;
 		avgLatency: number;
 	};
-	items: CloudItemFingerprint[];
+	// 完整的同步数据，包含所有必要的元数据
+	items: SyncItem[];
 	totalItems: number;
 	dataChecksum: string;
 	deletedItems: string[];
@@ -184,6 +185,9 @@ export interface CloudSyncIndex {
 		lastModified: number;
 	};
 }
+
+// 保留原有接口以向后兼容
+export interface CloudSyncIndex extends CloudSyncData {}
 
 // 云端项目指纹
 export interface CloudItemFingerprint {

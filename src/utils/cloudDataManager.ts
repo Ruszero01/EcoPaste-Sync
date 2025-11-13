@@ -1,11 +1,6 @@
 import { deleteFile, downloadSyncData, uploadSyncData } from "@/plugins/webdav";
 import type { WebDAVConfig } from "@/plugins/webdav";
-import type {
-	CloudItemFingerprint,
-	CloudSyncIndex,
-	SyncItem,
-	SyncModeConfig,
-} from "@/types/sync";
+import type { CloudSyncIndex, SyncItem, SyncModeConfig } from "@/types/sync";
 import { calculateChecksum } from "@/utils/shared";
 import { filterItemsBySyncMode } from "./localDataManager";
 
@@ -34,7 +29,7 @@ export class CloudDataManager {
 	}
 
 	/**
-	 * 下载云端同步索引
+	 * 下载云端同步数据（包含完整元数据）
 	 */
 	async downloadSyncIndex(): Promise<CloudSyncIndex | null> {
 		if (!this.webdavConfig) return null;
@@ -44,31 +39,46 @@ export class CloudDataManager {
 		if (cached) return cached;
 
 		try {
-			const filePath = this.getFullPath("sync-index.json");
+			const filePath = this.getFullPath("sync-data.json");
 			const result = await downloadSyncData(this.webdavConfig, filePath);
 
 			if (result.success && result.data) {
-				const index = JSON.parse(result.data) as CloudSyncIndex;
+				const syncData = JSON.parse(result.data);
 
-				if (this.isValidIndexFormat(index)) {
-					this.cachedIndex = index;
+				// 检查数据格式，支持新的统一格式或旧的分离格式
+				if (this.isValidUnifiedDataFormat(syncData)) {
+					// 新的统一格式，直接返回
+					this.cachedIndex = syncData;
 					this.indexCacheTime = Date.now();
-					return index;
+					return syncData;
+				}
+
+				if (this.isValidLegacyIndexFormat(syncData)) {
+					// 旧的索引格式，需要下载完整数据
+					const fullData = await this.downloadSyncData();
+					if (fullData?.items) {
+						const unifiedData = this.convertLegacyToUnified(syncData, fullData);
+						this.cachedIndex = unifiedData;
+						this.indexCacheTime = Date.now();
+						return unifiedData;
+					}
 				}
 			}
-		} catch {}
+		} catch (error) {
+			console.warn("下载云端同步数据失败:", error);
+		}
 
 		return null;
 	}
 
 	/**
-	 * 上传云端同步索引
+	 * 上传云端同步数据（统一格式）
 	 */
 	async uploadSyncIndex(index: CloudSyncIndex): Promise<boolean> {
 		if (!this.webdavConfig) return false;
 
 		try {
-			const filePath = this.getFullPath("sync-index.json");
+			const filePath = this.getFullPath("sync-data.json");
 			const result = await uploadSyncData(
 				this.webdavConfig,
 				filePath,
@@ -136,9 +146,29 @@ export class CloudDataManager {
 		const activeItems = localItems.filter(
 			(item) => !deletedIds.includes(item.id),
 		);
-		updatedIndex.items = activeItems.map((item) =>
-			this.generateItemFingerprint(item),
-		);
+
+		// 新格式：直接使用完整的SyncItem数据
+		updatedIndex.items = activeItems.map((item) => ({
+			id: item.id,
+			type: item.type,
+			value: item.value || "",
+			search: item.search || "",
+			createTime:
+				item.createTime ||
+				new Date(item.lastModified || Date.now()).toISOString(),
+			lastModified: item.lastModified || Date.now(),
+			favorite: item.favorite,
+			note: item.note || "",
+			checksum: item.checksum || "",
+			size: item.size || 0,
+			deviceId: item.deviceId || "",
+			group: item.group || this.determineGroup(item.type),
+			count: item.count || 0,
+			width: item.width,
+			height: item.height,
+			subtype: item.subtype,
+			deleted: item.deleted || false,
+		}));
 
 		updatedIndex.deletedItems = [
 			...index.deletedItems.filter((id) => !deletedIds.includes(id)),
@@ -169,7 +199,7 @@ export class CloudDataManager {
 				avgDownloadSpeed: 0,
 				avgLatency: 0,
 			},
-			items: [],
+			items: [] as SyncItem[], // 明确指定类型
 			totalItems: 0,
 			dataChecksum: "",
 			deletedItems: [],
@@ -191,35 +221,6 @@ export class CloudDataManager {
 	}
 
 	/**
-	 * 生成单个项目指纹
-	 */
-	private generateItemFingerprint(item: any): CloudItemFingerprint {
-		const contentChecksum = calculateChecksum(
-			JSON.stringify({
-				type: item.type,
-				value: item.value,
-				note: item.note || "",
-			}),
-		);
-
-		const size = JSON.stringify(item).length;
-
-		return {
-			id: item.id,
-			type: item.type,
-			checksum: contentChecksum,
-			favoriteChecksum: item.favorite
-				? calculateChecksum(JSON.stringify({ favorite: !!item.favorite }))
-				: undefined,
-			size,
-			timestamp: item.lastModified || Date.now(),
-			favorite: !!item.favorite,
-			deleted: item.deleted || false,
-			note: item.note || "",
-		};
-	}
-
-	/**
 	 * 获取缓存的索引
 	 */
 	private getCachedIndex(): CloudSyncIndex | null {
@@ -237,16 +238,53 @@ export class CloudDataManager {
 	}
 
 	/**
-	 * 验证索引格式
+	 * 验证新的统一数据格式
 	 */
-	private isValidIndexFormat(index: any): index is CloudSyncIndex {
+	private isValidUnifiedDataFormat(data: any): data is CloudSyncIndex {
+		return (
+			data &&
+			data.format === "unified" &&
+			Array.isArray(data.items) &&
+			data.items.length > 0 &&
+			data.items[0].type && // 检查是否为完整的SyncItem格式
+			typeof data.timestamp === "number" &&
+			typeof data.deviceId === "string" &&
+			typeof data.items[0].value === "string" // 检查是否有完整的value字段
+		);
+	}
+
+	/**
+	 * 验证旧的索引格式
+	 */
+	private isValidLegacyIndexFormat(index: any): index is CloudSyncIndex {
 		return (
 			index &&
 			index.format === "unified" &&
 			Array.isArray(index.items) &&
 			typeof index.timestamp === "number" &&
-			typeof index.deviceId === "string"
+			typeof index.deviceId === "string" &&
+			index.items[0] && // 检查是否为指纹格式（缺少完整字段）
+			typeof index.items[0].checksum === "string"
 		);
+	}
+
+	/**
+	 * 将旧的分离格式转换为新的统一格式
+	 */
+	private convertLegacyToUnified(
+		indexData: any,
+		fullData: any,
+	): CloudSyncIndex {
+		const unifiedData: CloudSyncIndex = {
+			...indexData,
+			items: fullData.items || [], // 使用完整数据作为items
+		};
+
+		// 重新计算统计信息
+		unifiedData.totalItems = unifiedData.items.length;
+		unifiedData.statistics = this.calculateStatistics(unifiedData);
+
+		return unifiedData;
 	}
 
 	/**
@@ -257,7 +295,7 @@ export class CloudDataManager {
 			items: index.items.map((item) => ({
 				id: item.id,
 				checksum: item.checksum,
-				timestamp: item.timestamp,
+				timestamp: item.lastModified || Date.now(),
 			})),
 			deletedItems: index.deletedItems.sort(),
 			timestamp: index.timestamp,
@@ -279,9 +317,10 @@ export class CloudDataManager {
 
 		for (const item of index.items) {
 			typeCounts[item.type] = (typeCounts[item.type] || 0) + 1;
-			totalSize += item.size;
+			totalSize += item.size || 0;
 			if (item.favorite) favoriteCount++;
-			if (item.timestamp > lastModified) lastModified = item.timestamp;
+			if (item.lastModified && item.lastModified > lastModified)
+				lastModified = item.lastModified;
 		}
 
 		return {
@@ -397,22 +436,56 @@ export class CloudDataManager {
 			return [];
 		}
 
-		// 将云端指纹转换为 SyncItem 格式
-		const cloudItems: SyncItem[] = remoteIndex.items.map((item) => ({
-			id: item.id,
-			type: item.type,
-			value: item.value || "", // 对于文件和图片类型，从云端指纹中获取元数据
-			search: "",
-			createTime: new Date(item.timestamp).toISOString(),
-			lastModified: item.timestamp,
-			favorite: item.favorite,
-			note: item.note,
-			checksum: item.checksum,
-			size: item.size,
-			deviceId: "",
-			group: this.determineGroup(item.type),
-			count: 0,
-		}));
+		// 检查是否为新格式（包含完整的SyncItem数据）
+		const isNewFormat =
+			remoteIndex.items[0].value !== undefined &&
+			typeof remoteIndex.items[0].value === "string" &&
+			remoteIndex.items[0].count !== undefined;
+
+		let cloudItems: SyncItem[];
+
+		if (isNewFormat) {
+			// 新格式：直接使用完整的SyncItem数据
+			cloudItems = remoteIndex.items.map((item) => ({
+				id: item.id,
+				type: item.type,
+				value: item.value, // 完整的value字段内容
+				search: item.search || "",
+				createTime:
+					item.createTime ||
+					new Date(item.lastModified || Date.now()).toISOString(),
+				lastModified: item.lastModified || Date.now(),
+				favorite: item.favorite,
+				note: item.note || "",
+				checksum: item.checksum,
+				size: item.size || 0,
+				deviceId: item.deviceId || "",
+				group: item.group || this.determineGroup(item.type),
+				count: item.count || 0,
+				width: item.width,
+				height: item.height,
+				subtype: item.subtype,
+				deleted: item.deleted || false,
+			}));
+		} else {
+			// 旧格式：从指纹转换为SyncItem（兼容性处理）
+			cloudItems = remoteIndex.items.map((item: any) => ({
+				id: item.id,
+				type: item.type,
+				value: item.value || "", // 指纹中的基本元数据
+				search: "",
+				createTime: new Date(item.timestamp).toISOString(),
+				lastModified: item.timestamp,
+				favorite: item.favorite,
+				note: item.note || "",
+				checksum: item.checksum,
+				size: item.size || 0,
+				deviceId: "",
+				group: this.determineGroup(item.type),
+				count: 0,
+				deleted: item.deleted || false,
+			}));
+		}
 
 		// 根据同步模式过滤数据
 		const filteredItems = filterItemsBySyncMode(
@@ -429,9 +502,7 @@ export class CloudDataManager {
 	 * @param remoteIndex 云端同步索引
 	 * @returns 云端数据指纹列表
 	 */
-	getCloudItemFingerprints(
-		remoteIndex: CloudSyncIndex | null,
-	): CloudItemFingerprint[] {
+	getCloudItemFingerprints(remoteIndex: CloudSyncIndex | null): SyncItem[] {
 		return remoteIndex?.items || [];
 	}
 
@@ -551,10 +622,8 @@ export class CloudDataManager {
 		const updatedIndex = { ...baseIndex };
 
 		if (completeData) {
-			// 基于完整数据生成索引，确保一致性
-			updatedIndex.items = completeData.map((item) =>
-				this.convertSyncItemToFingerprint(item),
-			);
+			// 新格式：直接使用完整的SyncItem数据
+			updatedIndex.items = completeData;
 		} else {
 			// 备用方案：使用原有逻辑（基于同步结果）
 			// 1. 从索引中移除需要删除的项目
@@ -568,8 +637,7 @@ export class CloudDataManager {
 					(item) => item.id === updateItem.id,
 				);
 				if (index !== -1) {
-					updatedIndex.items[index] =
-						this.convertSyncItemToFingerprint(updateItem);
+					updatedIndex.items[index] = updateItem;
 				}
 			}
 
@@ -579,7 +647,7 @@ export class CloudDataManager {
 					(item) => item.id === addItem.id,
 				);
 				if (!exists) {
-					updatedIndex.items.push(this.convertSyncItemToFingerprint(addItem));
+					updatedIndex.items.push(addItem);
 				}
 			}
 		}
@@ -597,46 +665,6 @@ export class CloudDataManager {
 		updatedIndex.timestamp = Date.now();
 
 		return updatedIndex;
-	}
-
-	/**
-	 * 将 SyncItem 转换为 CloudItemFingerprint
-	 * @param item 同步项
-	 * @returns 云端数据指纹
-	 */
-	private convertSyncItemToFingerprint(item: SyncItem): CloudItemFingerprint {
-		// 确保有校验和，如果没有则重新计算
-		let checksum = item.checksum;
-		if (!checksum) {
-			checksum = calculateChecksum(
-				JSON.stringify({
-					type: item.type,
-					value: item.value,
-					note: item.note || "",
-				}),
-			);
-		}
-
-		const fingerprint: CloudItemFingerprint = {
-			id: item.id,
-			type: item.type,
-			checksum,
-			favoriteChecksum: item.favorite
-				? calculateChecksum(JSON.stringify({ favorite: !!item.favorite }))
-				: undefined,
-			size: item.size || 0,
-			timestamp: item.lastModified || Date.now(),
-			favorite: item.favorite,
-			deleted: false,
-			note: item.note || "",
-		};
-
-		// 对于文件和图片类型，包含文件元数据
-		if (item.type === "files" || item.type === "image") {
-			fingerprint.value = item.value;
-		}
-
-		return fingerprint;
 	}
 
 	/**
