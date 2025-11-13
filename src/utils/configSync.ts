@@ -48,7 +48,7 @@ export class ConfigSync {
 			if (uploadResult.success) {
 				return {
 					success: true,
-					message: "配置已上传到云端",
+					message: "配置已上传到云端（包括所有开关和快捷键设置）",
 				};
 			}
 
@@ -135,18 +135,21 @@ export class ConfigSync {
 	}
 
 	/**
-	 * 过滤配置，移除环境相关的字段
+	 * 过滤配置，移除环境和设备相关的字段
 	 */
 	private filterConfigForSync(config: any): any {
 		const filtered = { ...config };
 
-		// 移除环境相关的配置
+		// 移除环境相关的配置（如本地数据路径、平台信息等）
 		if (filtered.globalStore?.env) {
 			filtered.globalStore = {
 				...filtered.globalStore,
 				env: {}, // 清空环境配置
 			};
 		}
+
+		// 注：WebDAV配置存储在单独的配置文件中，不在这里处理
+		// 所有其他配置（包括同步模式、快捷键、开关等）都会被同步
 
 		return filtered;
 	}

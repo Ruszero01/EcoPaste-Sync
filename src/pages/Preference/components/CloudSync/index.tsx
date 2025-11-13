@@ -9,11 +9,7 @@ import {
 	testConnection,
 } from "@/plugins/webdav";
 import { globalStore } from "@/stores/global";
-import {
-	SYNC_MODE_PRESETS,
-	type SyncMode,
-	type SyncModeConfig,
-} from "@/types/sync.d";
+import { SYNC_MODE_PRESETS, type SyncModeConfig } from "@/types/sync.d";
 import { type SyncInterval, autoSync } from "@/utils/autoSync";
 import { configSync } from "@/utils/configSync";
 import { isDev } from "@/utils/is";
@@ -45,7 +41,6 @@ import {
 } from "antd";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSnapshot } from "valtio";
-import { loadSyncModeConfig, saveSyncModeConfig } from "./syncModeConfig";
 
 const { Text } = Typography;
 
@@ -192,20 +187,21 @@ const CloudSync = () => {
 	// 加载同步模式配置
 	const loadSyncMode = useCallback(() => {
 		try {
-			// 从localStorage加载保存的配置
-			const savedConfig = loadSyncModeConfig();
-			let config: SyncModeConfig;
+			// 从globalStore读取同步模式配置
+			const storeSyncModeConfig = cloudSyncStore.syncModeConfig;
 
-			// 如果有保存的配置，优先使用
-			if (savedConfig) {
-				config = savedConfig;
-			} else {
-				// 否则根据globalStore中的lightweightMode状态生成配置
-				const lightweightMode = cloudSyncStore.fileSync.lightweightMode;
-				config = lightweightMode
-					? SYNC_MODE_PRESETS.lightweight
-					: SYNC_MODE_PRESETS.full;
-			}
+			// 转换为SyncModeConfig格式
+			const config: SyncModeConfig = {
+				mode: storeSyncModeConfig.mode,
+				settings: {
+					includeText: storeSyncModeConfig.settings.includeText,
+					includeHtml: storeSyncModeConfig.settings.includeHtml,
+					includeRtf: storeSyncModeConfig.settings.includeRtf,
+					includeImages: storeSyncModeConfig.settings.includeImages,
+					includeFiles: storeSyncModeConfig.settings.includeFiles,
+					onlyFavorites: storeSyncModeConfig.settings.onlyFavorites,
+				},
+			};
 
 			setSyncModeConfig(config);
 
@@ -223,7 +219,7 @@ const CloudSync = () => {
 			const defaultConfig = SYNC_MODE_PRESETS.lightweight;
 			setSyncModeConfig(defaultConfig);
 		}
-	}, [cloudSyncStore.fileSync.lightweightMode]);
+	}, [cloudSyncStore.syncModeConfig]);
 
 	// 使用 useRef 存储 syncModeConfig，避免循环依赖
 	const syncModeConfigRef = useRef(syncModeConfig);
@@ -300,29 +296,33 @@ const CloudSync = () => {
 				}
 
 				const currentConfig = syncModeConfig;
+				const newMode = enabled ? ("favorites" as const) : ("full" as const);
 				const newConfig = {
 					...currentConfig,
-					mode: (enabled ? "favorites" : "full") as SyncMode,
+					mode: newMode,
 					settings: {
 						...currentConfig.settings,
 						onlyFavorites: enabled,
 					},
 				};
 
-				// 先保存配置到localStorage
-				const saved = saveSyncModeConfig(newConfig);
+				// 直接更新globalStore中的同步模式配置
+				globalStore.cloudSync.syncModeConfig = {
+					mode: newMode,
+					settings: {
+						includeText: newConfig.settings.includeText,
+						includeHtml: newConfig.settings.includeHtml,
+						includeRtf: newConfig.settings.includeRtf,
+						includeImages: newConfig.settings.includeImages,
+						includeFiles: newConfig.settings.includeFiles,
+						onlyFavorites: enabled,
+					},
+				};
 
-				if (saved) {
-					// 更新组件状态
-					setSyncModeConfig(newConfig);
+				// 更新组件状态
+				setSyncModeConfig(newConfig);
 
-					// 更新globalStore中的lightweightMode状态
-					globalStore.cloudSync.fileSync.lightweightMode = enabled;
-
-					appMessage.success(enabled ? "收藏模式已启用" : "收藏模式已关闭");
-				} else {
-					appMessage.error("保存配置失败");
-				}
+				appMessage.success(enabled ? "收藏模式已启用" : "收藏模式已关闭");
 			} catch (error) {
 				console.error("处理收藏模式变更失败:", error);
 				appMessage.error("更新配置失败");
@@ -344,8 +344,10 @@ const CloudSync = () => {
 				}
 
 				const currentConfig = syncModeConfig;
+				const newMode = enabled ? ("full" as const) : ("lightweight" as const);
 				const newConfig = {
 					...currentConfig,
+					mode: newMode,
 					settings: {
 						...currentConfig.settings,
 						includeImages: enabled,
@@ -353,18 +355,23 @@ const CloudSync = () => {
 					},
 				};
 
-				const saved = saveSyncModeConfig(newConfig);
-				if (saved) {
-					// 更新组件状态
-					setSyncModeConfig(newConfig);
+				// 直接更新globalStore中的同步模式配置
+				globalStore.cloudSync.syncModeConfig = {
+					mode: newMode,
+					settings: {
+						includeText: newConfig.settings.includeText,
+						includeHtml: newConfig.settings.includeHtml,
+						includeRtf: newConfig.settings.includeRtf,
+						includeImages: enabled,
+						includeFiles: enabled,
+						onlyFavorites: newConfig.settings.onlyFavorites,
+					},
+				};
 
-					// 更新globalStore状态
-					globalStore.cloudSync.fileSync.lightweightMode = !enabled;
+				// 更新组件状态
+				setSyncModeConfig(newConfig);
 
-					appMessage.success(enabled ? "文件模式已启用" : "文件模式已关闭");
-				} else {
-					appMessage.error("保存配置失败");
-				}
+				appMessage.success(enabled ? "文件模式已启用" : "文件模式已关闭");
 			} catch (error) {
 				console.error("处理文件模式变更失败", error);
 				appMessage.error("更新配置失败");
@@ -433,16 +440,26 @@ const CloudSync = () => {
 
 		// 加载自动同步状态
 		try {
+			// 从globalStore读取自动同步设置
+			const autoSyncSettings = cloudSyncStore.autoSyncSettings;
+			setAutoSyncEnabled(autoSyncSettings.enabled);
+			setSyncInterval(autoSyncSettings.intervalHours as SyncInterval);
+
+			// 迁移旧的localStorage设置（如果存在）
 			const savedAutoSyncEnabled = localStorage.getItem(
 				"ecopaste-auto-sync-enabled",
 			);
 			const savedSyncInterval = localStorage.getItem("ecopaste-sync-interval");
 
-			if (savedAutoSyncEnabled) {
-				setAutoSyncEnabled(savedAutoSyncEnabled === "true");
+			if (savedAutoSyncEnabled !== null) {
+				globalStore.cloudSync.autoSyncSettings.enabled =
+					savedAutoSyncEnabled === "true";
+				localStorage.removeItem("ecopaste-auto-sync-enabled");
 			}
-			if (savedSyncInterval) {
-				setSyncInterval(Number.parseFloat(savedSyncInterval) as SyncInterval);
+			if (savedSyncInterval !== null) {
+				globalStore.cloudSync.autoSyncSettings.intervalHours =
+					Number.parseFloat(savedSyncInterval);
+				localStorage.removeItem("ecopaste-sync-interval");
 			}
 		} catch (error) {
 			console.warn("加载同步配置失败:", error);
@@ -456,7 +473,7 @@ const CloudSync = () => {
 		return () => {
 			unlisten.then((fn) => fn());
 		};
-	}, [refreshLastSyncTime]); // 添加refreshLastSyncTime依赖
+	}, [refreshLastSyncTime, cloudSyncStore.autoSyncSettings]); // 添加依赖
 
 	// 监听页面可见性变化，当页面重新可见时刷新同步时间
 	useEffect(() => {
@@ -675,8 +692,8 @@ const CloudSync = () => {
 	const handleAutoSyncToggle = async (enabled: boolean) => {
 		setAutoSyncEnabled(enabled);
 		try {
-			// 保存自动同步状态
-			localStorage.setItem("ecopaste-auto-sync-enabled", enabled.toString());
+			// 直接更新globalStore
+			globalStore.cloudSync.autoSyncSettings.enabled = enabled;
 
 			if (enabled) {
 				autoSync.initialize({
@@ -763,8 +780,8 @@ const CloudSync = () => {
 	const handleSyncIntervalChange = async (hours: SyncInterval) => {
 		setSyncInterval(hours);
 
-		// 保存同步间隔
-		localStorage.setItem("ecopaste-sync-interval", hours.toString());
+		// 直接更新globalStore
+		globalStore.cloudSync.autoSyncSettings.intervalHours = hours;
 
 		if (autoSyncEnabled) {
 			try {

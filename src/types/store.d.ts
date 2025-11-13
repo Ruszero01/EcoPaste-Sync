@@ -73,6 +73,23 @@ export interface GlobalStore {
 				text: boolean;
 			};
 		};
+		// 同步模式配置（原localStorage中的配置）
+		syncModeConfig: {
+			mode: "lightweight" | "full" | "favorites";
+			settings: {
+				includeText: boolean;
+				includeHtml: boolean;
+				includeRtf: boolean;
+				includeImages: boolean;
+				includeFiles: boolean;
+				onlyFavorites: boolean;
+			};
+		};
+		// 自动同步配置（原localStorage中的配置）
+		autoSyncSettings: {
+			enabled: boolean;
+			intervalHours: number;
+		};
 	};
 }
 

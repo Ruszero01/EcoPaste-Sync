@@ -54,5 +54,22 @@ export const globalStore = proxy<GlobalStore>({
 				text: true,
 			},
 		},
+		// 同步模式配置（原localStorage中的配置）
+		syncModeConfig: {
+			mode: "lightweight", // lightweight | full | favorites
+			settings: {
+				includeText: true,
+				includeHtml: true,
+				includeRtf: true,
+				includeImages: false, // 默认关闭图片同步
+				includeFiles: false, // 默认关闭文件同步
+				onlyFavorites: false, // 默认关闭收藏模式
+			},
+		},
+		// 自动同步配置（原localStorage中的配置）
+		autoSyncSettings: {
+			enabled: false,
+			intervalHours: 1, // 默认1小时
+		},
 	},
 });
