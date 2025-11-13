@@ -15,6 +15,7 @@ import {
 	type SyncModeConfig,
 } from "@/types/sync.d";
 import { type SyncInterval, autoSync } from "@/utils/autoSync";
+import { configSync } from "@/utils/configSync";
 import { isDev } from "@/utils/is";
 import { syncEngine } from "@/utils/syncEngine";
 import {
@@ -22,7 +23,9 @@ import {
 	CloudOutlined,
 	CloudSyncOutlined,
 	DeleteOutlined,
+	DownloadOutlined,
 	ScheduleOutlined,
+	UploadOutlined,
 } from "@ant-design/icons";
 import { emit } from "@tauri-apps/api/event";
 import { listen } from "@tauri-apps/api/event";
@@ -91,6 +94,7 @@ const CloudSync = () => {
 	const [syncModeConfig, setSyncModeConfig] = useState<SyncModeConfig>(
 		SYNC_MODE_PRESETS.lightweight,
 	);
+	const [isConfigSyncing, setIsConfigSyncing] = useState(false);
 	const [form] = Form.useForm();
 
 	// 保存上次同步时间到本地存储
@@ -427,6 +431,23 @@ const CloudSync = () => {
 		// 加载持久化的同步时间
 		refreshLastSyncTime();
 
+		// 加载自动同步状态
+		try {
+			const savedAutoSyncEnabled = localStorage.getItem(
+				"ecopaste-auto-sync-enabled",
+			);
+			const savedSyncInterval = localStorage.getItem("ecopaste-sync-interval");
+
+			if (savedAutoSyncEnabled) {
+				setAutoSyncEnabled(savedAutoSyncEnabled === "true");
+			}
+			if (savedSyncInterval) {
+				setSyncInterval(Number.parseFloat(savedSyncInterval) as SyncInterval);
+			}
+		} catch (error) {
+			console.warn("加载同步配置失败:", error);
+		}
+
 		// 加载配置
 		loadServerConfigRef.current();
 		loadSyncModeRef.current();
@@ -496,6 +517,17 @@ const CloudSync = () => {
 			}
 		}
 	}, [connectionStatus, autoSyncEnabled, syncInterval, webdavConfig.url]); // 只依赖 url 字段，避免整个对象变化导致的循环
+
+	// 配置同步初始化
+	useEffect(() => {
+		if (connectionStatus === "success" && webdavConfig) {
+			try {
+				configSync.initialize(webdavConfig);
+			} catch (error) {
+				console.error("配置同步初始化失败:", error);
+			}
+		}
+	}, [connectionStatus, webdavConfig]);
 
 	// 保存服务器配置
 	const saveServerConfig = async (config: WebDAVConfig) => {
@@ -643,6 +675,9 @@ const CloudSync = () => {
 	const handleAutoSyncToggle = async (enabled: boolean) => {
 		setAutoSyncEnabled(enabled);
 		try {
+			// 保存自动同步状态
+			localStorage.setItem("ecopaste-auto-sync-enabled", enabled.toString());
+
 			if (enabled) {
 				autoSync.initialize({
 					enabled: true,
@@ -661,9 +696,76 @@ const CloudSync = () => {
 		}
 	};
 
+	// 上传本地配置
+	const handleUploadConfig = async () => {
+		if (isConfigSyncing) return;
+
+		if (connectionStatus !== "success") {
+			appMessage.error("请先检查网络连接");
+			return;
+		}
+
+		setIsConfigSyncing(true);
+		try {
+			const result = await configSync.uploadLocalConfig();
+			if (result.success) {
+				appMessage.success(result.message);
+			} else {
+				appMessage.error(result.message);
+			}
+		} catch (error) {
+			console.error("上传配置失败", error);
+			appMessage.error("上传配置失败");
+		} finally {
+			setIsConfigSyncing(false);
+		}
+	};
+
+	// 应用云端配置
+	const handleApplyRemoteConfig = async () => {
+		if (isConfigSyncing) return;
+
+		if (connectionStatus !== "success") {
+			appMessage.error("请先检查网络连接");
+			return;
+		}
+
+		// 确认对话框
+		appModal.confirm({
+			title: "应用云端配置",
+			content: "这将覆盖当前的本地配置，确定要继续吗？",
+			okText: "确定",
+			cancelText: "取消",
+			onOk: async () => {
+				setIsConfigSyncing(true);
+				try {
+					const result = await configSync.applyRemoteConfig();
+					if (result.success) {
+						appMessage.success(result.message);
+						// 提示用户重启应用以完全应用配置
+						setTimeout(() => {
+							appMessage.info("建议重启应用以确保配置完全生效");
+						}, 1000);
+					} else {
+						appMessage.error(result.message);
+					}
+				} catch (error) {
+					console.error("应用配置失败", error);
+					appMessage.error("应用配置失败");
+				} finally {
+					setIsConfigSyncing(false);
+				}
+			},
+		});
+	};
+
 	// 处理同步间隔变更
 	const handleSyncIntervalChange = async (hours: SyncInterval) => {
 		setSyncInterval(hours);
+
+		// 保存同步间隔
+		localStorage.setItem("ecopaste-sync-interval", hours.toString());
+
 		if (autoSyncEnabled) {
 			try {
 				autoSync.setIntervalHours(hours);
@@ -835,8 +937,8 @@ const CloudSync = () => {
 				</Form>
 			</ProList>
 
-			{/* 同步配置 */}
-			<ProList header="同步配置">
+			{/* 数据同步 */}
+			<ProList header="数据同步">
 				{/* 收藏模式 */}
 				<ProListItem title="收藏模式" description="只同步收藏的剪贴板内容">
 					<Switch
@@ -983,6 +1085,36 @@ const CloudSync = () => {
 						</Button>
 					</div>
 				)}
+			</ProList>
+
+			{/* 配置同步 */}
+			<ProList header="配置同步">
+				<ProListItem title="上传本地配置" description="将当前配置上传到云端">
+					<Button
+						type="default"
+						icon={<UploadOutlined />}
+						loading={isConfigSyncing}
+						onClick={handleUploadConfig}
+						disabled={connectionStatus !== "success"}
+					>
+						上传配置
+					</Button>
+				</ProListItem>
+
+				<ProListItem
+					title="应用云端配置"
+					description="下载并应用云端配置（将覆盖本地配置）"
+				>
+					<Button
+						type="default"
+						icon={<DownloadOutlined />}
+						loading={isConfigSyncing}
+						onClick={handleApplyRemoteConfig}
+						disabled={connectionStatus !== "success"}
+					>
+						应用配置
+					</Button>
+				</ProListItem>
 			</ProList>
 
 			{/* 开发环境专用：数据库管理工具 */}
