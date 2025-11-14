@@ -66,7 +66,7 @@
 ### ✨ Current Features
 
 - 🔄 **WebDAV Cloud Sync**: Multi-device clipboard data synchronization through WebDAV protocol
-- 🗂️ **Smart Sync Mode**: Three sync modes - lightweight (text only), full (all types), favorites (bookmarked content only)
+- 🗂️ **Dual-Switch Sync Mode**: Simple favorites mode and file mode switches for selective content synchronization
 - 🔐 **Data Security**: Local-first storage architecture, data fully controlled, HTTPS/TLS encrypted transmission
 - ⚡ **Real-time Sync Engine**: Smart conflict detection and resolution based on checksums, supporting bidirectional and incremental sync
 - 🤖 **Background Auto Sync**: Rust plugin-based scheduled sync, configurable 1-24 hour intervals
@@ -146,7 +146,7 @@ graph TB
 
 #### ✨ Core Features
 
-- **Three Sync Modes**: Lightweight, complete, and favorites sync to meet different needs
+- **Dual-Switch Sync Mode**: Simple favorites mode and file mode switches for flexible content control
 - **Multi-type Support**: Support for various data types including text, images, and files
 - **Bidirectional Sync**: Support for bidirectional data synchronization and incremental updates across multiple devices
 - **Auto Sync**: Configurable sync intervals for automatic data synchronization
@@ -160,7 +160,7 @@ graph TB
 **🔄 Sync Process**
 
 1. **Data Collection**: Collect clipboard data from local database
-2. **Smart Filtering**: Filter data based on sync mode
+2. **Smart Filtering**: Filter data based on dual-switch sync mode (favorites mode/file mode)
 3. **Conflict Detection**: Detect real conflicts based on checksums and timestamps
 4. **Conflict Resolution**: Support three strategies: local priority, remote priority, smart merge
 5. **File Processing**: Separate processing of metadata and original files

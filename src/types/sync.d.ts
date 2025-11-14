@@ -276,6 +276,7 @@ export interface SyncResult {
 	success: boolean;
 	uploaded: number;
 	downloaded: number;
+	deleted: number;
 	conflicts: ConflictInfo[];
 	errors: string[];
 	duration: number;

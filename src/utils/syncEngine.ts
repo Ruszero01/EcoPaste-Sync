@@ -109,6 +109,7 @@ export class SyncEngine {
 			success: false,
 			uploaded: 0,
 			downloaded: 0,
+			deleted: 0,
 			conflicts: [],
 			errors: [],
 			duration: 0,
@@ -161,7 +162,7 @@ export class SyncEngine {
 					cloudDeleteResult.success > 0 && cloudDeleteResult.failed === 0;
 
 				if (deleteSuccess) {
-					result.uploaded += cloudDeleteResult.success; // 统计实际删除成功的数量
+					result.deleted += cloudDeleteResult.success; // 统计实际删除成功的数量
 					console.info(`成功从云端删除 ${cloudDeleteResult.success} 个项目`);
 
 					// 只有云端删除成功时，才清理本地删除标记

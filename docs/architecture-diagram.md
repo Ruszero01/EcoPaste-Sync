@@ -29,7 +29,7 @@ graph TB
     subgraph "数据存储层 Data Storage Layer"
         SQLite[(SQLite 数据库<br/>剪贴板历史记录<br/>同步状态和元数据)]
         FileSystem[文件系统<br/>文件缓存目录<br/>配置文件存储]
-        WebDAVServer[WebDAV 服务器<br/>sync-data.json<br/>files/ 和 packages/]
+        WebDAVServer[WebDAV 服务器<br/>sync-data.json<br/>files/]
     end
 
     UI --> State
@@ -118,7 +118,7 @@ graph TB
     H -->|否| J[跳过本次同步]
 
     I --> K[设置同步模式配置]
-    K --> L[执行同步流程]
+    K --> L[执行双向同步流程]
     L --> M{同步成功?}
     M -->|是| N[触发UI更新事件]
     M -->|否| O[记录错误信息]
@@ -230,12 +230,10 @@ graph LR
         A[用户配置的同步路径/]
         B[sync-data.json<br/>统一数据索引文件<br/>CloudSyncData格式]
         C[files/<br/>原始文件存储目录<br/>${itemId}_${timestamp}_filename]
-        D[packages/<br/>文件包存储目录<br/>${itemId}.json]
-
+  
         A --> B
         A --> C
-        A --> D
-
+  
         subgraph "sync-data.json 结构"
             E["format: 'unified'<br/>timestamp, deviceId"]
             F["items: SyncItem[]<br/>完整同步数据"]
@@ -250,11 +248,9 @@ graph LR
         subgraph "文件命名规则"
             I[文件: itemId_timestamp_originalName]
             J[图片: itemId_timestamp_imageName]
-            K[包: itemId.json]
 
             C --> I
             C --> J
-            D --> K
         end
     end
 ```
@@ -435,4 +431,4 @@ graph TB
 
 ---
 
-该架构图文档详细展示了 EcoPaste 云同步功能的完整架构设计，包括最新的自动同步、配置同步和统一数据格式等核心组件，为理解和维护系统提供了可视化的技术参考。
+该架构图文档详细展示了 EcoPaste 云同步功能的完整架构设计，包括最新的双开关同步模式、自动同步、配置同步和统一数据格式等核心组件，为理解和维护系统提供了可视化的技术参考。

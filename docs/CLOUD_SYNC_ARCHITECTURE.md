@@ -14,7 +14,7 @@ EcoPaste 云同步功能基于 WebDAV 协议实现，采用本地优先的架构
 
 ### 2. 渐进式同步
 
-- 支持多种同步模式（轻量、完整、收藏）
+- 支持双开关同步模式（收藏模式、文件模式）
 - 智能数据筛选和过滤
 - 增量同步减少网络传输
 
@@ -149,8 +149,7 @@ EcoPaste 云同步功能基于 WebDAV 协议实现，采用本地优先的架构
 - **WebDAV 服务器**: 云端文件存储
   - `sync-data.json`: 统一数据索引文件
   - `files/`: 原始文件存储目录
-  - `packages/`: 文件包存储目录
-
+  
 ## 数据流架构
 
 ### 主要同步流程
@@ -242,23 +241,54 @@ interface CloudSyncData {
 
 ### 2. 同步模式配置
 
-#### 轻量模式 (Lightweight)
+#### 双开关模式
 
-- 仅同步文本、HTML、富文本
-- 不包含图片和文件
-- 快速同步，适合低带宽环境
+EcoPaste 采用简洁的双开关模式来控制同步内容：
 
-#### 完整模式 (Full)
+```typescript
+// 同步模式配置
+export interface SyncModeConfig {
+  settings: {
+    includeText: boolean;   // 文本内容（总是启用）
+    includeHtml: boolean;   // HTML 内容（总是启用）
+    includeRtf: boolean;    // 富文本内容（总是启用）
+    includeImages: boolean; // 图片内容（文件模式开关）
+    includeFiles: boolean;  // 文件内容（文件模式开关）
+    onlyFavorites: boolean; // 仅同步收藏内容（收藏模式开关）
+  };
+}
 
-- 同步所有数据类型
-- 包含图片和文件（有大小限制）
-- 完整的数据同步体验
+// 默认配置
+export const getDefaultSyncModeConfig = (): SyncModeConfig => {
+  return {
+    settings: {
+      includeText: true,    // 总是启用
+      includeHtml: true,    // 总是启用
+      includeRtf: true,     // 总是启用
+      includeImages: false, // 文件模式开关，默认关闭
+      includeFiles: false,  // 文件模式开关，默认关闭
+      onlyFavorites: false, // 收藏模式开关，默认关闭
+    },
+  };
+};
+```
 
-#### 收藏模式 (Favorites)
+#### 配置说明
 
-- 仅同步收藏的内容
-- 包含所有数据类型
-- 重要数据优先同步
+**内容类型开关：**
+
+- **文本类内容**（文本、HTML、富文本）：始终启用同步
+- **文件类内容**（图片、文件）：通过"文件模式"开关控制
+- **收藏模式**：通过"收藏模式"开关控制仅同步收藏内容
+
+| 配置项 | 类型 | 说明 |
+|--------|------|------|
+| `includeText` | boolean | 文本内容同步（固定启用） |
+| `includeHtml` | boolean | HTML 内容同步（固定启用） |
+| `includeRtf` | boolean | 富文本内容同步（固定启用） |
+| `includeImages` | boolean | 图片内容同步（文件模式开关） |
+| `includeFiles` | boolean | 文件内容同步（文件模式开关） |
+| `onlyFavorites` | boolean | 仅同步收藏内容（收藏模式开关） |
 
 ### 3. 冲突检测和解决
 
@@ -407,23 +437,13 @@ interface WebDAVConfig {
 
 ```typescript
 interface SyncModeConfig {
-  mode: "lightweight" | "full" | "favorites";
-
-  // 文件大小限制
-  fileLimits?: {
-    maxImageSize: number; // 5MB
-    maxFileSize: number; // 10MB
-    maxPackageSize: number; // 50MB
-  };
-
-  // 模式特定设置
   settings: {
-    includeText: boolean;
-    includeHtml: boolean;
-    includeRtf: boolean;
-    includeImages: boolean;
-    includeFiles: boolean;
-    onlyFavorites: boolean;
+    includeText: boolean;   // 文本内容（总是启用）
+    includeHtml: boolean;   // HTML 内容（总是启用）
+    includeRtf: boolean;    // 富文本内容（总是启用）
+    includeImages: boolean; // 图片内容（文件模式开关）
+    includeFiles: boolean;  // 文件内容（文件模式开关）
+    onlyFavorites: boolean; // 仅同步收藏内容（收藏模式开关）
   };
 }
 ```

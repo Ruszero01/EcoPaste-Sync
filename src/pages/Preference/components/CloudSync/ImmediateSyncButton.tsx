@@ -117,18 +117,27 @@ const ImmediateSyncButton = ({
 				onSyncComplete?.(timestamp);
 
 				// 显示成功消息
-				const totalCount = syncResult.downloaded + syncResult.uploaded;
+				const totalCount =
+					syncResult.downloaded + syncResult.uploaded + syncResult.deleted;
 				let successMessage: string;
 				if (totalCount === 0) {
 					successMessage = "无需同步";
 				} else {
-					successMessage = `已同步 ${totalCount} 条数据`;
+					const parts = [];
+					if (syncResult.uploaded > 0)
+						parts.push(`上传 ${syncResult.uploaded} 条`);
+					if (syncResult.downloaded > 0)
+						parts.push(`下载 ${syncResult.downloaded} 条`);
+					if (syncResult.deleted > 0)
+						parts.push(`删除 ${syncResult.deleted} 条`);
+					successMessage = `已同步：${parts.join("，")}`;
 				}
 
 				message.success(successMessage);
 				addLog("success", "✅ 同步完成", {
 					uploaded: syncResult.uploaded,
 					downloaded: syncResult.downloaded,
+					deleted: syncResult.deleted,
 					duration: `${syncResult.duration}ms`,
 				});
 			} else {
