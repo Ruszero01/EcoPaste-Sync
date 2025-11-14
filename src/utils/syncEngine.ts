@@ -303,11 +303,6 @@ export class SyncEngine {
 
 			try {
 				emit(LISTEN_KEY.REFRESH_CLIPBOARD_LIST);
-				// 通知自动同步完成
-				emit(LISTEN_KEY.REALTIME_SYNC_COMPLETED, {
-					type: "auto_sync",
-					timestamp: this.lastSyncTime || Date.now(),
-				});
 			} catch {}
 
 			result.success = true;
