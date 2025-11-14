@@ -97,6 +97,14 @@
 				"allow-download-file"
 			]
 		},
+		"eco-auto-sync": {
+			"allow": [
+				"allow-start-auto-sync",
+				"allow-stop-auto-sync",
+				"allow-get-auto-sync-status",
+				"allow-update-sync-interval"
+			]
+		},
 		"eco-window": {
 			"allow": [
 				"allow-show-window",

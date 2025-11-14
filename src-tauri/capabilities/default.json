@@ -60,6 +60,50 @@
 		"eco-autostart:default",
 		"eco-webdav:default",
 		{
+			"identifier": "eco-auto-sync:allow-start-auto-sync",
+			"allow": [
+				{
+					"args": [
+						{
+							"name": "interval_hours",
+							"type": "number"
+						}
+					],
+					"cmd": "start_auto_sync"
+				}
+			]
+		},
+		{
+			"identifier": "eco-auto-sync:allow-stop-auto-sync",
+			"allow": [
+				{
+					"cmd": "stop_auto_sync"
+				}
+			]
+		},
+		{
+			"identifier": "eco-auto-sync:allow-get-auto-sync-status",
+			"allow": [
+				{
+					"cmd": "get_auto_sync_status"
+				}
+			]
+		},
+		{
+			"identifier": "eco-auto-sync:allow-update-sync-interval",
+			"allow": [
+				{
+					"args": [
+						{
+							"name": "interval_hours",
+							"type": "number"
+						}
+					],
+					"cmd": "update_sync_interval"
+				}
+			]
+		},
+		{
 			"identifier": "eco-webdav:allow-upload-sync-data",
 			"allow": [
 				{

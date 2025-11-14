@@ -21,3 +21,4 @@ tauri-plugin-eco-ocr = { path = "./src-tauri/src/plugins/ocr" }
 tauri-plugin-eco-paste = { path = "./src-tauri/src/plugins/paste" }
 tauri-plugin-eco-autostart = { path = "./src-tauri/src/plugins/autostart" }
 tauri-plugin-eco-webdav = { path = "./src-tauri/src/plugins/webdav" }
+tauri-plugin-eco-auto-sync = { path = "./src-tauri/src/plugins/auto_sync" }

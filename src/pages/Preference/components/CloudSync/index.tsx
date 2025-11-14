@@ -696,19 +696,24 @@ const CloudSync = () => {
 			globalStore.cloudSync.autoSyncSettings.enabled = enabled;
 
 			if (enabled) {
-				autoSync.initialize({
+				// 使用新的后端自动同步API
+				await autoSync.initialize({
 					enabled: true,
 					intervalHours: syncInterval,
 				});
-				appMessage.success("自动同步已启用");
+				appMessage.success("自动同步已启用（后台运行）");
 			} else {
-				autoSync.setEnabled(false);
+				// 停止后端定时器
+				await autoSync.setEnabled(false);
 				appMessage.info("自动同步已禁用");
 			}
 		} catch (error) {
 			console.error("自动同步操作失败", {
 				error: error instanceof Error ? error.message : String(error),
 			});
+			// 回滚UI状态
+			setAutoSyncEnabled(!enabled);
+			globalStore.cloudSync.autoSyncSettings.enabled = !enabled;
 			appMessage.error("自动同步操作失败");
 		}
 	};
@@ -778,6 +783,7 @@ const CloudSync = () => {
 
 	// 处理同步间隔变更
 	const handleSyncIntervalChange = async (hours: SyncInterval) => {
+		const oldInterval = syncInterval;
 		setSyncInterval(hours);
 
 		// 直接更新globalStore
@@ -785,12 +791,16 @@ const CloudSync = () => {
 
 		if (autoSyncEnabled) {
 			try {
-				autoSync.setIntervalHours(hours);
-				appMessage.success("同步间隔已更新");
+				// 使用新的后端API更新间隔
+				await autoSync.setIntervalHours(hours);
+				appMessage.success("同步间隔已更新（后台生效）");
 			} catch (error) {
 				console.error("更新同步间隔失败", {
 					error: error instanceof Error ? error.message : String(error),
 				});
+				// 回滚状态
+				setSyncInterval(oldInterval);
+				globalStore.cloudSync.autoSyncSettings.intervalHours = oldInterval;
 				appMessage.error("更新间隔失败");
 			}
 		}
@@ -1004,7 +1014,6 @@ const CloudSync = () => {
 								onChange={handleSyncIntervalChange}
 								style={{ width: 120 }}
 							>
-								<Select.Option value={0.5}>30分钟</Select.Option>
 								<Select.Option value={1}>1小时</Select.Option>
 								<Select.Option value={2}>2小时</Select.Option>
 								<Select.Option value={6}>6小时</Select.Option>

@@ -1370,6 +1370,7 @@ dependencies = [
  "tauri-plugin-autostart",
  "tauri-plugin-dialog",
  "tauri-plugin-drag",
+ "tauri-plugin-eco-auto-sync",
  "tauri-plugin-eco-autostart",
  "tauri-plugin-eco-clipboard",
  "tauri-plugin-eco-ocr",
@@ -6108,6 +6109,18 @@ dependencies = [
  "tauri",
  "tauri-plugin",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "tauri-plugin-eco-auto-sync"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-plugin",
+ "tokio",
 ]
 
 [[package]]
