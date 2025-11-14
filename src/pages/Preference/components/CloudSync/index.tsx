@@ -655,7 +655,7 @@ const CloudSync = () => {
 				if (totalChanges === 0) {
 					successMessage = "已是最新";
 				} else {
-					successMessage = `同步完成，更新 ${totalChanges} 项`;
+					successMessage = `已更新 ${totalChanges} 项`;
 				}
 
 				appMessage.success(successMessage);
@@ -673,7 +673,7 @@ const CloudSync = () => {
 			console.error("❌ 同步失败", {
 				error: error instanceof Error ? error.message : String(error),
 			});
-			appMessage.error("同步失败，请查看日志");
+			appMessage.error("同步失败");
 		} finally {
 			setIsSyncing(false);
 		}
@@ -692,7 +692,7 @@ const CloudSync = () => {
 					enabled: true,
 					intervalHours: syncInterval,
 				});
-				appMessage.success("自动同步已启用（后台运行）");
+				appMessage.success("自动同步已启用");
 			} else {
 				// 停止后端定时器
 				await autoSync.setEnabled(false);
