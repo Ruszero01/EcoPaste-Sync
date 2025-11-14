@@ -265,25 +265,6 @@ export const deduplicateItems = (items: HistoryItem[]): HistoryItem[] => {
  * @returns 核心内容字符串
  */
 export const extractFileCoreValue = (item: any): string => {
-	// 如果是文件包格式，提取原始路径信息
-	if (item._syncType === "package_files" && typeof item.value === "string") {
-		try {
-			const packageInfo = JSON.parse(item.value);
-			if (
-				packageInfo.originalPaths &&
-				Array.isArray(packageInfo.originalPaths)
-			) {
-				// 对于文件包，使用原始路径数组作为核心内容
-				if (item.type === "image" && packageInfo.originalPaths.length === 1) {
-					return packageInfo.originalPaths[0]; // 图片单个路径
-				}
-				return JSON.stringify(packageInfo.originalPaths.sort()); // 文件数组路径
-			}
-		} catch {
-			// 解析失败，继续使用原始逻辑
-		}
-	}
-
 	// 如果是JSON格式的路径数组，直接使用
 	if (
 		typeof item.value === "string" &&
@@ -719,7 +700,7 @@ export class LocalDataManager {
 		);
 
 		// 批量处理
-		const { insertSQL, updateSQL } = await import("@/database");
+		const { updateSQL } = await import("@/database");
 
 		// 处理新增项目
 		if (newItems.length > 0) {
@@ -743,7 +724,8 @@ export class LocalDataManager {
 						isCloudData: 1, // 标记为云端数据
 					} as any; // 类型断言以处理boolean到integer的转换
 
-					await insertSQL("history", insertItem);
+					const { insertWithDeduplicationForSync } = await import("@/database");
+					await insertWithDeduplicationForSync("history", insertItem);
 				} catch (error) {
 					console.error(`插入项目失败 (${item.id}):`, error);
 				}

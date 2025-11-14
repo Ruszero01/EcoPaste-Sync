@@ -232,8 +232,6 @@ export class SyncEngine {
 				(item) =>
 					// 排除已删除的项目
 					!item.deleted &&
-					// 排除文件包类型的项目，因为文件包的数据应该已经在处理上传时处理过了
-					item._syncType !== "package_files" &&
 					// 排除文件类型，避免与文件包处理冲突
 					item.type !== "files",
 			);

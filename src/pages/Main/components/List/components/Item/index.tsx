@@ -46,16 +46,26 @@ const Item: FC<ItemProps> = (props) => {
 
 	// 辅助函数：从JSON数组格式中提取实际值
 	const getActualValue = (val: string) => {
-		if (typeof val === "string" && val.startsWith("[")) {
-			try {
-				const parsed = JSON.parse(val);
-				if (Array.isArray(parsed) && parsed.length > 0) {
-					return parsed[0]; // 返回第一个值
-				}
-			} catch (error) {
-				console.error("解析值失败:", error);
-			}
+		if (!val || typeof val !== "string") {
+			return val;
 		}
+
+		try {
+			// 尝试解析为JSON
+			const parsed = JSON.parse(val);
+
+			// 如果是字符串数组，返回第一个值
+			if (
+				Array.isArray(parsed) &&
+				parsed.length > 0 &&
+				typeof parsed[0] === "string"
+			) {
+				return parsed[0];
+			}
+		} catch (_error) {
+			// JSON解析失败，继续使用原始值
+		}
+
 		return val; // 返回原始值
 	};
 
@@ -219,21 +229,39 @@ const Item: FC<ItemProps> = (props) => {
 
 	// 下载图片
 	const downloadImage = async () => {
-		const fileName = `${env.appName}_${id}.png`;
-		const path = joinPath(await downloadDir(), fileName);
+		try {
+			const fileName = `${env.appName}_${id}.png`;
+			const path = joinPath(await downloadDir(), fileName);
 
-		await copyFile(getActualValue(value), path);
-
-		revealItemInDir(path);
+			await copyFile(getActualValue(value), path);
+			await revealItemInDir(path);
+		} catch (error) {
+			console.error("下载图片失败:", error);
+			message.error("下载图片失败");
+		}
 	};
 
 	// 打开文件至访达
-	const openFinder = () => {
-		if (subtype === "path") {
-			revealItemInDir(getActualValue(value));
-		} else {
-			const actualValue = getActualValue(value);
-			revealItemInDir(actualValue);
+	const openFinder = async () => {
+		try {
+			const pathToReveal = getActualValue(value);
+
+			// 验证路径是否为有效格式
+			if (!pathToReveal || typeof pathToReveal !== "string") {
+				message.error("无效的文件路径");
+				return;
+			}
+
+			// 检查是否只是文件名（无路径分隔符）
+			if (!pathToReveal.includes("/") && !pathToReveal.includes("\\")) {
+				message.warning("该文件只有文件名，无法在资源管理器中显示");
+				return;
+			}
+
+			await revealItemInDir(pathToReveal);
+		} catch (error) {
+			console.error("打开资源管理器失败:", error);
+			message.error("无法在资源管理器中显示文件");
 		}
 	};
 

@@ -11,7 +11,6 @@ interface FileMetadata {
 	remotePath: string;
 	size: number;
 	timestamp: number;
-	md5?: string; // 用于文件完整性校验
 }
 
 /**
@@ -388,16 +387,6 @@ export class FileSyncManager {
 							filePaths.push(path);
 						}
 					}
-				} else if (
-					parsed.originalPaths &&
-					Array.isArray(parsed.originalPaths)
-				) {
-					// 处理 {originalPaths: ["...", "..."]} 格式
-					for (const path of parsed.originalPaths) {
-						if (typeof path === "string" && path.trim()) {
-							filePaths.push(path);
-						}
-					}
 				}
 			}
 		} catch {
@@ -491,10 +480,10 @@ export class FileSyncManager {
 
 				if (updatedItem._syncType === "files") {
 					result.uploaded++;
-					// 更新原始 syncItem 的值为文件元数据
-					syncItem.value = updatedItem.value;
-					syncItem._syncType = updatedItem._syncType;
-					// console.log(`文件上传成功: ${syncItem.id}, 元数据:`, updatedItem.value);
+					// 将文件元数据添加到 _fileMetadata 字段，保持原始 value 不变
+					(syncItem as any)._fileMetadata = updatedItem.value;
+					(syncItem as any)._syncType = "files";
+					// console.log(`文件上传成功: ${syncItem.id}, 元数据已添加到 _fileMetadata`);
 				} else {
 					console.warn(`文件上传失败，没有创建元数据: ${syncItem.id}`);
 				}

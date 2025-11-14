@@ -98,24 +98,53 @@ const Main = () => {
 						let itemFilePath = item.value;
 						let currentFilePath = value;
 
-						// 如果是files类型，尝试从JSON中提取第一个文件路径
-						if (item.type === "files" && item.value?.startsWith("[")) {
-							try {
-								const filePaths = JSON.parse(item.value);
-								itemFilePath = filePaths[0];
-							} catch {
-								// 解析失败，使用原值
-							}
-						}
+						// 辅助函数：从值中提取第一个文件路径
+						const extractFirstPath = (val: any) => {
+							if (!val || typeof val !== "string") return val;
 
-						// 如果当前是files类型，尝试从JSON中提取第一个文件路径
-						if (type === "files" && value?.startsWith("[")) {
 							try {
-								const filePaths = JSON.parse(value);
-								currentFilePath = filePaths[0];
+								const parsed = JSON.parse(val);
+
+								// 如果是字符串数组，返回第一个
+								if (
+									Array.isArray(parsed) &&
+									parsed.length > 0 &&
+									typeof parsed[0] === "string"
+								) {
+									return parsed[0];
+								}
+
+								// 如果是对象数组，提取第一个对象的路径
+								if (
+									Array.isArray(parsed) &&
+									parsed.length > 0 &&
+									typeof parsed[0] === "object"
+								) {
+									const firstItem = parsed[0];
+									return (
+										firstItem.originalPath ||
+										firstItem.path ||
+										firstItem.fileName ||
+										val
+									);
+								}
 							} catch {
-								// 解析失败，使用原值
+								// 解析失败，返回原值
 							}
+
+							return val;
+						};
+
+						// 提取文件路径
+						itemFilePath = extractFirstPath(item.value);
+						currentFilePath = extractFirstPath(value);
+
+						// 确保是字符串
+						if (
+							typeof itemFilePath !== "string" ||
+							typeof currentFilePath !== "string"
+						) {
+							return false;
 						}
 
 						// 标准化路径格式进行比较（处理大小写和路径分隔符差异）

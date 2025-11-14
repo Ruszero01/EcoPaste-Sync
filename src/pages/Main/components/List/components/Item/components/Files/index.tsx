@@ -24,9 +24,6 @@ const Files: FC<HistoryTablePayload> = (props) => {
 				// 旧格式：文件路径数组
 				paths = parsed;
 			}
-		} else if (parsed.originalPaths && Array.isArray(parsed.originalPaths)) {
-			// 旧包模式：提取originalPaths
-			paths = parsed.originalPaths;
 		} else if (parsed.files && Array.isArray(parsed.files)) {
 			// 新包模式：提取文件路径
 			paths = parsed.files

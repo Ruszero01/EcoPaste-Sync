@@ -65,9 +65,6 @@ const Header: FC<HeaderProps> = (props) => {
 							// 旧格式：文件路径数组
 							fileCount = parsed.length;
 						}
-					} else if (parsed.packageId && parsed.originalPaths) {
-						// 旧包模式，使用originalPaths的长度
-						fileCount = parsed.originalPaths.length;
 					} else if (parsed.files && Array.isArray(parsed.files)) {
 						// 新包模式，使用files数组的长度
 						fileCount = parsed.files.length;

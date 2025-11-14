@@ -44,9 +44,6 @@ const Image: FC<ImageProps> = (props) => {
 							file.originalPath || file.path || file.fileName || "",
 					)
 					.filter((path: string) => path);
-			} else if (parsed.originalPaths && Array.isArray(parsed.originalPaths)) {
-				// 旧包模式：提取originalPaths
-				filePaths = parsed.originalPaths;
 			}
 
 			if (filePaths.length > 0) {

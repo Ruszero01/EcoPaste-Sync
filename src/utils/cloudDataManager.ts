@@ -1,4 +1,4 @@
-import { deleteFile, downloadSyncData, uploadSyncData } from "@/plugins/webdav";
+import { downloadSyncData, uploadSyncData } from "@/plugins/webdav";
 import type { WebDAVConfig } from "@/plugins/webdav";
 import type { CloudSyncIndex, SyncItem, SyncModeConfig } from "@/types/sync";
 import { calculateChecksum } from "@/utils/shared";
@@ -358,24 +358,7 @@ export class CloudDataManager {
 		let failedCount = 0;
 
 		try {
-			// 1. 删除文件包（异步并发处理）
-			const packageDeletePromises = itemIds.map(async (itemId) => {
-				try {
-					const packagePath = this.getPackagePath(itemId);
-					const result = await deleteFile(this.webdavConfig!, packagePath);
-					console.info(`删除云端文件包 ${itemId}: ${result ? "成功" : "失败"}`);
-					return result;
-				} catch (error) {
-					console.error(`删除云端文件包异常 (${itemId}):`, error);
-					return false;
-				}
-			});
-
-			const packageDeleteResults = await Promise.allSettled(packageDeletePromises);
-			const packageSuccessCount = packageDeleteResults.filter(r => r.status === "fulfilled" && r.value).length;
-			console.info(`文件包删除结果: ${packageSuccessCount}/${itemIds.length} 成功`);
-
-			// 2. 更新云端索引，移除已删除的项目
+			// 1. 更新云端索引，移除已删除的项目
 			console.info(`开始更新云端索引，要删除的项目: ${itemIds.join(", ")}`);
 			const currentIndex = await this.downloadSyncIndex();
 
@@ -428,16 +411,7 @@ export class CloudDataManager {
 		return { success: successCount, failed: failedCount, errors };
 	}
 
-	/**
-	 * 获取文件包路径
-	 */
-	private getPackagePath(itemId: string): string {
-		const basePath = this.webdavConfig?.path || "";
-		return basePath && basePath !== "/"
-			? `${basePath.replace(/\/$/, "")}/packages/${itemId}.json`
-			: `packages/${itemId}.json`;
-	}
-
+	
 	/**
 	 * 获取完整文件路径
 	 */
@@ -625,8 +599,18 @@ export class CloudDataManager {
 	 * 实际的文件上传由 fileSyncManager 负责
 	 */
 	private async processUploadItems(items: SyncItem[]): Promise<any[]> {
-		// 直接返回所有项目的元数据，文件项的实际文件由 fileSyncManager 处理
-		return items;
+		// 处理每个项目，如果有 _fileMetadata，则将其合并到 value 中（仅用于云端存储）
+		return items.map((item) => {
+			const itemCopy = { ...item };
+
+			// 如果有文件元数据，将其存储在云端索引中
+			if ((item as any)._fileMetadata) {
+				itemCopy._fileMetadata = (item as any)._fileMetadata;
+				itemCopy._syncType = (item as any)._syncType;
+			}
+
+			return itemCopy;
+		});
 	}
 
 	/**
