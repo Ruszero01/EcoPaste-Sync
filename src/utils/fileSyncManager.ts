@@ -1,5 +1,6 @@
 import { downloadFile, uploadFile } from "@/plugins/webdav";
 import type { WebDAVConfig } from "@/plugins/webdav";
+import { globalStore } from "@/stores/global";
 import type { HistoryItem, SyncItem } from "@/types/sync";
 import { appDataDir, join } from "@tauri-apps/api/path";
 import { exists } from "@tauri-apps/plugin-fs";
@@ -99,7 +100,8 @@ export class FileSyncManager {
 			try {
 				// 检查文件大小限制
 				const size = await this.getFileSize(localPath);
-				const maxSize = 10 * 1024 * 1024; // 10MB
+				const maxSize =
+					globalStore.cloudSync.fileSync.maxFileSize * 1024 * 1024;
 				if (size > maxSize) {
 					console.warn(`文件过大，跳过: ${localPath}`);
 					continue;
