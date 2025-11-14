@@ -48,9 +48,13 @@ const { Text } = Typography;
 const CloudSync = () => {
 	// 安全获取消息 API 实例
 	let appMessage: any;
+	let modal: any;
+	let modalContextHolder: React.ReactNode;
+
 	try {
 		const app = App.useApp();
 		appMessage = app.message;
+		[modal, modalContextHolder] = Modal.useModal();
 	} catch (_error) {
 		// 如果 App.useApp() 失败，使用静态方法
 		appMessage = {
@@ -60,16 +64,8 @@ const CloudSync = () => {
 			info: (content: string) => message.info(content),
 			loading: (content: string) => message.loading(content),
 		};
+		[modal, modalContextHolder] = Modal.useModal();
 	}
-
-	// 直接使用静态 Modal 方法（在 App context 中应该正常工作）
-	const appModal = {
-		confirm: (options: any) => Modal.confirm(options),
-		info: (options: any) => Modal.info(options),
-		success: (options: any) => Modal.success(options),
-		error: (options: any) => Modal.error(options),
-		warning: (options: any) => Modal.warning(options),
-	};
 	const { cloudSync: cloudSyncStore } = useSnapshot(globalStore);
 	const [isConfigLoading, setIsConfigLoading] = useState(false);
 	const [connectionStatus, setConnectionStatus] = useState<
@@ -755,7 +751,7 @@ const CloudSync = () => {
 		}
 
 		// 确认对话框
-		appModal.confirm({
+		modal.confirm({
 			title: "应用云端配置",
 			content: "这将覆盖当前的本地配置，确定要继续吗？",
 			okText: "确定",
@@ -810,7 +806,7 @@ const CloudSync = () => {
 
 	// 开发环境专用：数据库重置功能
 	const handleClearHistory = async () => {
-		Modal.confirm({
+		modal.confirm({
 			title: "清空历史记录",
 			content: "确定要清空所有剪贴板历史记录吗？此操作无法撤销。",
 			okText: "确定",
@@ -834,7 +830,7 @@ const CloudSync = () => {
 	};
 
 	const handleResetDatabase = async () => {
-		appModal.confirm({
+		modal.confirm({
 			title: "重置数据库",
 			content:
 				"确定要重置整个数据库吗？这将删除所有数据并重新创建数据库。此操作无法撤销。",
@@ -860,6 +856,7 @@ const CloudSync = () => {
 
 	return (
 		<>
+			{modalContextHolder}
 			{/* 服务器配置 */}
 			<ProList header="服务器配置">
 				<Form
