@@ -1,3 +1,4 @@
+import { globalStore } from "@/stores/global";
 import type { HistoryItem, SyncItem, SyncModeConfig } from "@/types/sync";
 import { calculateChecksum } from "./shared";
 
@@ -84,17 +85,11 @@ export const filterItemsBySyncMode = (
 		}
 
 		// 4. 文件大小过滤（仅对图片和文件生效）
-		if (
-			syncConfig.fileLimits &&
-			(item.type === "image" || item.type === "files")
-		) {
-			const { maxImageSize, maxFileSize } = syncConfig.fileLimits;
+		if (item.type === "image" || item.type === "files") {
+			const maxSize = globalStore.cloudSync.fileSync.maxFileSize * 1024 * 1024;
 			const fileSize = item.count || 0; // count 字段存储文件大小
 
-			if (item.type === "image" && fileSize > maxImageSize * 1024 * 1024) {
-				return false;
-			}
-			if (item.type === "files" && fileSize > maxFileSize * 1024 * 1024) {
+			if (fileSize > maxSize) {
 				return false;
 			}
 		}
@@ -403,32 +398,23 @@ export const getSyncStatus = (
 			reason = "轻量模式不同步图片";
 		} else if (item.type === "files" && !syncConfig.settings.includeFiles) {
 			reason = "轻量模式不同步文件";
-		} else if (syncConfig.fileLimits) {
-			if (item.type === "image") {
-				const maxSize = syncConfig.fileLimits.maxImageSize * 1024 * 1024;
-				const fileSize = item.count || 0;
-				if (fileSize > maxSize) {
-					reason = `图片超过 ${syncConfig.fileLimits.maxImageSize}MB 限制`;
-				}
-			} else if (item.type === "files") {
-				const maxSize = syncConfig.fileLimits.maxFileSize * 1024 * 1024;
-				const fileSize = item.count || 0;
-				if (fileSize > maxSize) {
-					reason = `文件超过 ${syncConfig.fileLimits.maxFileSize}MB 限制`;
-				}
+		} else if (item.type === "image" || item.type === "files") {
+			const maxSize = globalStore.cloudSync.fileSync.maxFileSize * 1024 * 1024;
+			const fileSize = item.count || 0;
+			if (fileSize > maxSize) {
+				const typeText = item.type === "image" ? "图片" : "文件";
+				reason = `${typeText}超过 ${globalStore.cloudSync.fileSync.maxFileSize}MB 限制`;
 			}
 		}
 
 		return {
 			canSync: false,
 			reason,
-			mode: syncConfig.mode,
 		};
 	}
 
 	return {
 		canSync: true,
-		mode: syncConfig.mode,
 	};
 };
 

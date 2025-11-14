@@ -284,13 +284,6 @@ export interface SyncResult {
 
 // 同步模式配置（双开关模式）
 export interface SyncModeConfig {
-	// 文件大小限制（仅在需要时生效）
-	fileLimits?: {
-		maxImageSize: number; // 5MB
-		maxFileSize: number; // 10MB
-		maxPackageSize: number; // 50MB
-	};
-
 	// 同步设置（双开关模式）
 	settings: {
 		includeText: boolean; // 是否包含文本（总是启用）

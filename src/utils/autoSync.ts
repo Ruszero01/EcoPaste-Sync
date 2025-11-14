@@ -111,11 +111,6 @@ class AutoSyncManager {
 					onlyFavorites:
 						globalStore.cloudSync.syncModeConfig.settings.onlyFavorites,
 				},
-				fileLimits: {
-					maxImageSize: globalStore.cloudSync.fileSync.maxFileSize,
-					maxFileSize: globalStore.cloudSync.fileSync.maxFileSize,
-					maxPackageSize: globalStore.cloudSync.fileSync.maxFileSize,
-				},
 			};
 
 			syncEngine.setSyncModeConfig(syncModeConfig);
