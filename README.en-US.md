@@ -66,9 +66,12 @@
 ### ✨ Current Features
 
 - 🔄 **WebDAV Cloud Sync**: Multi-device clipboard data synchronization through WebDAV protocol
-- 🗂️ **Smart Sync Mode**: Multiple sync strategies, including selective sync by content type, favorite status, etc.
-- 🔐 **Data Security**: Hybrid mode with local storage as primary and cloud sync as secondary, data fully controlled
-- ⚡ **Real-time Sync Engine**: Smart conflict detection and resolution, supporting bidirectional and incremental sync
+- 🗂️ **Smart Sync Mode**: Three sync modes - lightweight (text only), full (all types), favorites (bookmarked content only)
+- 🔐 **Data Security**: Local-first storage architecture, data fully controlled, HTTPS/TLS encrypted transmission
+- ⚡ **Real-time Sync Engine**: Smart conflict detection and resolution based on checksums, supporting bidirectional and incremental sync
+- 🤖 **Background Auto Sync**: Rust plugin-based scheduled sync, configurable 1-24 hour intervals
+- ⚙️ **Configuration Sync**: Complete application settings sync including sync modes, shortcuts, UI configurations
+- 📁 **Optimized File Handling**: Smart file path extraction, metadata management, cross-device path consistency
 
 ### 📦 Usage Instructions
 
@@ -107,6 +110,7 @@ pnpm tauri build
 ### ☁️ Cloud Sync Features (This Branch's Specialty)
 
 #### 🏗️ System Architecture
+
 Distributed cloud sync architecture based on WebDAV protocol, adopting a local-first design philosophy:
 
 ```mermaid
@@ -141,6 +145,7 @@ graph TB
 ```
 
 #### ✨ Core Features
+
 - **Three Sync Modes**: Lightweight, complete, and favorites sync to meet different needs
 - **Multi-type Support**: Support for various data types including text, images, and files
 - **Bidirectional Sync**: Support for bidirectional data synchronization and incremental updates across multiple devices
@@ -153,6 +158,7 @@ graph TB
 #### 📋 Technical Architecture Details
 
 **🔄 Sync Process**
+
 1. **Data Collection**: Collect clipboard data from local database
 2. **Smart Filtering**: Filter data based on sync mode
 3. **Conflict Detection**: Detect real conflicts based on checksums and timestamps
@@ -162,11 +168,13 @@ graph TB
 7. **Local Update**: Apply cloud changes to local database
 
 **💾 Storage Architecture**
+
 - **Local Storage**: SQLite database + file system cache
 - **Cloud Storage**: WebDAV server (sync-data.json + files/ directory)
 - **Data Format**: Hybrid architecture of lightweight index + complete metadata
 
 **🛡️ Security Guarantees**
+
 - Local-first storage, data fully controllable
 - HTTPS/TLS encrypted transmission
 - Smart conflict resolution to avoid data loss
@@ -175,6 +183,7 @@ graph TB
 📖 **Detailed Architecture Documentation**: View [Cloud Sync Architecture Documentation](./docs/CLOUD_SYNC_ARCHITECTURE.md) and [Architecture Diagram](./docs/architecture-diagram.md) for technical implementation details.
 
 ### Cloud Sync Configuration (This Branch)
+
 1. **Prepare WebDAV Service**: Ensure you have an available WebDAV service
 2. **Configure Connection**: Configure server information in preferences' "Cloud Sync" section
 3. **Start Syncing**: Select appropriate sync strategy and start synchronization
