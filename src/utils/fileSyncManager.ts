@@ -292,7 +292,24 @@ export class FileSyncManager {
 	 * 从 SyncItem 提取文件元数据
 	 */
 	extractFileMetadata(item: SyncItem): FileMetadata[] {
-		if (!item.value || (item.type !== "image" && item.type !== "files")) {
+		if (item.type !== "image" && item.type !== "files") {
+			return [];
+		}
+
+		// 优先检查新的 _fileMetadata 字段
+		if ((item as any)._fileMetadata) {
+			try {
+				const metadata = JSON.parse((item as any)._fileMetadata);
+				if (Array.isArray(metadata)) {
+					return metadata as FileMetadata[];
+				}
+			} catch (error) {
+				console.error("解析 _fileMetadata 失败:", error);
+			}
+		}
+
+		// 回退到原始的 value 字段检查
+		if (!item.value) {
 			return [];
 		}
 
@@ -303,10 +320,23 @@ export class FileSyncManager {
 				return parsed as FileMetadata[];
 			}
 
-			if (Array.isArray(parsed)) {
-				// 旧格式：文件路径数组，无法转换为元数据
-				console.warn("检测到旧格式文件路径，无法提取元数据");
-				return [];
+			if (
+				Array.isArray(parsed) &&
+				parsed.length > 0 &&
+				typeof parsed[0] === "string"
+			) {
+				// 旧格式：文件路径数组，转换为元数据格式
+				console.info("检测到旧格式文件路径，转换为元数据格式");
+				return parsed.map((path, index) => ({
+					fileName: path.split(/[/\\]/).pop() || `file_${index}`,
+					originalPath: path,
+					remotePath: this.buildRemotePath(
+						item.id,
+						path.split(/[/\\]/).pop() || `file_${index}`,
+					),
+					size: 0,
+					timestamp: Date.now(),
+				}));
 			}
 		} catch (error) {
 			console.error("解析文件元数据失败:", error);
