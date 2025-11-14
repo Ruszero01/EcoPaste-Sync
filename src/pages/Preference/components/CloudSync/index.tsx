@@ -647,22 +647,15 @@ const CloudSync = () => {
 				setLastSyncTime(timestamp);
 				saveLastSyncTime(timestamp);
 
-				// 显示成功消息 - 统一格式
-				const totalCount =
+				// 显示简洁的成功消息
+				const totalChanges =
 					syncResult.downloaded + syncResult.uploaded + syncResult.deleted;
 
 				let successMessage: string;
-				if (totalCount === 0) {
-					successMessage = "无需同步";
+				if (totalChanges === 0) {
+					successMessage = "已是最新";
 				} else {
-					const parts = [];
-					if (syncResult.uploaded > 0)
-						parts.push(`上传 ${syncResult.uploaded} 条`);
-					if (syncResult.downloaded > 0)
-						parts.push(`下载 ${syncResult.downloaded} 条`);
-					if (syncResult.deleted > 0)
-						parts.push(`删除 ${syncResult.deleted} 条`);
-					successMessage = `已同步：${parts.join("，")}`;
+					successMessage = `同步完成，更新 ${totalChanges} 项`;
 				}
 
 				appMessage.success(successMessage);
