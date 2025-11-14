@@ -73,9 +73,8 @@ export interface GlobalStore {
 				text: boolean;
 			};
 		};
-		// 同步模式配置（原localStorage中的配置）
+		// 同步模式配置（双开关模式）
 		syncModeConfig: {
-			mode: "lightweight" | "full" | "favorites";
 			settings: {
 				includeText: boolean;
 				includeHtml: boolean;

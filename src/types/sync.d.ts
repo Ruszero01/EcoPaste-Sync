@@ -282,13 +282,8 @@ export interface SyncResult {
 	timestamp: number;
 }
 
-// 同步模式类型
-export type SyncMode = "lightweight" | "full" | "favorites";
-
-// 同步模式配置
+// 同步模式配置（双开关模式）
 export interface SyncModeConfig {
-	mode: SyncMode;
-
 	// 文件大小限制（仅在需要时生效）
 	fileLimits?: {
 		maxImageSize: number; // 5MB
@@ -296,60 +291,13 @@ export interface SyncModeConfig {
 		maxPackageSize: number; // 50MB
 	};
 
-	// 模式特定设置
+	// 同步设置（双开关模式）
 	settings: {
-		includeText: boolean; // 是否包含文本
-		includeHtml: boolean; // 是否包含HTML
-		includeRtf: boolean; // 是否包含富文本
-		includeImages: boolean; // 是否包含图片
-		includeFiles: boolean; // 是否包含文件
-		onlyFavorites: boolean; // 仅同步收藏内容
+		includeText: boolean; // 是否包含文本（总是启用）
+		includeHtml: boolean; // 是否包含HTML（总是启用）
+		includeRtf: boolean; // 是否包含富文本（总是启用）
+		includeImages: boolean; // 是否包含图片（文件模式开关）
+		includeFiles: boolean; // 是否包含文件（文件模式开关）
+		onlyFavorites: boolean; // 仅同步收藏内容（收藏模式开关）
 	};
 }
-
-// 同步模式预设配置
-export const SYNC_MODE_PRESETS: Record<SyncMode, SyncModeConfig> = {
-	lightweight: {
-		mode: "lightweight",
-		settings: {
-			includeText: true,
-			includeHtml: true,
-			includeRtf: true,
-			includeImages: false,
-			includeFiles: false,
-			onlyFavorites: false,
-		},
-	},
-	full: {
-		mode: "full",
-		fileLimits: {
-			maxImageSize: 5,
-			maxFileSize: 10,
-			maxPackageSize: 50,
-		},
-		settings: {
-			includeText: true,
-			includeHtml: true,
-			includeRtf: true,
-			includeImages: true,
-			includeFiles: true,
-			onlyFavorites: false,
-		},
-	},
-	favorites: {
-		mode: "favorites",
-		fileLimits: {
-			maxImageSize: 5,
-			maxFileSize: 10,
-			maxPackageSize: 50,
-		},
-		settings: {
-			includeText: true,
-			includeHtml: true,
-			includeRtf: true,
-			includeImages: true,
-			includeFiles: true,
-			onlyFavorites: true,
-		},
-	},
-};

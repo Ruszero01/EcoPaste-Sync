@@ -96,9 +96,8 @@ class AutoSyncManager {
 			// 确保同步引擎已初始化
 			await syncEngine.initialize(webdavConfig);
 
-			// 获取同步模式配置
+			// 获取同步模式配置（双开关模式）
 			const syncModeConfig = {
-				mode: globalStore.cloudSync.syncModeConfig.mode,
 				settings: {
 					includeText:
 						globalStore.cloudSync.syncModeConfig.settings.includeText,

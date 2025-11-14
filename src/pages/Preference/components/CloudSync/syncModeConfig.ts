@@ -1,11 +1,20 @@
-import { SYNC_MODE_PRESETS, type SyncModeConfig } from "@/types/sync.d";
+import type { SyncModeConfig } from "@/types/sync.d";
 
 // 配置存储键名
 const SYNC_MODE_CONFIG_KEY = "ecopaste-sync-mode-config";
 
-// 获取默认配置
+// 获取默认配置（双开关模式）
 export const getDefaultSyncModeConfig = (): SyncModeConfig => {
-	return SYNC_MODE_PRESETS.lightweight;
+	return {
+		settings: {
+			includeText: true, // 总是启用
+			includeHtml: true, // 总是启用
+			includeRtf: true, // 总是启用
+			includeImages: false, // 文件模式开关，默认关闭
+			includeFiles: false, // 文件模式开关，默认关闭
+			onlyFavorites: false, // 收藏模式开关，默认关闭
+		},
+	};
 };
 
 // 保存同步模式配置

@@ -2,6 +2,7 @@ import ProList from "@/components/ProList";
 import ProListItem from "@/components/ProListItem";
 import { LISTEN_KEY } from "@/constants";
 import { clearHistoryTable, resetDatabase } from "@/database";
+import { getDefaultSyncModeConfig } from "@/pages/Preference/components/CloudSync/syncModeConfig";
 import {
 	type WebDAVConfig,
 	getServerConfig,
@@ -9,7 +10,7 @@ import {
 	testConnection,
 } from "@/plugins/webdav";
 import { globalStore } from "@/stores/global";
-import { SYNC_MODE_PRESETS, type SyncModeConfig } from "@/types/sync.d";
+import type { SyncModeConfig } from "@/types/sync.d";
 import { type SyncInterval, autoSync } from "@/utils/autoSync";
 import { configSync } from "@/utils/configSync";
 import { isDev } from "@/utils/is";
@@ -87,7 +88,7 @@ const CloudSync = () => {
 		timeout: 60000, // 增加默认超时时间到60秒，提高网络请求的可靠性
 	});
 	const [syncModeConfig, setSyncModeConfig] = useState<SyncModeConfig>(
-		SYNC_MODE_PRESETS.lightweight,
+		getDefaultSyncModeConfig(),
 	);
 	const [isConfigSyncing, setIsConfigSyncing] = useState(false);
 	const [form] = Form.useForm();
@@ -190,9 +191,8 @@ const CloudSync = () => {
 			// 从globalStore读取同步模式配置
 			const storeSyncModeConfig = cloudSyncStore.syncModeConfig;
 
-			// 转换为SyncModeConfig格式
+			// 转换为SyncModeConfig格式（双开关模式）
 			const config: SyncModeConfig = {
-				mode: storeSyncModeConfig.mode,
 				settings: {
 					includeText: storeSyncModeConfig.settings.includeText,
 					includeHtml: storeSyncModeConfig.settings.includeHtml,
@@ -216,7 +216,7 @@ const CloudSync = () => {
 		} catch (error) {
 			console.error("加载同步模式配置失败:", error);
 			// 发生错误时使用默认配置
-			const defaultConfig = SYNC_MODE_PRESETS.lightweight;
+			const defaultConfig = getDefaultSyncModeConfig();
 			setSyncModeConfig(defaultConfig);
 		}
 	}, [cloudSyncStore.syncModeConfig]);
@@ -296,19 +296,16 @@ const CloudSync = () => {
 				}
 
 				const currentConfig = syncModeConfig;
-				const newMode = enabled ? ("favorites" as const) : ("full" as const);
 				const newConfig = {
 					...currentConfig,
-					mode: newMode,
 					settings: {
 						...currentConfig.settings,
 						onlyFavorites: enabled,
 					},
 				};
 
-				// 直接更新globalStore中的同步模式配置
+				// 直接更新globalStore中的同步模式配置（双开关模式）
 				globalStore.cloudSync.syncModeConfig = {
-					mode: newMode,
 					settings: {
 						includeText: newConfig.settings.includeText,
 						includeHtml: newConfig.settings.includeHtml,
@@ -344,10 +341,8 @@ const CloudSync = () => {
 				}
 
 				const currentConfig = syncModeConfig;
-				const newMode = enabled ? ("full" as const) : ("lightweight" as const);
 				const newConfig = {
 					...currentConfig,
-					mode: newMode,
 					settings: {
 						...currentConfig.settings,
 						includeImages: enabled,
@@ -355,9 +350,8 @@ const CloudSync = () => {
 					},
 				};
 
-				// 直接更新globalStore中的同步模式配置
+				// 直接更新globalStore中的同步模式配置（双开关模式）
 				globalStore.cloudSync.syncModeConfig = {
-					mode: newMode,
 					settings: {
 						includeText: newConfig.settings.includeText,
 						includeHtml: newConfig.settings.includeHtml,
