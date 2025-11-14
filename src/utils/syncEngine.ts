@@ -127,7 +127,7 @@ export class SyncEngine {
 			);
 
 			// 3. localDataManager 根据同步模式和文件限制筛选本地数据（不包括已删除的）
-			const filteredLocalData = localDataManager.filterLocalDataForSync(
+			let filteredLocalData = localDataManager.filterLocalDataForSync(
 				localRawData,
 				this.syncModeConfig,
 				{ includeDeleted: false },
@@ -190,7 +190,16 @@ export class SyncEngine {
 			filteredLocalData.push(...favoriteStatusChanges.localItems);
 			cloudSyncItems.push(...favoriteStatusChanges.cloudItems);
 
-			// 9. 只处理真正有冲突的项目（ID相同但内容不同）
+			// 9. 最终过滤：确保已删除的项目完全被排除在后续处理之外
+			const deletedItemIds = new Set(localDeletedItems.map((item) => item.id));
+			filteredLocalData = filteredLocalData.filter(
+				(item) => !deletedItemIds.has(item.id),
+			);
+			cloudSyncItems = cloudSyncItems.filter(
+				(item) => !deletedItemIds.has(item.id),
+			);
+
+			// 10. 只处理真正有冲突的项目（ID相同但内容不同）
 			const realConflicts = detectRealConflicts(
 				filteredLocalData,
 				cloudSyncItems,
