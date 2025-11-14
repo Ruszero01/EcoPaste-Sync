@@ -565,6 +565,14 @@ export class SyncEngine {
 				);
 
 				if (localOriginalItem) {
+					// 排除已删除的项目，避免重复计数
+					if (
+						localOriginalItem.deleted === true ||
+						(localOriginalItem.deleted as any) === 1
+					) {
+						continue;
+					}
+
 					// 本地存在该项目但被过滤掉，检查收藏状态是否发生变化
 					if (localOriginalItem.favorite !== cloudItem.favorite) {
 						// 收藏状态发生变化，加入同步列表
