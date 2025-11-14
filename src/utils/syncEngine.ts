@@ -92,6 +92,7 @@ export class SyncEngine {
 				success: false,
 				uploaded: 0,
 				downloaded: 0,
+				deleted: 0,
 				conflicts: [],
 				errors: ["同步正在进行中"],
 				duration: 0,
@@ -264,15 +265,23 @@ export class SyncEngine {
 			) {
 				const uploadSuccess = await this.applyCloudChanges(cloudResult);
 				if (uploadSuccess) {
-					// 只计算数据上传，不包括文件包上传
-					result.uploaded =
-						cloudResult.itemsToAdd.length + cloudResult.itemsToUpdate.length;
-
-					// 上传成功后，更新本地项目的同步状态为"已同步"
+					// 只计算数据上传，排除已删除项目避免重复计数
 					const uploadedItemIds = [
 						...cloudResult.itemsToAdd.map((item) => item.id),
 						...cloudResult.itemsToUpdate.map((item) => item.id),
 					];
+
+					// 排除已删除的项目ID，避免重复计数
+					const deletedItemIds = new Set(
+						localDeletedItems.map((item) => item.id),
+					);
+					const nonDeletedUploadedIds = uploadedItemIds.filter(
+						(id) => !deletedItemIds.has(id),
+					);
+
+					result.uploaded = nonDeletedUploadedIds.length;
+
+					// 上传成功后，更新本地项目的同步状态为"已同步"
 					await this.markItemsAsSynced(uploadedItemIds);
 				}
 			}
