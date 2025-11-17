@@ -1,9 +1,8 @@
-import UnoIcon from "@/components/UnoIcon";
 import { LISTEN_KEY } from "@/constants";
 import { bookmarkManager } from "@/utils/bookmarkManager";
 import { listen } from "@tauri-apps/api/event";
 import { useKeyPress } from "ahooks";
-import { Button, Input, Modal } from "antd";
+import { Input, Modal } from "antd";
 import clsx from "clsx";
 import { useCallback, useContext, useEffect, useState } from "react";
 import { MainContext } from "../..";
@@ -326,34 +325,6 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 							</div>
 						);
 					})}
-
-					{/* 分割线 */}
-					{customGroups.length > 0 && (
-						<div className="my-2 h-px w-10 bg-color-2/40" />
-					)}
-
-					{/* 清空全部按钮 - icon形式 */}
-					{customGroups.length > 0 && (
-						<Button
-							className="h-6 w-10 rounded-md text-color-3 hover:bg-red-50 hover:text-red-500"
-							icon={<UnoIcon name="i-lucide:trash-2" />}
-							size="small"
-							type="text"
-							onClick={async () => {
-								await bookmarkManager.clearAllGroups();
-								setCustomGroups([]);
-								setChecked(undefined);
-								state.search = undefined;
-								if (getListCache?.current) {
-									getListCache.current.clear();
-								}
-								if (getListDebounced) {
-									getListDebounced(50);
-								}
-							}}
-							title="清空所有分组"
-						/>
-					)}
 				</div>
 			</div>
 
