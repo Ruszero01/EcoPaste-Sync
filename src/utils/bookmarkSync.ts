@@ -101,7 +101,7 @@ export class BookmarkSync {
 				};
 			}
 
-			// 如果本地没有书签但云端有书签，比较时间戳决定谁更新
+			// 如果本地没有书签但云端有书签，优先从云端下载
 			if (localGroups.length === 0 && cloudBookmarkData.groups.length > 0) {
 				// 如果本地时间戳为0，说明是全新设备，直接从云端下载
 				if (localLastModified === 0) {
@@ -114,8 +114,17 @@ export class BookmarkSync {
 					};
 				}
 
-				// 如果本地时间戳更新，说明用户删除了书签，需要同步删除到云端
-				if (localLastModified > cloudBookmarkData.lastModified) {
+				// 添加安全检查：只有当本地时间戳比云端新很多时（比如超过1小时），才认为是用户主动删除
+				// 这可以避免因时间戳误差导致的误判
+				const timeDifference =
+					localLastModified - cloudBookmarkData.lastModified;
+				const oneHour = 60 * 60 * 1000; // 1小时的毫秒数
+
+				// 如果本地时间戳更新很多（超过1小时），才认为是用户删除了书签
+				if (timeDifference > oneHour) {
+					console.info(
+						`检测到本地删除操作：本地时间戳 ${localLastModified} 比云端 ${cloudBookmarkData.lastModified} 新 ${timeDifference}ms`,
+					);
 					const mergedData = this.mergeBookmarkDataToCloud(cloudData, {
 						groups: [],
 						lastModified: localLastModified,
@@ -128,28 +137,17 @@ export class BookmarkSync {
 					};
 				}
 
-				// 如果云端时间戳更新，说明其他设备添加了书签，需要下载到本地
-				if (cloudBookmarkData.lastModified > localLastModified) {
-					await bookmarkManager.forceSetData(cloudBookmarkData.groups);
-					bookmarkManager.setLastModified(cloudBookmarkData.lastModified);
-
-					return {
-						needUpload: false,
-						needDownload: true,
-					};
-				}
-
-				// 时间戳相同，检查内容是否一致
-				// 本地空，云端有，但时间戳相同，以本地为准（可能是不一致的情况）
-				const mergedData = this.mergeBookmarkDataToCloud(cloudData, {
-					groups: [],
-					lastModified: Date.now(), // 使用新的时间戳
-				});
+				// 在其他所有情况下，都优先从云端下载书签
+				// 这确保了设备2能够正确获取云端书签
+				console.info(
+					`优先从云端下载书签：本地时间戳 ${localLastModified}，云端时间戳 ${cloudBookmarkData.lastModified}`,
+				);
+				await bookmarkManager.forceSetData(cloudBookmarkData.groups);
+				bookmarkManager.setLastModified(cloudBookmarkData.lastModified);
 
 				return {
-					needUpload: true,
-					needDownload: false,
-					mergedData,
+					needUpload: false,
+					needDownload: true,
 				};
 			}
 
