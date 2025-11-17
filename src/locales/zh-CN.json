@@ -279,7 +279,8 @@
 				"show_in_finder": "在 Finder 中显示",
 				"show_in_file_explorer": "在文件资源管理器中显示",
 				"delete": "删除"
-			}
+			},
+			"create_group": "新建分组"
 		},
 		"label": {
 			"tab": {
@@ -289,6 +290,12 @@
 				"files": "文件",
 				"favorite": "收藏"
 			},
+			"groups": "分组",
+			"fixed_groups": "固定分组",
+			"custom_groups": "自定义分组",
+			"create_group": "创建分组",
+			"create_group_with_search": "创建分组",
+			"choose_color": "选择颜色",
 			"link": "链接",
 			"email": "邮箱",
 			"color": "颜色",
@@ -302,7 +309,10 @@
 		},
 		"hints": {
 			"search_placeholder": "搜索",
-			"delete_modal_content": "确定要删除此项吗？"
+			"delete_modal_content": "确定要删除此项吗？",
+			"create_group_description": "将当前搜索关键词创建为自定义分组",
+			"no_custom_groups": "暂无自定义分组",
+			"new_group_placeholder": "输入分组名称"
 		}
 	},
 	"component": {
