@@ -81,6 +81,11 @@ class BookmarkManager {
 		return this.lastModified;
 	}
 
+	// 设置最后修改时间（用于同步）
+	public setLastModified(timestamp: number): void {
+		this.lastModified = timestamp;
+	}
+
 	// 添加书签分组
 	public async addGroup(
 		name: string,

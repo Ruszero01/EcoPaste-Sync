@@ -4,6 +4,7 @@ import type { WebDAVConfig } from "@/plugins/webdav";
 import type { SyncItem, SyncModeConfig, SyncResult } from "@/types/sync";
 import { generateDeviceId } from "@/utils/shared";
 import { emit } from "@tauri-apps/api/event";
+import { bookmarkSync } from "./bookmarkSync";
 import { cloudDataManager } from "./cloudDataManager";
 import { fileSyncManager } from "./fileSyncManager";
 import { localDataManager } from "./localDataManager";
@@ -300,6 +301,9 @@ export class SyncEngine {
 				// 文件包上传是额外的操作，已经通过 fileUploadResult.uploaded 统计
 				// 不再累加到 result.uploaded 中避免重复计数
 			}
+
+			// 14. 同步书签数据
+			await this.syncBookmarks();
 
 			try {
 				emit(LISTEN_KEY.REFRESH_CLIPBOARD_LIST);
@@ -682,6 +686,55 @@ export class SyncEngine {
 			console.info(`已清理 ${deletedItemIds.length} 个本地删除项目`);
 		} catch (error) {
 			console.error("清理本地删除项目失败:", error);
+		}
+	}
+
+	/**
+	 * 同步书签数据
+	 */
+	private async syncBookmarks(): Promise<void> {
+		try {
+			// 检查是否有书签数据需要同步
+			if (!(await bookmarkSync.hasBookmarkData())) {
+				console.info("没有书签数据需要同步");
+				return;
+			}
+
+			// 获取当前云端数据
+			const cloudData = await cloudDataManager.downloadSyncData();
+
+			// 执行书签同步
+			const syncResult = await bookmarkSync.syncBookmarks(cloudData);
+
+			if (syncResult.error) {
+				console.error("书签同步失败:", syncResult.error);
+				return;
+			}
+
+			// 如果需要上传书签到云端
+			if (syncResult.needUpload && syncResult.mergedData) {
+				const uploadSuccess = await cloudDataManager.uploadSyncData(
+					syncResult.mergedData,
+				);
+				if (uploadSuccess) {
+					console.info("书签数据上传到云端成功");
+					// 清除云端数据缓存，确保下次同步获取最新数据
+					cloudDataManager.clearCache();
+				} else {
+					console.error("书签数据上传到云端失败");
+				}
+			}
+
+			// 如果需要下载书签到本地
+			if (syncResult.needDownload) {
+				console.info("书签数据下载到本地成功");
+			}
+
+			if (!syncResult.needUpload && !syncResult.needDownload) {
+				console.info("书签数据已是最新，无需同步");
+			}
+		} catch (error) {
+			console.error("书签同步异常:", error);
 		}
 	}
 }
