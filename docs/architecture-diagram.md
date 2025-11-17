@@ -282,7 +282,7 @@ graph TB
     end
 
     subgraph "文件元数据转换"
-        D1[files类型: value=FileMetadata[]]
+        D1[files类型: value=文件元数据数组]
         D2[image类型: value=文件路径/元数据]
         D3[其他类型: value=原始内容]
     end
