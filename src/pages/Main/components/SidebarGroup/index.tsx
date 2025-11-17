@@ -311,7 +311,7 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 										{ "text-white": isChecked, "text-color-1": !isChecked },
 									)}
 								>
-									{group.name.length > 2 ? group.name.slice(0, 2) : group.name}
+									{group.name.length > 3 ? group.name.slice(0, 3) : group.name}
 								</span>
 
 								{/* 悬浮时显示完整名称的提示 */}
