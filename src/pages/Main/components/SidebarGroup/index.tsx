@@ -297,6 +297,7 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 								onClick={() => handleChange(group)}
 								onDoubleClick={() => handleDeleteCustomGroup(group.id)}
 								onContextMenu={(e) => handleContextMenu(e, group)}
+								title={group.name}
 							>
 								{/* 彩色指示条 */}
 								<div
@@ -313,6 +314,15 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 								>
 									{group.name.length > 2 ? group.name.slice(0, 2) : group.name}
 								</span>
+
+								{/* 悬浮时显示完整名称的提示 */}
+								<div className="-translate-x-1/2 pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 transform whitespace-nowrap rounded bg-gray-800 px-2 py-1 text-white text-xs opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+									{group.name}
+									{/* 小三角箭头 */}
+									<div className="-translate-x-1/2 -mt-1 absolute top-full left-1/2 transform">
+										<div className="h-0 w-0 border-t-4 border-t-gray-800 border-r-4 border-r-transparent border-l-4 border-l-transparent" />
+									</div>
+								</div>
 							</div>
 						);
 					})}
