@@ -180,7 +180,12 @@ const Item: FC<ItemProps> = (props) => {
 		}
 
 		try {
-			await updateSQL("history", { id, favorite: nextFavorite ? 1 : 0 } as any);
+			// 更新收藏状态时同时更新最后修改时间，确保同步引擎能检测到变更
+			await updateSQL("history", {
+				id,
+				favorite: nextFavorite ? 1 : 0,
+				lastModified: Date.now(),
+			} as any);
 		} catch (error) {
 			console.error("收藏状态更新失败:", error);
 			// 如果数据库更新失败，恢复本地状态

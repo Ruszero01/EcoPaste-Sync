@@ -41,7 +41,12 @@ const NoteModal = forwardRef<NoteModalRef>((_, ref) => {
 
 			item.note = note;
 
-			updateSQL("history", { id, note });
+			// 更新备注时同时更新最后修改时间，确保同步引擎能检测到变更
+			updateSQL("history", {
+				id,
+				note,
+				lastModified: Date.now(),
+			});
 
 			if (clipboardStore.content.autoFavorite && !favorite) {
 				item.favorite = true;

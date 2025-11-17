@@ -55,6 +55,12 @@ export const initDatabase = async () => {
 	} catch (_error) {
 		// 字段已存在，忽略错误
 	}
+
+	try {
+		await executeSQL("ALTER TABLE history ADD COLUMN lastModified INTEGER");
+	} catch (_error) {
+		// 字段已存在，忽略错误
+	}
 };
 
 /**

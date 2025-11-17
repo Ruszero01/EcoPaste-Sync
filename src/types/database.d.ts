@@ -16,6 +16,8 @@ export interface HistoryTablePayload extends ClipboardPayload {
 	// 同步状态字段
 	syncStatus?: "none" | "synced" | "syncing" | "error";
 	isCloudData?: boolean;
+	// 最后修改时间字段（用于同步）
+	lastModified?: number;
 }
 
 export type TablePayload = Partial<HistoryTablePayload>;
