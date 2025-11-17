@@ -229,15 +229,15 @@ graph LR
     subgraph "WebDAV 服务器"
         A[用户配置的同步路径/]
         B[sync-data.json<br/>统一数据索引文件<br/>CloudSyncData格式]
-        C[files/<br/>原始文件存储目录<br/>${itemId}_${timestamp}_filename]
+        C[files/<br/>原始文件存储目录<br/>itemId_timestamp_filename]
   
         A --> B
         A --> C
   
         subgraph "sync-data.json 结构"
             E["format: 'unified'<br/>timestamp, deviceId"]
-            F["items: SyncItem[]<br/>完整同步数据"]
-            G["deletedItems: string[]<br/>已删除项目ID"]
+            F["items: SyncItem数组<br/>完整同步数据"]
+            G["deletedItems: 字符串数组<br/>已删除项目ID"]
             H["statistics & metadata<br/>统计信息和校验和"]
 
             E --> F
@@ -276,8 +276,8 @@ graph TB
 
     subgraph "云端格式"
         C1[CloudSyncData<br/>format: 'unified']
-        C2[items: SyncItem[]<br/>完整数据数组]
-        C3[deletedItems: string[]<br/>删除项目列表]
+        C2[items: SyncItem数组<br/>完整数据数组]
+        C3[deletedItems: 字符串数组<br/>删除项目列表]
         C4[metadata & checksum<br/>元数据和校验]
     end
 
@@ -406,7 +406,7 @@ graph TB
 
     subgraph "全局状态"
         Status[AUTO_SYNC_STATUS<br/>Arc<Mutex<Option<AutoSyncStatus>>>]
-        Handle[TIMER_HANDLE<br/>Arc<Mutex<Option<thread::JoinHandle<()>>>>]
+        Handle[TIMER_HANDLE<br/>Arc<Mutex<Option<JoinHandle>>>>]
     end
 
     subgraph "同步触发流程"
