@@ -1,10 +1,11 @@
 import UnoIcon from "@/components/UnoIcon";
 import { LISTEN_KEY } from "@/constants";
+import { bookmarkManager } from "@/utils/bookmarkManager";
 import { listen } from "@tauri-apps/api/event";
 import { useKeyPress } from "ahooks";
 import { Button, Input, Modal } from "antd";
 import clsx from "clsx";
-import { useContext, useEffect, useState } from "react";
+import { useCallback, useContext, useEffect, useState } from "react";
 import { MainContext } from "../..";
 
 interface CustomGroup {
@@ -17,7 +18,7 @@ interface SidebarGroupProps {
 	onHasGroupsChange?: (hasGroups: boolean) => void;
 }
 
-const SidebarGroup: SidebarGroupProps = ({ onHasGroupsChange }) => {
+const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 	const { state, getListCache, getListDebounced } = useContext(MainContext);
 	const [checked, setChecked] = useState<string>();
 	const [customGroups, setCustomGroups] = useState<CustomGroup[]>([]);
@@ -69,39 +70,45 @@ const SidebarGroup: SidebarGroupProps = ({ onHasGroupsChange }) => {
 		}
 	});
 
-	const handleChange = (group: CustomGroup) => {
-		// 如果点击的是已激活的分组，则取消激活
-		if (checked === group.id) {
-			setChecked(undefined);
-			state.search = undefined;
-		} else {
-			setChecked(group.id);
-			// 自定义分组使用搜索逻辑
-			state.search = group.name;
-			state.group = undefined;
-			state.favorite = undefined;
-		}
+	const handleChange = useCallback(
+		(group: CustomGroup) => {
+			// 如果点击的是已激活的分组，则取消激活
+			if (checked === group.id) {
+				setChecked(undefined);
+				state.search = undefined;
+			} else {
+				setChecked(group.id);
+				// 自定义分组使用搜索逻辑
+				state.search = group.name;
+				state.group = undefined;
+				state.favorite = undefined;
+			}
 
-		// 强制触发列表刷新
-		if (getListCache?.current) {
-			getListCache.current.clear();
-		}
-		if (getListDebounced) {
-			getListDebounced(50);
-		}
-	};
-
-	const handleDeleteCustomGroup = (id: string) => {
-		setCustomGroups(customGroups.filter((group) => group.id !== id));
-		if (checked === id) {
-			// 如果删除的是当前选中的分组，清除搜索
-			state.search = undefined;
-			setChecked(undefined);
+			// 强制触发列表刷新
 			if (getListCache?.current) {
 				getListCache.current.clear();
 			}
 			if (getListDebounced) {
 				getListDebounced(50);
+			}
+		},
+		[checked, state, getListCache, getListDebounced],
+	);
+
+	const handleDeleteCustomGroup = async (id: string) => {
+		const success = await bookmarkManager.deleteGroup(id);
+		if (success) {
+			setCustomGroups(customGroups.filter((group) => group.id !== id));
+			if (checked === id) {
+				// 如果删除的是当前选中的分组，清除搜索
+				state.search = undefined;
+				setChecked(undefined);
+				if (getListCache?.current) {
+					getListCache.current.clear();
+				}
+				if (getListDebounced) {
+					getListDebounced(50);
+				}
 			}
 		}
 	};
@@ -125,28 +132,37 @@ const SidebarGroup: SidebarGroupProps = ({ onHasGroupsChange }) => {
 		setContextMenuVisible(false);
 	};
 
-	const handleDeleteGroup = () => {
+	const handleDeleteGroup = async () => {
 		if (selectedGroup) {
-			handleDeleteCustomGroup(selectedGroup.id);
+			await handleDeleteCustomGroup(selectedGroup.id);
 		}
 		setContextMenuVisible(false);
 	};
 
-	const handleSaveEdit = () => {
+	const handleSaveEdit = async () => {
 		if (selectedGroup && editGroupName.trim()) {
-			setCustomGroups((prev) =>
-				prev.map((group) =>
-					group.id === selectedGroup.id
-						? { ...group, name: editGroupName.trim(), color: editGroupColor }
-						: group,
-				),
-			);
+			// 使用bookmarkManager更新分组
+			const updatedGroup = await bookmarkManager.updateGroup(selectedGroup.id, {
+				name: editGroupName.trim(),
+				color: editGroupColor,
+			});
 
-			// 如果编辑的是当前选中的分组，更新搜索状态
-			if (checked === selectedGroup.id) {
-				state.search = editGroupName.trim();
-				if (getListDebounced) {
-					getListDebounced(50);
+			if (updatedGroup) {
+				// 更新本地状态
+				setCustomGroups((prev) =>
+					prev.map((group) =>
+						group.id === selectedGroup.id
+							? { ...group, name: editGroupName.trim(), color: editGroupColor }
+							: group,
+					),
+				);
+
+				// 如果编辑的是当前选中的分组，更新搜索状态
+				if (checked === selectedGroup.id) {
+					state.search = editGroupName.trim();
+					if (getListDebounced) {
+						getListDebounced(50);
+					}
 				}
 			}
 		}
@@ -168,9 +184,32 @@ const SidebarGroup: SidebarGroupProps = ({ onHasGroupsChange }) => {
 		}
 	}, [contextMenuVisible]);
 
+	// 初始化时加载书签数据
+	useEffect(() => {
+		const loadBookmarks = async () => {
+			try {
+				const groups = await bookmarkManager.getGroups();
+				// 转换为CustomGroup格式
+				const customGroups: CustomGroup[] = groups.map((group) => ({
+					id: group.id,
+					name: group.name,
+					color: group.color,
+				}));
+				setCustomGroups(customGroups);
+				onHasGroupsChange?.(customGroups.length > 0);
+			} catch (error) {
+				console.error("Failed to load bookmark groups:", error);
+				setCustomGroups([]);
+				onHasGroupsChange?.(false);
+			}
+		};
+
+		loadBookmarks();
+	}, [onHasGroupsChange]);
+
 	// 监听创建分组事件
 	useEffect(() => {
-		const handleCreateGroup = (groupName: string) => {
+		const handleCreateGroup = async (groupName: string) => {
 			const colors = [
 				"#ff6b6b", // 红色
 				"#4ecdc4", // 青色
@@ -187,12 +226,26 @@ const SidebarGroup: SidebarGroupProps = ({ onHasGroupsChange }) => {
 			];
 			// 使用更好的随机数生成方式
 			const randomIndex = Math.floor(Math.random() * colors.length);
-			const newGroup: CustomGroup = {
-				id: `custom_${Date.now()}`,
-				name: groupName,
-				color: colors[randomIndex],
-			};
-			setCustomGroups((prev) => [...prev, newGroup]);
+
+			// 使用bookmarkManager创建新分组
+			const newGroup = await bookmarkManager.addGroup(
+				groupName,
+				colors[randomIndex],
+			);
+			if (newGroup) {
+				const customGroup: CustomGroup = {
+					id: newGroup.id,
+					name: newGroup.name,
+					color: newGroup.color,
+				};
+				setCustomGroups((prev) => [...prev, customGroup]);
+				onHasGroupsChange?.(true);
+
+				// 自动激活新创建的书签
+				setTimeout(() => {
+					handleChange(customGroup);
+				}, 0);
+			}
 		};
 
 		// 监听Tauri事件
@@ -209,7 +262,7 @@ const SidebarGroup: SidebarGroupProps = ({ onHasGroupsChange }) => {
 				(window as any).createTestGroup = undefined;
 			}
 		};
-	}, []);
+	}, [onHasGroupsChange, handleChange]);
 
 	// 通知父组件是否有书签
 	useEffect(() => {
@@ -276,7 +329,8 @@ const SidebarGroup: SidebarGroupProps = ({ onHasGroupsChange }) => {
 							icon={<UnoIcon name="i-lucide:trash-2" />}
 							size="small"
 							type="text"
-							onClick={() => {
+							onClick={async () => {
+								await bookmarkManager.clearAllGroups();
 								setCustomGroups([]);
 								setChecked(undefined);
 								state.search = undefined;

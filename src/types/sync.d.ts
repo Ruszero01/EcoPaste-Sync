@@ -283,6 +283,15 @@ export interface SyncResult {
 	timestamp: number;
 }
 
+// 书签分组数据结构
+export interface BookmarkGroup {
+	id: string;
+	name: string;
+	color: string;
+	createTime: number;
+	updateTime: number;
+}
+
 // 同步模式配置（双开关模式）
 export interface SyncModeConfig {
 	// 同步设置（双开关模式）
