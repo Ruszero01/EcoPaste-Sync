@@ -694,16 +694,10 @@ export class SyncEngine {
 	 */
 	private async syncBookmarks(): Promise<void> {
 		try {
-			// 检查是否有书签数据需要同步
-			if (!(await bookmarkSync.hasBookmarkData())) {
-				console.info("没有书签数据需要同步");
-				return;
-			}
-
 			// 获取当前云端数据
 			const cloudData = await cloudDataManager.downloadSyncData();
 
-			// 执行书签同步
+			// 执行书签同步（即使本地没有书签也要执行，因为可能需要从云端下载或清理云端数据）
 			const syncResult = await bookmarkSync.syncBookmarks(cloudData);
 
 			if (syncResult.error) {
@@ -717,21 +711,11 @@ export class SyncEngine {
 					syncResult.mergedData,
 				);
 				if (uploadSuccess) {
-					console.info("书签数据上传到云端成功");
 					// 清除云端数据缓存，确保下次同步获取最新数据
 					cloudDataManager.clearCache();
 				} else {
 					console.error("书签数据上传到云端失败");
 				}
-			}
-
-			// 如果需要下载书签到本地
-			if (syncResult.needDownload) {
-				console.info("书签数据下载到本地成功");
-			}
-
-			if (!syncResult.needUpload && !syncResult.needDownload) {
-				console.info("书签数据已是最新，无需同步");
 			}
 		} catch (error) {
 			console.error("书签同步异常:", error);

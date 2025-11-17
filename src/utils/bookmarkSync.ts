@@ -101,6 +101,58 @@ export class BookmarkSync {
 				};
 			}
 
+			// 如果本地没有书签但云端有书签，比较时间戳决定谁更新
+			if (localGroups.length === 0 && cloudBookmarkData.groups.length > 0) {
+				// 如果本地时间戳为0，说明是全新设备，直接从云端下载
+				if (localLastModified === 0) {
+					await bookmarkManager.forceSetData(cloudBookmarkData.groups);
+					bookmarkManager.setLastModified(cloudBookmarkData.lastModified);
+
+					return {
+						needUpload: false,
+						needDownload: true,
+					};
+				}
+
+				// 如果本地时间戳更新，说明用户删除了书签，需要同步删除到云端
+				if (localLastModified > cloudBookmarkData.lastModified) {
+					const mergedData = this.mergeBookmarkDataToCloud(cloudData, {
+						groups: [],
+						lastModified: localLastModified,
+					});
+
+					return {
+						needUpload: true,
+						needDownload: false,
+						mergedData,
+					};
+				}
+
+				// 如果云端时间戳更新，说明其他设备添加了书签，需要下载到本地
+				if (cloudBookmarkData.lastModified > localLastModified) {
+					await bookmarkManager.forceSetData(cloudBookmarkData.groups);
+					bookmarkManager.setLastModified(cloudBookmarkData.lastModified);
+
+					return {
+						needUpload: false,
+						needDownload: true,
+					};
+				}
+
+				// 时间戳相同，检查内容是否一致
+				// 本地空，云端有，但时间戳相同，以本地为准（可能是不一致的情况）
+				const mergedData = this.mergeBookmarkDataToCloud(cloudData, {
+					groups: [],
+					lastModified: Date.now(), // 使用新的时间戳
+				});
+
+				return {
+					needUpload: true,
+					needDownload: false,
+					mergedData,
+				};
+			}
+
 			// 比较本地和云端的时间戳
 			if (localLastModified > cloudBookmarkData.lastModified) {
 				// 本地更新，需要上传
