@@ -698,7 +698,10 @@ export class SyncEngine {
 			const cloudData = await cloudDataManager.downloadSyncData();
 
 			// 执行书签同步（即使本地没有书签也要执行，因为可能需要从云端下载或清理云端数据）
-			const syncResult = await bookmarkSync.syncBookmarks(cloudData);
+			const syncResult = await bookmarkSync.syncBookmarks(
+				cloudData,
+				this.deviceId,
+			);
 
 			if (syncResult.error) {
 				console.error("书签同步失败:", syncResult.error);

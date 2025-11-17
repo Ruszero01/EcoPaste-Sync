@@ -1,5 +1,6 @@
 import type { BookmarkGroup } from "@/types/sync";
 import { bookmarkManager } from "./bookmarkManager";
+import { generateDeviceId } from "./shared";
 
 /**
  * 书签同步管理器
@@ -27,7 +28,11 @@ export class BookmarkSync {
 	 */
 	extractBookmarkData(
 		cloudData: any,
-	): { groups: BookmarkGroup[]; lastModified: number } | null {
+	): {
+		groups: BookmarkGroup[];
+		lastModified: number;
+		deviceId?: string;
+	} | null {
 		if (!cloudData || !cloudData.bookmarkGroups) {
 			return null;
 		}
@@ -35,6 +40,7 @@ export class BookmarkSync {
 		return {
 			groups: cloudData.bookmarkGroups || [],
 			lastModified: cloudData.bookmarkLastModified || 0,
+			deviceId: cloudData.bookmarkDeviceId,
 		};
 	}
 
@@ -44,11 +50,13 @@ export class BookmarkSync {
 	mergeBookmarkDataToCloud(
 		cloudData: any,
 		bookmarkData: { groups: BookmarkGroup[]; lastModified: number },
+		deviceId: string,
 	): any {
 		if (!cloudData) {
 			return {
 				bookmarkGroups: bookmarkData.groups,
 				bookmarkLastModified: bookmarkData.lastModified,
+				bookmarkDeviceId: deviceId,
 			};
 		}
 
@@ -56,20 +64,27 @@ export class BookmarkSync {
 			...cloudData,
 			bookmarkGroups: bookmarkData.groups,
 			bookmarkLastModified: bookmarkData.lastModified,
+			bookmarkDeviceId: deviceId,
 		};
 	}
 
 	/**
 	 * 执行书签同步逻辑
 	 * @param cloudData 云端同步数据
+	 * @param deviceId 当前设备ID
 	 * @returns 同步结果，包含是否需要更新云端数据
 	 */
-	async syncBookmarks(cloudData: any): Promise<{
+	async syncBookmarks(
+		cloudData: any,
+		deviceId?: string,
+	): Promise<{
 		needUpload: boolean;
 		needDownload: boolean;
 		mergedData?: any;
 		error?: string;
 	}> {
+		// 如果没有提供deviceId，生成一个
+		const currentDeviceId = deviceId || generateDeviceId();
 		try {
 			// 获取本地书签数据
 			const localGroups = await bookmarkManager.getSyncData();
@@ -82,10 +97,14 @@ export class BookmarkSync {
 			if (!cloudBookmarkData) {
 				// 如果本地有书签，需要上传到云端
 				if (localGroups.length > 0) {
-					const mergedData = this.mergeBookmarkDataToCloud(cloudData, {
-						groups: localGroups,
-						lastModified: localLastModified,
-					});
+					const mergedData = this.mergeBookmarkDataToCloud(
+						cloudData,
+						{
+							groups: localGroups,
+							lastModified: localLastModified,
+						},
+						currentDeviceId,
+					);
 
 					return {
 						needUpload: true,
@@ -101,10 +120,11 @@ export class BookmarkSync {
 				};
 			}
 
-			// 如果本地没有书签但云端有书签，优先从云端下载
+			// 如果本地没有书签但云端有书签，使用设备ID判断同步策略
 			if (localGroups.length === 0 && cloudBookmarkData.groups.length > 0) {
-				// 如果本地时间戳为0，说明是全新设备，直接从云端下载
-				if (localLastModified === 0) {
+				// 如果云端数据没有设备ID，说明是旧版本数据，优先从云端下载
+				if (!cloudBookmarkData.deviceId) {
+					console.info("云端书签数据无设备ID，优先下载到本地");
 					await bookmarkManager.forceSetData(cloudBookmarkData.groups);
 					bookmarkManager.setLastModified(cloudBookmarkData.lastModified);
 
@@ -114,21 +134,17 @@ export class BookmarkSync {
 					};
 				}
 
-				// 添加安全检查：只有当本地时间戳比云端新很多时（比如超过1小时），才认为是用户主动删除
-				// 这可以避免因时间戳误差导致的误判
-				const timeDifference =
-					localLastModified - cloudBookmarkData.lastModified;
-				const oneHour = 60 * 60 * 1000; // 1小时的毫秒数
-
-				// 如果本地时间戳更新很多（超过1小时），才认为是用户删除了书签
-				if (timeDifference > oneHour) {
-					console.info(
-						`检测到本地删除操作：本地时间戳 ${localLastModified} 比云端 ${cloudBookmarkData.lastModified} 新 ${timeDifference}ms`,
+				// 如果云端数据来自当前设备，说明这是同一设备，可能用户删除了书签
+				if (cloudBookmarkData.deviceId === currentDeviceId) {
+					console.info("云端书签来自当前设备，检测到删除操作，同步删除到云端");
+					const mergedData = this.mergeBookmarkDataToCloud(
+						cloudData,
+						{
+							groups: [],
+							lastModified: localLastModified,
+						},
+						currentDeviceId,
 					);
-					const mergedData = this.mergeBookmarkDataToCloud(cloudData, {
-						groups: [],
-						lastModified: localLastModified,
-					});
 
 					return {
 						needUpload: true,
@@ -137,10 +153,9 @@ export class BookmarkSync {
 					};
 				}
 
-				// 在其他所有情况下，都优先从云端下载书签
-				// 这确保了设备2能够正确获取云端书签
+				// 如果云端数据来自其他设备，优先从云端下载
 				console.info(
-					`优先从云端下载书签：本地时间戳 ${localLastModified}，云端时间戳 ${cloudBookmarkData.lastModified}`,
+					`云端书签来自其他设备（${cloudBookmarkData.deviceId}），当前设备（${currentDeviceId}）优先下载`,
 				);
 				await bookmarkManager.forceSetData(cloudBookmarkData.groups);
 				bookmarkManager.setLastModified(cloudBookmarkData.lastModified);
@@ -154,10 +169,14 @@ export class BookmarkSync {
 			// 比较本地和云端的时间戳
 			if (localLastModified > cloudBookmarkData.lastModified) {
 				// 本地更新，需要上传
-				const mergedData = this.mergeBookmarkDataToCloud(cloudData, {
-					groups: localGroups,
-					lastModified: localLastModified,
-				});
+				const mergedData = this.mergeBookmarkDataToCloud(
+					cloudData,
+					{
+						groups: localGroups,
+						lastModified: localLastModified,
+					},
+					currentDeviceId,
+				);
 
 				return {
 					needUpload: true,
@@ -187,10 +206,14 @@ export class BookmarkSync {
 
 			if (localDataHash !== cloudDataHash) {
 				// 内容不一致，以本地为准（用户最近的更改优先）
-				const mergedData = this.mergeBookmarkDataToCloud(cloudData, {
-					groups: localGroups,
-					lastModified: localLastModified,
-				});
+				const mergedData = this.mergeBookmarkDataToCloud(
+					cloudData,
+					{
+						groups: localGroups,
+						lastModified: localLastModified,
+					},
+					currentDeviceId,
+				);
 
 				return {
 					needUpload: true,
