@@ -4,14 +4,6 @@
 
 简体中文 | [繁體中文](./README.zh-TW.md) | [English](./README.en-US.md) | [日本語](./README.ja-JP.md)
 
-[![Windows](https://img.shields.io/badge/-Windows-blue?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB0PSIxNzI2MzA1OTcxMDA2IiBjbGFzcz0iaWNvbiIgdmlld0JveD0iMCAwIDEwMjQgMTAyNCIgdmVyc2lvbj0iMS4xIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHAtaWQ9IjE1NDgiIHdpZHRoPSIxMjgiIGhlaWdodD0iMTI4Ij48cGF0aCBkPSJNNTI3LjI3NTU1MTYxIDk2Ljk3MTAzMDEzdjM3My45OTIxMDY2N2g0OTQuNTEzNjE5NzVWMTUuMDI2NzU3NTN6TTUyNy4yNzU1NTE2MSA5MjguMzIzNTA4MTVsNDk0LjUxMzYxOTc1IDgwLjUyMDI4MDQ5di00NTUuNjc3NDcxNjFoLTQ5NC41MTM2MTk3NXpNNC42NzA0NTEzNiA0NzAuODMzNjgyOTdINDIyLjY3Njg1OTI1VjExMC41NjM2ODE5N2wtNDE4LjAwNjQwNzg5IDY5LjI1Nzc5NzUzek00LjY3MDQ1MTM2IDg0Ni43Njc1OTcwM0w0MjIuNjc2ODU5MjUgOTE0Ljg2MDMxMDEzVjU1My4xNjYzMTcwM0g0LjY3MDQ1MTM2eiIgcC1pZD0iMTU0OSIgZmlsbD0iI2ZmZmZmZiI+PC9wYXRoPjwvc3ZnPg==)](https://github.com/EcoPasteHub/EcoPaste/releases)
-[![MacOS](https://img.shields.io/badge/-MacOS-black?style=flat-square&logo=apple&logoColor=white)](https://github.com/EcoPasteHub/EcoPaste/releases)
-[![Linux](https://img.shields.io/badge/-Linux-yellow?style=flat-square&logo=linux&logoColor=white)](https://github.com/EcoPasteHub/EcoPaste/releases)
-
-[![License](https://img.shields.io/github/license/EcoPasteHub/EcoPaste?style=flat-square)](./LICENSE)
-[![Version](https://img.shields.io/github/package-json/v/EcoPasteHub/EcoPaste?style=flat-square)](https://github.com/EcoPasteHub/EcoPaste/releases)
-[![Downloads](https://img.shields.io/github/downloads/EcoPasteHub/EcoPaste/total?style=flat-square)](https://github.com/EcoPasteHub/EcoPaste/releases)
-
 ![同步功能展示](./static/sync-light.png)
 
 ## 🌟 分支说明
@@ -163,6 +155,6 @@ graph TB
 
 ## 贡献者
 
-感谢大家为 EcoPaste 做出的宝贵贡献！如果你也希望为 EcoPaste 做出贡献，请查阅[贡献指南](./.github/CONTRIBUTING/zh-CN.md)。
+感谢大家为 EcoPaste 做出的宝贵贡献！
 
 [![Contributors](https://contrib.rocks/image?repo=EcoPasteHub/EcoPaste)](https://github.com/EcoPasteHub/EcoPaste/graphs/contributors)
