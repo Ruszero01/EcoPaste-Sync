@@ -369,9 +369,33 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 						color: group.color,
 						createTime: group.createTime,
 					}));
-					setCustomGroups(customGroups);
+
+					// 检查是否有实际变化，避免不必要的重新渲染
+					setCustomGroups((prevGroups) => {
+						const hasChanged =
+							prevGroups.length !== customGroups.length ||
+							prevGroups.some((prev, index) => {
+								const curr = customGroups[index];
+								return (
+									!curr ||
+									prev.id !== curr.id ||
+									prev.name !== curr.name ||
+									prev.color !== curr.color
+								);
+							});
+
+						if (!hasChanged) {
+							console.info("🔄 书签数据无变化，跳过UI刷新");
+							return prevGroups;
+						}
+
+						console.info(
+							`🔄 书签数据已更新，UI将刷新: ${prevGroups.length} -> ${customGroups.length}个分组`,
+						);
+						return customGroups;
+					});
+
 					onHasGroupsChange?.(customGroups.length > 0);
-					console.info("🔄 书签数据已更新，UI已刷新");
 				} catch (error) {
 					console.error(
 						"Failed to reload bookmark groups after data change:",
@@ -405,19 +429,22 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 				colors[randomIndex],
 			);
 			if (newGroup) {
-				const customGroup: CustomGroup = {
-					id: newGroup.id,
-					name: newGroup.name,
-					color: newGroup.color,
-					createTime: newGroup.createTime,
-				};
-				setCustomGroups((prev) => [...prev, customGroup]);
-				onHasGroupsChange?.(true);
+				// 不再手动更新本地状态，让BOOKMARK_DATA_CHANGED事件处理UI更新
+				// 这样可以避免重复添加的问题
+				console.info(
+					`➕ 书签分组创建成功: ${newGroup.name}, 等待事件触发UI更新`,
+				);
 
-				// 自动激活新创建的书签
+				// 自动激活新创建的书签（延迟执行，等待UI更新）
 				setTimeout(() => {
+					const customGroup: CustomGroup = {
+						id: newGroup.id,
+						name: newGroup.name,
+						color: newGroup.color,
+						createTime: newGroup.createTime,
+					};
 					handleChange(customGroup);
-				}, 0);
+				}, 100); // 增加延迟确保UI已更新
 			}
 		};
 
