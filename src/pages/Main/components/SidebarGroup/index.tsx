@@ -18,7 +18,7 @@ import {
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { listen } from "@tauri-apps/api/event";
-import { useKeyPress } from "ahooks";
+// 移除了useKeyPress导入，因为不再需要Tab键切换功能
 import { Input, Modal } from "antd";
 import clsx from "clsx";
 import { useCallback, useContext, useEffect, useState } from "react";
@@ -195,26 +195,8 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 		{ value: "#dfe6e9", label: "灰色", display: "bg-gray-300" },
 	];
 
-	useKeyPress("tab", (event) => {
-		if (customGroups.length === 0) return;
-
-		const currentIndex = checked
-			? customGroups.findIndex((group) => group.id === checked)
-			: -1;
-		const length = customGroups.length;
-
-		let nextIndex = currentIndex;
-
-		if (event.shiftKey) {
-			nextIndex = currentIndex <= 0 ? length - 1 : currentIndex - 1;
-		} else {
-			nextIndex = currentIndex >= length - 1 ? 0 : currentIndex + 1;
-		}
-
-		if (nextIndex >= 0 && nextIndex < customGroups.length) {
-			handleChange(customGroups[nextIndex]);
-		}
-	});
+	// 移除了Tab键切换书签功能，避免与顶部分组Tab键冲突
+	// 用户可以通过鼠标点击来选择和切换书签
 
 	const handleChange = useCallback(
 		(group: CustomGroup) => {
