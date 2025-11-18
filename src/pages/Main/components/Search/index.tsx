@@ -1,7 +1,16 @@
 import UnoIcon from "@/components/UnoIcon";
+import { LISTEN_KEY } from "@/constants";
+import { PRESET_SHORTCUT } from "@/constants";
+import { useTauriFocus } from "@/hooks/useTauriFocus";
+import { clipboardStore } from "@/stores/clipboard";
+import { emit } from "@tauri-apps/api/event";
+import { useBoolean } from "ahooks";
+import { useKeyPress } from "ahooks";
 import type { InputRef } from "antd";
-import { Input } from "antd";
+import { Button, Input } from "antd";
 import type { FC, HTMLAttributes } from "react";
+import { useContext, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { MainContext } from "../..";
 
 const Search: FC<HTMLAttributes<HTMLDivElement>> = (props) => {
@@ -52,13 +61,40 @@ const Search: FC<HTMLAttributes<HTMLDivElement>> = (props) => {
 		},
 	);
 
+	const handleCreateGroup = () => {
+		if (value?.trim()) {
+			// 直接使用当前搜索框的值作为分组名
+			const groupName = value.trim();
+
+			// 触发创建分组事件，由侧边栏组件处理
+			emit(LISTEN_KEY.CREATE_CUSTOM_GROUP, groupName);
+
+			// 清空搜索框，避免重复创建
+			setValue("");
+		}
+	};
+
+	const showCreateButton = value && value.trim().length > 0;
+
 	return (
-		<div {...props}>
+		<div {...props} className="relative px-3">
 			<Input
 				ref={inputRef}
 				allowClear
 				value={value}
 				prefix={<UnoIcon name="i-lucide:search" />}
+				suffix={
+					showCreateButton ? (
+						<Button
+							icon={<UnoIcon name="i-lucide:bookmark" />}
+							size="small"
+							type="text"
+							className="text-primary hover:bg-primary/10"
+							onClick={handleCreateGroup}
+							title="添加书签"
+						/>
+					) : null
+				}
 				size="small"
 				placeholder={t("clipboard.hints.search_placeholder")}
 				onCompositionStart={setTrue}

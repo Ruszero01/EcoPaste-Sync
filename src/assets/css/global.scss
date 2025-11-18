@@ -18,4 +18,9 @@ html {
       --uno: "hover:color-primary";
     }
   }
+
+  /* Hide webkit scrollbars */
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
 }

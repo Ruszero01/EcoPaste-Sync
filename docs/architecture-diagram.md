@@ -16,6 +16,8 @@ graph TB
         CloudData[云端数据管理器<br/>cloudDataManager.ts<br/>CloudSyncData管理]
         FileSync[文件同步管理器<br/>fileSyncManager.ts<br/>文件包处理]
         AutoSync[自动同步管理器<br/>autoSync.ts<br/>事件监听和状态同步]
+        BookmarkManager[书签管理器<br/>bookmarkManager.ts<br/>书签分组和排序]
+        BookmarkSync[书签同步管理器<br/>bookmarkSync.ts<br/>跨设备书签同步]
         ConflictResolver[冲突解决器<br/>syncConflictResolver.ts<br/>detectRealConflicts]
         ConfigSync[配置同步管理器<br/>configSync.ts<br/>配置上传下载]
     end
@@ -40,14 +42,18 @@ graph TB
     SyncEngine --> CloudData
     SyncEngine --> FileSync
     SyncEngine --> AutoSync
+    SyncEngine --> BookmarkManager
+    SyncEngine --> BookmarkSync
     SyncEngine --> ConflictResolver
     SyncEngine --> ConfigSync
 
     LocalData --> SQLite
     FileSync --> FileSystem
+    BookmarkManager --> SQLite
     CloudData --> WebDAVClient
     FileSync --> WebDAVClient
     ConfigSync --> WebDAVClient
+    BookmarkSync --> WebDAVClient
 
     WebDAVClient --> TauriPlugin1
     AutoSync --> TauriPlugin2
@@ -354,6 +360,65 @@ graph TD
 
     ConflictResolver -.-> SyncEngine
     AutoSync -.-> SyncEngine
+```
+
+## 书签同步流程
+
+```mermaid
+graph TB
+    subgraph "用户操作"
+        A[用户创建书签分组]
+        B[用户编辑书签]
+        C[用户删除书签]
+        D[拖拽排序书签]
+    end
+
+    subgraph "BookmarkManager处理"
+        E[本地数据更新]
+        F[更新时间戳]
+        G[持久化存储]
+        H[触发同步事件]
+    end
+
+    subgraph "BookmarkSync同步逻辑"
+        I[获取本地书签数据]
+        J[下载云端书签数据]
+        K{时间戳比较}
+
+        K -->|本地时间戳更新| L[上传本地数据到云端]
+        K -->|云端时间戳更新| M[下载数据到本地]
+        K -->|时间戳相同| N{内容一致性检查}
+
+        N -->|内容不一致| O[以云端数据为准]
+        N -->|内容一致| P[无需同步]
+    end
+
+    subgraph "同步结果"
+        Q[数据合并完成]
+        R[更新本地状态]
+        S[通知前端刷新]
+    end
+
+    A --> E
+    B --> E
+    C --> E
+    D --> E
+
+    E --> F
+    F --> G
+    G --> H
+
+    H --> I
+    I --> J
+    J --> K
+
+    L --> Q
+    M --> Q
+    O --> Q
+    P --> Q
+
+    Q --> R
+    R --> S
 ```
 
 ## 配置同步流程
