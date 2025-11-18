@@ -252,13 +252,27 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 			handleCreateGroup(event.payload);
 		});
 
+		// 开发模式测试函数
+		const clearBookmarksForTesting = async () => {
+			if (import.meta.env.DEV) {
+				await bookmarkManager.clearForNewDevice();
+				// 刷新UI
+				setCustomGroups([]);
+				onHasGroupsChange?.(false);
+			}
+		};
+
 		// 简单的测试函数，可以在控制台调用
 		(window as any).createTestGroup = handleCreateGroup;
+		(window as any).clearBookmarksForTesting = clearBookmarksForTesting;
 
 		return () => {
 			unlisten.then((fn) => fn());
 			if ((window as any).createTestGroup) {
 				(window as any).createTestGroup = undefined;
+			}
+			if ((window as any).clearBookmarksForTesting) {
+				(window as any).clearBookmarksForTesting = undefined;
 			}
 		};
 	}, [onHasGroupsChange, handleChange]);
@@ -267,6 +281,18 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 	useEffect(() => {
 		onHasGroupsChange?.(customGroups.length > 0);
 	}, [customGroups, onHasGroupsChange]);
+
+	// 监听搜索状态变化，当用户激活输入框时清除书签选中状态
+	useEffect(() => {
+		// 如果当前有选中的书签，且搜索内容不再是书签名称，则清除选中状态
+		if (checked && state.search) {
+			const selectedGroup = customGroups.find((group) => group.id === checked);
+			if (selectedGroup && state.search !== selectedGroup.name) {
+				// 搜索内容已变化，清除书签选中状态
+				setChecked(undefined);
+			}
+		}
+	}, [state.search, checked, customGroups]);
 
 	// 如果没有自定义分组，不显示侧边栏
 	if (customGroups.length === 0) {
@@ -311,22 +337,38 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 										{ "text-white": isChecked, "text-color-1": !isChecked },
 									)}
 								>
-									{group.name.length > 3 ? group.name.slice(0, 3) : group.name}
+									{(() => {
+										const hasEnglish = /[a-zA-Z]/.test(group.name);
+										const maxLength = hasEnglish ? 3 : 2;
+										return group.name.length > maxLength
+											? group.name.slice(0, maxLength)
+											: group.name;
+									})()}
 								</span>
-
-								{/* 悬浮时显示完整名称的提示 */}
-								<div className="-translate-x-1/2 pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 transform whitespace-nowrap rounded bg-gray-800 px-2 py-1 text-white text-xs opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-									{group.name}
-									{/* 小三角箭头 */}
-									<div className="-translate-x-1/2 -mt-1 absolute top-full left-1/2 transform">
-										<div className="h-0 w-0 border-t-4 border-t-gray-800 border-r-4 border-r-transparent border-l-4 border-l-transparent" />
-									</div>
-								</div>
 							</div>
 						);
 					})}
 				</div>
 			</div>
+
+			{/* 开发模式：清空书签按钮 */}
+			{import.meta.env.DEV && (
+				<div className="flex flex-col items-center gap-0.5 py-1">
+					<div
+						className="group relative flex h-6 w-10 shrink-0 cursor-pointer items-center justify-center rounded-md bg-orange-500/20 transition-all duration-200 hover:bg-orange-500/30"
+						onClick={async () => {
+							await bookmarkManager.clearForNewDevice();
+							// 刷新UI
+							setCustomGroups([]);
+							onHasGroupsChange?.(false);
+						}}
+						title="开发模式：清空书签(模拟新设备)"
+					>
+						{/* 清空图标 */}
+						<span className="font-bold text-orange-500 text-xs">🧹</span>
+					</div>
+				</div>
+			)}
 
 			{/* 右键菜单 */}
 			{contextMenuVisible && (

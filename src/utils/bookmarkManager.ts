@@ -1,6 +1,4 @@
-import { LISTEN_KEY } from "@/constants";
 import type { BookmarkGroup } from "@/types/sync";
-import { emit } from "@tauri-apps/api/event";
 import { appDataDir, join } from "@tauri-apps/api/path";
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 
@@ -33,16 +31,6 @@ class BookmarkManager {
 		return BookmarkManager.instance;
 	}
 
-	// 触发手动同步
-	private async triggerSync(): Promise<void> {
-		try {
-			console.info("🔄 触发书签同步");
-			await emit(LISTEN_KEY.TRIGGER_MANUAL_SYNC);
-		} catch (error) {
-			console.error("触发同步失败:", error);
-		}
-	}
-
 	// 从本地存储加载数据
 	private async loadFromStorage(): Promise<void> {
 		try {
@@ -53,11 +41,12 @@ class BookmarkManager {
 			const parsedData: BookmarkStorageData = JSON.parse(data);
 
 			this.groups = parsedData.groups || [];
-			this.lastModified = parsedData.lastModified || Date.now();
+			this.lastModified = parsedData.lastModified || 0;
 		} catch {
 			// 文件不存在或解析失败，使用默认值
+			// 新设备：没有数据，时间戳设为0，表示需要从云端同步
 			this.groups = [];
-			this.lastModified = Date.now();
+			this.lastModified = 0;
 		}
 	}
 
@@ -125,8 +114,8 @@ class BookmarkManager {
 		this.groups.push(newGroup);
 		await this.saveToStorage();
 
-		// 触发同步
-		await this.triggerSync();
+		// 移除手动触发同步 - 书签同步应该通过整体的同步流程处理
+		// await this.triggerSync(); // 删除这行
 
 		return newGroup;
 	}
@@ -152,8 +141,8 @@ class BookmarkManager {
 			`✏️ 更新书签分组完成: ${this.groups[groupIndex].name}, 新时间戳: ${this.lastModified}`,
 		);
 
-		// 触发同步
-		await this.triggerSync();
+		// 移除手动触发同步 - 书签同步应该通过整体的同步流程处理
+		// await this.triggerSync(); // 删除这行
 
 		return this.groups[groupIndex];
 	}
@@ -170,8 +159,8 @@ class BookmarkManager {
 			`🗑️ 删除书签分组完成: ${id}, 删除后时间戳: ${this.lastModified}, 剩余分组数: ${this.groups.length}`,
 		);
 
-		// 触发同步
-		await this.triggerSync();
+		// 移除手动触发同步 - 书签同步应该通过整体的同步流程处理
+		// await this.triggerSync(); // 删除这行
 
 		return true;
 	}
@@ -182,17 +171,18 @@ class BookmarkManager {
 			`🗑️ 清空所有书签分组, 清空前时间戳: ${this.lastModified}, 分组数: ${this.groups.length}`,
 		);
 		this.groups = [];
-		await this.saveToStorage();
+		// 确保更新时间戳，以便同步到云端
+		await this.saveToStorage(true);
 		console.info(`🗑️ 清空所有书签分组完成, 清空后时间戳: ${this.lastModified}`);
 
-		// 触发同步
-		await this.triggerSync();
+		// 移除手动触发同步 - 书签同步应该通过整体的同步流程处理
+		// await this.triggerSync(); // 删除这行
 	}
 
 	// 获取用于同步的数据
 	public async getSyncData(): Promise<BookmarkGroup[]> {
-		// 对于同步操作，总是从存储重新加载以获取最新数据
-		console.info("📖 同步操作：强制从存储重新加载");
+		// 重要：同步时强制从磁盘重新加载，确保获取最新数据
+		// 避免内存数据与磁盘数据不一致导致的同步延迟问题
 		await this.loadFromStorage();
 
 		console.info(
@@ -202,19 +192,48 @@ class BookmarkManager {
 	}
 
 	// 设置数据（用于从云端同步）
-	public async setData(groups: BookmarkGroup[]): Promise<void> {
+	public async setData(
+		groups: BookmarkGroup[],
+		lastModified?: number,
+	): Promise<void> {
 		this.groups = groups || [];
-		// 保持当前的时间戳，这样下次同步时本地不会认为自己的数据更新了
-		const originalLastModified = this.lastModified;
+		// 使用提供的时间戳，如果没有提供则保持当前时间戳
+		const targetLastModified =
+			lastModified !== undefined ? lastModified : this.lastModified;
 		await this.saveToStorage(false);
-		this.lastModified = originalLastModified;
+		this.lastModified = targetLastModified;
+		console.info(
+			`📥 设置云端数据: 分组数=${this.groups.length}, 时间戳=${this.lastModified}`,
+		);
 	}
 
 	// 强制设置数据（云端数据强制覆盖时使用）
-	public async forceSetData(groups: BookmarkGroup[]): Promise<void> {
+	public async forceSetData(
+		groups: BookmarkGroup[],
+		lastModified?: number,
+	): Promise<void> {
 		this.groups = groups || [];
-		// 不更新时间戳，让调用方设置正确的时间戳
+		// 不更新时间戳，使用调用方提供的时间戳
 		await this.saveToStorage(false);
+		if (lastModified !== undefined) {
+			this.lastModified = lastModified;
+		}
+		console.info(
+			`🔒 强制设置云端数据: 分组数=${this.groups.length}, 时间戳=${this.lastModified}`,
+		);
+	}
+
+	// 开发模式：清空所有书签数据并重置时间戳为0，模拟新设备状态
+	public async clearForNewDevice(): Promise<void> {
+		console.warn("🧪 开发模式：清空书签数据，模拟新设备状态");
+		this.groups = [];
+		this.lastModified = 0;
+		// 注意：不调用triggerSync()，避免立即触发同步导致覆盖本地新增的数据
+		await this.saveToStorage(false);
+		console.info(
+			`🧪 新设备状态已设置: 分组数=${this.groups.length}, 时间戳=${this.lastModified}`,
+		);
+		console.warn("⚠️ 手动触发同步以测试新设备同步逻辑");
 	}
 }
 
