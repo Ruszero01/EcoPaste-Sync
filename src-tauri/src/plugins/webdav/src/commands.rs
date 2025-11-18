@@ -15,7 +15,7 @@ fn get_config_file_path() -> Result<PathBuf> {
     let home_dir = dirs::home_dir()
         .ok_or_else(|| anyhow::anyhow!("无法获取用户目录"))?;
 
-    let config_dir = home_dir.join(".ecopaste");
+    let config_dir = home_dir.join(".ecopaste-sync");
 
     // 确保配置目录存在
     if !config_dir.exists() {

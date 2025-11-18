@@ -53,9 +53,9 @@
   <br/>
 
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="./static/app-dark.ja-JP.png" />
-    <source media="(prefers-color-scheme: light)" srcset="./static/app-light.ja-JP.png" />
-    <img src="./static/app-light.ja-JP.png" />
+    <source media="(prefers-color-scheme: dark)" srcset="./static/sync-dark.png" />
+    <source media="(prefers-color-scheme: light)" srcset="./static/sync-light.png" />
+    <img src="./static/sync-light.png" />
   </picture>
 </div>
 

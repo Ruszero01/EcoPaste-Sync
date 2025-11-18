@@ -18,7 +18,7 @@ import {
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { listen } from "@tauri-apps/api/event";
-import { useKeyPress } from "ahooks";
+// 移除了useKeyPress导入，因为不再需要Tab键切换功能
 import { Input, Modal } from "antd";
 import clsx from "clsx";
 import { useCallback, useContext, useEffect, useState } from "react";
@@ -195,26 +195,8 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 		{ value: "#dfe6e9", label: "灰色", display: "bg-gray-300" },
 	];
 
-	useKeyPress("tab", (event) => {
-		if (customGroups.length === 0) return;
-
-		const currentIndex = checked
-			? customGroups.findIndex((group) => group.id === checked)
-			: -1;
-		const length = customGroups.length;
-
-		let nextIndex = currentIndex;
-
-		if (event.shiftKey) {
-			nextIndex = currentIndex <= 0 ? length - 1 : currentIndex - 1;
-		} else {
-			nextIndex = currentIndex >= length - 1 ? 0 : currentIndex + 1;
-		}
-
-		if (nextIndex >= 0 && nextIndex < customGroups.length) {
-			handleChange(customGroups[nextIndex]);
-		}
-	});
+	// 移除了Tab键切换书签功能，避免与顶部分组Tab键冲突
+	// 用户可以通过鼠标点击来选择和切换书签
 
 	const handleChange = useCallback(
 		(group: CustomGroup) => {
@@ -369,9 +351,33 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 						color: group.color,
 						createTime: group.createTime,
 					}));
-					setCustomGroups(customGroups);
+
+					// 检查是否有实际变化，避免不必要的重新渲染
+					setCustomGroups((prevGroups) => {
+						const hasChanged =
+							prevGroups.length !== customGroups.length ||
+							prevGroups.some((prev, index) => {
+								const curr = customGroups[index];
+								return (
+									!curr ||
+									prev.id !== curr.id ||
+									prev.name !== curr.name ||
+									prev.color !== curr.color
+								);
+							});
+
+						if (!hasChanged) {
+							console.info("🔄 书签数据无变化，跳过UI刷新");
+							return prevGroups;
+						}
+
+						console.info(
+							`🔄 书签数据已更新，UI将刷新: ${prevGroups.length} -> ${customGroups.length}个分组`,
+						);
+						return customGroups;
+					});
+
 					onHasGroupsChange?.(customGroups.length > 0);
-					console.info("🔄 书签数据已更新，UI已刷新");
 				} catch (error) {
 					console.error(
 						"Failed to reload bookmark groups after data change:",
@@ -405,19 +411,22 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 				colors[randomIndex],
 			);
 			if (newGroup) {
-				const customGroup: CustomGroup = {
-					id: newGroup.id,
-					name: newGroup.name,
-					color: newGroup.color,
-					createTime: newGroup.createTime,
-				};
-				setCustomGroups((prev) => [...prev, customGroup]);
-				onHasGroupsChange?.(true);
+				// 不再手动更新本地状态，让BOOKMARK_DATA_CHANGED事件处理UI更新
+				// 这样可以避免重复添加的问题
+				console.info(
+					`➕ 书签分组创建成功: ${newGroup.name}, 等待事件触发UI更新`,
+				);
 
-				// 自动激活新创建的书签
+				// 自动激活新创建的书签（延迟执行，等待UI更新）
 				setTimeout(() => {
+					const customGroup: CustomGroup = {
+						id: newGroup.id,
+						name: newGroup.name,
+						color: newGroup.color,
+						createTime: newGroup.createTime,
+					};
 					handleChange(customGroup);
-				}, 0);
+				}, 100); // 增加延迟确保UI已更新
 			}
 		};
 

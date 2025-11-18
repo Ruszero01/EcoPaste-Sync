@@ -80,7 +80,7 @@ const CloudSync = () => {
 		url: "",
 		username: "",
 		password: "",
-		path: "/EcoPaste",
+		path: "/EcoPaste-Sync",
 		timeout: 60000, // 增加默认超时时间到60秒，提高网络请求的可靠性
 	});
 	const [syncModeConfig, setSyncModeConfig] = useState<SyncModeConfig>(
@@ -894,7 +894,7 @@ const CloudSync = () => {
 							name="path"
 							style={{ margin: 0, minWidth: 300, maxWidth: 400 }}
 						>
-							<Input placeholder="/EcoPaste" />
+							<Input placeholder="/EcoPaste-Sync" />
 						</Form.Item>
 					</ProListItem>
 
