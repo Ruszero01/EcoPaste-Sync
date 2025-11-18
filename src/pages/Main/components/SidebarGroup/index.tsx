@@ -206,10 +206,9 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 				state.search = undefined;
 			} else {
 				setChecked(group.id);
-				// 自定义分组使用搜索逻辑
+				// 自定义分组使用搜索逻辑，但保留其他过滤条件
 				state.search = group.name;
-				state.group = undefined;
-				state.favorite = undefined;
+				// 不再重置 state.group 和 state.favorite，使其与顶部固定分组可以同时生效
 			}
 
 			// 强制触发列表刷新
@@ -228,7 +227,7 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 		if (success) {
 			setCustomGroups(customGroups.filter((group) => group.id !== id));
 			if (checked === id) {
-				// 如果删除的是当前选中的分组，清除搜索
+				// 如果删除的是当前选中的分组，清除搜索但保留其他过滤条件
 				state.search = undefined;
 				setChecked(undefined);
 				if (getListCache?.current) {
