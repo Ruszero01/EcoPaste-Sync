@@ -80,7 +80,7 @@ const SortableBookmarkItem: React.FC<{
 				}
 			}}
 			onContextMenu={(e) => onContextMenu(e, group)}
-			title={`${group.name} (中键删除)`}
+			title={`${group.name}`}
 		>
 			{/* 拖拽手柄 */}
 			<div
@@ -354,8 +354,33 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 		loadBookmarks();
 	}, [onHasGroupsChange]);
 
-	// 监听创建分组事件
+	// 监听书签数据变化事件和创建分组事件
 	useEffect(() => {
+		// 监听书签数据变化事件
+		const unlistenDataChanged = listen(
+			LISTEN_KEY.BOOKMARK_DATA_CHANGED,
+			async () => {
+				try {
+					const groups = await bookmarkManager.getGroups();
+					// 转换为CustomGroup格式
+					const customGroups: CustomGroup[] = groups.map((group) => ({
+						id: group.id,
+						name: group.name,
+						color: group.color,
+						createTime: group.createTime,
+					}));
+					setCustomGroups(customGroups);
+					onHasGroupsChange?.(customGroups.length > 0);
+					console.info("🔄 书签数据已更新，UI已刷新");
+				} catch (error) {
+					console.error(
+						"Failed to reload bookmark groups after data change:",
+						error,
+					);
+				}
+			},
+		);
+
 		const handleCreateGroup = async (groupName: string) => {
 			const colors = [
 				"#ff6b6b", // 红色
@@ -401,28 +426,13 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 			handleCreateGroup(event.payload);
 		});
 
-		// 开发模式测试函数
-		const clearBookmarksForTesting = async () => {
-			if (import.meta.env.DEV) {
-				await bookmarkManager.clearForNewDevice();
-				// 刷新UI
-				setCustomGroups([]);
-				onHasGroupsChange?.(false);
-			}
-		};
-
-		// 简单的测试函数，可以在控制台调用
-		(window as any).createTestGroup = handleCreateGroup;
-		(window as any).clearBookmarksForTesting = clearBookmarksForTesting;
-
 		return () => {
-			unlisten.then((fn) => fn());
-			if ((window as any).createTestGroup) {
-				(window as any).createTestGroup = undefined;
-			}
-			if ((window as any).clearBookmarksForTesting) {
-				(window as any).clearBookmarksForTesting = undefined;
-			}
+			// 清理所有事件监听器
+			Promise.all([unlistenDataChanged, unlisten]).then((unlistenFunctions) => {
+				for (const fn of unlistenFunctions) {
+					fn();
+				}
+			});
 		};
 	}, [onHasGroupsChange, handleChange]);
 

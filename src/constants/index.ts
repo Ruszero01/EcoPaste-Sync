@@ -38,6 +38,7 @@ export const LISTEN_KEY = {
 	REALTIME_SYNC_ERROR: "realtime-sync-error",
 	TRIGGER_MANUAL_SYNC: "trigger-manual-sync",
 	CREATE_CUSTOM_GROUP: "create-custom-group",
+	BOOKMARK_DATA_CHANGED: "bookmark-data-changed",
 };
 
 export const PRESET_SHORTCUT = {

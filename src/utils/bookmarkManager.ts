@@ -1,4 +1,6 @@
+import { LISTEN_KEY } from "@/constants";
 import type { BookmarkGroup } from "@/types/sync";
+import { emit } from "@tauri-apps/api/event";
 import { appDataDir, join } from "@tauri-apps/api/path";
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 
@@ -70,6 +72,18 @@ class BookmarkManager {
 		}
 	}
 
+	// 触发书签数据变化事件
+	private async notifyDataChanged(): Promise<void> {
+		try {
+			await emit(LISTEN_KEY.BOOKMARK_DATA_CHANGED, {
+				groups: this.groups,
+				lastModified: this.lastModified,
+			});
+		} catch (error) {
+			console.error("Failed to emit bookmark data changed event:", error);
+		}
+	}
+
 	// 获取所有书签分组
 	public async getGroups(): Promise<BookmarkGroup[]> {
 		// 确保数据已加载
@@ -117,6 +131,9 @@ class BookmarkManager {
 		// 移除手动触发同步 - 书签同步应该通过整体的同步流程处理
 		// await this.triggerSync(); // 删除这行
 
+		// 通知UI组件数据已更新
+		await this.notifyDataChanged();
+
 		return newGroup;
 	}
 
@@ -144,6 +161,9 @@ class BookmarkManager {
 		// 移除手动触发同步 - 书签同步应该通过整体的同步流程处理
 		// await this.triggerSync(); // 删除这行
 
+		// 通知UI组件数据已更新
+		await this.notifyDataChanged();
+
 		return this.groups[groupIndex];
 	}
 
@@ -162,6 +182,9 @@ class BookmarkManager {
 		// 移除手动触发同步 - 书签同步应该通过整体的同步流程处理
 		// await this.triggerSync(); // 删除这行
 
+		// 通知UI组件数据已更新
+		await this.notifyDataChanged();
+
 		return true;
 	}
 
@@ -177,6 +200,9 @@ class BookmarkManager {
 
 		// 移除手动触发同步 - 书签同步应该通过整体的同步流程处理
 		// await this.triggerSync(); // 删除这行
+
+		// 通知UI组件数据已更新
+		await this.notifyDataChanged();
 	}
 
 	// 获取用于同步的数据
@@ -221,6 +247,8 @@ class BookmarkManager {
 		console.info(
 			`🔒 强制设置云端数据: 分组数=${this.groups.length}, 时间戳=${this.lastModified}`,
 		);
+		// 通知UI组件数据已更新
+		await this.notifyDataChanged();
 	}
 
 	// 重新排序书签分组
@@ -229,6 +257,8 @@ class BookmarkManager {
 		this.groups = groups;
 		await this.saveToStorage(true);
 		console.info(`✅ 书签分组排序完成，新时间戳: ${this.lastModified}`);
+		// 通知UI组件数据已更新
+		await this.notifyDataChanged();
 	}
 
 	// 开发模式：清空所有书签数据并重置时间戳为0，模拟新设备状态
