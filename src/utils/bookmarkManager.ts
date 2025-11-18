@@ -223,6 +223,14 @@ class BookmarkManager {
 		);
 	}
 
+	// 重新排序书签分组
+	public async reorderGroups(groups: BookmarkGroup[]): Promise<void> {
+		console.info(`🔄 重新排序书签分组: ${groups.length}个分组`);
+		this.groups = groups;
+		await this.saveToStorage(true);
+		console.info(`✅ 书签分组排序完成，新时间戳: ${this.lastModified}`);
+	}
+
 	// 开发模式：清空所有书签数据并重置时间戳为0，模拟新设备状态
 	public async clearForNewDevice(): Promise<void> {
 		console.warn("🧪 开发模式：清空书签数据，模拟新设备状态");

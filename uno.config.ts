@@ -14,7 +14,16 @@ export default defineConfig({
 			applyVariable: ["--uno"],
 		}),
 	],
-	rules: [["outline-none", { outline: "none" }]],
+	rules: [
+		["outline-none", { outline: "none" }],
+		[
+			"scrollbar-hide",
+			{
+				"-ms-overflow-style": "none",
+				"scrollbar-width": "none",
+			},
+		],
+	],
 	shortcuts: [
 		[/^bg-color-(\d+)$/, ([, d]) => `bg-bg-${d}`],
 		[/^text-color-(\d+)$/, ([, d]) => `text-text-${d}`],

@@ -1,5 +1,22 @@
 import { LISTEN_KEY } from "@/constants";
+import type { BookmarkGroup } from "@/types/sync";
 import { bookmarkManager } from "@/utils/bookmarkManager";
+import {
+	DndContext,
+	KeyboardSensor,
+	PointerSensor,
+	closestCenter,
+	useSensor,
+	useSensors,
+} from "@dnd-kit/core";
+import {
+	SortableContext,
+	arrayMove,
+	sortableKeyboardCoordinates,
+	verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { listen } from "@tauri-apps/api/event";
 import { useKeyPress } from "ahooks";
 import { Input, Modal } from "antd";
@@ -11,16 +28,146 @@ interface CustomGroup {
 	id: string;
 	name: string;
 	color: string;
+	createTime: number;
 }
 
 interface SidebarGroupProps {
 	onHasGroupsChange?: (hasGroups: boolean) => void;
 }
 
+// 可拖拽的书签项组件
+const SortableBookmarkItem: React.FC<{
+	group: CustomGroup;
+	isChecked: boolean;
+	onChange: (group: CustomGroup) => void;
+	onMiddleClick: (id: string) => void;
+	onContextMenu: (e: React.MouseEvent, group: CustomGroup) => void;
+}> = ({ group, isChecked, onChange, onMiddleClick, onContextMenu }) => {
+	const {
+		attributes,
+		listeners,
+		setNodeRef,
+		transform,
+		transition,
+		isDragging,
+	} = useSortable({ id: group.id });
+
+	const style = {
+		transform: CSS.Transform.toString(transform),
+		transition,
+		opacity: isDragging ? 0.5 : 1,
+	};
+
+	return (
+		<div
+			ref={setNodeRef}
+			style={style}
+			className={clsx(
+				"group relative flex h-6 w-10 shrink-0 cursor-pointer items-center justify-center rounded-md transition-all duration-200",
+				{
+					"bg-primary text-white shadow-md": isChecked,
+					"bg-color-1 hover:scale-105 hover:bg-color-1 hover:shadow-sm":
+						!isChecked && !isDragging,
+					"bg-color-1/50": isDragging,
+				},
+			)}
+			onClick={() => onChange(group)}
+			onMouseDown={(e) => {
+				// 中键点击（button === 1）
+				if (e.button === 1) {
+					e.preventDefault();
+					onMiddleClick(group.id);
+				}
+			}}
+			onContextMenu={(e) => onContextMenu(e, group)}
+			title={`${group.name} (中键删除)`}
+		>
+			{/* 拖拽手柄 */}
+			<div
+				{...attributes}
+				{...listeners}
+				className="absolute top-0 bottom-0 left-0 w-full cursor-grab bg-gradient-to-r from-transparent via-black/10 to-transparent opacity-0 transition-opacity hover:opacity-100 active:cursor-grabbing"
+			/>
+
+			{/* 彩色指示条 */}
+			<div
+				className="absolute top-1 bottom-1 left-0 w-1 rounded-r"
+				style={{ backgroundColor: group.color }}
+			/>
+
+			{/* 分组名称缩写 */}
+			<span
+				className={clsx(
+					"select-none truncate font-medium text-xs leading-tight",
+					{ "text-white": isChecked, "text-color-1": !isChecked },
+				)}
+			>
+				{(() => {
+					const hasEnglish = /[a-zA-Z]/.test(group.name);
+					const maxLength = hasEnglish ? 3 : 2;
+					return group.name.length > maxLength
+						? group.name.slice(0, maxLength)
+						: group.name;
+				})()}
+			</span>
+		</div>
+	);
+};
+
 const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 	const { state, getListCache, getListDebounced } = useContext(MainContext);
 	const [checked, setChecked] = useState<string>();
 	const [customGroups, setCustomGroups] = useState<CustomGroup[]>([]);
+
+	// 拖拽传感器配置
+	const sensors = useSensors(
+		useSensor(PointerSensor, {
+			activationConstraint: {
+				distance: 8, // 移动8px后才开始拖拽
+			},
+		}),
+		useSensor(KeyboardSensor, {
+			coordinateGetter: sortableKeyboardCoordinates,
+		}),
+	);
+
+	// 拖拽结束处理
+	const handleDragEnd = async (event: any) => {
+		const { active, over } = event;
+
+		if (active.id !== over?.id) {
+			const oldIndex = customGroups.findIndex(
+				(group) => group.id === active.id,
+			);
+			const newIndex = customGroups.findIndex((group) => group.id === over?.id);
+
+			if (oldIndex !== -1 && newIndex !== -1) {
+				const newGroups = arrayMove(customGroups, oldIndex, newIndex);
+
+				// 更新UI状态
+				setCustomGroups(newGroups);
+
+				// 更新书签管理器中的数据
+				try {
+					// 转换为BookmarkGroup格式，更新修改时间
+					const bookmarkGroups: BookmarkGroup[] = newGroups.map((group) => ({
+						...group,
+						updateTime: Date.now(), // 更新修改时间以触发同步
+						createTime: group.createTime || Date.now(), // 确保有createTime
+					}));
+
+					// 使用新的reorderGroups方法更新顺序
+					await bookmarkManager.reorderGroups(bookmarkGroups);
+
+					onHasGroupsChange?.(newGroups.length > 0);
+				} catch (error) {
+					console.error("更新书签顺序失败:", error);
+					// 恢复原顺序
+					setCustomGroups(customGroups);
+				}
+			}
+		}
+	};
 
 	// 右键菜单状态
 	const [contextMenuVisible, setContextMenuVisible] = useState(false);
@@ -193,6 +340,7 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 					id: group.id,
 					name: group.name,
 					color: group.color,
+					createTime: group.createTime,
 				}));
 				setCustomGroups(customGroups);
 				onHasGroupsChange?.(customGroups.length > 0);
@@ -236,6 +384,7 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 					id: newGroup.id,
 					name: newGroup.name,
 					color: newGroup.color,
+					createTime: newGroup.createTime,
 				};
 				setCustomGroups((prev) => [...prev, customGroup]);
 				onHasGroupsChange?.(true);
@@ -303,52 +452,34 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 		/* 书签栏 - 与列表容器等高，可垂直滚动 */
 		<div className="flex h-full w-12 shrink-0 flex-col items-center bg-color-2/3 py-1">
 			{/* 可滚动的书签列表 */}
-			<div className="flex-1 overflow-y-auto overflow-x-hidden">
-				<div className="flex flex-col items-center gap-0.5 py-1">
-					{customGroups.map((group) => {
-						const isChecked = checked === group.id;
+			<div className="scrollbar-hide flex-1 overflow-y-auto overflow-x-hidden">
+				<DndContext
+					sensors={sensors}
+					collisionDetection={closestCenter}
+					onDragEnd={handleDragEnd}
+				>
+					<SortableContext
+						items={customGroups.map((group) => group.id)}
+						strategy={verticalListSortingStrategy}
+					>
+						<div className="flex flex-col items-center gap-0.5 py-1">
+							{customGroups.map((group) => {
+								const isChecked = checked === group.id;
 
-						return (
-							<div
-								key={group.id}
-								className={clsx(
-									"group relative flex h-6 w-10 shrink-0 cursor-pointer items-center justify-center rounded-md transition-all duration-200",
-									{
-										"bg-primary text-white shadow-md": isChecked,
-										"bg-color-1 hover:scale-105 hover:bg-color-1 hover:shadow-sm":
-											!isChecked,
-									},
-								)}
-								onClick={() => handleChange(group)}
-								onDoubleClick={() => handleDeleteCustomGroup(group.id)}
-								onContextMenu={(e) => handleContextMenu(e, group)}
-								title={group.name}
-							>
-								{/* 彩色指示条 */}
-								<div
-									className="absolute top-1 bottom-1 left-0 w-1 rounded-r"
-									style={{ backgroundColor: group.color }}
-								/>
-
-								{/* 分组名称缩写 */}
-								<span
-									className={clsx(
-										"truncate font-medium text-xs leading-tight",
-										{ "text-white": isChecked, "text-color-1": !isChecked },
-									)}
-								>
-									{(() => {
-										const hasEnglish = /[a-zA-Z]/.test(group.name);
-										const maxLength = hasEnglish ? 3 : 2;
-										return group.name.length > maxLength
-											? group.name.slice(0, maxLength)
-											: group.name;
-									})()}
-								</span>
-							</div>
-						);
-					})}
-				</div>
+								return (
+									<SortableBookmarkItem
+										key={group.id}
+										group={group}
+										isChecked={isChecked}
+										onChange={handleChange}
+										onMiddleClick={handleDeleteCustomGroup}
+										onContextMenu={handleContextMenu}
+									/>
+								);
+							})}
+						</div>
+					</SortableContext>
+				</DndContext>
 			</div>
 
 			{/* 开发模式：清空书签按钮 */}
