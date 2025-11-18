@@ -1,63 +1,18 @@
-<a href="https://github.com/EcoPasteHub/EcoPaste">
-  <img src="https://socialify.git.ci/EcoPasteHub/EcoPaste/image?description=1&descriptionEditable=%E9%80%82%E7%94%A8%E4%BA%8E%20Windows%E3%80%81MacOS%20%E5%92%8C%20Linux(x11)%20%E7%9A%84%E5%BC%80%E6%BA%90%E5%89%AA%E8%B4%B4%E6%9D%BF%E7%AE%A1%E7%90%86%E5%B7%A5%E5%85%B7%E3%80%82&font=Source%20Code%20Pro&forks=1&issues=1&logo=https%3A%2F%2Fgithub.com%2FEcoPasteHub%2FEcoPaste%2Fblob%2Fmaster%2Fpublic%2Flogo.png%3Fraw%3Dtrue&name=1&owner=1&pattern=Floating%20Cogs&pulls=1&stargazers=1&theme=Auto" alt="EcoPaste" />
-</a>
+#
 
-<div align="center">
-  <br/>
+[![EcoPaste](https://socialify.git.ci/EcoPasteHub/EcoPaste/image?description=1&descriptionEditable=%E9%80%82%E7%94%A8%E4%BA%8E%20Windows%E3%80%81MacOS%20%E5%92%8C%20Linux(x11)%20%E7%9A%84%E5%BC%80%E6%BA%90%E5%89%AA%E8%B4%B4%E6%9D%BF%E7%AE%A1%E7%90%86%E5%B7%A5%E5%85%B7%E3%80%82&font=Source%20Code%20Pro&forks=1&issues=1&logo=https%3A%2F%2Fgithub.com%2FEcoPasteHub%2FEcoPaste%2Fblob%2Fmaster%2Fpublic%2Flogo.png%3Fraw%3Dtrue&name=1&owner=1&pattern=Floating%20Cogs&pulls=1&stargazers=1&theme=Auto)](https://github.com/EcoPasteHub/EcoPaste)
 
-  <div>
-      简体中文 | <a href="./README.zh-TW.md">繁體中文</a> | <a href="./README.en-US.md">English</a> | <a href="./README.ja-JP.md">日本語</a>
-  </div>
+简体中文 | [繁體中文](./README.zh-TW.md) | [English](./README.en-US.md) | [日本語](./README.ja-JP.md)
 
-  <br/>
-    
-  <div>
-    <a href="https://github.com/EcoPasteHub/EcoPaste/releases">
-      <img
-        alt="Windows"
-        src="https://img.shields.io/badge/-Windows-blue?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB0PSIxNzI2MzA1OTcxMDA2IiBjbGFzcz0iaWNvbiIgdmlld0JveD0iMCAwIDEwMjQgMTAyNCIgdmVyc2lvbj0iMS4xIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHAtaWQ9IjE1NDgiIHdpZHRoPSIxMjgiIGhlaWdodD0iMTI4Ij48cGF0aCBkPSJNNTI3LjI3NTU1MTYxIDk2Ljk3MTAzMDEzdjM3My45OTIxMDY2N2g0OTQuNTEzNjE5NzVWMTUuMDI2NzU3NTN6TTUyNy4yNzU1NTE2MSA5MjguMzIzNTA4MTVsNDk0LjUxMzYxOTc1IDgwLjUyMDI4MDQ5di00NTUuNjc3NDcxNjFoLTQ5NC41MTM2MTk3NXpNNC42NzA0NTEzNiA0NzAuODMzNjgyOTdINDIyLjY3Njg1OTI1VjExMC41NjM2ODE5N2wtNDE4LjAwNjQwNzg5IDY5LjI1Nzc5NzUzek00LjY3MDQ1MTM2IDg0Ni43Njc1OTcwM0w0MjIuNjc2ODU5MjUgOTE0Ljg2MDMxMDEzVjU1My4xNjYzMTcwM0g0LjY3MDQ1MTM2eiIgcC1pZD0iMTU0OSIgZmlsbD0iI2ZmZmZmZiI+PC9wYXRoPjwvc3ZnPg=="
-      />
-    </a >
-    <a href="https://github.com/EcoPasteHub/EcoPaste/releases">
-      <img
-        alt="MacOS"
-        src="https://img.shields.io/badge/-MacOS-black?style=flat-square&logo=apple&logoColor=white"
-      />
-    </a >
-    <a href="https://github.com/EcoPasteHub/EcoPaste/releases">
-      <img 
-        alt="Linux"
-        src="https://img.shields.io/badge/-Linux-yellow?style=flat-square&logo=linux&logoColor=white" 
-      />
-    </a>
-  </div>
+[![Windows](https://img.shields.io/badge/-Windows-blue?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB0PSIxNzI2MzA1OTcxMDA2IiBjbGFzcz0iaWNvbiIgdmlld0JveD0iMCAwIDEwMjQgMTAyNCIgdmVyc2lvbj0iMS4xIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHAtaWQ9IjE1NDgiIHdpZHRoPSIxMjgiIGhlaWdodD0iMTI4Ij48cGF0aCBkPSJNNTI3LjI3NTU1MTYxIDk2Ljk3MTAzMDEzdjM3My45OTIxMDY2N2g0OTQuNTEzNjE5NzVWMTUuMDI2NzU3NTN6TTUyNy4yNzU1NTE2MSA5MjguMzIzNTA4MTVsNDk0LjUxMzYxOTc1IDgwLjUyMDI4MDQ5di00NTUuNjc3NDcxNjFoLTQ5NC41MTM2MTk3NXpNNC42NzA0NTEzNiA0NzAuODMzNjgyOTdINDIyLjY3Njg1OTI1VjExMC41NjM2ODE5N2wtNDE4LjAwNjQwNzg5IDY5LjI1Nzc5NzUzek00LjY3MDQ1MTM2IDg0Ni43Njc1OTcwM0w0MjIuNjc2ODU5MjUgOTE0Ljg2MDMxMDEzVjU1My4xNjYzMTcwM0g0LjY3MDQ1MTM2eiIgcC1pZD0iMTU0OSIgZmlsbD0iI2ZmZmZmZiI+PC9wYXRoPjwvc3ZnPg==)](https://github.com/EcoPasteHub/EcoPaste/releases)
+[![MacOS](https://img.shields.io/badge/-MacOS-black?style=flat-square&logo=apple&logoColor=white)](https://github.com/EcoPasteHub/EcoPaste/releases)
+[![Linux](https://img.shields.io/badge/-Linux-yellow?style=flat-square&logo=linux&logoColor=white)](https://github.com/EcoPasteHub/EcoPaste/releases)
 
-  <div>
-    <a href="./LICENSE">
-      <img
-        src="https://img.shields.io/github/license/EcoPasteHub/EcoPaste?style=flat-square"
-      />
-    </a >
-    <a href="https://github.com/EcoPasteHub/EcoPaste/releases">
-      <img
-        src="https://img.shields.io/github/package-json/v/EcoPasteHub/EcoPaste?style=flat-square"
-      />
-    </a >
-    <a href="https://github.com/EcoPasteHub/EcoPaste/releases">
-      <img
-        src="https://img.shields.io/github/downloads/EcoPasteHub/EcoPaste/total?style=flat-square"
-      />  
-    </a >
-  </div>
+[![License](https://img.shields.io/github/license/EcoPasteHub/EcoPaste?style=flat-square)](./LICENSE)
+[![Version](https://img.shields.io/github/package-json/v/EcoPasteHub/EcoPaste?style=flat-square)](https://github.com/EcoPasteHub/EcoPaste/releases)
+[![Downloads](https://img.shields.io/github/downloads/EcoPasteHub/EcoPaste/total?style=flat-square)](https://github.com/EcoPasteHub/EcoPaste/releases)
 
-  <br/>
-
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="./static/sync-dark.png" />
-    <source media="(prefers-color-scheme: light)" srcset="./static/sync-light.png" />
-    <img src="./static/sync-light.png" />
-  </picture>
-</div>
+![同步功能展示](./static/sync-light.png)
 
 ## 🌟 分支说明
 
@@ -162,7 +117,7 @@ graph TB
 
 #### 📋 技术架构详情
 
-**🔄 同步流程**
+##### 🔄 同步流程
 
 1. **数据收集**：从本地 SQLite 数据库收集剪贴板数据
 2. **智能筛选**：根据双开关同步模式（收藏模式/文件模式）和内容类型过滤数据
@@ -172,14 +127,14 @@ graph TB
 6. **云端同步**：统一格式（CloudSyncData）上传到 WebDAV 服务器
 7. **本地更新**：应用云端变更到本地数据库，刷新界面
 
-**💾 存储架构**
+##### 💾 存储架构
 
 - **本地存储**：SQLite 数据库（剪贴板历史 + 同步状态）+ 文件系统缓存
 - **云端存储**：WebDAV 服务器（sync-data.json 统一索引 + files/ 原始文件）
 - **数据格式**：统一 CloudSyncData 格式，完整元数据和文件分离存储
 - **配置存储**：store-config.json 独立配置同步文件
 
-**🛡️ 安全保障**
+##### 🛡️ 安全保障
 
 - 本地优先存储架构，数据完全可控
 - HTTPS/TLS 加密传输，Base64 认证
@@ -187,7 +142,7 @@ graph TB
 - 完善的错误处理和恢复机制
 - 设备标识和校验和验证
 
-**🤖 后端自动化**
+##### 🤖 后端自动化
 
 - Rust 插件实现后台定时同步（eco-auto-sync）
 - 线程安全的全局状态管理
@@ -204,18 +159,10 @@ graph TB
 
 ## 历史星标
 
-<a href="https://star-history.com/#EcoPasteHub/EcoPaste&Date">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=EcoPasteHub/EcoPaste&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=EcoPasteHub/EcoPaste&type=Date" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=EcoPasteHub/EcoPaste&type=Date" />
- </picture>
-</a>
+[![Star History Chart](https://api.star-history.com/svg?repos=EcoPasteHub/EcoPaste&type=Date)](https://star-history.com/#EcoPasteHub/EcoPaste&Date)
 
 ## 贡献者
 
 感谢大家为 EcoPaste 做出的宝贵贡献！如果你也希望为 EcoPaste 做出贡献，请查阅[贡献指南](./.github/CONTRIBUTING/zh-CN.md)。
 
-<a href="https://github.com/EcoPasteHub/EcoPaste/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=EcoPasteHub/EcoPaste" />
-</a>
+[![Contributors](https://contrib.rocks/image?repo=EcoPasteHub/EcoPaste)](https://github.com/EcoPasteHub/EcoPaste/graphs/contributors)
