@@ -204,19 +204,29 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 			if (checked === group.id) {
 				setChecked(undefined);
 				state.search = undefined;
+
+				// 取消选中书签时，强制清除所有缓存并刷新列表
+				// 确保在书签选中期间新增的条目能够正确显示
+				if (getListCache?.current) {
+					getListCache.current.clear();
+				}
+				// 立即触发刷新，不使用防抖，确保新条目立即显示
+				if (getListDebounced) {
+					getListDebounced(0);
+				}
 			} else {
 				setChecked(group.id);
 				// 自定义分组使用搜索逻辑，但保留其他过滤条件
 				state.search = group.name;
 				// 不再重置 state.group 和 state.favorite，使其与顶部固定分组可以同时生效
-			}
 
-			// 强制触发列表刷新
-			if (getListCache?.current) {
-				getListCache.current.clear();
-			}
-			if (getListDebounced) {
-				getListDebounced(50);
+				// 强制触发列表刷新
+				if (getListCache?.current) {
+					getListCache.current.clear();
+				}
+				if (getListDebounced) {
+					getListDebounced(50);
+				}
 			}
 		},
 		[checked, state, getListCache, getListDebounced],
@@ -230,11 +240,13 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 				// 如果删除的是当前选中的分组，清除搜索但保留其他过滤条件
 				state.search = undefined;
 				setChecked(undefined);
+				// 删除选中的书签时，也要强制刷新列表确保新条目显示
 				if (getListCache?.current) {
 					getListCache.current.clear();
 				}
+				// 立即刷新，确保新条目能够显示
 				if (getListDebounced) {
-					getListDebounced(50);
+					getListDebounced(0);
 				}
 			}
 		}
