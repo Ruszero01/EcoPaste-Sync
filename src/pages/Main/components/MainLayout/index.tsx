@@ -1,9 +1,13 @@
 import UnoIcon from "@/components/UnoIcon";
-import { showWindow } from "@/plugins/window";
+import {
+	initializeMicaEffect,
+	showWindow,
+	updateMicaTheme,
+} from "@/plugins/window";
 import { clipboardStore } from "@/stores/clipboard";
+import { isWin } from "@/utils/is";
 import { Flex } from "antd";
 import clsx from "clsx";
-import { useState } from "react";
 import { useSnapshot } from "valtio";
 import Group from "../Group";
 import List from "../List";
@@ -15,8 +19,20 @@ const MainLayout = () => {
 	const { search } = useSnapshot(clipboardStore);
 	const [hasGroups, setHasGroups] = useState(false);
 
+	// 初始化主窗口的 Mica 效果
+	useMount(async () => {
+		await initializeMicaEffect();
+	});
+
+	// 监听主题变化并更新当前窗口的 Mica 效果
+	useImmediateKey(globalStore.appearance, "isDark", updateMicaTheme);
 	return (
-		<div className="flex h-screen bg-color-1">
+		<div
+			className={clsx("flex h-screen", {
+				"bg-color-1": !isWin,
+				"bg-transparent": isWin, // Windows 上使用透明背景以显示 Mica 效果
+			})}
+		>
 			{/* 主内容区 */}
 			<Flex
 				data-tauri-drag-region

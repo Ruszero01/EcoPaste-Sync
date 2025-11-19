@@ -16,6 +16,28 @@ pub fn run() {
 
             let preference_window = app.get_webview_window(PREFERENCE_WINDOW_LABEL).unwrap();
 
+  // 在 Windows 11 上自动应用 Mica 效果
+            #[cfg(target_os = "windows")]
+            {
+                let main_window_clone = main_window.clone();
+                std::thread::spawn(move || {
+                    // 等待窗口完全初始化
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+
+                    #[cfg(target_os = "windows")]
+                    {
+                        use window_vibrancy::{apply_mica};
+
+                        // 应用 Mica 效果，使用 None 自动匹配系统主题
+                        if let Err(e) = apply_mica(&main_window_clone, None) {
+                            eprintln!("❌ Failed to apply Mica effect: {}", e);
+                        } else {
+                            println!("✅ Mica effect applied to main window");
+                        }
+                    }
+                });
+            }
+
             setup::default(&app_handle, main_window.clone(), preference_window.clone());
 
             Ok(())

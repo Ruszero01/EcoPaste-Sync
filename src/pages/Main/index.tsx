@@ -2,6 +2,7 @@ import type { AudioRef } from "@/components/Audio";
 import Audio from "@/components/Audio";
 import { LISTEN_KEY } from "@/constants";
 import { insertWithDeduplication, updateSQL } from "@/database";
+import { initializeMicaEffect } from "@/plugins/window";
 import type { HistoryTablePayload, TablePayload } from "@/types/database";
 import type { Store } from "@/types/store";
 import { formatDate } from "@/utils/dayjs";
@@ -59,6 +60,9 @@ const Main = () => {
 
 	useMount(() => {
 		state.$eventBus = $eventBus;
+
+		// 初始化 Windows 11 Mica 材质效果
+		initializeMicaEffect();
 
 		// 设置同步事件监听器 - 确保在应用启动早期设置
 		setSyncEventListener(() => {

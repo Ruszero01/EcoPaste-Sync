@@ -49,5 +49,8 @@ tauri-plugin-eco-auto-sync.workspace = true
 [target."cfg(target_os = \"macos\")".dependencies]
 tauri-nspanel.workspace = true
 
+[target."cfg(target_os = \"windows\")".dependencies]
+window-vibrancy = "0.6"
+
 [features]
 cargo-clippy = []

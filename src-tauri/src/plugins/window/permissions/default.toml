@@ -2,4 +2,4 @@
 
 [default]
 description = "Default permissions for the plugin"
-permissions = ["allow-show-window", "allow-show-window-with-position", "allow-hide-window", "allow-show-taskbar-icon", "allow-show-main-window", "allow-show-preference-window"]
+permissions = ["allow-show-window", "allow-show-window-with-position", "allow-hide-window", "allow-show-taskbar-icon", "allow-show-main-window", "allow-show-preference-window", "allow-apply-mica-effect", "allow-clear-mica-effect", "allow-is-mica-supported"]

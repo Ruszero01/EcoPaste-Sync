@@ -1,4 +1,5 @@
 import ProSelect from "@/components/ProSelect";
+import { updateMicaTheme } from "@/plugins/window";
 import type { Theme } from "@/types/store";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useSnapshot } from "valtio";
@@ -20,6 +21,9 @@ const ThemeMode = () => {
 			if (globalStore.appearance.theme !== "auto") return;
 
 			globalStore.appearance.isDark = payload === "dark";
+
+			// 更新 Mica 主题
+			updateMicaTheme(payload === "dark");
 		});
 	});
 
@@ -30,7 +34,11 @@ const ThemeMode = () => {
 
 		nextTheme = nextTheme ?? (await appWindow.theme());
 
-		globalStore.appearance.isDark = nextTheme === "dark";
+		const isDark = nextTheme === "dark";
+		globalStore.appearance.isDark = isDark;
+
+		// 更新 Mica 主题
+		updateMicaTheme(isDark);
 	});
 
 	const options: Option[] = [

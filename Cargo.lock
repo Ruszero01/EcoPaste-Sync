@@ -1391,6 +1391,7 @@ dependencies = [
  "tauri-plugin-single-instance",
  "tauri-plugin-sql",
  "tauri-plugin-updater",
+ "window-vibrancy",
 ]
 
 [[package]]
@@ -6193,6 +6194,8 @@ dependencies = [
  "tauri",
  "tauri-nspanel",
  "tauri-plugin",
+ "window-vibrancy",
+ "windows-version",
 ]
 
 [[package]]

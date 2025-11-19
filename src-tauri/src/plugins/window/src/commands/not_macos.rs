@@ -1,6 +1,9 @@
 use super::{shared_hide_window, shared_show_window, set_window_follow_cursor};
 use tauri::{command, AppHandle, Runtime, WebviewWindow};
 
+#[cfg(target_os = "windows")]
+use window_vibrancy::{apply_mica, clear_mica};
+
 // 显示窗口
 #[command]
 pub async fn show_window<R: Runtime>(_app_handle: AppHandle<R>, window: WebviewWindow<R>) {
@@ -48,4 +51,56 @@ pub async fn show_taskbar_icon<R: Runtime>(
     visible: bool,
 ) {
     let _ = window.set_skip_taskbar(!visible);
+}
+
+// 应用 Mica 材质效果
+#[command]
+pub async fn apply_mica_effect<R: Runtime>(window: WebviewWindow<R>, dark_mode: bool) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        // 先清除之前的 Mica 效果
+        let _ = clear_mica(&window);
+
+        // 应用 Mica 效果
+        apply_mica(&window, Some(dark_mode))
+            .map_err(|e| format!("Failed to apply mica effect: {}", e))?;
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        return Err("Mica effect is only supported on Windows".to_string());
+    }
+
+    Ok(())
+}
+
+// 清除 Mica 材质效果
+#[command]
+pub async fn clear_mica_effect<R: Runtime>(window: WebviewWindow<R>) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        clear_mica(&window)
+            .map_err(|e| format!("Failed to clear mica effect: {}", e))?;
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        return Err("Mica effect is only supported on Windows".to_string());
+    }
+
+    Ok(())
+}
+
+// 检查是否支持 Mica 效果
+#[command]
+pub async fn is_mica_supported() -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        true
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        false
+    }
 }

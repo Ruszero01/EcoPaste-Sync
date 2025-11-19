@@ -1,5 +1,7 @@
 import UnoIcon from "@/components/UnoIcon";
 import UpdateApp from "@/components/UpdateApp";
+import { initializeMicaEffect, updateMicaTheme } from "@/plugins/window";
+import { isWin } from "@/utils/is";
 import { emit } from "@tauri-apps/api/event";
 import { Flex } from "antd";
 import clsx from "clsx";
@@ -25,7 +27,13 @@ const Preference = () => {
 		if (!autostart && !app.silentStart) {
 			showWindow();
 		}
+
+		// 初始化偏好设置窗口的 Mica 效果
+		await initializeMicaEffect();
 	});
+
+	// 监听主题变化并更新当前窗口的 Mica 效果
+	useImmediateKey(globalStore.appearance, "isDark", updateMicaTheme);
 
 	// 监听全局配置项变化
 	useSubscribe(globalStore, () => handleStoreChanged());
@@ -101,7 +109,12 @@ const Preference = () => {
 	};
 
 	return (
-		<Flex className="h-screen">
+		<Flex
+			className={clsx("h-screen", {
+				"bg-color-1": !isWin,
+				"bg-transparent": isWin, // Windows 上使用透明背景以显示 Mica 效果
+			})}
+		>
 			<Flex
 				data-tauri-drag-region
 				vertical

@@ -16,7 +16,10 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::hide_window,
             commands::show_taskbar_icon,
             commands::show_main_window,
-            commands::show_preference_window
+            commands::show_preference_window,
+            commands::apply_mica_effect,
+            commands::clear_mica_effect,
+            commands::is_mica_supported
         ])
         .build()
 }

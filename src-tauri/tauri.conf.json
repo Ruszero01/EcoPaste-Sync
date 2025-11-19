@@ -112,7 +112,10 @@
 				"allow-hide-window",
 				"allow-show-taskbar-icon",
 				"allow-show-main-window",
-				"allow-show-preference-window"
+				"allow-show-preference-window",
+				"allow-apply-mica-effect",
+				"allow-clear-mica-effect",
+				"allow-is-mica-supported"
 			]
 		}
 	}

@@ -98,3 +98,19 @@ pub fn set_macos_panel<R: Runtime>(
         });
     }
 }
+
+// macOS 不支持 Mica 效果的占位实现
+#[command]
+pub async fn apply_mica_effect<R: Runtime>(_window: WebviewWindow<R>) -> Result<(), String> {
+    Err("Mica effect is only supported on Windows".to_string())
+}
+
+#[command]
+pub async fn clear_mica_effect<R: Runtime>(_window: WebviewWindow<R>) -> Result<(), String> {
+    Err("Mica effect is only supported on Windows".to_string())
+}
+
+#[command]
+pub async fn is_mica_supported() -> bool {
+    false
+}

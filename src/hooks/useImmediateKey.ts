@@ -1,17 +1,25 @@
+import { useCallback, useEffect, useRef } from "react";
 import { subscribeKey } from "valtio/utils";
 
-export const useImmediateKey: typeof subscribeKey = (...args) => {
-	const unsubscribeRef = useRef(() => {});
+export const useImmediateKey = <T extends object>(
+	object: T,
+	key: keyof T,
+	callback: (value: T[keyof T]) => void,
+) => {
+	const callbackRef = useRef(callback);
+	callbackRef.current = callback;
 
-	useEffect(() => {
-		const [object, key, callback] = args;
-
-		callback(object[key]);
-
-		unsubscribeRef.current = subscribeKey(...args);
-
-		return unsubscribeRef.current;
+	const stableCallback = useCallback((value: T[keyof T]) => {
+		callbackRef.current(value);
 	}, []);
 
-	return unsubscribeRef.current;
+	useEffect(() => {
+		// 立即调用一次
+		stableCallback(object[key]);
+
+		// 订阅变化
+		const unsubscribe = subscribeKey(object, key as string, stableCallback);
+
+		return unsubscribe;
+	}, [object, key, stableCallback]);
 };
