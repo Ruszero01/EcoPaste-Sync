@@ -415,37 +415,34 @@ export const readClipboard = async () => {
 		text: await hasText(),
 	};
 
-	// 优化剪切板检测逻辑：避免图片内容的重复记录
-	if (has.image && !has.text) {
-		// 当有图片时优先处理图片（避免与单个图片文件的files类型重复）
+	// 优先处理图片内容（无论是否有文本，解决截图软件复制问题）
+	if (has.image) {
 		const imagePayload = await readImage();
 		payload = { ...imagePayload, type: "image" };
-	} else if (has.files) {
+	}
+	// 处理文件内容
+	else if (has.files) {
 		const filesPayload = await readFiles();
 
-		// 智能检测文件类型已在readFiles中处理
-		// 但跳过单个图片文件（因为已在上面处理过）
+		// 如果是单个图片文件，由于上面已经优先处理了image格式，
+		// 这里到达说明图片文件是通过文件方式复制的（非截图软件）
 		if (filesPayload.group === "image") {
-			// 如果是单个图片文件但上面没有检测到image，说明可能有问题，但还是处理
 			payload = { ...filesPayload, type: "image" };
 		} else {
 			payload = { ...filesPayload, type: "files" };
 		}
-	} else if (has.image) {
-		const imagePayload = await readImage();
-
-		payload = { ...imagePayload, type: "image" };
-	} else if (!copyPlain && has.html) {
+	}
+	// 处理富文本内容
+	else if (!copyPlain && has.html) {
 		const htmlPayload = await readHTML();
-
 		payload = { ...htmlPayload, type: "html" };
 	} else if (!copyPlain && has.rtf) {
 		const rtfPayload = await readRTF();
-
 		payload = { ...rtfPayload, type: "rtf" };
-	} else {
+	}
+	// 最后处理纯文本
+	else {
 		const textPayload = await readText();
-
 		payload = { ...textPayload, type: "text" };
 	}
 

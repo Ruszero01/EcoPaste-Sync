@@ -106,6 +106,8 @@ pub fn run() {
         .plugin(tauri_plugin_eco_webdav::init())
         // 自定义自动同步插件
         .plugin(tauri_plugin_eco_auto_sync::init())
+        // Shell 插件：https://github.com/tauri-apps/plugins-workspace/tree/v2/plugins/shell
+        .plugin(tauri_plugin_shell::init())
         .on_window_event(|window, event| match event {
             // 让 app 保持在后台运行：https://tauri.app/v1/guides/features/system-tray/#preventing-the-app-from-closing
             WindowEvent::CloseRequested { api, .. } => {

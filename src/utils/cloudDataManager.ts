@@ -178,11 +178,6 @@ export class CloudDataManager {
 			deleted: item.deleted || false,
 		}));
 
-		updatedIndex.deletedItems = [
-			...index.deletedItems.filter((id) => !deletedIds.includes(id)),
-			...deletedIds,
-		];
-
 		updatedIndex.totalItems = updatedIndex.items.length;
 		updatedIndex.dataChecksum = this.calculateIndexChecksum(updatedIndex);
 		updatedIndex.statistics = this.calculateStatistics(updatedIndex);
@@ -210,7 +205,6 @@ export class CloudDataManager {
 			items: [] as SyncItem[], // 明确指定类型
 			totalItems: 0,
 			dataChecksum: "",
-			deletedItems: [],
 			statistics: {
 				typeCounts: {},
 				totalSize: 0,
@@ -305,7 +299,6 @@ export class CloudDataManager {
 				checksum: item.checksum,
 				timestamp: item.lastModified || Date.now(),
 			})),
-			deletedItems: index.deletedItems.sort(),
 			timestamp: index.timestamp,
 		};
 
@@ -358,7 +351,7 @@ export class CloudDataManager {
 		let failedCount = 0;
 
 		try {
-			// 1. 更新云端索引，移除已删除的项目
+			// 1. 更新云端索引，直接移除已删除的项目
 			console.info(`开始更新云端索引，要删除的项目: ${itemIds.join(", ")}`);
 			const currentIndex = await this.downloadSyncIndex();
 
@@ -371,21 +364,18 @@ export class CloudDataManager {
 
 				console.info(`过滤后的云端索引有 ${updatedItems.length} 个项目`);
 
-				// 创建更新后的索引，但先不计算校验和
-				const tempUpdatedIndex: CloudSyncIndex = {
+				// 创建更新后的索引
+				const updatedIndex: CloudSyncIndex = {
 					...currentIndex,
 					items: updatedItems,
-					deletedItems: [...currentIndex.deletedItems, ...itemIds],
 					totalItems: updatedItems.length,
 					timestamp: Date.now(),
-					dataChecksum: "", // 临时设为空
+					dataChecksum: "", // 临时设为空，稍后重新计算
 				};
 
-				// 正确计算校验和
-				const updatedIndex: CloudSyncIndex = {
-					...tempUpdatedIndex,
-					dataChecksum: this.calculateIndexChecksum(tempUpdatedIndex), // 正确计算校验和
-				};
+				// 重新计算校验和
+				updatedIndex.dataChecksum = this.calculateIndexChecksum(updatedIndex);
+				updatedIndex.statistics = this.calculateStatistics(updatedIndex);
 
 				console.info(`准备上传更新后的云端索引，包含 ${updatedIndex.items.length} 个项目`);
 				const indexUpdateSuccess = await this.uploadSyncIndex(updatedIndex);
@@ -599,14 +589,17 @@ export class CloudDataManager {
 	 * 实际的文件上传由 fileSyncManager 负责
 	 */
 	private async processUploadItems(items: SyncItem[]): Promise<any[]> {
-		// 处理每个项目，如果有 _fileMetadata，则将其合并到 value 中（仅用于云端存储）
+		// 处理每个项目，如果有文件元数据，则将其合并到 value 中（仅用于云端存储）
 		return items.map((item) => {
 			const itemCopy = { ...item };
 
 			// 如果有文件元数据，将其存储在云端索引中
-			if ((item as any)._fileMetadata) {
-				itemCopy._fileMetadata = (item as any)._fileMetadata;
-				itemCopy._syncType = (item as any)._syncType;
+			const itemWithMetadata = item as any;
+			if (itemWithMetadata._fileMetadata) {
+				itemCopy._fileMetadata = itemWithMetadata._fileMetadata;
+			}
+			if (itemWithMetadata._syncType) {
+				itemCopy._syncType = itemWithMetadata._syncType;
 			}
 
 			return itemCopy;
@@ -635,7 +628,7 @@ export class CloudDataManager {
 		const updatedIndex = { ...baseIndex };
 
 		if (completeData) {
-			// 新格式：直接使用完整的SyncItem数据
+			// 新格式：直接使用完整的SyncItem数据（已处理删除操作）
 			updatedIndex.items = completeData;
 		} else {
 			// 备用方案：使用原有逻辑（基于同步结果）
@@ -665,14 +658,8 @@ export class CloudDataManager {
 			}
 		}
 
-		// 4. 更新索引元数据
+		// 4. 更新索引元数据（不再记录 deletedItems）
 		updatedIndex.totalItems = updatedIndex.items.length;
-		updatedIndex.deletedItems = [
-			...updatedIndex.deletedItems.filter(
-				(id) => !syncResult.itemsToDelete.includes(id),
-			),
-			...syncResult.itemsToDelete,
-		];
 		updatedIndex.dataChecksum = this.calculateIndexChecksum(updatedIndex);
 		updatedIndex.statistics = this.calculateStatistics(updatedIndex);
 		updatedIndex.timestamp = Date.now();

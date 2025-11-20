@@ -177,7 +177,6 @@ export interface CloudSyncData {
 	items: SyncItem[];
 	totalItems: number;
 	dataChecksum: string;
-	deletedItems: string[];
 	statistics: {
 		typeCounts: Record<string, number>;
 		totalSize: number;
