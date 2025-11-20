@@ -567,7 +567,12 @@ const Item: FC<ItemProps> = (props) => {
 					align="center"
 					justify="flex-end"
 					gap={4}
-					className="pointer-events-none absolute right-1 bottom-0 text-xs"
+					className={clsx(
+						"pointer-events-none absolute right-1 bottom-0 text-xs opacity-0 transition group-hover:opacity-100",
+						{
+							"opacity-100": state.activeId === id || note,
+						},
+					)}
 					style={{ fontSize: "10px" }}
 				>
 					<span className="rounded-t bg-neutral-200/90 px-1.5 py-0.5 text-neutral-600 backdrop-blur-xl dark:bg-neutral-800/90 dark:text-neutral-400">
