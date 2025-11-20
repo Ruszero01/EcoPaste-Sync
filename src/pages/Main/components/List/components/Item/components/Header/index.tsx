@@ -1,4 +1,3 @@
-import Scrollbar from "@/components/Scrollbar";
 import UnoIcon from "@/components/UnoIcon";
 import { MainContext } from "@/pages/Main";
 import { transferData } from "@/pages/Preference/components/Clipboard/components/OperationButton";
@@ -6,7 +5,6 @@ import type { HistoryTablePayload } from "@/types/database";
 import type { OperationButton } from "@/types/store";
 import { Flex } from "antd";
 import clsx from "clsx";
-import { filesize } from "filesize";
 import type { FC, MouseEvent } from "react";
 import { useSnapshot } from "valtio";
 
@@ -17,13 +15,16 @@ interface HeaderProps {
 	openNoteModel: () => void;
 	toggleFavorite: () => void;
 	deleteItem: () => void;
+	previewImage?: () => void;
+	showInExplorer?: () => void;
+	openInBrowser?: () => void;
 }
 
 const Header: FC<HeaderProps> = (props) => {
 	const { data } = props;
-	const { id, type, value, count, createTime, favorite, subtype } = data;
+	const { id, type, favorite, subtype, search } = data;
 	const { state } = useContext(MainContext);
-	const { t, i18n } = useTranslation();
+	const { t } = useTranslation();
 	const { content } = useSnapshot(clipboardStore);
 
 	const operationButtons = useCreation(() => {
@@ -32,7 +33,41 @@ const Header: FC<HeaderProps> = (props) => {
 		});
 	}, [content.operationButtons]);
 
+	// 判断按钮是否应该显示
+	const shouldShowButton = (key: OperationButton): boolean => {
+		switch (key) {
+			case "showInExplorer":
+				// 在文件类型和路径类型的条目上显示
+				return type === "files" || subtype === "path";
+			case "previewImage":
+				// 只在图片条目上显示
+				return type === "image";
+			case "openInBrowser":
+				// 只在链接类型条目上显示
+				return subtype === "url";
+			case "pastePlain":
+				// 只在文本类条目和图片包含OCR文字时显示
+				return (
+					type === "html" ||
+					type === "rtf" ||
+					(type === "image" &&
+						typeof search === "string" &&
+						!/^[\s]*$/.test(search))
+				);
+			case "copy":
+			case "note":
+			case "star":
+			case "delete":
+				// 在所有条目上都显示
+				return true;
+			default:
+				return true;
+		}
+	};
+
 	const renderType = () => {
+		const { value } = data;
+
 		switch (subtype) {
 			case "url":
 				return t("clipboard.label.link");
@@ -81,31 +116,17 @@ const Header: FC<HeaderProps> = (props) => {
 		}
 	};
 
-	const renderCount = () => {
-		if (type === "files" || type === "image") {
-			return filesize(count, { standard: "jedec" });
-		}
-
-		return t("clipboard.label.n_chars", {
-			replace: [count],
-		});
-	};
-
-	const renderPixel = () => {
-		if (type !== "image") return;
-
-		const { width, height } = data;
-
-		return (
-			<span>
-				{width}×{height}
-			</span>
-		);
-	};
-
 	const handleClick = (event: MouseEvent, key: OperationButton) => {
-		const { copy, pastePlain, openNoteModel, toggleFavorite, deleteItem } =
-			props;
+		const {
+			copy,
+			pastePlain,
+			openNoteModel,
+			toggleFavorite,
+			deleteItem,
+			previewImage,
+			showInExplorer,
+			openInBrowser,
+		} = props;
 
 		event.stopPropagation();
 
@@ -120,22 +141,28 @@ const Header: FC<HeaderProps> = (props) => {
 				return openNoteModel();
 			case "star":
 				return toggleFavorite();
+			case "showInExplorer":
+				return showInExplorer?.();
+			case "previewImage":
+				return previewImage?.();
+			case "openInBrowser":
+				return openInBrowser?.();
 			case "delete":
 				return deleteItem();
 		}
 	};
 
 	return (
-		<Flex justify="space-between" gap="small" className="text-color-2">
-			<Scrollbar thumbSize={0}>
-				<Flex gap="small" className="flex-1 whitespace-nowrap text-xs">
-					<span>{renderType()}</span>
-					<span>{renderCount()}</span>
-					{renderPixel()}
-					<span>{dayjs(createTime).locale(i18n.language).fromNow()}</span>
-				</Flex>
-			</Scrollbar>
+		<Flex
+			justify="space-between"
+			align="flex-start"
+			gap="small"
+			className="text-color-2"
+		>
+			{/* 左上角：类型 */}
+			<Flex className="font-medium text-xs">{renderType()}</Flex>
 
+			{/* 右上角：操作按钮 */}
 			<Flex
 				align="center"
 				gap={6}
@@ -144,22 +171,24 @@ const Header: FC<HeaderProps> = (props) => {
 				})}
 				onDoubleClick={(event) => event.stopPropagation()}
 			>
-				{operationButtons.map((item) => {
-					const { key, icon, activeIcon, title } = item;
+				{operationButtons
+					.filter((item) => shouldShowButton(item.key))
+					.map((item) => {
+						const { key, icon, activeIcon, title } = item;
 
-					const isFavorite = key === "star" && favorite;
+						const isFavorite = key === "star" && favorite;
 
-					return (
-						<UnoIcon
-							key={key}
-							hoverable
-							name={isFavorite ? activeIcon : icon}
-							title={t(title)}
-							className={clsx({ "text-gold!": isFavorite })}
-							onClick={(event) => handleClick(event, key)}
-						/>
-					);
-				})}
+						return (
+							<UnoIcon
+								key={key}
+								hoverable
+								name={isFavorite ? activeIcon : icon}
+								title={t(title)}
+								className={clsx({ "text-gold!": isFavorite })}
+								onClick={(event) => handleClick(event, key)}
+							/>
+						);
+					})}
 			</Flex>
 		</Flex>
 	);
