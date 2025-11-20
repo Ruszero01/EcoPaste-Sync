@@ -13,7 +13,7 @@ const RowHeight = () => {
 	const options: Option[] = [
 		{
 			label: t("preference.settings.appearance_settings.label.row_height_high"),
-			value: 120,
+			value: 116,
 		},
 		{
 			label: t(
