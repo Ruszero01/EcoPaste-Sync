@@ -156,7 +156,11 @@
 					"theme": "Theme",
 					"theme_auto": "System",
 					"theme_light": "Light",
-					"theme_dark": "Dark"
+					"theme_dark": "Dark",
+					"row_height": "Row Height",
+					"row_height_high": "High",
+					"row_height_medium": "Medium",
+					"row_height_low": "Low"
 				}
 			},
 			"update_settings": {

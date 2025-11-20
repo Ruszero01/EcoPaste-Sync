@@ -156,7 +156,11 @@
 					"theme": "テーマ設定",
 					"theme_auto": "システムに従う",
 					"theme_light": "ライト",
-					"theme_dark": "ダーク"
+					"theme_dark": "ダーク",
+					"row_height": "行の高さ",
+					"row_height_high": "高",
+					"row_height_medium": "中",
+					"row_height_low": "低"
 				}
 			},
 			"update_settings": {

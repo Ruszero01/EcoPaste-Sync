@@ -23,6 +23,7 @@ export interface GlobalStore {
 		theme: Theme;
 		isDark: boolean;
 		language?: Language;
+		rowHeight: number;
 	};
 
 	update: {

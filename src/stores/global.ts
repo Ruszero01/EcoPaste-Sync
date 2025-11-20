@@ -12,6 +12,7 @@ export const globalStore = proxy<GlobalStore>({
 	appearance: {
 		theme: "auto",
 		isDark: false,
+		rowHeight: 80,
 	},
 
 	update: {

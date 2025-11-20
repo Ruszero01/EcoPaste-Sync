@@ -4,11 +4,13 @@ import { resolveImagePath } from "@/utils/path";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { FloatButton, Modal } from "antd";
 import { findIndex } from "lodash-es";
+import { useSnapshot } from "valtio";
 import Item from "./components/Item";
 import NoteModal, { type NoteModalRef } from "./components/NoteModal";
 
 const List = () => {
 	const { state, getList } = useContext(MainContext);
+	const { appearance } = useSnapshot(globalStore);
 	const outerRef = useRef<HTMLDivElement>(null);
 	const noteModelRef = useRef<NoteModalRef>(null);
 	const [deleteModal, contextHolder] = Modal.useModal();
@@ -18,8 +20,13 @@ const List = () => {
 		count: state.list.length,
 		gap: 12,
 		getScrollElement: () => outerRef.current,
-		estimateSize: () => 120,
+		estimateSize: () => appearance.rowHeight,
 		getItemKey: (index) => state.list[index].id,
+	});
+
+	// 监听行高变化并重新计算虚拟列表
+	useImmediateKey(globalStore.appearance, "rowHeight", () => {
+		rowVirtualizer.calculateRange();
 	});
 
 	// 监听激活时回到顶部并选中第一个
@@ -86,7 +93,7 @@ const List = () => {
 					} catch (_fallbackError) {
 						// 最后的备用方案：估计位置
 						if (outerRef.current) {
-							const itemHeight = 120; // 估计的项高度
+							const itemHeight = appearance.rowHeight; // 估计的项高度
 							const estimatedScrollTop = index * itemHeight;
 							outerRef.current.scrollTop = estimatedScrollTop;
 						}

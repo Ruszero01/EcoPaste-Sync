@@ -157,7 +157,11 @@
 					"theme": "主题模式",
 					"theme_auto": "跟随系统",
 					"theme_light": "亮色模式",
-					"theme_dark": "暗色模式"
+					"theme_dark": "暗色模式",
+					"row_height": "列表行高",
+					"row_height_high": "高",
+					"row_height_medium": "中",
+					"row_height_low": "低"
 				}
 			},
 			"update_settings": {

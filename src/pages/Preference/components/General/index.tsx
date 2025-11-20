@@ -4,6 +4,7 @@ import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { useSnapshot } from "valtio";
 import Language from "./components/Language";
 import MacosPermissions from "./components/MacosPermissions";
+import RowHeight from "./components/RowHeight";
 import ThemeMode from "./components/ThemeMode";
 
 const General = () => {
@@ -66,6 +67,8 @@ const General = () => {
 				<Language />
 
 				<ThemeMode />
+
+				<RowHeight />
 			</ProList>
 
 			<ProList header={t("preference.settings.update_settings.title")}>
