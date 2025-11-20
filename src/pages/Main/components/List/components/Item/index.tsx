@@ -570,7 +570,7 @@ const Item: FC<ItemProps> = (props) => {
 					className={clsx(
 						"pointer-events-none absolute right-1 bottom-0 text-xs opacity-0 transition group-hover:opacity-100",
 						{
-							"opacity-100": state.activeId === id || note,
+							"opacity-100": state.activeId === id,
 						},
 					)}
 					style={{ fontSize: "10px" }}
