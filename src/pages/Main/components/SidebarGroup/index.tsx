@@ -1,3 +1,4 @@
+import BookmarkTooltip from "@/components/BookmarkTooltip";
 import { LISTEN_KEY } from "@/constants";
 import type { BookmarkGroup } from "@/types/sync";
 import { bookmarkManager } from "@/utils/bookmarkManager";
@@ -59,58 +60,59 @@ const SortableBookmarkItem: React.FC<{
 	};
 
 	return (
-		<div
-			ref={setNodeRef}
-			style={style}
-			className={clsx(
-				"group relative flex h-6 w-10 shrink-0 cursor-pointer items-center justify-center rounded-md transition-all duration-200",
-				{
-					"bg-primary text-white shadow-md": isChecked,
-					"bg-color-1 hover:scale-105 hover:bg-color-1 hover:shadow-sm":
-						!isChecked && !isDragging,
-					"bg-color-1/50": isDragging,
-				},
-			)}
-			onClick={() => onChange(group)}
-			onMouseDown={(e) => {
-				// 中键点击（button === 1）
-				if (e.button === 1) {
-					e.preventDefault();
-					onMiddleClick(group.id);
-				}
-			}}
-			onContextMenu={(e) => onContextMenu(e, group)}
-			title={`${group.name}`}
-		>
-			{/* 拖拽手柄 */}
+		<BookmarkTooltip title={group.name}>
 			<div
-				{...attributes}
-				{...listeners}
-				className="absolute top-0 bottom-0 left-0 w-full cursor-grab bg-gradient-to-r from-transparent via-black/10 to-transparent opacity-0 transition-opacity hover:opacity-100 active:cursor-grabbing"
-			/>
-
-			{/* 彩色指示条 */}
-			<div
-				className="absolute top-1 bottom-1 left-0 w-1 rounded-r"
-				style={{ backgroundColor: group.color }}
-			/>
-
-			{/* 分组名称缩写 */}
-			<span
+				ref={setNodeRef}
+				style={style}
 				className={clsx(
-					"select-none truncate font-medium text-xs leading-tight",
-					{ "text-white": isChecked, "text-color-1": !isChecked },
+					"group relative flex h-6 w-10 shrink-0 cursor-pointer items-center justify-center rounded-md transition-all duration-200",
+					{
+						"bg-primary text-white shadow-md": isChecked,
+						"bg-color-1 hover:scale-105 hover:bg-color-1 hover:shadow-sm":
+							!isChecked && !isDragging,
+						"bg-color-1/50": isDragging,
+					},
 				)}
+				onClick={() => onChange(group)}
+				onMouseDown={(e) => {
+					// 中键点击（button === 1）
+					if (e.button === 1) {
+						e.preventDefault();
+						onMiddleClick(group.id);
+					}
+				}}
+				onContextMenu={(e) => onContextMenu(e, group)}
 			>
-				{(() => {
-					const hasEnglish = /[a-zA-Z]/.test(group.name);
-					const maxLength = hasEnglish ? 3 : 2;
-					return group.name.length > maxLength
-						? group.name.slice(0, maxLength)
-						: group.name;
-				})()}
-			</span>
-		</div>
+				{/* 拖拽手柄 */}
+				<div
+					{...attributes}
+					{...listeners}
+					className="absolute top-0 bottom-0 left-0 w-full cursor-grab bg-gradient-to-r from-transparent via-black/10 to-transparent opacity-0 transition-opacity hover:opacity-100 active:cursor-grabbing"
+				/>
+
+				{/* 彩色指示条 */}
+				<div
+					className="absolute top-1 bottom-1 left-0 w-1 rounded-r"
+					style={{ backgroundColor: group.color }}
+				/>
+
+				{/* 分组名称缩写 */}
+				<span
+					className={clsx(
+						"select-none truncate font-medium text-xs leading-tight",
+						{ "text-white": isChecked, "text-color-1": !isChecked },
+					)}
+				>
+					{(() => {
+						const hasEnglish = /[a-zA-Z]/.test(group.name);
+						const maxLength = hasEnglish ? 3 : 2;
+						return group.name.length > maxLength
+							? group.name.slice(0, maxLength)
+							: group.name;
+					})()}
+				</span>
+			</div>
+		</BookmarkTooltip>
 	);
 };
 
@@ -515,19 +517,20 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 			{/* 开发模式：清空书签按钮 */}
 			{import.meta.env.DEV && (
 				<div className="flex flex-col items-center gap-0.5 py-1">
-					<div
-						className="group relative flex h-6 w-10 shrink-0 cursor-pointer items-center justify-center rounded-md bg-orange-500/20 transition-all duration-200 hover:bg-orange-500/30"
-						onClick={async () => {
-							await bookmarkManager.clearForNewDevice();
-							// 刷新UI
-							setCustomGroups([]);
-							onHasGroupsChange?.(false);
-						}}
-						title="开发模式：清空书签(模拟新设备)"
-					>
-						{/* 清空图标 */}
-						<span className="font-bold text-orange-500 text-xs">🧹</span>
-					</div>
+					<BookmarkTooltip title="开发模式：清空书签(模拟新设备)">
+						<div
+							className="group relative flex h-6 w-10 shrink-0 cursor-pointer items-center justify-center rounded-md bg-orange-500/20 transition-all duration-200 hover:bg-orange-500/30"
+							onClick={async () => {
+								await bookmarkManager.clearForNewDevice();
+								// 刷新UI
+								setCustomGroups([]);
+								onHasGroupsChange?.(false);
+							}}
+						>
+							{/* 清空图标 */}
+							<span className="font-bold text-orange-500 text-xs">🧹</span>
+						</div>
+					</BookmarkTooltip>
 				</div>
 			)}
 
