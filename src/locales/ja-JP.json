@@ -65,6 +65,9 @@
 						"paste_plain": "プレーンテキストとして貼り付け",
 						"notes": "メモ",
 						"favorite": "お気に入り",
+						"show_in_explorer": "エクスプローラーで表示",
+						"preview_image": "画像プレビュー",
+						"open_in_browser": "ブラウザで開く",
 						"delete": "削除"
 					},
 					"auto_favorite": "自動コレクション",

@@ -100,7 +100,10 @@ export type OperationButton =
 	| "pastePlain"
 	| "note"
 	| "star"
-	| "delete";
+	| "delete"
+	| "showInExplorer"
+	| "previewImage"
+	| "openInBrowser";
 
 export interface ClipboardStore {
 	// 窗口设置

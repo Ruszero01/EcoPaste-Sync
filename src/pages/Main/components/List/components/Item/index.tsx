@@ -13,9 +13,13 @@ import { openPath, openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { Flex, type FlexProps, message } from "antd";
 import type { HookAPI } from "antd/es/modal/useModal";
 import clsx from "clsx";
+import dayjs from "dayjs";
+import relativeTime from "dayjs/plugin/relativeTime";
+import { filesize } from "filesize";
 import { findIndex, isNil, remove } from "lodash-es";
 import type { DragEvent, FC, MouseEvent } from "react";
 import { useContext } from "react";
+import { useTranslation } from "react-i18next";
 import { useSnapshot } from "valtio";
 import Files from "./components/Files";
 import HTML from "./components/HTML";
@@ -36,11 +40,27 @@ interface ContextMenuItem extends MenuItemOptions {
 	hide?: boolean;
 }
 
+// 初始化dayjs插件
+dayjs.extend(relativeTime);
+
 const Item: FC<ItemProps> = (props) => {
 	const { index, data, className, deleteModal, openNoteModel, ...rest } = props;
-	const { id, type, value, search, group, favorite, note, subtype } = data;
+	const {
+		id,
+		type,
+		value,
+		search,
+		group,
+		favorite,
+		note,
+		subtype,
+		count,
+		width,
+		height,
+		createTime,
+	} = data;
 	const { state, forceRefreshList } = useContext(MainContext);
-	const { t } = useTranslation();
+	const { t, i18n: i18nInstance } = useTranslation();
 	const { env } = useSnapshot(globalStore);
 	const { content } = useSnapshot(clipboardStore);
 
@@ -538,6 +558,29 @@ const Item: FC<ItemProps> = (props) => {
 				>
 					{renderContent()}
 				</div>
+
+				{/* 右下角：统计信息标签（叠加方式） */}
+				<Flex
+					align="center"
+					justify="flex-end"
+					gap={4}
+					className="pointer-events-none absolute right-1 bottom-0 text-xs"
+					style={{ fontSize: "10px" }}
+				>
+					<span className="rounded-t bg-neutral-200/90 px-1.5 py-0.5 text-neutral-600 backdrop-blur-xl dark:bg-neutral-800/90 dark:text-neutral-400">
+						{type === "files" || type === "image"
+							? filesize(count, { standard: "jedec" })
+							: t("clipboard.label.n_chars", { replace: [count] })}
+					</span>
+					{type === "image" && width && height && (
+						<span className="rounded-t bg-neutral-200/90 px-1.5 py-0.5 text-neutral-600 backdrop-blur-xl dark:bg-neutral-800/90 dark:text-neutral-400">
+							{width}×{height}
+						</span>
+					)}
+					<span className="rounded-t bg-neutral-200/90 px-1.5 py-0.5 text-neutral-600 backdrop-blur-xl dark:bg-neutral-800/90 dark:text-neutral-400">
+						{dayjs(createTime).locale(i18nInstance.language).fromNow()}
+					</span>
+				</Flex>
 			</div>
 		</Flex>
 	);

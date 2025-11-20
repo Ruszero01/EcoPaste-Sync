@@ -65,6 +65,9 @@
 						"paste_plain": "貼上為純文本",
 						"notes": "備註",
 						"favorite": "收藏",
+						"show_in_explorer": "在檔案總管中顯示",
+						"preview_image": "預覽圖片",
+						"open_in_browser": "在瀏覽器開啟",
 						"delete": "刪除"
 					},
 					"auto_favorite": "自動收藏",

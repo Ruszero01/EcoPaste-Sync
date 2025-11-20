@@ -39,6 +39,24 @@ export const transferData: TransferData[] = [
 		activeIcon: "i-iconamoon:star-fill",
 	},
 	{
+		key: "showInExplorer",
+		title:
+			"preference.clipboard.content_settings.label.operation_button_option.show_in_explorer",
+		icon: "i-lucide:folder-open",
+	},
+	{
+		key: "previewImage",
+		title:
+			"preference.clipboard.content_settings.label.operation_button_option.preview_image",
+		icon: "i-lucide:image",
+	},
+	{
+		key: "openInBrowser",
+		title:
+			"preference.clipboard.content_settings.label.operation_button_option.open_in_browser",
+		icon: "i-lucide:globe",
+	},
+	{
 		key: "delete",
 		title:
 			"preference.clipboard.content_settings.label.operation_button_option.delete",

@@ -66,6 +66,9 @@
 						"paste_plain": "粘贴为纯文本",
 						"notes": "备注",
 						"favorite": "收藏",
+						"show_in_explorer": "在资源管理器显示",
+						"preview_image": "预览图片",
+						"open_in_browser": "在浏览器打开",
 						"delete": "删除"
 					},
 					"auto_favorite": "自动收藏",

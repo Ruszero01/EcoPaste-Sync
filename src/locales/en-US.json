@@ -65,6 +65,9 @@
 						"paste_plain": "Paste as Plain Text",
 						"notes": "Notes",
 						"favorite": "Favorite",
+						"show_in_explorer": "Show in Explorer",
+						"preview_image": "Preview Image",
+						"open_in_browser": "Open in Browser",
 						"delete": "Delete"
 					},
 					"auto_favorite": "Auto Favorite",
