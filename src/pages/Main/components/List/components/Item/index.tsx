@@ -530,6 +530,9 @@ const Item: FC<ItemProps> = (props) => {
 				openNoteModel={openNoteModel}
 				toggleFavorite={toggleFavorite}
 				deleteItem={deleteItem}
+				previewImage={preview}
+				showInExplorer={openFinder}
+				openInBrowser={openBrowser}
 			/>
 
 			<div className="relative flex-1 select-auto overflow-hidden break-words children:transition">
