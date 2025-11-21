@@ -571,6 +571,8 @@ export const getHistoryData = async (includeDeleted = false) => {
 			favorite: Boolean(item.favorite),
 			deleted: Boolean(item.deleted),
 			lazyDownload: Boolean(item.lazyDownload),
+			isCloudData: Boolean(item.isCloudData),
+			syncStatus: item.syncStatus || "none", // 确保有默认值
 		}));
 	} else {
 		// 只获取未删除项
@@ -584,6 +586,8 @@ export const getHistoryData = async (includeDeleted = false) => {
 			favorite: Boolean(item.favorite),
 			deleted: Boolean(item.deleted),
 			lazyDownload: Boolean(item.lazyDownload),
+			isCloudData: Boolean(item.isCloudData),
+			syncStatus: item.syncStatus || "none", // 确保有默认值
 		}));
 	}
 

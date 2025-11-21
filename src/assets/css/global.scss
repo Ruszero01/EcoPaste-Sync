@@ -23,4 +23,55 @@ html {
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
+
+  /* 自定义滚动条悬停效果 - 确保拖动时也保持样式 */
+  .ms-track {
+    /* 垂直滚动条 (默认剪贴板列表使用) */
+    &.ms-y {
+      .ms-thumb {
+        width: 4px !important; /* 垂直滚动条默认宽度 */
+        transition: width 0.2s ease, opacity 0.2s ease;
+        opacity: 0.8; /* 提高默认透明度 */
+        border-radius: 2px;
+      }
+
+      &:hover .ms-thumb {
+        width: 12px !important; /* 悬停时变宽 */
+        opacity: 0.95; /* 悬停时更明显 */
+        border-radius: 4px;
+      }
+
+      /* 拖动时保持悬停样式 */
+      &.ms-active .ms-thumb,
+      &.ms-active:hover .ms-thumb {
+        width: 12px !important;
+        opacity: 1 !important; /* 拖动时完全不透明 */
+        border-radius: 4px;
+      }
+    }
+
+    /* 水平滚动条 */
+    &.ms-x {
+      .ms-thumb {
+        height: 4px !important; /* 水平滚动条默认高度 */
+        transition: height 0.2s ease, opacity 0.2s ease;
+        opacity: 0.8; /* 提高默认透明度 */
+        border-radius: 2px;
+      }
+
+      &:hover .ms-thumb {
+        height: 8px !important; /* 悬停时变高 */
+        opacity: 0.95; /* 悬停时更明显 */
+        border-radius: 3px;
+      }
+
+      /* 拖动时保持悬停样式 */
+      &.ms-active .ms-thumb,
+      &.ms-active:hover .ms-thumb {
+        height: 8px !important;
+        opacity: 1 !important; /* 拖动时完全不透明 */
+        border-radius: 3px;
+      }
+    }
+  }
 }

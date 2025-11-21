@@ -11,14 +11,15 @@ interface SyncStatusProps {
 }
 
 const SyncStatus: FC<SyncStatusProps> = ({ data }) => {
-	const { syncStatus, favorite, isCloudData } = data;
+	const { syncStatus, favorite } = data;
 	const { appearance } = useSnapshot(globalStore);
 	const isDark = appearance.isDark;
 
 	// 获取同步状态的颜色和图标
 	const getSyncStatusInfo = () => {
-		// 如果是云端数据或者已同步状态
-		if (isCloudData || syncStatus === "synced") {
+		// 只有真正的已同步状态才显示已同步
+		// isCloudData 只是表示数据来源，不应作为同步状态判断
+		if (syncStatus === "synced") {
 			return {
 				color: favorite ? "#fa8c16" : "#0958d9", // 收藏用橘黄色，普通用深蓝色
 				icon: favorite ? "i-mdi:cloud-check" : "i-mdi:cloud-outline",
