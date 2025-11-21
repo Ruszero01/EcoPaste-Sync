@@ -481,12 +481,26 @@ const Item: FC<ItemProps> = (props) => {
 			// 设置拖拽效果
 			dataTransfer.effectAllowed = "copy";
 
-			// 设置多种文本格式，让目标应用选择最合适的
-			dataTransfer.setData("text/plain", actualValue);
-
-			// 如果是HTML内容，同时设置HTML格式
+			// 根据内容类型设置适当的格式
 			if (type === "html") {
+				// 对于HTML类型，需要提取纯文本版本作为text/plain
+				let plainTextValue = actualValue;
+				try {
+					const tempDiv = document.createElement("div");
+					tempDiv.innerHTML = actualValue;
+					plainTextValue =
+						tempDiv.textContent || tempDiv.innerText || actualValue;
+				} catch {
+					// 如果HTML解析失败，使用原值
+				}
+
+				// 设置纯文本版本作为主要格式
+				dataTransfer.setData("text/plain", plainTextValue);
+				// 设置HTML格式作为富文本版本
 				dataTransfer.setData("text/html", actualValue);
+			} else {
+				// 非HTML类型，只需要设置纯文本
+				dataTransfer.setData("text/plain", actualValue);
 			}
 
 			// 设置富文本格式
