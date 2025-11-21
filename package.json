@@ -1,11 +1,11 @@
 {
-	"name": "eco-paste",
+	"name": "eco-paste-sync",
 	"description": "一款开源的跨平台剪贴板管理工具",
 	"author": {
 		"name": "ayangweb",
 		"email": "ayangweb@foxmail.com"
 	},
-	"version": "0.5.8",
+	"version": "0.5.9",
 	"type": "module",
 	"scripts": {
 		"dev": "run-s build:icon dev:vite",
