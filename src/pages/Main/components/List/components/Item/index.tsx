@@ -471,13 +471,99 @@ const Item: FC<ItemProps> = (props) => {
 
 	// 拖拽事件
 	const handleDragStart = async (event: DragEvent) => {
+		if (group === "text") {
+			// 文本类型：使用 Web Native 拖拽，支持粘贴到其他应用
+			const actualValue = getActualValue(value);
+			const dataTransfer = event.dataTransfer;
+
+			if (!dataTransfer) return;
+
+			// 设置拖拽效果
+			dataTransfer.effectAllowed = "copy";
+
+			// 设置多种文本格式，让目标应用选择最合适的
+			dataTransfer.setData("text/plain", actualValue);
+
+			// 如果是HTML内容，同时设置HTML格式
+			if (type === "html") {
+				dataTransfer.setData("text/html", actualValue);
+			}
+
+			// 设置富文本格式
+			if (type === "rtf") {
+				dataTransfer.setData("text/rtf", actualValue);
+			}
+
+			// 设置自定义格式用于应用间识别
+			dataTransfer.setData("application/x-ecopaste-clipboard", actualValue);
+
+			// 创建类似书签预览的拖拽预览
+			const dragPreview = document.createElement("div");
+			const isDarkMode = document.documentElement.classList.contains("dark");
+
+			// 使用书签预览的样式类
+			dragPreview.className = `pointer-events-none fixed z-50 select-none rounded-md border px-2.5 py-1.5 font-medium text-xs shadow-lg backdrop-blur-xl transition-all duration-200 ${
+				isDarkMode
+					? "border-neutral-700/50 bg-neutral-800/90 text-neutral-300"
+					: "border-neutral-300/50 bg-neutral-200/90 text-neutral-700"
+			}`;
+
+			// 创建尖角箭头
+			const arrow = document.createElement("div");
+			arrow.className = `-translate-y-1/2 absolute top-1/2 h-0 w-0 border-transparent ${
+				isDarkMode
+					? "border-transparent border-t-8 border-r-8 border-r-neutral-800/90 border-b-8"
+					: "border-transparent border-t-8 border-r-8 border-r-neutral-200/90 border-b-8"
+			}`;
+			arrow.style.left = "-8px";
+
+			// 创建内容容器
+			const contentSpan = document.createElement("span");
+			contentSpan.className = "relative z-10 max-w-40 truncate";
+			contentSpan.style.cssText = `
+				max-width: 200px;
+				display: -webkit-box;
+				-webkit-line-clamp: 3;
+				-webkit-box-orient: vertical;
+				overflow: hidden;
+				white-space: pre-wrap;
+			`;
+
+			// 设置预览内容
+			let previewContent = actualValue.trim();
+			if (type === "html") {
+				// 对于HTML，提取纯文本显示
+				const tempDiv = document.createElement("div");
+				tempDiv.innerHTML = previewContent;
+				previewContent =
+					tempDiv.textContent || tempDiv.innerText || previewContent;
+			}
+
+			contentSpan.textContent = previewContent;
+
+			// 组装预览元素
+			dragPreview.appendChild(arrow);
+			dragPreview.appendChild(contentSpan);
+
+			// 设置拖拽预览，让尖角对准鼠标
+			dataTransfer.setDragImage(dragPreview, 0, 20);
+
+			// 将预览元素添加到body以确保渲染
+			document.body.appendChild(dragPreview);
+			// 短暂延迟后移除，让浏览器有时间截图
+			setTimeout(() => {
+				if (document.body.contains(dragPreview)) {
+					document.body.removeChild(dragPreview);
+				}
+			}, 100);
+
+			return;
+		}
+
+		// 非文本类型：使用 Tauri 拖拽插件，支持拖拽到文件系统
 		event.preventDefault();
 
 		const icon = await resolveResource("assets/drag-icon.png");
-
-		if (group === "text") {
-			return message.warning("暂不支持拖拽文本");
-		}
 
 		if (group === "image") {
 			return startDrag({ item: [value], icon: value });
