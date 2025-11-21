@@ -67,6 +67,7 @@ const Item: FC<ItemProps> = (props) => {
 		width,
 		height,
 		createTime,
+		lastModified,
 	} = data;
 	const { state, forceRefreshList } = useContext(MainContext);
 	const { t, i18n: i18nInstance } = useTranslation();
@@ -205,6 +206,7 @@ const Item: FC<ItemProps> = (props) => {
 			state.list[itemIndex] = {
 				...state.list[itemIndex],
 				favorite: nextFavorite,
+				lastModified: Date.now(), // 更新本地状态的时间戳
 			};
 		}
 
@@ -701,7 +703,9 @@ const Item: FC<ItemProps> = (props) => {
 						</span>
 					)}
 					<span className="rounded-t bg-neutral-200/90 px-1.5 py-0.5 text-neutral-600 backdrop-blur-xl dark:bg-neutral-800/90 dark:text-neutral-400">
-						{dayjs(createTime).locale(i18nInstance.language).fromNow()}
+						{dayjs(lastModified || createTime)
+							.locale(i18nInstance.language)
+							.fromNow()}
 					</span>
 				</Flex>
 			</div>
