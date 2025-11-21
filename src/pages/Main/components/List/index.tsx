@@ -224,7 +224,7 @@ const List = () => {
 				<div
 					data-tauri-drag-region
 					className="relative w-full"
-					style={{ height: rowVirtualizer.getTotalSize() }}
+					style={{ height: rowVirtualizer.getTotalSize() + 60 }}
 				>
 					{rowVirtualizer.getVirtualItems().map((virtualItem) => {
 						const { key, size, start, index } = virtualItem;
@@ -264,6 +264,7 @@ const List = () => {
 				duration={0}
 				target={() => outerRef.current!}
 				onClick={scrollToTop}
+				style={{ bottom: 20 }}
 			/>
 
 			<NoteModal ref={noteModelRef} />
