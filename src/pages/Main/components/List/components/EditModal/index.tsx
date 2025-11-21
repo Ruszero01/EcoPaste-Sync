@@ -2,6 +2,10 @@ import { updateSQL } from "@/database";
 import { MainContext } from "@/pages/Main";
 import { clipboardStore } from "@/stores/clipboard";
 import type { HistoryTablePayload } from "@/types/database";
+import { html } from "@codemirror/lang-html";
+import { javascript } from "@codemirror/lang-javascript";
+import { githubDark } from "@uiw/codemirror-theme-github";
+import CodeMirror from "@uiw/react-codemirror";
 import { useBoolean } from "ahooks";
 import { Form, Input, Modal } from "antd";
 import { find } from "lodash-es";
@@ -22,6 +26,7 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 	const [open, { toggle }] = useBoolean();
 	const [item, setItem] = useState<HistoryTablePayload>();
 	const [form] = Form.useForm<FormFields>();
+	const [content, setContent] = useState<string>("");
 
 	// 获取剪贴板内容的可编辑形式
 	const getEditableContent = (item: HistoryTablePayload): string => {
@@ -33,8 +38,8 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 			case "text":
 				return value;
 			case "html":
-				// 去除HTML标签获取纯文本进行编辑
-				return value.replace(/<[^>]*>/g, "");
+				// 显示完整的HTML原始内容进行编辑
+				return value;
 			case "rtf":
 				// 去除RTF标记获取纯文本进行编辑
 				return value.replace(/\\[a-zA-Z]+\d*/g, "").replace(/[{}]/g, "");
@@ -62,10 +67,11 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 			const findItem = find(state.list, { id: state.activeId });
 
 			if (findItem) {
-				const content = getEditableContent(findItem);
+				const editableContent = getEditableContent(findItem);
 
+				setContent(editableContent);
 				form.setFieldsValue({
-					content,
+					content: editableContent,
 				});
 
 				setItem(findItem);
@@ -76,41 +82,58 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 	}));
 
 	const handleOk = async () => {
-		const { content } = form.getFieldsValue();
-
 		if (item && content) {
-			const { id, favorite, type: originalType } = item;
+			const { id, favorite } = item;
 
-			// 更新内容，根据原始类型处理
-			let finalValue = content;
+			// 使用统一的时间戳
+			const currentTime = Date.now();
 
-			// 对于HTML类型，将纯文本转换为HTML格式
-			if (originalType === "html") {
-				// 将纯文本转换为HTML（转义HTML字符，保留换行）
-				finalValue = content
-					.replace(/&/g, "&amp;")
-					.replace(/</g, "&lt;")
-					.replace(/>/g, "&gt;")
-					.replace(/\n/g, "<br>");
-			}
+			// 更新本地数据
+			item.value = content;
+			item.lastModified = currentTime;
+			// 重置同步状态为'none'，表示需要同步
+			item.syncStatus = "none";
 
-			item.value = finalValue;
-			item.lastModified = Date.now();
-
+			// 更新数据库，包含新的内容、时间戳和同步状态
 			await updateSQL("history", {
 				id,
-				value: finalValue,
-				lastModified: Date.now(),
+				value: content,
+				lastModified: currentTime,
+				syncStatus: "none",
 			});
 
+			// 如果自动收藏功能开启，更新收藏状态，同时保持同步状态为'none'
 			if (clipboardStore.content.autoFavorite && !favorite) {
 				item.favorite = true;
 
-				await updateSQL("history", { id, favorite: 1 } as any);
+				await updateSQL("history", {
+					id,
+					favorite: 1,
+					lastModified: currentTime,
+					syncStatus: "none",
+				} as any);
 			}
 		}
 
 		toggle();
+	};
+
+	// 判断是否使用代码编辑器
+	const shouldUseCodeEditor = (type?: string) => {
+		return type === "html" || type === "rtf";
+	};
+
+	// 获取语言扩展
+	const getLanguageExtension = (type?: string) => {
+		switch (type) {
+			case "html":
+				return [html()];
+			case "rtf":
+				// RTF 使用JavaScript语言高亮（作为代码文本）
+				return [javascript()];
+			default:
+				return [];
+		}
 	};
 
 	return (
@@ -121,23 +144,57 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 			open={open}
 			onOk={handleOk}
 			onCancel={toggle}
-			width={600}
+			width={900}
 		>
-			<Form
-				form={form}
-				initialValues={{ content: item?.value }}
-				onFinish={handleOk}
-			>
+			<Form form={form} initialValues={{ content }} onFinish={handleOk}>
 				<Form.Item
-					name="content"
 					className="mb-0!"
 					label={item ? getTextTypeLabel(item.type || "text") : ""}
 				>
-					<Input.TextArea
-						autoComplete="off"
-						placeholder={t("component.edit_modal.hints.input_content")}
-						rows={12}
-					/>
+					{shouldUseCodeEditor(item?.type) ? (
+						<div className="rounded border border-gray-300">
+							<CodeMirror
+								value={content}
+								height="400px"
+								theme={githubDark}
+								extensions={getLanguageExtension(item?.type)}
+								onChange={(value) => {
+									const newContent = value || "";
+									setContent(newContent);
+									form.setFieldsValue({ content: newContent });
+								}}
+								basicSetup={{
+									lineNumbers: true,
+									highlightActiveLineGutter: true,
+									highlightSpecialChars: true,
+									history: true,
+									foldGutter: true,
+									drawSelection: true,
+									dropCursor: true,
+									allowMultipleSelections: true,
+									indentOnInput: true,
+									syntaxHighlighting: true,
+									bracketMatching: true,
+									closeBrackets: true,
+									autocompletion: true,
+									highlightActiveLine: true,
+									highlightSelectionMatches: true,
+								}}
+							/>
+						</div>
+					) : (
+						<Input.TextArea
+							value={content}
+							onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => {
+								const newContent = e.target.value;
+								setContent(newContent);
+								form.setFieldsValue({ content: newContent });
+							}}
+							autoComplete="off"
+							placeholder={t("component.edit_modal.hints.input_content")}
+							rows={12}
+						/>
+					)}
 				</Form.Item>
 			</Form>
 		</Modal>

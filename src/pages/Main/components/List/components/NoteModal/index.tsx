@@ -38,20 +38,30 @@ const NoteModal = forwardRef<NoteModalRef>((_, ref) => {
 
 		if (item) {
 			const { id, favorite } = item;
+			const currentTime = Date.now();
 
 			item.note = note;
+			item.lastModified = currentTime;
+			// 重置同步状态为'none'，表示需要同步
+			item.syncStatus = "none";
 
-			// 更新备注时同时更新最后修改时间，确保同步引擎能检测到变更
+			// 更新备注时同时更新最后修改时间和同步状态
 			updateSQL("history", {
 				id,
 				note,
-				lastModified: Date.now(),
+				lastModified: currentTime,
+				syncStatus: "none",
 			});
 
 			if (clipboardStore.content.autoFavorite && !favorite) {
 				item.favorite = true;
 
-				updateSQL("history", { id, favorite: 1 } as any);
+				updateSQL("history", {
+					id,
+					favorite: 1,
+					lastModified: currentTime,
+					syncStatus: "none",
+				} as any);
 			}
 		}
 

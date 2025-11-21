@@ -14,7 +14,7 @@ export interface HistoryTablePayload extends ClipboardPayload {
 	// 软删除字段
 	deleted?: boolean;
 	// 同步状态字段
-	syncStatus?: "none" | "synced" | "syncing" | "error";
+	syncStatus?: "none" | "synced" | "syncing";
 	isCloudData?: boolean;
 	// 最后修改时间字段（用于同步）
 	lastModified?: number;

@@ -448,12 +448,16 @@ export class SyncEngine {
 				const needsLocalUpdate =
 					localExists &&
 					(resolvedItem.favorite !== localExists.favorite ||
-						resolvedItem.note !== (localExists.note || ""));
+						resolvedItem.note !== (localExists.note || "") ||
+						resolvedItem.value !== (localExists.value || "") ||
+						resolvedItem.checksum !== (localExists.checksum || ""));
 
 				const needsCloudUpdate =
 					cloudExists &&
 					(resolvedItem.favorite !== cloudExists.favorite ||
-						resolvedItem.note !== (cloudExists.note || ""));
+						resolvedItem.note !== (cloudExists.note || "") ||
+						resolvedItem.value !== (cloudExists.value || "") ||
+						resolvedItem.checksum !== (cloudExists.checksum || ""));
 
 				// 本地更新：只有当本地存在且确实需要更新时
 				if (localExists && needsLocalUpdate) {

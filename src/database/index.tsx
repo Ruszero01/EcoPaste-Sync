@@ -429,7 +429,7 @@ export const clearHistoryTable = async () => {
  */
 export const updateSyncStatus = async (
 	id: string,
-	syncStatus: "none" | "synced" | "syncing" | "error",
+	syncStatus: "none" | "synced" | "syncing",
 	isCloudData?: boolean,
 ) => {
 	try {
@@ -455,7 +455,7 @@ export const updateSyncStatus = async (
  */
 export const batchUpdateSyncStatus = async (
 	ids: string[],
-	syncStatus: "none" | "synced" | "syncing" | "error",
+	syncStatus: "none" | "synced" | "syncing",
 	isCloudData?: boolean,
 ) => {
 	try {
@@ -486,7 +486,7 @@ export const getPendingSyncRecords = async (limit?: number) => {
 		const limitClause = limit ? `LIMIT ${limit}` : "";
 
 		const records = (await executeSQL(
-			`SELECT * FROM history WHERE syncStatus = 'none' OR syncStatus = 'error' ORDER BY createTime DESC ${limitClause}`,
+			`SELECT * FROM history WHERE syncStatus = 'none' ORDER BY createTime DESC ${limitClause}`,
 		)) as any[];
 
 		return records.map((item: any) => ({

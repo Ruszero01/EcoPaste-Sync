@@ -42,7 +42,12 @@ export const filterItemsBySyncMode = (
 	const settings = syncConfig.settings;
 
 	return items.filter((item) => {
-		// 1. 删除状态过滤
+		// 1. 同步状态过滤 - 只同步需要同步的条目
+		if (item.syncStatus !== "none") {
+			return false;
+		}
+
+		// 2. 删除状态过滤
 		if (
 			!includeDeleted &&
 			(item.deleted === true || (item.deleted as any) === 1)
@@ -50,7 +55,7 @@ export const filterItemsBySyncMode = (
 			return false;
 		}
 
-		// 2. 收藏模式过滤
+		// 3. 收藏模式过滤
 		if (settings.onlyFavorites) {
 			// syncFavoriteChanges 只影响收藏状态变化的同步行为，不影响收藏模式的筛选逻辑
 			if (!item.favorite) {
@@ -58,7 +63,7 @@ export const filterItemsBySyncMode = (
 			}
 		}
 
-		// 3. 内容类型过滤
+		// 4. 内容类型过滤
 		let typeAllowed = true;
 		switch (item.type) {
 			case "text":
@@ -84,7 +89,7 @@ export const filterItemsBySyncMode = (
 			return false;
 		}
 
-		// 4. 文件大小过滤（仅对图片和文件生效）
+		// 5. 文件大小过滤（仅对图片和文件生效）
 		if (item.type === "image" || item.type === "files") {
 			const maxSize = globalStore.cloudSync.fileSync.maxFileSize * 1024 * 1024;
 			const fileSize = item.count || 0; // count 字段存储文件大小

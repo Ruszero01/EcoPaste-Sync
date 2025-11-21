@@ -44,19 +44,31 @@ export const detectRealConflicts = (
 	for (const localItem of localItems) {
 		const cloudItem = cloudItemMap.get(localItem.id);
 		if (cloudItem) {
-			// 检查是否真的有冲突
-			// 优先使用校验和比较，因为云端指纹可能不包含完整内容
+			// 检查是否真的有冲突 - 只有当内容确实不同时才认为是冲突
+			// 1. 优先使用校验和比较，因为云端指纹可能不包含完整内容
 			const hasChecksumConflict =
 				localItem.checksum &&
 				cloudItem.checksum &&
 				localItem.checksum !== cloudItem.checksum;
 
-			// 如果没有校验和或校验和相同，则比较其他字段
+			// 2. 如果校验和不可用，则直接比较内容
+			const hasContentConflict =
+				localItem.value &&
+				cloudItem.value &&
+				localItem.value !== cloudItem.value;
+
+			// 3. 检查其他字段的变更
 			const hasFavoriteConflict = localItem.favorite !== cloudItem.favorite;
 			const hasNoteConflict = (localItem.note || "") !== (cloudItem.note || "");
 
-			// 只有在校验和不同或者收藏状态/备注不同时才认为是冲突
-			if (hasChecksumConflict || hasFavoriteConflict || hasNoteConflict) {
+			// 只有在内容或重要元数据不同时才认为是冲突
+			// 时间戳差异本身不应被视为冲突，而应作为内容变更的辅助判断
+			if (
+				hasChecksumConflict ||
+				hasContentConflict ||
+				hasFavoriteConflict ||
+				hasNoteConflict
+			) {
 				conflicts.push({
 					localItem,
 					remoteItem: cloudItem,
@@ -79,20 +91,36 @@ function mergeItems(localItem: SyncItem, remoteItem: SyncItem): SyncItem {
 	);
 
 	// 合并策略：
-	// 1. 收藏状态：优先使用本地状态（用户的最新操作）
-	// 2. 备注：优先使用非空且较新的版本
-	// 3. 其他字段：基于修改时间选择
+	// 1. 内容：优先使用本地内容（编辑后的最新内容）
+	// 2. 收藏状态：优先使用本地状态（用户的最新操作）
+	// 3. 备注：优先使用非空且较新的版本
+	// 4. 其他字段：基于修改时间选择
 	const localNote = (localItem.note || "").trim();
 	const remoteNote = (remoteItem.note || "").trim();
 	const finalNote = localNote || remoteNote;
 
 	return {
-		...localItem, // 优先使用本地版本作为基础
-		lastModified, // 使用最新的修改时间
-		note: finalNote, // 合并备注
-		// 确保其他重要字段不丢失
+		// 优先使用本地版本作为基础，确保编辑后的内容被保留
+		...localItem,
+
+		// 使用最新的修改时间（通常是编辑后的时间）
+		lastModified,
+
+		// 合并备注，优先使用本地非空备注
+		note: finalNote,
+
+		// 确保重要字段不丢失，但优先使用本地版本
 		search: localItem.search || remoteItem.search,
 		checksum: localItem.checksum || remoteItem.checksum,
+
+		// 如果本地有更新的内容，确保使用本地的value
+		value: localItem.value || remoteItem.value,
+
+		// 其他字段优先本地，确保编辑后的元数据被保留
+		size: localItem.size || remoteItem.size,
+		width: localItem.width || remoteItem.width,
+		height: localItem.height || remoteItem.height,
+		subtype: localItem.subtype || remoteItem.subtype,
 	};
 }
 
