@@ -13,6 +13,7 @@ interface HeaderProps {
 	copy: () => void;
 	pastePlain: () => void;
 	openNoteModel: () => void;
+	openEditModal?: () => void;
 	toggleFavorite: () => void;
 	deleteItem: () => void;
 	previewImage?: () => void;
@@ -54,6 +55,9 @@ const Header: FC<HeaderProps> = (props) => {
 						typeof search === "string" &&
 						!/^[\s]*$/.test(search))
 				);
+			case "edit":
+				// 只在文本类条目上显示
+				return type === "text" || type === "html" || type === "rtf";
 			case "copy":
 			case "note":
 			case "star":
@@ -121,6 +125,7 @@ const Header: FC<HeaderProps> = (props) => {
 			copy,
 			pastePlain,
 			openNoteModel,
+			openEditModal,
 			toggleFavorite,
 			deleteItem,
 			previewImage,
@@ -137,6 +142,8 @@ const Header: FC<HeaderProps> = (props) => {
 				return copy();
 			case "pastePlain":
 				return pastePlain();
+			case "edit":
+				return openEditModal?.();
 			case "note":
 				return openNoteModel();
 			case "star":

@@ -5,6 +5,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { FloatButton, Modal } from "antd";
 import { findIndex } from "lodash-es";
 import { useSnapshot } from "valtio";
+import EditModal, { type EditModalRef } from "./components/EditModal";
 import Item from "./components/Item";
 import NoteModal, { type NoteModalRef } from "./components/NoteModal";
 
@@ -13,6 +14,7 @@ const List = () => {
 	const { appearance } = useSnapshot(globalStore);
 	const outerRef = useRef<HTMLDivElement>(null);
 	const noteModelRef = useRef<NoteModalRef>(null);
+	const editModalRef = useRef<EditModalRef>(null);
 	const [deleteModal, contextHolder] = Modal.useModal();
 	const [scrollTrigger, setScrollTrigger] = useState(0); // 强制滚动触发器
 
@@ -253,6 +255,7 @@ const List = () => {
 								data={{ ...data, value }}
 								deleteModal={deleteModal}
 								openNoteModel={() => noteModelRef.current?.open()}
+								openEditModal={() => editModalRef.current?.open()}
 								style={{ height: size, transform: `translateY(${start}px)` }}
 							/>
 						);
@@ -267,6 +270,7 @@ const List = () => {
 				style={{ bottom: 20 }}
 			/>
 
+			<EditModal ref={editModalRef} />
 			<NoteModal ref={noteModelRef} />
 
 			{contextHolder}

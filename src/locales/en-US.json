@@ -63,6 +63,7 @@
 					"operation_button_option": {
 						"copy": "Copy",
 						"paste_plain": "Paste as Plain Text",
+						"edit": "Edit",
 						"notes": "Notes",
 						"favorite": "Favorite",
 						"show_in_explorer": "Show in Explorer",
@@ -271,6 +272,7 @@
 		"button": {
 			"context_menu": {
 				"copy": "Copy",
+				"edit": "Edit",
 				"note": "Note",
 				"paste_as_plain_text": "Paste as Plain Text",
 				"paste_ocr_text": "Paste OCR Text",
@@ -352,6 +354,15 @@
 			},
 			"hints": {
 				"input_note": "Please enter a note"
+			}
+		},
+		"edit_modal": {
+			"label": {
+				"edit": "Edit",
+				"content": "Content"
+			},
+			"hints": {
+				"input_content": "Please enter content"
 			}
 		}
 	}

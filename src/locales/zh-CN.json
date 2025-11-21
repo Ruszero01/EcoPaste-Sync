@@ -64,6 +64,7 @@
 					"operation_button_option": {
 						"copy": "复制",
 						"paste_plain": "粘贴为纯文本",
+						"edit": "编辑",
 						"notes": "备注",
 						"favorite": "收藏",
 						"show_in_explorer": "在资源管理器显示",
@@ -272,6 +273,7 @@
 		"button": {
 			"context_menu": {
 				"copy": "复制",
+				"edit": "编辑",
 				"note": "备注",
 				"paste_as_plain_text": "粘贴为纯文本",
 				"paste_ocr_text": "粘贴OCR文本",
@@ -363,6 +365,15 @@
 			},
 			"hints": {
 				"input_note": "请输入备注"
+			}
+		},
+		"edit_modal": {
+			"label": {
+				"edit": "编辑",
+				"content": "内容"
+			},
+			"hints": {
+				"input_content": "请输入内容"
 			}
 		}
 	}

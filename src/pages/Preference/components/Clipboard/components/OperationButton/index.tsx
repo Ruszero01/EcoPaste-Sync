@@ -26,6 +26,12 @@ export const transferData: TransferData[] = [
 		icon: "i-lucide:clipboard-paste",
 	},
 	{
+		key: "edit",
+		title:
+			"preference.clipboard.content_settings.label.operation_button_option.edit",
+		icon: "i-lucide:edit",
+	},
+	{
 		key: "note",
 		title:
 			"preference.clipboard.content_settings.label.operation_button_option.notes",

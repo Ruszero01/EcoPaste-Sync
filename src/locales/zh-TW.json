@@ -63,6 +63,7 @@
 					"operation_button_option": {
 						"copy": "複製",
 						"paste_plain": "貼上為純文本",
+						"edit": "編輯",
 						"notes": "備註",
 						"favorite": "收藏",
 						"show_in_explorer": "在檔案總管中顯示",
@@ -271,6 +272,7 @@
 		"button": {
 			"context_menu": {
 				"copy": "複製",
+				"edit": "編輯",
 				"note": "備註",
 				"paste_as_plain_text": "貼上為純文字",
 				"paste_ocr_text": "粘貼OCR文字",
@@ -352,6 +354,21 @@
 			},
 			"hints": {
 				"input_note": "請輸入備註"
+			}
+		},
+		"edit_modal": {
+			"label": {
+				"edit": "編輯",
+				"edit_mode": "編輯模式",
+				"content": "內容"
+			},
+			"mode": {
+				"text": "純文字",
+				"html": "HTML",
+				"rtf": "富文字"
+			},
+			"hints": {
+				"input_content": "請輸入內容"
 			}
 		}
 	}

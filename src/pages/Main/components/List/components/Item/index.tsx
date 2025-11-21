@@ -34,6 +34,7 @@ interface ItemProps extends Partial<FlexProps> {
 	data: HistoryTablePayload;
 	deleteModal: HookAPI;
 	openNoteModel: () => void;
+	openEditModal?: () => void;
 }
 
 interface ContextMenuItem extends MenuItemOptions {
@@ -44,7 +45,15 @@ interface ContextMenuItem extends MenuItemOptions {
 dayjs.extend(relativeTime);
 
 const Item: FC<ItemProps> = (props) => {
-	const { index, data, className, deleteModal, openNoteModel, ...rest } = props;
+	const {
+		index,
+		data,
+		className,
+		deleteModal,
+		openNoteModel,
+		openEditModal,
+		...rest
+	} = props;
 	const {
 		id,
 		type,
@@ -387,6 +396,11 @@ const Item: FC<ItemProps> = (props) => {
 				action: copy,
 			},
 			{
+				text: t("clipboard.button.context_menu.edit"),
+				hide: type !== "text" && type !== "html" && type !== "rtf",
+				action: () => openEditModal?.(),
+			},
+			{
 				text: t("clipboard.button.context_menu.note"),
 				action: openNoteModel,
 			},
@@ -628,6 +642,7 @@ const Item: FC<ItemProps> = (props) => {
 				copy={copy}
 				pastePlain={pastePlain}
 				openNoteModel={openNoteModel}
+				openEditModal={openEditModal}
 				toggleFavorite={toggleFavorite}
 				deleteItem={deleteItem}
 				previewImage={preview}

@@ -63,6 +63,7 @@
 					"operation_button_option": {
 						"copy": "コピー",
 						"paste_plain": "プレーンテキストとして貼り付け",
+						"edit": "編集",
 						"notes": "メモ",
 						"favorite": "お気に入り",
 						"show_in_explorer": "エクスプローラーで表示",
@@ -271,6 +272,7 @@
 		"button": {
 			"context_menu": {
 				"copy": "コピー",
+				"edit": "編集",
 				"note": "備考",
 				"paste_as_plain_text": "プレーンテキストとして貼り付け",
 				"paste_ocr_text": "OCRテキストペースト",
@@ -352,6 +354,21 @@
 			},
 			"hints": {
 				"input_note": "メモを入力してください"
+			}
+		},
+		"edit_modal": {
+			"label": {
+				"edit": "編集",
+				"edit_mode": "編集モード",
+				"content": "内容"
+			},
+			"mode": {
+				"text": "プレーンテキスト",
+				"html": "HTML",
+				"rtf": "リッチテキスト"
+			},
+			"hints": {
+				"input_content": "内容を入力してください"
 			}
 		}
 	}

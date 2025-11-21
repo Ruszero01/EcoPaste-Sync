@@ -98,6 +98,7 @@ export type ClickFeedback = "none" | "copy" | "paste";
 export type OperationButton =
 	| "copy"
 	| "pastePlain"
+	| "edit"
 	| "note"
 	| "star"
 	| "delete"
