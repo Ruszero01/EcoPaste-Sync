@@ -531,10 +531,22 @@ const Main = () => {
 
 		let rawData: HistoryTablePayload[];
 
-		// 如果是链接分组，查询所有链接类型和路径类型的数据
+		// 如果是链接分组，查询所有链接类型和路径类型的数据，同时考虑书签筛选
 		if (linkTab) {
+			let whereClause =
+				"WHERE (subtype = 'url' OR subtype = 'path') AND deleted = 0";
+			const values: any[] = [];
+
+			// 如果有搜索条件（书签分组筛选），添加到查询中
+			if (search) {
+				whereClause += " AND (search LIKE ? OR note LIKE ?)";
+				const searchValue = `%${search}%`;
+				values.push(searchValue, searchValue);
+			}
+
 			const list = await executeSQL(
-				`SELECT * FROM history WHERE (subtype = 'url' OR subtype = 'path') AND deleted = 0 ${orderBy};`,
+				`SELECT * FROM history ${whereClause} ${orderBy};`,
+				values,
 			);
 			// 转换数据类型，与 selectSQL 保持一致
 			rawData = (Array.isArray(list) ? list : []).map((item: any) => ({

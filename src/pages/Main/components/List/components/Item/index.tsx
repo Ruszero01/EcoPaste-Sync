@@ -306,8 +306,25 @@ const Item: FC<ItemProps> = (props) => {
 					await revealItemInDir(pathToReveal);
 				}
 			} else {
-				// 本地路径使用 revealItemInDir
-				await revealItemInDir(pathToReveal);
+				// 本地路径处理：区分文件和文件夹
+				const { exists, lstat } = await import("@tauri-apps/plugin-fs");
+
+				// 检查路径是否存在
+				if (!(await exists(pathToReveal))) {
+					message.error("路径不存在");
+					return;
+				}
+
+				// 获取路径状态信息
+				const stat = await lstat(pathToReveal);
+
+				if (stat.isDirectory) {
+					// 如果是文件夹，直接打开文件夹
+					await openPath(pathToReveal);
+				} else {
+					// 如果是文件，在资源管理器中聚焦到文件
+					await revealItemInDir(pathToReveal);
+				}
 			}
 		} catch (error) {
 			console.error("打开资源管理器失败:", error);

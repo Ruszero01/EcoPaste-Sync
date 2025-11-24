@@ -92,7 +92,7 @@ const Group = () => {
 		// 针对链接分组，特殊处理
 		if (key === "link") {
 			state.linkTab = true;
-			state.search = undefined; // 清除搜索
+			// 不清除搜索，保留书签分组筛选
 		} else {
 			state.linkTab = false;
 		}
