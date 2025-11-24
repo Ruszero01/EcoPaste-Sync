@@ -1,7 +1,7 @@
 import type { AudioRef } from "@/components/Audio";
 import Audio from "@/components/Audio";
 import { LISTEN_KEY } from "@/constants";
-import { insertWithDeduplication, updateSQL } from "@/database";
+import { executeSQL, insertWithDeduplication, updateSQL } from "@/database";
 import { initializeMicaEffect } from "@/plugins/window";
 import type { HistoryTablePayload, TablePayload } from "@/types/database";
 import type { Store } from "@/types/store";
@@ -30,6 +30,7 @@ interface State extends TablePayload {
 		value?: string;
 		group?: string;
 	};
+	linkTab?: boolean; // 新增：链接分组状态
 }
 
 const INITIAL_STATE: State = {
@@ -500,7 +501,7 @@ const Main = () => {
 
 	// 获取剪切板内容（优化版本，带缓存）
 	const getList = async () => {
-		const { group, search, favorite } = state;
+		const { group, search, favorite, linkTab } = state;
 
 		// 获取当前的自动排序设置
 		const currentAutoSort = clipboardStore.content.autoSort;
@@ -510,6 +511,7 @@ const Main = () => {
 			group,
 			search,
 			favorite,
+			linkTab,
 			autoSort: currentAutoSort,
 		});
 
@@ -527,16 +529,34 @@ const Main = () => {
 		// 手动排序时也保持最新在前，只是不重新排列现有条目
 		const orderBy = "ORDER BY createTime DESC";
 
-		const rawData = await selectSQL<HistoryTablePayload[]>(
-			"history",
-			{
-				group,
-				search,
-				favorite,
-				deleted: false, // 过滤已删除项
-			},
-			orderBy,
-		);
+		let rawData: HistoryTablePayload[];
+
+		// 如果是链接分组，查询所有链接类型和路径类型的数据
+		if (linkTab) {
+			const list = await executeSQL(
+				`SELECT * FROM history WHERE (subtype = 'url' OR subtype = 'path') AND deleted = 0 ${orderBy};`,
+			);
+			// 转换数据类型，与 selectSQL 保持一致
+			rawData = (Array.isArray(list) ? list : []).map((item: any) => ({
+				...item,
+				favorite: Boolean(item.favorite),
+				deleted: Boolean(item.deleted),
+				lazyDownload: Boolean(item.lazyDownload),
+				isCloudData: Boolean(item.isCloudData),
+				syncStatus: item.syncStatus || "none",
+			})) as HistoryTablePayload[];
+		} else {
+			rawData = await selectSQL<HistoryTablePayload[]>(
+				"history",
+				{
+					group,
+					search,
+					favorite,
+					deleted: false, // 过滤已删除项
+				},
+				orderBy,
+			);
+		}
 
 		// 智能去重处理：对于文件和图片类型，基于文件路径去重；其他类型基于 type:value
 		const uniqueItems: HistoryTablePayload[] = [];

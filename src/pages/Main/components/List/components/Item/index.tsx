@@ -294,7 +294,21 @@ const Item: FC<ItemProps> = (props) => {
 				return;
 			}
 
-			await revealItemInDir(pathToReveal);
+			// 检测网络路径格式 (如 \\server\share 或 file:// 或 smb:// 等)
+			const isNetworkPath = /^\\\\|^file:\/\/|^smb:\/\//i.test(pathToReveal);
+
+			if (isNetworkPath) {
+				// 网络路径尝试直接打开
+				try {
+					await openPath(pathToReveal);
+				} catch {
+					// 如果直接打开失败，尝试使用 revealItemInDir
+					await revealItemInDir(pathToReveal);
+				}
+			} else {
+				// 本地路径使用 revealItemInDir
+				await revealItemInDir(pathToReveal);
+			}
 		} catch (error) {
 			console.error("打开资源管理器失败:", error);
 			message.error("无法在资源管理器中显示文件");
@@ -456,7 +470,7 @@ const Item: FC<ItemProps> = (props) => {
 				text: isMac
 					? t("clipboard.button.context_menu.show_in_finder")
 					: t("clipboard.button.context_menu.show_in_file_explorer"),
-				hide: type !== "files" && subtype !== "path",
+				hide: type !== "files" && !(type === "text" && subtype === "path"),
 				action: openFinder,
 			},
 			{

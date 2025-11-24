@@ -39,6 +39,10 @@ const Group = () => {
 			group: "files",
 		},
 		{
+			key: "link",
+			label: "链接",
+		},
+		{
 			key: "favorite",
 			label: t("clipboard.label.tab.favorite"),
 			favorite: true,
@@ -76,6 +80,14 @@ const Group = () => {
 		// 确保正确更新响应式状态
 		state.group = group;
 		state.favorite = favorite;
+
+		// 针对链接分组，特殊处理
+		if (key === "link") {
+			state.linkTab = true;
+			state.search = undefined; // 清除搜索
+		} else {
+			state.linkTab = false;
+		}
 
 		// 强制触发列表刷新 - 清除缓存并重新加载
 		if (getListCache?.current) {

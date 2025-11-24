@@ -1,11 +1,14 @@
 import UnoIcon from "@/components/UnoIcon";
 import { MainContext } from "@/pages/Main";
 import { transferData } from "@/pages/Preference/components/Clipboard/components/OperationButton";
+import { clipboardStore } from "@/stores/clipboard";
 import type { HistoryTablePayload } from "@/types/database";
 import type { OperationButton } from "@/types/store";
 import { Flex } from "antd";
 import clsx from "clsx";
 import type { FC, MouseEvent } from "react";
+import { memo, useContext } from "react";
+import { useTranslation } from "react-i18next";
 import { useSnapshot } from "valtio";
 
 interface HeaderProps {
@@ -38,8 +41,8 @@ const Header: FC<HeaderProps> = (props) => {
 	const shouldShowButton = (key: OperationButton): boolean => {
 		switch (key) {
 			case "showInExplorer":
-				// 在文件类型和路径类型的条目上显示
-				return type === "files" || subtype === "path";
+				// 在文件类型和文本类型的路径条目上显示
+				return type === "files" || (type === "text" && subtype === "path");
 			case "previewImage":
 				// 只在图片条目上显示
 				return type === "image";
