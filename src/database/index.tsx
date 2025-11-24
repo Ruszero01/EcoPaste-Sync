@@ -532,6 +532,86 @@ export const resetDatabase = async () => {
 };
 
 /**
+ * 检查并修复同步状态一致性
+ * 专门用于修复覆盖安装后可能出现的同步状态不一致问题
+ */
+export const checkAndFixSyncStatusConsistency = async (): Promise<{
+	fixed: number;
+	errors: string[];
+}> => {
+	const result = {
+		fixed: 0,
+		errors: [] as string[],
+	};
+
+	try {
+		await initDatabase();
+
+		// 1. 查找所有标记为已同步但isCloudData为0的矛盾数据
+		const inconsistentSyncedData = (await executeSQL(`
+			SELECT id, syncStatus, isCloudData
+			FROM history
+			WHERE syncStatus = 'synced' AND (isCloudData = 0 OR isCloudData IS NULL)
+		`)) as any[];
+
+		if (inconsistentSyncedData.length > 0) {
+			console.warn(
+				`发现 ${inconsistentSyncedData.length} 个状态矛盾的条目（已同步但非云端数据）`,
+			);
+
+			// 修复这些条目：将状态重置为none
+			const ids = inconsistentSyncedData.map((item: any) => item.id);
+			await batchUpdateSyncStatus(ids, "none", false);
+			result.fixed += inconsistentSyncedData.length;
+		}
+
+		// 2. 查找所有syncStatus为NULL或空值的条目
+		const nullStatusData = (await executeSQL(`
+			SELECT id, syncStatus
+			FROM history
+			WHERE syncStatus IS NULL OR syncStatus = ''
+		`)) as any[];
+
+		if (nullStatusData.length > 0) {
+			console.warn(`发现 ${nullStatusData.length} 个状态为空的条目`);
+
+			// 修复这些条目：设置为none
+			const ids = nullStatusData.map((item: any) => item.id);
+			await batchUpdateSyncStatus(ids, "none", false);
+			result.fixed += nullStatusData.length;
+		}
+
+		// 3. 查找isCloudData为1但syncStatus不为synced的矛盾数据
+		const cloudDataNotSynced = (await executeSQL(`
+			SELECT id, syncStatus, isCloudData
+			FROM history
+			WHERE isCloudData = 1 AND syncStatus != 'synced'
+		`)) as any[];
+
+		if (cloudDataNotSynced.length > 0) {
+			console.warn(
+				`发现 ${cloudDataNotSynced.length} 个云端数据状态异常的条目`,
+			);
+
+			// 修复这些条目：将状态设置为synced
+			const ids = cloudDataNotSynced.map((item: any) => item.id);
+			await batchUpdateSyncStatus(ids, "synced", true);
+			result.fixed += cloudDataNotSynced.length;
+		}
+
+		if (result.fixed > 0) {
+			console.info(`✅ 已修复 ${result.fixed} 个同步状态不一致的条目`);
+		}
+	} catch (error) {
+		const errorMessage = `检查同步状态一致性失败: ${error instanceof Error ? error.message : String(error)}`;
+		console.error(errorMessage);
+		result.errors.push(errorMessage);
+	}
+
+	return result;
+};
+
+/**
  * 关闭数据库连接池
  */
 export const closeDatabase = async () => {

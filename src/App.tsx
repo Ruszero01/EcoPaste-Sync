@@ -21,6 +21,23 @@ const App = () => {
 
 		await restoreStore();
 
+		// 检查并修复覆盖安装后可能出现的同步状态不一致问题
+		try {
+			console.info("🔍 应用启动：检查同步状态一致性...");
+			const { checkAndFixSyncStatusConsistency } = await import("@/database");
+			const result = await checkAndFixSyncStatusConsistency();
+
+			if (result.fixed > 0) {
+				console.info(`✅ 启动检查完成，修复了 ${result.fixed} 个同步状态问题`);
+			}
+
+			if (result.errors.length > 0) {
+				console.warn("⚠️ 同步状态检查发现问题:", result.errors);
+			}
+		} catch (error) {
+			console.error("❌ 启动时同步状态检查失败:", error);
+		}
+
 		toggle();
 
 		// 生成 antd 的颜色变量

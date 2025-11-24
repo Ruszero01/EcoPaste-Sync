@@ -58,6 +58,26 @@ export class SyncEngine {
 		cloudDataManager.setWebDAVConfig(config);
 		fileSyncManager.setWebDAVConfig(config);
 
+		// 执行数据完整性检查，特别是针对覆盖安装后的状态问题
+		try {
+			console.info("🔍 正在执行同步前的数据完整性检查...");
+			const integrityCheck = await this.performDataIntegrityCheck();
+
+			if (integrityCheck.fixed > 0) {
+				console.info(
+					`✅ 数据完整性检查完成，修复了 ${integrityCheck.fixed} 个问题`,
+				);
+				// 触发UI刷新
+				syncEventEmitter?.();
+			}
+
+			if (integrityCheck.errors.length > 0) {
+				console.warn("⚠️ 数据完整性检查发现问题:", integrityCheck.errors);
+			}
+		} catch (error) {
+			console.error("❌ 数据完整性检查失败:", error);
+		}
+
 		const index = await cloudDataManager.downloadSyncIndex();
 		this.isInitialized = true;
 
@@ -727,6 +747,76 @@ export class SyncEngine {
 		} catch (error) {
 			console.error("书签同步异常:", error);
 		}
+	}
+
+	/**
+	 * 执行数据完整性检查
+	 * 专门用于检测和修复覆盖安装后可能出现的同步状态不一致问题
+	 */
+	private async performDataIntegrityCheck(): Promise<{
+		fixed: number;
+		errors: string[];
+	}> {
+		const result = {
+			fixed: 0,
+			errors: [] as string[],
+		};
+
+		try {
+			// 导入数据库模块
+			const { checkAndFixSyncStatusConsistency } = await import("@/database");
+
+			// 1. 执行同步状态一致性检查
+			const consistencyResult = await checkAndFixSyncStatusConsistency();
+			result.fixed += consistencyResult.fixed;
+			result.errors.push(...consistencyResult.errors);
+
+			// 2. 如果有云端连接，检查云端与本地数据的一致性
+			if (this.isOnline && this.webdavConfig) {
+				try {
+					const remoteIndex = await cloudDataManager.downloadSyncIndex();
+
+					if (remoteIndex) {
+						const { getHistoryData } = await import("@/database");
+						const localData = await getHistoryData(false);
+
+						// 查找本地标记为已同步但云端不存在的条目
+						const localSyncedIds = new Set(
+							localData
+								.filter((item) => item.syncStatus === "synced")
+								.map((item) => item.id),
+						);
+
+						const cloudIds = new Set(remoteIndex.items.map((item) => item.id));
+
+						const inconsistentIds = Array.from(localSyncedIds).filter(
+							(id) => !cloudIds.has(id),
+						);
+
+						if (inconsistentIds.length > 0) {
+							console.warn(
+								`发现 ${inconsistentIds.length} 个本地已同步但云端不存在的条目`,
+							);
+
+							// 修复这些条目：将状态重置为none
+							const { batchUpdateSyncStatus } = await import("@/database");
+							await batchUpdateSyncStatus(inconsistentIds, "none", false);
+							result.fixed += inconsistentIds.length;
+						}
+					}
+				} catch (cloudError) {
+					const errorMessage = `云端数据一致性检查失败: ${cloudError instanceof Error ? cloudError.message : String(cloudError)}`;
+					console.warn(errorMessage);
+					result.errors.push(errorMessage);
+				}
+			}
+		} catch (error) {
+			const errorMessage = `数据完整性检查执行失败: ${error instanceof Error ? error.message : String(error)}`;
+			console.error(errorMessage);
+			result.errors.push(errorMessage);
+		}
+
+		return result;
 	}
 }
 

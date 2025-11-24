@@ -1,7 +1,12 @@
 import type { AudioRef } from "@/components/Audio";
 import Audio from "@/components/Audio";
 import { LISTEN_KEY } from "@/constants";
-import { executeSQL, insertWithDeduplication, updateSQL } from "@/database";
+import {
+	batchUpdateSyncStatus,
+	executeSQL,
+	insertWithDeduplication,
+	updateSQL,
+} from "@/database";
 import { initializeMicaEffect } from "@/plugins/window";
 import type { HistoryTablePayload, TablePayload } from "@/types/database";
 import type { Store } from "@/types/store";
@@ -549,14 +554,52 @@ const Main = () => {
 				values,
 			);
 			// 转换数据类型，与 selectSQL 保持一致
-			rawData = (Array.isArray(list) ? list : []).map((item: any) => ({
-				...item,
-				favorite: Boolean(item.favorite),
-				deleted: Boolean(item.deleted),
-				lazyDownload: Boolean(item.lazyDownload),
-				isCloudData: Boolean(item.isCloudData),
-				syncStatus: item.syncStatus || "none",
-			})) as HistoryTablePayload[];
+			rawData = (Array.isArray(list) ? list : []).map((item: any) => {
+				const favorite = Boolean(item.favorite);
+				const deleted = Boolean(item.deleted);
+				const lazyDownload = Boolean(item.lazyDownload);
+				const isCloudData = Boolean(item.isCloudData);
+
+				// 改进的同步状态验证逻辑
+				let syncStatus: "none" | "synced" | "syncing" = "none";
+
+				if (item.syncStatus) {
+					const status = String(item.syncStatus).toLowerCase();
+					if (["none", "synced", "syncing"].includes(status)) {
+						syncStatus = status as "none" | "synced" | "syncing";
+					}
+				}
+
+				// 状态一致性检查：如果是云端数据但状态不是已同步，则自动修正
+				if (isCloudData && syncStatus !== "synced") {
+					console.warn("检测到云端数据状态异常，自动修正为已同步:", item.id);
+					syncStatus = "synced";
+
+					// 异步更新数据库状态
+					batchUpdateSyncStatus([item.id], "synced", true).catch((error) => {
+						console.error("自动修正状态失败:", error);
+					});
+				}
+				// 如果标记为已同步但不是云端数据，则重置为未同步
+				else if (!isCloudData && syncStatus === "synced") {
+					console.warn("检测到错误的同步状态，重置为未同步:", item.id);
+					syncStatus = "none";
+
+					// 异步更新数据库状态
+					batchUpdateSyncStatus([item.id], "none", false).catch((error) => {
+						console.error("重置状态失败:", error);
+					});
+				}
+
+				return {
+					...item,
+					favorite,
+					deleted,
+					lazyDownload,
+					isCloudData,
+					syncStatus,
+				};
+			}) as HistoryTablePayload[];
 		} else {
 			rawData = await selectSQL<HistoryTablePayload[]>(
 				"history",
