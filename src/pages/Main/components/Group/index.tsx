@@ -1,8 +1,9 @@
 import Scrollbar from "@/components/Scrollbar";
+import UnoIcon from "@/components/UnoIcon";
 import { useTauriFocus } from "@/hooks/useTauriFocus";
 import type { HistoryTablePayload } from "@/types/database";
 import { useKeyPress } from "ahooks";
-import { Flex, Tag } from "antd";
+import { Flex } from "antd";
 import clsx from "clsx";
 import { useContext, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -11,6 +12,7 @@ import { MainContext } from "../..";
 interface GroupItem extends Partial<HistoryTablePayload> {
 	key: string;
 	label: string;
+	icon: string;
 }
 
 const Group = () => {
@@ -22,30 +24,36 @@ const Group = () => {
 		{
 			key: "all",
 			label: t("clipboard.label.tab.all"),
+			icon: "i-lucide:layout-grid",
 		},
 		{
 			key: "text",
 			label: t("clipboard.label.tab.text"),
 			group: "text",
+			icon: "i-lucide:type",
 		},
 		{
 			key: "image",
 			label: t("clipboard.label.tab.image"),
 			group: "image",
+			icon: "i-lucide:image",
 		},
 		{
 			key: "file",
 			label: t("clipboard.label.tab.files"),
 			group: "files",
+			icon: "i-lucide:file-text",
 		},
 		{
 			key: "link",
 			label: "链接",
+			icon: "i-lucide:link",
 		},
 		{
 			key: "favorite",
 			label: t("clipboard.label.tab.favorite"),
 			favorite: true,
+			icon: "i-lucide:star",
 		},
 	];
 
@@ -100,21 +108,26 @@ const Group = () => {
 
 	return (
 		<Scrollbar thumbSize={0}>
-			<Flex data-tauri-drag-region>
+			<Flex data-tauri-drag-region gap="middle">
 				{groupList.map((item) => {
-					const { key, label } = item;
+					const { key, label, icon } = item;
 
 					const isChecked = checked === key;
 
 					return (
-						<Tag.CheckableTag
+						<UnoIcon
 							key={key}
-							checked={isChecked}
-							className={clsx({ "bg-primary!": isChecked })}
-							onChange={() => handleChange(item)}
-						>
-							{label}
-						</Tag.CheckableTag>
+							name={icon}
+							title={label}
+							className={clsx(
+								"h-5 w-5 cursor-pointer rounded transition-all duration-200",
+								{
+									"bg-primary text-white shadow": isChecked,
+									"text-color-2 hover:scale-105 hover:bg-color-2": !isChecked,
+								},
+							)}
+							onClick={() => handleChange(item)}
+						/>
 					);
 				})}
 			</Flex>
