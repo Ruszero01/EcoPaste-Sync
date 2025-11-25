@@ -176,8 +176,8 @@ const ClipboardSettings = () => {
 				/>
 
 				<ProSwitch
-					title="代码检测"
-					description="自动检测剪贴板中的代码内容并启用语法高亮"
+					title="代码识别"
+					description="自动识别剪贴板中的代码内容并启用语法高亮"
 					value={content.codeDetection}
 					onChange={(value) => {
 						clipboardStore.content.codeDetection = value;
