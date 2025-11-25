@@ -1,5 +1,6 @@
 import hljs from "highlight.js";
 import { useEffect, useState } from "react";
+import { useAppTheme } from "@/hooks/useTheme";
 import "highlight.js/styles/vs2015.css";
 import "./styles.css";
 import clsx from "clsx";
@@ -32,6 +33,7 @@ const SyntaxHighlighter = ({
   language,
   className,
 }: SyntaxHighlighterProps) => {
+  const { theme } = useAppTheme();
   const [htmlContent, setHtmlContent] = useState<string>("");
 
   useEffect(() => {
@@ -57,32 +59,31 @@ const SyntaxHighlighter = ({
     }
   }, [value, language]);
 
+  // 根据主题设置样式类
+  const themeClasses = theme === "dark"
+    ? "bg-[#1f1f1f] text-[#cccccc]"
+    : "bg-[#ffffff] text-[#333333]";
+
+  // 添加主题类名到根元素
+  const rootClasses = clsx(
+    "whitespace-pre font-mono text-sm leading-relaxed",
+    themeClasses,
+    "font-['Maple_Mono_NF_CN',_Consolas,'Courier_New',monospace]",
+    className,
+    theme === "light" ? "light-theme" : ""
+  );
+
   if (!htmlContent) {
     // 如果语法高亮失败，显示纯文本
     return (
-      <div
-        className={clsx(
-          "whitespace-pre font-mono text-sm leading-relaxed",
-          "bg-[#1f1f1f] text-[#cccccc]",
-          "font-['Maple_Mono_NF_CN',_Consolas,'Courier_New',monospace]",
-          className
-        )}
-      >
+      <div className={rootClasses}>
         {truncateLongCode(value)}
       </div>
     );
   }
 
   return (
-    <div
-      className={clsx(
-        "whitespace-pre font-mono text-sm leading-relaxed",
-        "bg-[#1f1f1f] text-[#cccccc]",
-        "font-['Maple_Mono_NF_CN',_Consolas,'Courier_New',monospace]",
-        className
-      )}
-      dangerouslySetInnerHTML={{ __html: htmlContent }}
-    />
+    <div className={rootClasses} dangerouslySetInnerHTML={{ __html: htmlContent }} />
   );
 };
 

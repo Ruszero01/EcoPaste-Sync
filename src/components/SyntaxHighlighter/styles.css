@@ -14,6 +14,339 @@
   white-space: pre !important;
 }
 
+/* 亮色主题样式 */
+[data-theme="light"] .hljs,
+.light-theme .hljs {
+  color: #333333;
+  background: #ffffff;
+}
+
+/* 亮色主题 - 关键字 */
+[data-theme="light"] .hljs-keyword,
+[data-theme="light"] .hljs-built_in,
+[data-theme="light"] .hljs-type,
+.light-theme .hljs-keyword,
+.light-theme .hljs-built_in,
+.light-theme .hljs-type {
+  color: #0000ff;
+}
+
+/* 亮色主题 - 函数名 */
+[data-theme="light"] .hljs-function .hljs-title,
+[data-theme="light"] .hljs-title.function_,
+[data-theme="light"] .hljs-title.method_,
+[data-theme="light"] .hljs-title.class_,
+[data-theme="light"] .hljs-title.class_.inherited__,
+[data-theme="light"] .hljs-title.function_.decorator,
+[data-theme="light"] .hljs-title.function_.decorator .hljs-keyword,
+.light-theme .hljs-function .hljs-title,
+.light-theme .hljs-title.function_,
+.light-theme .hljs-title.method_,
+.light-theme .hljs-title.class_,
+.light-theme .hljs-title.class_.inherited__,
+.light-theme .hljs-title.function_.decorator,
+.light-theme .hljs-title.function_.decorator .hljs-keyword {
+  color: #795e26;
+}
+
+/* 亮色主题 - 变量名 */
+[data-theme="light"] .hljs-variable,
+[data-theme="light"] .hljs-variable.language_,
+[data-theme="light"] .hljs-variable.constant_,
+[data-theme="light"] .hljs-variable.parameter,
+[data-theme="light"] .hljs-variable.class_,
+[data-theme="light"] .hljs-variable.class_.inherited__,
+[data-theme="light"] .hljs-variable.instance_,
+[data-theme="light"] .hljs-variable.instance_.inherited__,
+[data-theme="light"] .hljs-variable.global_,
+[data-theme="light"] .hljs-variable.global_.inherited__,
+[data-theme="light"] .hljs-variable.module_,
+[data-theme="light"] .hljs-variable.module_.inherited__,
+[data-theme="light"] .hljs-variable.namespace_,
+[data-theme="light"] .hljs-variable.namespace_.inherited__,
+[data-theme="light"] .hljs-variable.import_,
+[data-theme="light"] .hljs-variable.import_.inherited__,
+[data-theme="light"] .hljs-variable.export_,
+[data-theme="light"] .hljs-variable.export_.inherited__,
+[data-theme="light"] .hljs-variable.default_,
+[data-theme="light"] .hljs-variable.default_.inherited__,
+[data-theme="light"] .hljs-variable.declaration_,
+[data-theme="light"] .hljs-variable.declaration_.inherited__,
+[data-theme="light"] .hljs-variable.assignment_,
+[data-theme="light"] .hljs-variable.assignment_.inherited__,
+[data-theme="light"] .hljs-variable.initialization_,
+[data-theme="light"] .hljs-variable.initialization_.inherited_,
+[data-theme="light"] .hljs-variable.initialization_.inherited_ .hljs-keyword,
+[data-theme="light"] .hljs-variable.initialization_.inherited_ .hljs-built_in,
+[data-theme="light"] .hljs-variable.initialization_.inherited_ .hljs-type,
+.light-theme .hljs-variable,
+.light-theme .hljs-variable.language_,
+.light-theme .hljs-variable.constant_,
+.light-theme .hljs-variable.parameter,
+.light-theme .hljs-variable.class_,
+.light-theme .hljs-variable.class_.inherited__,
+.light-theme .hljs-variable.instance_,
+.light-theme .hljs-variable.instance_.inherited__,
+.light-theme .hljs-variable.global_,
+.light-theme .hljs-variable.global_.inherited__,
+.light-theme .hljs-variable.module_,
+.light-theme .hljs-variable.module_.inherited__,
+.light-theme .hljs-variable.namespace_,
+.light-theme .hljs-variable.namespace_.inherited__,
+.light-theme .hljs-variable.import_,
+.light-theme .hljs-variable.import_.inherited__,
+.light-theme .hljs-variable.export_,
+.light-theme .hljs-variable.export_.inherited__,
+.light-theme .hljs-variable.default_,
+.light-theme .hljs-variable.default_.inherited__,
+.light-theme .hljs-variable.declaration_,
+.light-theme .hljs-variable.declaration_.inherited__,
+.light-theme .hljs-variable.assignment_,
+.light-theme .hljs-variable.assignment_.inherited__,
+.light-theme .hljs-variable.initialization_,
+.light-theme .hljs-variable.initialization_.inherited_,
+.light-theme .hljs-variable.initialization_.inherited_ .hljs-keyword,
+.light-theme .hljs-variable.initialization_.inherited_ .hljs-built_in,
+.light-theme .hljs-variable.initialization_.inherited_ .hljs-type {
+  color: #001080;
+}
+
+/* 亮色主题 - 字符串 */
+[data-theme="light"] .hljs-string,
+[data-theme="light"] .hljs-string .hljs-subst,
+[data-theme="light"] .hljs-string .hljs-meta,
+[data-theme="light"] .hljs-string .hljs-meta .hljs-keyword,
+[data-theme="light"] .hljs-string .hljs-meta .hljs-built_in,
+[data-theme="light"] .hljs-string .hljs-meta .hljs-type,
+[data-theme="light"] .hljs-string .hljs-meta .hljs-variable,
+[data-theme="light"] .hljs-string .hljs-meta .hljs-variable.language_,
+[data-theme="light"] .hljs-string .hljs-meta .hljs-variable.constant_,
+[data-theme="light"] .hljs-string .hljs-meta .hljs-variable.parameter,
+[data-theme="light"] .hljs-string .hljs-meta .hljs-variable.class_,
+[data-theme="light"] .hljs-string .hljs-meta .hljs-variable.class_.inherited__,
+[data-theme="light"] .hljs-string .hljs-meta .hljs-variable.instance_,
+[data-theme="light"] .hljs-string .hljs-meta .hljs-variable.instance_.inherited__,
+[data-theme="light"] .hljs-string .hljs-meta .hljs-variable.global_,
+[data-theme="light"] .hljs-string .hljs-meta .hljs-variable.global_.inherited__,
+[data-theme="light"] .hljs-string .hljs-meta .hljs-variable.module_,
+[data-theme="light"] .hljs-string .hljs-meta .hljs-variable.module_.inherited__,
+[data-theme="light"] .hljs-string .hljs-meta .hljs-variable.namespace_,
+[data-theme="light"] .hljs-string .hljs-meta .hljs-variable.namespace_.inherited__,
+[data-theme="light"] .hljs-string .hljs-meta .hljs-variable.import_,
+[data-theme="light"] .hljs-string .hljs-meta .hljs-variable.import_.inherited__,
+[data-theme="light"] .hljs-string .hljs-meta .hljs-variable.export_,
+[data-theme="light"] .hljs-string .hljs-meta .hljs-variable.export_.inherited__,
+[data-theme="light"] .hljs-string .hljs-meta .hljs-variable.default_,
+[data-theme="light"] .hljs-string .hljs-meta .hljs-variable.default_.inherited__,
+[data-theme="light"] .hljs-string .hljs-meta .hljs-variable.declaration_,
+[data-theme="light"] .hljs-string .hljs-meta .hljs-variable.declaration_.inherited__,
+[data-theme="light"] .hljs-string .hljs-meta .hljs-variable.assignment_,
+[data-theme="light"] .hljs-string .hljs-meta .hljs-variable.assignment_.inherited__,
+[data-theme="light"] .hljs-string .hljs-meta .hljs-variable.initialization_,
+[data-theme="light"] .hljs-string .hljs-meta .hljs-variable.initialization_.inherited_,
+[data-theme="light"] .hljs-string .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-keyword,
+[data-theme="light"] .hljs-string .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-built_in,
+[data-theme="light"] .hljs-string .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-type,
+.light-theme .hljs-string,
+.light-theme .hljs-string .hljs-subst,
+.light-theme .hljs-string .hljs-meta,
+.light-theme .hljs-string .hljs-meta .hljs-keyword,
+.light-theme .hljs-string .hljs-meta .hljs-built_in,
+.light-theme .hljs-string .hljs-meta .hljs-type,
+.light-theme .hljs-string .hljs-meta .hljs-variable,
+.light-theme .hljs-string .hljs-meta .hljs-variable.language_,
+.light-theme .hljs-string .hljs-meta .hljs-variable.constant_,
+.light-theme .hljs-string .hljs-meta .hljs-variable.parameter,
+.light-theme .hljs-string .hljs-meta .hljs-variable.class_,
+.light-theme .hljs-string .hljs-meta .hljs-variable.class_.inherited__,
+.light-theme .hljs-string .hljs-meta .hljs-variable.instance_,
+.light-theme .hljs-string .hljs-meta .hljs-variable.instance_.inherited__,
+.light-theme .hljs-string .hljs-meta .hljs-variable.global_,
+.light-theme .hljs-string .hljs-meta .hljs-variable.global_.inherited__,
+.light-theme .hljs-string .hljs-meta .hljs-variable.module_,
+.light-theme .hljs-string .hljs-meta .hljs-variable.module_.inherited__,
+.light-theme .hljs-string .hljs-meta .hljs-variable.namespace_,
+.light-theme .hljs-string .hljs-meta .hljs-variable.namespace_.inherited__,
+.light-theme .hljs-string .hljs-meta .hljs-variable.import_,
+.light-theme .hljs-string .hljs-meta .hljs-variable.import_.inherited__,
+.light-theme .hljs-string .hljs-meta .hljs-variable.export_,
+.light-theme .hljs-string .hljs-meta .hljs-variable.export_.inherited__,
+.light-theme .hljs-string .hljs-meta .hljs-variable.default_,
+.light-theme .hljs-string .hljs-meta .hljs-variable.default_.inherited__,
+.light-theme .hljs-string .hljs-meta .hljs-variable.declaration_,
+.light-theme .hljs-string .hljs-meta .hljs-variable.declaration_.inherited__,
+.light-theme .hljs-string .hljs-meta .hljs-variable.assignment_,
+.light-theme .hljs-string .hljs-meta .hljs-variable.assignment_.inherited__,
+.light-theme .hljs-string .hljs-meta .hljs-variable.initialization_,
+.light-theme .hljs-string .hljs-meta .hljs-variable.initialization_.inherited_,
+.light-theme .hljs-string .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-keyword,
+.light-theme .hljs-string .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-built_in,
+.light-theme .hljs-string .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-type {
+  color: #a31515;
+}
+
+/* 亮色主题 - 数字 */
+[data-theme="light"] .hljs-number,
+[data-theme="light"] .hljs-number .hljs-meta,
+[data-theme="light"] .hljs-number .hljs-meta .hljs-keyword,
+[data-theme="light"] .hljs-number .hljs-meta .hljs-built_in,
+[data-theme="light"] .hljs-number .hljs-meta .hljs-type,
+[data-theme="light"] .hljs-number .hljs-meta .hljs-variable,
+[data-theme="light"] .hljs-number .hljs-meta .hljs-variable.language_,
+[data-theme="light"] .hljs-number .hljs-meta .hljs-variable.constant_,
+[data-theme="light"] .hljs-number .hljs-meta .hljs-variable.parameter,
+[data-theme="light"] .hljs-number .hljs-meta .hljs-variable.class_,
+[data-theme="light"] .hljs-number .hljs-meta .hljs-variable.class_.inherited__,
+[data-theme="light"] .hljs-number .hljs-meta .hljs-variable.instance_,
+[data-theme="light"] .hljs-number .hljs-meta .hljs-variable.instance_.inherited__,
+[data-theme="light"] .hljs-number .hljs-meta .hljs-variable.global_,
+[data-theme="light"] .hljs-number .hljs-meta .hljs-variable.global_.inherited__,
+[data-theme="light"] .hljs-number .hljs-meta .hljs-variable.module_,
+[data-theme="light"] .hljs-number .hljs-meta .hljs-variable.module_.inherited__,
+[data-theme="light"] .hljs-number .hljs-meta .hljs-variable.namespace_,
+[data-theme="light"] .hljs-number .hljs-meta .hljs-variable.namespace_.inherited__,
+[data-theme="light"] .hljs-number .hljs-meta .hljs-variable.import_,
+[data-theme="light"] .hljs-number .hljs-meta .hljs-variable.import_.inherited__,
+[data-theme="light"] .hljs-number .hljs-meta .hljs-variable.export_,
+[data-theme="light"] .hljs-number .hljs-meta .hljs-variable.export_.inherited__,
+[data-theme="light"] .hljs-number .hljs-meta .hljs-variable.default_,
+[data-theme="light"] .hljs-number .hljs-meta .hljs-variable.default_.inherited__,
+[data-theme="light"] .hljs-number .hljs-meta .hljs-variable.declaration_,
+[data-theme="light"] .hljs-number .hljs-meta .hljs-variable.declaration_.inherited__,
+[data-theme="light"] .hljs-number .hljs-meta .hljs-variable.assignment_,
+[data-theme="light"] .hljs-number .hljs-meta .hljs-variable.assignment_.inherited__,
+[data-theme="light"] .hljs-number .hljs-meta .hljs-variable.initialization_,
+[data-theme="light"] .hljs-number .hljs-meta .hljs-variable.initialization_.inherited_,
+[data-theme="light"] .hljs-number .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-keyword,
+[data-theme="light"] .hljs-number .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-built_in,
+[data-theme="light"] .hljs-number .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-type,
+.light-theme .hljs-number,
+.light-theme .hljs-number .hljs-meta,
+.light-theme .hljs-number .hljs-meta .hljs-keyword,
+.light-theme .hljs-number .hljs-meta .hljs-built_in,
+.light-theme .hljs-number .hljs-meta .hljs-type,
+.light-theme .hljs-number .hljs-meta .hljs-variable,
+.light-theme .hljs-number .hljs-meta .hljs-variable.language_,
+.light-theme .hljs-number .hljs-meta .hljs-variable.constant_,
+.light-theme .hljs-number .hljs-meta .hljs-variable.parameter,
+.light-theme .hljs-number .hljs-meta .hljs-variable.class_,
+.light-theme .hljs-number .hljs-meta .hljs-variable.class_.inherited__,
+.light-theme .hljs-number .hljs-meta .hljs-variable.instance_,
+.light-theme .hljs-number .hljs-meta .hljs-variable.instance_.inherited__,
+.light-theme .hljs-number .hljs-meta .hljs-variable.global_,
+.light-theme .hljs-number .hljs-meta .hljs-variable.global_.inherited__,
+.light-theme .hljs-number .hljs-meta .hljs-variable.module_,
+.light-theme .hljs-number .hljs-meta .hljs-variable.module_.inherited__,
+.light-theme .hljs-number .hljs-meta .hljs-variable.namespace_,
+.light-theme .hljs-number .hljs-meta .hljs-variable.namespace_.inherited__,
+.light-theme .hljs-number .hljs-meta .hljs-variable.import_,
+.light-theme .hljs-number .hljs-meta .hljs-variable.import_.inherited__,
+.light-theme .hljs-number .hljs-meta .hljs-variable.export_,
+.light-theme .hljs-number .hljs-meta .hljs-variable.export_.inherited__,
+.light-theme .hljs-number .hljs-meta .hljs-variable.default_,
+.light-theme .hljs-number .hljs-meta .hljs-variable.default_.inherited__,
+.light-theme .hljs-number .hljs-meta .hljs-variable.declaration_,
+.light-theme .hljs-number .hljs-meta .hljs-variable.declaration_.inherited__,
+.light-theme .hljs-number .hljs-meta .hljs-variable.assignment_,
+.light-theme .hljs-number .hljs-meta .hljs-variable.assignment_.inherited__,
+.light-theme .hljs-number .hljs-meta .hljs-variable.initialization_,
+.light-theme .hljs-number .hljs-meta .hljs-variable.initialization_.inherited_,
+.light-theme .hljs-number .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-keyword,
+.light-theme .hljs-number .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-built_in,
+.light-theme .hljs-number .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-type {
+  color: #098658;
+}
+
+/* 亮色主题 - 注释 */
+[data-theme="light"] .hljs-comment,
+[data-theme="light"] .hljs-comment .hljs-meta,
+[data-theme="light"] .hljs-comment .hljs-meta .hljs-keyword,
+[data-theme="light"] .hljs-comment .hljs-meta .hljs-built_in,
+[data-theme="light"] .hljs-comment .hljs-meta .hljs-type,
+[data-theme="light"] .hljs-comment .hljs-meta .hljs-variable,
+[data-theme="light"] .hljs-comment .hljs-meta .hljs-variable.language_,
+[data-theme="light"] .hljs-comment .hljs-meta .hljs-variable.constant_,
+[data-theme="light"] .hljs-comment .hljs-meta .hljs-variable.parameter,
+[data-theme="light"] .hljs-comment .hljs-meta .hljs-variable.class_,
+[data-theme="light"] .hljs-comment .hljs-meta .hljs-variable.class_.inherited__,
+[data-theme="light"] .hljs-comment .hljs-meta .hljs-variable.instance_,
+[data-theme="light"] .hljs-comment .hljs-meta .hljs-variable.instance_.inherited__,
+[data-theme="light"] .hljs-comment .hljs-meta .hljs-variable.global_,
+[data-theme="light"] .hljs-comment .hljs-meta .hljs-variable.global_.inherited__,
+[data-theme="light"] .hljs-comment .hljs-meta .hljs-variable.module_,
+[data-theme="light"] .hljs-comment .hljs-meta .hljs-variable.module_.inherited__,
+[data-theme="light"] .hljs-comment .hljs-meta .hljs-variable.namespace_,
+[data-theme="light"] .hljs-comment .hljs-meta .hljs-variable.namespace_.inherited__,
+[data-theme="light"] .hljs-comment .hljs-meta .hljs-variable.import_,
+[data-theme="light"] .hljs-comment .hljs-meta .hljs-variable.import_.inherited__,
+[data-theme="light"] .hljs-comment .hljs-meta .hljs-variable.export_,
+[data-theme="light"] .hljs-comment .hljs-meta .hljs-variable.export_.inherited__,
+[data-theme="light"] .hljs-comment .hljs-meta .hljs-variable.default_,
+[data-theme="light"] .hljs-comment .hljs-meta .hljs-variable.default_.inherited__,
+[data-theme="light"] .hljs-comment .hljs-meta .hljs-variable.declaration_,
+[data-theme="light"] .hljs-comment .hljs-meta .hljs-variable.declaration_.inherited__,
+[data-theme="light"] .hljs-comment .hljs-meta .hljs-variable.assignment_,
+[data-theme="light"] .hljs-comment .hljs-meta .hljs-variable.assignment_.inherited__,
+[data-theme="light"] .hljs-comment .hljs-meta .hljs-variable.initialization_,
+[data-theme="light"] .hljs-comment .hljs-meta .hljs-variable.initialization_.inherited_,
+[data-theme="light"] .hljs-comment .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-keyword,
+[data-theme="light"] .hljs-comment .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-built_in,
+[data-theme="light"] .hljs-comment .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-type,
+.light-theme .hljs-comment,
+.light-theme .hljs-comment .hljs-meta,
+.light-theme .hljs-comment .hljs-meta .hljs-keyword,
+.light-theme .hljs-comment .hljs-meta .hljs-built_in,
+.light-theme .hljs-comment .hljs-meta .hljs-type,
+.light-theme .hljs-comment .hljs-meta .hljs-variable,
+.light-theme .hljs-comment .hljs-meta .hljs-variable.language_,
+.light-theme .hljs-comment .hljs-meta .hljs-variable.constant_,
+.light-theme .hljs-comment .hljs-meta .hljs-variable.parameter,
+.light-theme .hljs-comment .hljs-meta .hljs-variable.class_,
+.light-theme .hljs-comment .hljs-meta .hljs-variable.class_.inherited__,
+.light-theme .hljs-comment .hljs-meta .hljs-variable.instance_,
+.light-theme .hljs-comment .hljs-meta .hljs-variable.instance_.inherited__,
+.light-theme .hljs-comment .hljs-meta .hljs-variable.global_,
+.light-theme .hljs-comment .hljs-meta .hljs-variable.global_.inherited__,
+.light-theme .hljs-comment .hljs-meta .hljs-variable.module_,
+.light-theme .hljs-comment .hljs-meta .hljs-variable.module_.inherited__,
+.light-theme .hljs-comment .hljs-meta .hljs-variable.namespace_,
+.light-theme .hljs-comment .hljs-meta .hljs-variable.namespace_.inherited__,
+.light-theme .hljs-comment .hljs-meta .hljs-variable.import_,
+.light-theme .hljs-comment .hljs-meta .hljs-variable.import_.inherited__,
+.light-theme .hljs-comment .hljs-meta .hljs-variable.export_,
+.light-theme .hljs-comment .hljs-meta .hljs-variable.export_.inherited__,
+.light-theme .hljs-comment .hljs-meta .hljs-variable.default_,
+.light-theme .hljs-comment .hljs-meta .hljs-variable.default_.inherited__,
+.light-theme .hljs-comment .hljs-meta .hljs-variable.declaration_,
+.light-theme .hljs-comment .hljs-meta .hljs-variable.declaration_.inherited__,
+.light-theme .hljs-comment .hljs-meta .hljs-variable.assignment_,
+.light-theme .hljs-comment .hljs-meta .hljs-variable.assignment_.inherited__,
+.light-theme .hljs-comment .hljs-meta .hljs-variable.initialization_,
+.light-theme .hljs-comment .hljs-meta .hljs-variable.initialization_.inherited__,
+.light-theme .hljs-comment .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-keyword,
+.light-theme .hljs-comment .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-built_in,
+.light-theme .hljs-comment .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-type {
+  color: #008000;
+}
+
+/* 亮色主题 - 标签尖括号 - 深灰色 */
+[data-theme="light"] .hljs-tag,
+.light-theme .hljs-tag {
+  color: #3b3b3b;
+}
+
+/* 亮色主题 - 标签名 - 蓝色 */
+[data-theme="light"] .hljs-tag .hljs-name,
+.light-theme .hljs-tag .hljs-name {
+  color: #0000ff;
+}
+
+/* 亮色主题 - 属性名 - 浅蓝色 */
+[data-theme="light"] .hljs-tag .hljs-attr,
+.light-theme .hljs-tag .hljs-attr {
+  color: #001080;
+}
+
 /* 关键字 */
 .hljs-keyword,
 .hljs-built_in,
@@ -257,10 +590,19 @@
 }
 
 /* 其他类型 */
-.hljs-tag,
-.hljs-tag .hljs-name,
-.hljs-tag .hljs-attr {
+/* 标签尖括号 - 白色 */
+.hljs-tag {
+  color: #d4d4d4;
+}
+
+/* 标签名 - 蓝色 */
+.hljs-tag .hljs-name {
   color: #569cd6;
+}
+
+/* 属性名 - 浅蓝色 */
+.hljs-tag .hljs-attr {
+  color: #9cdcfe;
 }
 
 /* 属性名 */

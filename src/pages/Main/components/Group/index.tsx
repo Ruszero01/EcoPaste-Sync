@@ -45,16 +45,16 @@ const Group = () => {
 			icon: "i-lucide:file-text",
 		},
 		{
+			key: "link",
+			label: "链接",
+			icon: "i-lucide:link",
+		},
+		{
 			key: "code",
 			label: "代码",
 			group: "text",
 			isCode: true,
-			icon: "i-lucide:code",
-		},
-		{
-			key: "link",
-			label: "链接",
-			icon: "i-lucide:link",
+			icon: "i-lucide:code-2",
 		},
 		{
 			key: "favorite",
