@@ -31,6 +31,7 @@ interface State extends TablePayload {
 		group?: string;
 	};
 	linkTab?: boolean; // 新增：链接分组状态
+	isCode?: boolean; // 新增：代码分组状态
 }
 
 const INITIAL_STATE: State = {
@@ -373,6 +374,7 @@ const Main = () => {
 		state.search,
 		state.group,
 		state.favorite,
+		state.isCode,
 		clipboardStore.content.autoSort,
 	]);
 
@@ -380,6 +382,13 @@ const Main = () => {
 	useTauriListen<Store>(LISTEN_KEY.STORE_CHANGED, ({ payload }) => {
 		deepAssign(globalStore, payload.globalStore);
 		deepAssign(clipboardStore, payload.clipboardStore);
+
+		// 如果代码检测设置发生变化，清除缓存并刷新列表
+		if (payload.clipboardStore?.content?.codeDetection !== undefined) {
+			getListCache.current.clear();
+			lastQueryParams = "";
+			getListDebounced(50);
+		}
 	});
 
 	// 切换剪贴板监听状态
@@ -501,7 +510,7 @@ const Main = () => {
 
 	// 获取剪切板内容（优化版本，带缓存）
 	const getList = async () => {
-		const { group, search, favorite, linkTab } = state;
+		const { group, search, favorite, linkTab, isCode } = state;
 
 		// 获取当前的自动排序设置
 		const currentAutoSort = clipboardStore.content.autoSort;
@@ -512,6 +521,7 @@ const Main = () => {
 			search,
 			favorite,
 			linkTab,
+			isCode,
 			autoSort: currentAutoSort,
 		});
 
@@ -558,14 +568,26 @@ const Main = () => {
 				syncStatus: item.syncStatus || "none",
 			})) as HistoryTablePayload[];
 		} else {
+			// 特殊处理纯文本和代码分组的查询
+			const queryPayload: any = {
+				group,
+				search,
+				favorite,
+				deleted: false, // 过滤已删除项
+			};
+
+			// 如果是代码分组，添加 isCode = true 条件
+			if (isCode) {
+				queryPayload.isCode = true;
+			}
+			// 如果是纯文本分组且不是"全部"，添加 isCode = false 条件
+			else if (group === "text") {
+				queryPayload.isCode = false;
+			}
+
 			rawData = await selectSQL<HistoryTablePayload[]>(
 				"history",
-				{
-					group,
-					search,
-					favorite,
-					deleted: false, // 过滤已删除项
-				},
+				queryPayload,
 				orderBy,
 			);
 		}

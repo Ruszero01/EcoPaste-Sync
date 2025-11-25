@@ -26,7 +26,7 @@ interface HeaderProps {
 
 const Header: FC<HeaderProps> = (props) => {
 	const { data } = props;
-	const { id, type, favorite, subtype, search } = data;
+	const { id, type, favorite, subtype, search, isCode, codeLanguage } = data;
 	const { state } = useContext(MainContext);
 	const { t } = useTranslation();
 	const { content } = useSnapshot(clipboardStore);
@@ -88,6 +88,10 @@ const Header: FC<HeaderProps> = (props) => {
 
 		switch (type) {
 			case "text":
+				// 如果是代码，显示编程语言名称（大写）
+				if (isCode && codeLanguage) {
+					return codeLanguage.toUpperCase();
+				}
 				return t("clipboard.label.plain_text");
 			case "rtf":
 				return t("clipboard.label.rtf");

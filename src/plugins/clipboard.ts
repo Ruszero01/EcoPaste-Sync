@@ -2,6 +2,7 @@ import { systemOCR } from "@/plugins/ocr";
 import { clipboardStore } from "@/stores/clipboard";
 import type { HistoryTablePayload } from "@/types/database";
 import type { ClipboardPayload, ReadImage, WindowsOCR } from "@/types/plugin";
+import { detectCode } from "@/utils/codeDetector";
 import { isColor, isEmail, isURL } from "@/utils/is";
 import { resolveImagePath } from "@/utils/path";
 import { getSaveImagePath } from "@/utils/path";
@@ -318,6 +319,15 @@ export const readText = async (): Promise<ClipboardPayload> => {
 	};
 
 	data.subtype = await getClipboardSubtype(data);
+
+	// 代码检测（如果启用）
+	if (clipboardStore.content.codeDetection) {
+		const codeDetection = detectCode(text);
+		if (codeDetection.isCode) {
+			data.isCode = true;
+			data.codeLanguage = codeDetection.language;
+		}
+	}
 
 	return data;
 };

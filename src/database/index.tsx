@@ -48,6 +48,19 @@ export const initDatabase = async () => {
 		// 字段已存在，忽略错误
 	}
 
+	// 添加代码检测相关字段
+	try {
+		await executeSQL("ALTER TABLE history ADD COLUMN codeLanguage TEXT");
+	} catch (_error) {
+		// 字段已存在，忽略错误
+	}
+
+	try {
+		await executeSQL("ALTER TABLE history ADD COLUMN isCode INTEGER DEFAULT 0");
+	} catch (_error) {
+		// 字段已存在，忽略错误
+	}
+
 	try {
 		await executeSQL(
 			"ALTER TABLE history ADD COLUMN isCloudData INTEGER DEFAULT 0",
@@ -125,6 +138,16 @@ export const selectSQL = async <List,>(
 			return "(search LIKE ? OR note LIKE ?)";
 		}
 
+		if (key === "isCode") {
+			const value = payload.isCode;
+			if (value === false) {
+				// 查询非代码：isCode = 0 OR isCode IS NULL
+				values.push(0); // 添加 false 值
+				return "(isCode = ? OR isCode IS NULL)";
+			}
+			return "isCode = ?";
+		}
+
 		return `${key} = ?`;
 	}).join(" AND ");
 
@@ -142,6 +165,7 @@ export const selectSQL = async <List,>(
 		deleted: Boolean(item.deleted),
 		lazyDownload: Boolean(item.lazyDownload),
 		isCloudData: Boolean(item.isCloudData),
+		isCode: Boolean(item.isCode),
 		// 如果没有syncStatus，默认为'none'
 		syncStatus: item.syncStatus || "none",
 	}));
@@ -495,6 +519,7 @@ export const getPendingSyncRecords = async (limit?: number) => {
 			deleted: Boolean(item.deleted),
 			lazyDownload: Boolean(item.lazyDownload),
 			isCloudData: Boolean(item.isCloudData),
+			isCode: Boolean(item.isCode),
 			syncStatus: item.syncStatus || "none",
 		}));
 	} catch (error) {
@@ -572,6 +597,7 @@ export const getHistoryData = async (includeDeleted = false) => {
 			deleted: Boolean(item.deleted),
 			lazyDownload: Boolean(item.lazyDownload),
 			isCloudData: Boolean(item.isCloudData),
+			isCode: Boolean(item.isCode),
 			syncStatus: item.syncStatus || "none", // 确保有默认值
 		}));
 	} else {
@@ -587,6 +613,7 @@ export const getHistoryData = async (includeDeleted = false) => {
 			deleted: Boolean(item.deleted),
 			lazyDownload: Boolean(item.lazyDownload),
 			isCloudData: Boolean(item.isCloudData),
+			isCode: Boolean(item.isCode),
 			syncStatus: item.syncStatus || "none", // 确保有默认值
 		}));
 	}

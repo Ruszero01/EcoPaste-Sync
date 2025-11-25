@@ -1,10 +1,11 @@
+import CodeEditor from "@/components/CodeEditor";
 import type { HistoryTablePayload } from "@/types/database";
 import { Flex } from "antd";
 import clsx from "clsx";
 import type { CSSProperties, FC } from "react";
 
 const Text: FC<HistoryTablePayload> = (props) => {
-	const { value, subtype } = props;
+	const { value, subtype, isCode, codeLanguage } = props;
 
 	const renderColor = () => {
 		const className = "absolute rounded-full";
@@ -31,6 +32,19 @@ const Text: FC<HistoryTablePayload> = (props) => {
 	const renderContent = () => {
 		if (subtype === "color") {
 			return renderColor();
+		}
+
+		// 如果是代码，使用代码编辑器组件
+		if (isCode && codeLanguage) {
+			return (
+				<div className="max-h-96 overflow-hidden">
+					<CodeEditor
+						value={value}
+						codeLanguage={codeLanguage}
+						editable={false}
+					/>
+				</div>
+			);
 		}
 
 		return value;

@@ -18,6 +18,9 @@ export interface HistoryTablePayload extends ClipboardPayload {
 	isCloudData?: boolean;
 	// 最后修改时间字段（用于同步）
 	lastModified?: number;
+	// 代码检测相关字段
+	isCode?: boolean;
+	codeLanguage?: string;
 }
 
 export type TablePayload = Partial<HistoryTablePayload>;

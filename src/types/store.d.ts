@@ -138,6 +138,7 @@ export interface ClipboardStore {
 		deleteConfirm: boolean;
 		autoSort: boolean;
 		showOriginalContent: boolean;
+		codeDetection: boolean; // 新增：代码检测开关
 	};
 
 	// 历史记录

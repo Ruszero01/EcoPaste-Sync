@@ -29,6 +29,7 @@ export const clipboardStore = proxy<ClipboardStore>({
 		deleteConfirm: true,
 		autoSort: false,
 		showOriginalContent: false,
+		codeDetection: true, // 新增：代码检测开关
 	},
 
 	history: {

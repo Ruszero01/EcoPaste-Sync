@@ -15,6 +15,9 @@ export interface ClipboardPayload {
 	search: string;
 	width?: number;
 	height?: number;
+	// 代码检测相关字段
+	isCode?: boolean;
+	codeLanguage?: string;
 }
 
 export interface WindowsOCR {

@@ -1,11 +1,8 @@
+import CodeEditor from "@/components/CodeEditor";
 import { updateSQL } from "@/database";
 import { MainContext } from "@/pages/Main";
 import { clipboardStore } from "@/stores/clipboard";
 import type { HistoryTablePayload } from "@/types/database";
-import { html } from "@codemirror/lang-html";
-import { javascript } from "@codemirror/lang-javascript";
-import { githubDark } from "@uiw/codemirror-theme-github";
-import CodeMirror from "@uiw/react-codemirror";
 import { useBoolean } from "ahooks";
 import { Form, Input, Modal } from "antd";
 import { find } from "lodash-es";
@@ -38,7 +35,7 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 			case "text":
 				return value;
 			case "html":
-				// 显示完整的HTML原始内容进行编辑
+				// HTML类型直接返回原始HTML，让CodeEditor以HTML语法高亮显示
 				return value;
 			case "rtf":
 				// 去除RTF标记获取纯文本进行编辑
@@ -49,7 +46,14 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 	};
 
 	// 获取文本类型的显示名称
-	const getTextTypeLabel = (type: string): string => {
+	const getTextTypeLabel = (item: HistoryTablePayload): string => {
+		const { type, isCode, codeLanguage } = item;
+
+		// 如果是代码，显示编程语言名称（大写）
+		if (isCode && codeLanguage) {
+			return codeLanguage.toUpperCase();
+		}
+
 		switch (type) {
 			case "text":
 				return t("clipboard.label.plain_text");
@@ -119,21 +123,13 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 	};
 
 	// 判断是否使用代码编辑器
-	const shouldUseCodeEditor = (type?: string) => {
-		return type === "html" || type === "rtf";
-	};
-
-	// 获取语言扩展
-	const getLanguageExtension = (type?: string) => {
-		switch (type) {
-			case "html":
-				return [html()];
-			case "rtf":
-				// RTF 使用JavaScript语言高亮（作为代码文本）
-				return [javascript()];
-			default:
-				return [];
-		}
+	const shouldUseCodeEditor = (item?: HistoryTablePayload) => {
+		if (!item) return false;
+		return (
+			item.type === "html" ||
+			item.type === "rtf" ||
+			(item.isCode && item.codeLanguage)
+		);
 	};
 
 	return (
@@ -147,39 +143,27 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 			width={900}
 		>
 			<Form form={form} initialValues={{ content }} onFinish={handleOk}>
-				<Form.Item
-					className="mb-0!"
-					label={item ? getTextTypeLabel(item.type || "text") : ""}
-				>
-					{shouldUseCodeEditor(item?.type) ? (
-						<div className="rounded border border-gray-300">
-							<CodeMirror
+				<Form.Item className="mb-0!" label={item ? getTextTypeLabel(item) : ""}>
+					{shouldUseCodeEditor(item) ? (
+						<div
+							className="overflow-hidden rounded border"
+							style={{ borderColor: "#424242" }}
+						>
+							<CodeEditor
 								value={content}
-								height="400px"
-								theme={githubDark}
-								extensions={getLanguageExtension(item?.type)}
+								codeLanguage={
+									item?.type === "html"
+										? "html"
+										: item?.isCode
+											? item?.codeLanguage
+											: undefined
+								}
 								onChange={(value) => {
 									const newContent = value || "";
 									setContent(newContent);
 									form.setFieldsValue({ content: newContent });
 								}}
-								basicSetup={{
-									lineNumbers: true,
-									highlightActiveLineGutter: true,
-									highlightSpecialChars: true,
-									history: true,
-									foldGutter: true,
-									drawSelection: true,
-									dropCursor: true,
-									allowMultipleSelections: true,
-									indentOnInput: true,
-									syntaxHighlighting: true,
-									bracketMatching: true,
-									closeBrackets: true,
-									autocompletion: true,
-									highlightActiveLine: true,
-									highlightSelectionMatches: true,
-								}}
+								editable={true}
 							/>
 						</div>
 					) : (

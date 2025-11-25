@@ -45,6 +45,13 @@ const Group = () => {
 			icon: "i-lucide:file-text",
 		},
 		{
+			key: "code",
+			label: "代码",
+			group: "text",
+			isCode: true,
+			icon: "i-lucide:code",
+		},
+		{
 			key: "link",
 			label: "链接",
 			icon: "i-lucide:link",
@@ -81,13 +88,14 @@ const Group = () => {
 	});
 
 	const handleChange = (item: GroupItem) => {
-		const { key, group, favorite } = item;
+		const { key, group, favorite, isCode } = item;
 
 		setChecked(key);
 
 		// 确保正确更新响应式状态
 		state.group = group;
 		state.favorite = favorite;
+		state.isCode = isCode;
 
 		// 针对链接分组，特殊处理
 		if (key === "link") {
@@ -109,27 +117,35 @@ const Group = () => {
 	return (
 		<Scrollbar thumbSize={0}>
 			<Flex data-tauri-drag-region gap="middle">
-				{groupList.map((item) => {
-					const { key, label, icon } = item;
+				{groupList
+					.filter((item) => {
+						// 代码分组只在代码检测启用时显示
+						if (item.key === "code") {
+							return clipboardStore.content.codeDetection;
+						}
+						return true;
+					})
+					.map((item) => {
+						const { key, label, icon } = item;
 
-					const isChecked = checked === key;
+						const isChecked = checked === key;
 
-					return (
-						<UnoIcon
-							key={key}
-							name={icon}
-							title={label}
-							className={clsx(
-								"h-5 w-5 cursor-pointer rounded transition-all duration-200",
-								{
-									"bg-primary text-white shadow": isChecked,
-									"text-color-2 hover:scale-105 hover:bg-color-2": !isChecked,
-								},
-							)}
-							onClick={() => handleChange(item)}
-						/>
-					);
-				})}
+						return (
+							<UnoIcon
+								key={key}
+								name={icon}
+								title={label}
+								className={clsx(
+									"h-5 w-5 cursor-pointer rounded transition-all duration-200",
+									{
+										"bg-primary text-white shadow": isChecked,
+										"text-color-2 hover:scale-105 hover:bg-color-2": !isChecked,
+									},
+								)}
+								onClick={() => handleChange(item)}
+							/>
+						);
+					})}
 			</Flex>
 		</Scrollbar>
 	);
