@@ -58,10 +58,65 @@ export class SyncEngine {
 		cloudDataManager.setWebDAVConfig(config);
 		fileSyncManager.setWebDAVConfig(config);
 
+		// 修复版本升级后的同步状态问题
+		await this.fixSyncStatusAfterUpgrade();
+
 		const index = await cloudDataManager.downloadSyncIndex();
 		this.isInitialized = true;
 
 		return index !== null;
+	}
+
+	/**
+	 * 修复版本升级后的同步状态问题
+	 * 解决覆盖安装后所有数据被错误标记为已同步的问题
+	 */
+	private async fixSyncStatusAfterUpgrade(): Promise<void> {
+		if (!this.syncModeConfig) {
+			return; // 如果没有同步配置，跳过修复
+		}
+
+		try {
+			const { getHistoryData, batchUpdateSyncStatus } = await import(
+				"@/database"
+			);
+			const allItems = await getHistoryData(true);
+
+			// 找出同步状态异常的项目
+			const abnormalItems = allItems.filter((item) => {
+				// 如果项目显示为已同步，但实际不符合同步要求，需要修复
+				if (item.syncStatus === "synced") {
+					const isValidForSync =
+						localDataManager.filterLocalDataForSync(
+							[item],
+							this.syncModeConfig,
+							{ includeDeleted: false },
+						).length > 0;
+
+					return !isValidForSync;
+				}
+
+				// 如果同步状态为空或异常，也进行修复
+				if (!item.syncStatus || item.syncStatus === "") {
+					return true;
+				}
+
+				return false;
+			});
+
+			if (abnormalItems.length > 0) {
+				console.info(
+					`发现 ${abnormalItems.length} 个异常同步状态项目，正在修复...`,
+				);
+				await batchUpdateSyncStatus(
+					abnormalItems.map((item) => item.id),
+					"none",
+				);
+				console.info(`已修复 ${abnormalItems.length} 个异常同步状态项目`);
+			}
+		} catch (error) {
+			console.error("修复同步状态失败:", error);
+		}
 	}
 
 	setSyncModeConfig(config: SyncModeConfig): void {
@@ -292,7 +347,8 @@ export class SyncEngine {
 					result.uploaded = nonDeletedUploadedIds.length;
 
 					// 上传成功后，更新本地项目的同步状态为"已同步"
-					await this.markItemsAsSynced(uploadedItemIds);
+					// 只标记真正符合同步要求的项目
+					await this.markValidItemsAsSynced(uploadedItemIds);
 				}
 			}
 
@@ -645,23 +701,43 @@ export class SyncEngine {
 	}
 
 	/**
-	 * 标记项目为已同步状态
+	 * 标记符合要求的项目为已同步状态
 	 * @param itemIds 要标记的项目ID列表
 	 */
-	private async markItemsAsSynced(itemIds: string[]): Promise<void> {
+	private async markValidItemsAsSynced(itemIds: string[]): Promise<void> {
 		if (itemIds.length === 0) {
 			return;
 		}
 
 		try {
-			const { batchUpdateSyncStatus } = await import("@/database");
+			const { getHistoryData, batchUpdateSyncStatus } = await import(
+				"@/database"
+			);
 
-			const success = await batchUpdateSyncStatus(itemIds, "synced");
-			if (success) {
-				console.info(`已标记 ${itemIds.length} 个项目为已同步状态`);
+			// 获取这些项目的完整数据
+			const allItems = await getHistoryData(true);
+			const validItems = allItems.filter(
+				(item) =>
+					itemIds.includes(item.id) &&
+					// 重新验证项目是否符合同步要求
+					localDataManager.filterLocalDataForSync([item], this.syncModeConfig, {
+						includeDeleted: false,
+					}).length > 0,
+			);
+
+			if (validItems.length > 0) {
+				const success = await batchUpdateSyncStatus(
+					validItems.map((item) => item.id),
+					"synced",
+				);
+				if (success) {
+					console.info(
+						`已标记 ${validItems.length} 个符合要求的项目为已同步状态`,
+					);
+				}
 			}
 		} catch (error) {
-			console.error("标记已同步状态失败:", error);
+			console.error("标记有效项目已同步状态失败:", error);
 		}
 	}
 

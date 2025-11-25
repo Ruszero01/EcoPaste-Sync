@@ -43,7 +43,7 @@ export const filterItemsBySyncMode = (
 
 	return items.filter((item) => {
 		// 1. 同步状态过滤 - 只同步需要同步的条目
-		if (item.syncStatus !== "none") {
+		if (item.syncStatus && item.syncStatus !== "none") {
 			return false;
 		}
 
