@@ -1,0 +1,509 @@
+/* VS Code 风格的语法高亮颜色 */
+.hljs {
+  color: #cccccc;
+  background: #1f1f1f;
+  font-family: 'Maple Mono NF CN', Consolas, 'Courier New', monospace;
+  font-weight: normal;
+  font-size: 14px;
+  line-height: 19px;
+  white-space: pre;
+}
+
+/* 确保 hljs 内容保持缩进 */
+.hljs {
+  white-space: pre !important;
+}
+
+/* 关键字 */
+.hljs-keyword,
+.hljs-built_in,
+.hljs-type {
+  color: #569cd6;
+}
+
+/* 函数名 */
+.hljs-function .hljs-title,
+.hljs-title.function_,
+.hljs-title.method_,
+.hljs-title.class_,
+.hljs-title.class_.inherited__,
+.hljs-title.function_.decorator,
+.hljs-title.function_.decorator .hljs-keyword {
+  color: #dcdcaa;
+}
+
+/* 变量名 */
+.hljs-variable,
+.hljs-variable.language_,
+.hljs-variable.constant_,
+.hljs-variable.parameter,
+.hljs-variable.class_,
+.hljs-variable.class_.inherited__,
+.hljs-variable.instance_,
+.hljs-variable.instance_.inherited__,
+.hljs-variable.global_,
+.hljs-variable.global_.inherited__,
+.hljs-variable.module_,
+.hljs-variable.module_.inherited__,
+.hljs-variable.namespace_,
+.hljs-variable.namespace_.inherited__,
+.hljs-variable.import_,
+.hljs-variable.import_.inherited_,
+.hljs-variable.export_,
+.hljs-variable.export_.inherited_,
+.hljs-variable.default_,
+.hljs-variable.default_.inherited_,
+.hljs-variable.declaration_,
+.hljs-variable.declaration_.inherited_,
+.hljs-variable.assignment_,
+.hljs-variable.assignment_.inherited_,
+.hljs-variable.initialization_,
+.hljs-variable.initialization_.inherited_,
+.hljs-variable.initialization_.inherited_ .hljs-keyword,
+.hljs-variable.initialization_.inherited_ .hljs-built_in,
+.hljs-variable.initialization_.inherited_ .hljs-type {
+  color: #4fc1ff;
+}
+
+/* 字符串 */
+.hljs-string,
+.hljs-string .hljs-subst,
+.hljs-string .hljs-meta,
+.hljs-string .hljs-meta .hljs-keyword,
+.hljs-string .hljs-meta .hljs-built_in,
+.hljs-string .hljs-meta .hljs-type,
+.hljs-string .hljs-meta .hljs-variable,
+.hljs-string .hljs-meta .hljs-variable.language_,
+.hljs-string .hljs-meta .hljs-variable.constant_,
+.hljs-string .hljs-meta .hljs-variable.parameter,
+.hljs-string .hljs-meta .hljs-variable.class_,
+.hljs-string .hljs-meta .hljs-variable.class_.inherited__,
+.hljs-string .hljs-meta .hljs-variable.instance_,
+.hljs-string .hljs-meta .hljs-variable.instance_.inherited__,
+.hljs-string .hljs-meta .hljs-variable.global_,
+.hljs-string .hljs-meta .hljs-variable.global_.inherited__,
+.hljs-string .hljs-meta .hljs-variable.module_,
+.hljs-string .hljs-meta .hljs-variable.module_.inherited__,
+.hljs-string .hljs-meta .hljs-variable.namespace_,
+.hljs-string .hljs-meta .hljs-variable.namespace_.inherited__,
+.hljs-string .hljs-meta .hljs-variable.import_,
+.hljs-string .hljs-meta .hljs-variable.import_.inherited__,
+.hljs-string .hljs-meta .hljs-variable.export_,
+.hljs-string .hljs-meta .hljs-variable.export_.inherited__,
+.hljs-string .hljs-meta .hljs-variable.default_,
+.hljs-string .hljs-meta .hljs-variable.default_.inherited_,
+.hljs-string .hljs-meta .hljs-variable.declaration_,
+.hljs-string .hljs-meta .hljs-variable.declaration_.inherited_,
+.hljs-string .hljs-meta .hljs-variable.assignment_,
+.hljs-string .hljs-meta .hljs-variable.assignment_.inherited_,
+.hljs-string .hljs-meta .hljs-variable.initialization_,
+.hljs-string .hljs-meta .hljs-variable.initialization_.inherited_,
+.hljs-string .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-keyword,
+.hljs-string .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-built_in,
+.hljs-string .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-type {
+  color: #ce9178;
+}
+
+/* 数字 */
+.hljs-number,
+.hljs-number .hljs-meta,
+.hljs-number .hljs-meta .hljs-keyword,
+.hljs-number .hljs-meta .hljs-built_in,
+.hljs-number .hljs-meta .hljs-type,
+.hljs-number .hljs-meta .hljs-variable,
+.hljs-number .hljs-meta .hljs-variable.language_,
+.hljs-number .hljs-meta .hljs-variable.constant_,
+.hljs-number .hljs-meta .hljs-variable.parameter,
+.hljs-number .hljs-meta .hljs-variable.class_,
+.hljs-number .hljs-meta .hljs-variable.class_.inherited__,
+.hljs-number .hljs-meta .hljs-variable.instance_,
+.hljs-number .hljs-meta .hljs-variable.instance_.inherited__,
+.hljs-number .hljs-meta .hljs-variable.global_,
+.hljs-number .hljs-meta .hljs-variable.global_.inherited__,
+.hljs-number .hljs-meta .hljs-variable.module_,
+.hljs-number .hljs-meta .hljs-variable.module_.inherited__,
+.hljs-number .hljs-meta .hljs-variable.namespace_,
+.hljs-number .hljs-meta .hljs-variable.namespace_.inherited__,
+.hljs-number .hljs-meta .hljs-variable.import_,
+.hljs-number .hljs-meta .hljs-variable.import_.inherited__,
+.hljs-number .hljs-meta .hljs-variable.export_,
+.hljs-number .hljs-meta .hljs-variable.export_.inherited__,
+.hljs-number .hljs-meta .hljs-variable.default_,
+.hljs-number .hljs-meta .hljs-variable.default_.inherited_,
+.hljs-number .hljs-meta .hljs-variable.declaration_,
+.hljs-number .hljs-meta .hljs-variable.declaration_.inherited_,
+.hljs-number .hljs-meta .hljs-variable.assignment_,
+.hljs-number .hljs-meta .hljs-variable.assignment_.inherited_,
+.hljs-number .hljs-meta .hljs-variable.initialization_,
+.hljs-number .hljs-meta .hljs-variable.initialization_.inherited_,
+.hljs-number .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-keyword,
+.hljs-number .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-built_in,
+.hljs-number .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-type {
+  color: #b5cea8;
+}
+
+/* 注释 */
+.hljs-comment,
+.hljs-comment .hljs-meta,
+.hljs-comment .hljs-meta .hljs-keyword,
+.hljs-comment .hljs-meta .hljs-built_in,
+.hljs-comment .hljs-meta .hljs-type,
+.hljs-comment .hljs-meta .hljs-variable,
+.hljs-comment .hljs-meta .hljs-variable.language_,
+.hljs-comment .hljs-meta .hljs-variable.constant_,
+.hljs-comment .hljs-meta .hljs-variable.parameter,
+.hljs-comment .hljs-meta .hljs-variable.class_,
+.hljs-comment .hljs-meta .hljs-variable.class_.inherited__,
+.hljs-comment .hljs-meta .hljs-variable.instance_,
+.hljs-comment .hljs-meta .hljs-variable.instance_.inherited__,
+.hljs-comment .hljs-meta .hljs-variable.global_,
+.hljs-comment .hljs-meta .hljs-variable.global_.inherited__,
+.hljs-comment .hljs-meta .hljs-variable.module_,
+.hljs-comment .hljs-meta .hljs-variable.module_.inherited__,
+.hljs-comment .hljs-meta .hljs-variable.namespace_,
+.hljs-comment .hljs-meta .hljs-variable.namespace_.inherited__,
+.hljs-comment .hljs-meta .hljs-variable.import_,
+.hljs-comment .hljs-meta .hljs-variable.import_.inherited__,
+.hljs-comment .hljs-meta .hljs-variable.export_,
+.hljs-comment .hljs-meta .hljs-variable.export_.inherited__,
+.hljs-comment .hljs-meta .hljs-variable.default_,
+.hljs-comment .hljs-meta .hljs-variable.default_.inherited__,
+.hljs-comment .hljs-meta .hljs-variable.declaration_,
+.hljs-comment .hljs-meta .hljs-variable.declaration_.inherited__,
+.hljs-comment .hljs-meta .hljs-variable.assignment_,
+.hljs-comment .hljs-meta .hljs-variable.assignment_.inherited__,
+.hljs-comment .hljs-meta .hljs-variable.initialization_,
+.hljs-comment .hljs-meta .hljs-variable.initialization_.inherited_,
+.hljs-comment .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-keyword,
+.hljs-comment .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-built_in,
+.hljs-comment .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-type {
+  color: #6a9955;
+}
+
+/* 操作符 */
+.hljs-operator,
+.hljs-operator .hljs-meta,
+.hljs-operator .hljs-meta .hljs-keyword,
+.hljs-operator .hljs-meta .hljs-built_in,
+.hljs-operator .hljs-meta .hljs-type,
+.hljs-operator .hljs-meta .hljs-variable,
+.hljs-operator .hljs-meta .hljs-variable.language_,
+.hljs-operator .hljs-meta .hljs-variable.constant_,
+.hljs-operator .hljs-meta .hljs-variable.parameter,
+.hljs-operator .hljs-meta .hljs-variable.class_,
+.hljs-operator .hljs-meta .hljs-variable.class_.inherited__,
+.hljs-operator .hljs-meta .hljs-variable.instance_,
+.hljs-operator .hljs-meta .hljs-variable.instance_.inherited__,
+.hljs-operator .hljs-meta .hljs-variable.global_,
+.hljs-operator .hljs-meta .hljs-variable.global_.inherited__,
+.hljs-operator .hljs-meta .hljs-variable.module_,
+.hljs-operator .hljs-meta .hljs-variable.module_.inherited__,
+.hljs-operator .hljs-meta .hljs-variable.namespace_,
+.hljs-operator .hljs-meta .hljs-variable.namespace_.inherited__,
+.hljs-operator .hljs-meta .hljs-variable.import_,
+.hljs-operator .hljs-meta .hljs-variable.import_.inherited__,
+.hljs-operator .hljs-meta .hljs-variable.export_,
+.hljs-operator .hljs-meta .hljs-variable.export_.inherited__,
+.hljs-operator .hljs-meta .hljs-variable.default_,
+.hljs-operator .hljs-meta .hljs-variable.default_.inherited__,
+.hljs-operator .hljs-meta .hljs-variable.declaration_,
+.hljs-operator .hljs-meta .hljs-variable.declaration_.inherited__,
+.hljs-operator .hljs-meta .hljs-variable.assignment_,
+.hljs-operator .hljs-meta .hljs-variable.assignment_.inherited__,
+.hljs-operator .hljs-meta .hljs-variable.initialization_,
+.hljs-operator .hljs-meta .hljs-variable.initialization_.inherited_,
+.hljs-operator .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-keyword,
+.hljs-operator .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-built_in,
+.hljs-operator .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-type {
+  color: #d4d4d4;
+}
+
+/* 标点符号 */
+.hljs-punctuation,
+.hljs-punctuation .hljs-meta,
+.hljs-punctuation .hljs-meta .hljs-keyword,
+.hljs-punctuation .hljs-meta .hljs-built_in,
+.hljs-punctuation .hljs-meta .hljs-type,
+.hljs-punctuation .hljs-meta .hljs-variable,
+.hljs-punctuation .hljs-meta .hljs-variable.language_,
+.hljs-punctuation .hljs-meta .hljs-variable.constant_,
+.hljs-punctuation .hljs-meta .hljs-variable.parameter,
+.hljs-punctuation .hljs-meta .hljs-variable.class_,
+.hljs-punctuation .hljs-meta .hljs-variable.class_.inherited__,
+.hljs-punctuation .hljs-meta .hljs-variable.instance_,
+.hljs-punctuation .hljs-meta .hljs-variable.instance_.inherited__,
+.hljs-punctuation .hljs-meta .hljs-variable.global_,
+.hljs-punctuation .hljs-meta .hljs-variable.global_.inherited__,
+.hljs-punctuation .hljs-meta .hljs-variable.module_,
+.hljs-punctuation .hljs-meta .hljs-variable.module_.inherited__,
+.hljs-punctuation .hljs-meta .hljs-variable.namespace_,
+.hljs-punctuation .hljs-meta .hljs-variable.namespace_.inherited__,
+.hljs-punctuation .hljs-meta .hljs-variable.import_,
+.hljs-punctuation .hljs-meta .hljs-variable.import_.inherited__,
+.hljs-punctuation .hljs-meta .hljs-variable.export_,
+.hljs-punctuation .hljs-meta .hljs-variable.export_.inherited__,
+.hljs-punctuation .hljs-meta .hljs-variable.default_,
+.hljs-punctuation .hljs-meta .hljs-variable.default_.inherited__,
+.hljs-punctuation .hljs-meta .hljs-variable.declaration_,
+.hljs-punctuation .hljs-meta .hljs-variable.declaration_.inherited__,
+.hljs-punctuation .hljs-meta .hljs-variable.assignment_,
+.hljs-punctuation .hljs-meta .hljs-variable.assignment_.inherited__,
+.hljs-punctuation .hljs-meta .hljs-variable.initialization_,
+.hljs-punctuation .hljs-meta .hljs-variable.initialization_.inherited_,
+.hljs-punctuation .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-keyword,
+.hljs-punctuation .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-built_in,
+.hljs-punctuation .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-type {
+  color: #d4d4d4;
+}
+
+/* 其他类型 */
+.hljs-tag,
+.hljs-tag .hljs-name,
+.hljs-tag .hljs-attr {
+  color: #569cd6;
+}
+
+/* 属性名 */
+.hljs-attr,
+.hljs-attr .hljs-meta,
+.hljs-attr .hljs-meta .hljs-keyword,
+.hljs-attr .hljs-meta .hljs-built_in,
+.hljs-attr .hljs-meta .hljs-type,
+.hljs-attr .hljs-meta .hljs-variable,
+.hljs-attr .hljs-meta .hljs-variable.language_,
+.hljs-attr .hljs-meta .hljs-variable.constant_,
+.hljs-attr .hljs-meta .hljs-variable.parameter,
+.hljs-attr .hljs-meta .hljs-variable.class_,
+.hljs-attr .hljs-meta .hljs-variable.class_.inherited__,
+.hljs-attr .hljs-meta .hljs-variable.instance_,
+.hljs-attr .hljs-meta .hljs-variable.instance_.inherited__,
+.hljs-attr .hljs-meta .hljs-variable.global_,
+.hljs-attr .hljs-meta .hljs-variable.global_.inherited__,
+.hljs-attr .hljs-meta .hljs-variable.module_,
+.hljs-attr .hljs-meta .hljs-variable.module_.inherited__,
+.hljs-attr .hljs-meta .hljs-variable.namespace_,
+.hljs-attr .hljs-meta .hljs-variable.namespace_.inherited__,
+.hljs-attr .hljs-meta .hljs-variable.import_,
+.hljs-attr .hljs-meta .hljs-variable.import_.inherited__,
+.hljs-attr .hljs-meta .hljs-variable.export_,
+.hljs-attr .hljs-meta .hljs-variable.export_.inherited__,
+.hljs-attr .hljs-meta .hljs-variable.default_,
+.hljs-attr .hljs-meta .hljs-variable.default_.inherited_,
+.hljs-attr .hljs-meta .hljs-variable.declaration_,
+.hljs-attr .hljs-meta .hljs-variable.declaration_.inherited__,
+.hljs-attr .hljs-meta .hljs-variable.assignment_,
+.hljs-attr .hljs-meta .hljs-variable.assignment_.inherited_,
+.hljs-attr .hljs-meta .hljs-variable.initialization_,
+.hljs-attr .hljs-meta .hljs-variable.initialization_.inherited_,
+.hljs-attr .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-keyword,
+.hljs-attr .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-built_in,
+.hljs-attr .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-type {
+  color: #9cdcfe;
+}
+
+/* 布尔值 */
+.hljs-literal,
+.hljs-literal .hljs-meta,
+.hljs-literal .hljs-meta .hljs-keyword,
+.hljs-literal .hljs-meta .hljs-built_in,
+.hljs-literal .hljs-meta .hljs-type,
+.hljs-literal .hljs-meta .hljs-variable,
+.hljs-literal .hljs-meta .hljs-variable.language_,
+.hljs-literal .hljs-meta .hljs-variable.constant_,
+.hljs-literal .hljs-meta .hljs-variable.parameter,
+.hljs-literal .hljs-meta .hljs-variable.class_,
+.hljs-literal .hljs-meta .hljs-variable.class_.inherited__,
+.hljs-literal .hljs-meta .hljs-variable.instance_,
+.hljs-literal .hljs-meta .hljs-variable.instance_.inherited__,
+.hljs-literal .hljs-meta .hljs-variable.global_,
+.hljs-literal .hljs-meta .hljs-variable.global_.inherited__,
+.hljs-literal .hljs-meta .hljs-variable.module_,
+.hljs-literal .hljs-meta .hljs-variable.module_.inherited__,
+.hljs-literal .hljs-meta .hljs-variable.namespace_,
+.hljs-literal .hljs-meta .hljs-variable.namespace_.inherited__,
+.hljs-literal .hljs-meta .hljs-variable.import_,
+.hljs-literal .hljs-meta .hljs-variable.import_.inherited__,
+.hljs-literal .hljs-meta .hljs-variable.export_,
+.hljs-literal .hljs-meta .hljs-variable.export_.inherited__,
+.hljs-literal .hljs-meta .hljs-variable.default_,
+.hljs-literal .hljs-meta .hljs-variable.default_.inherited__,
+.hljs-literal .hljs-meta .hljs-variable.declaration_,
+.hljs-literal .hljs-meta .hljs-variable.declaration_.inherited__,
+.hljs-literal .hljs-meta .hljs-variable.assignment_,
+.hljs-literal .hljs-meta .hljs-variable.assignment_.inherited__,
+.hljs-literal .hljs-meta .hljs-variable.initialization_,
+.hljs-literal .hljs-meta .hljs-variable.initialization_.inherited_,
+.hljs-literal .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-keyword,
+.hljs-literal .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-built_in,
+.hljs-literal .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-type {
+  color: #569cd6;
+}
+
+/* 返回值 */
+.hljs-keyword,
+.hljs-built_in,
+.hljs-type {
+  color: #569cd6;
+}
+
+/* 函数参数 */
+.hljs-function .hljs-params,
+.hljs-params {
+  color: #9cdcfe;
+}
+
+/* 类名 */
+.hljs-class .hljs-title,
+.hljs-title.class_ {
+  color: #4ec9b0;
+}
+
+/* 继承 */
+.hljs-class .hljs-title.inherited__,
+.hljs-title.class_.inherited__ {
+  color: #4ec9b0;
+}
+
+/* 装饰器 */
+.hljs-function .hljs-title.decorator,
+.hljs-title.function_.decorator {
+  color: #dcdcaa;
+}
+
+/* 导入 */
+.hljs-keyword.import_,
+.hljs-variable.import_,
+.hljs-variable.import_.inherited__ {
+  color: #c586c0;
+}
+
+/* 导出 */
+.hljs-keyword.export_,
+.hljs-variable.export_,
+.hljs-variable.export_.inherited__ {
+  color: #c586c0;
+}
+
+/* 默认 */
+.hljs-keyword.default_,
+.hljs-variable.default_,
+.hljs-variable.default_.inherited__ {
+  color: #c586c0;
+}
+
+/* 声明 */
+.hljs-keyword.declaration_,
+.hljs-variable.declaration_,
+.hljs-variable.declaration_.inherited__ {
+  color: #c586c0;
+}
+
+/* 赋值 */
+.hljs-keyword.assignment_,
+.hljs-variable.assignment_,
+.hljs-variable.assignment_.inherited__ {
+  color: #c586c0;
+}
+
+/* 初始化 */
+.hljs-keyword.initialization_,
+.hljs-variable.initialization_,
+.hljs-variable.initialization_.inherited__ {
+  color: #c586c0;
+}
+
+/* 元数据 */
+.hljs-meta,
+.hljs-meta .hljs-keyword,
+.hljs-meta .hljs-built_in,
+.hljs-meta .hljs-type,
+.hljs-meta .hljs-variable,
+.hljs-meta .hljs-variable.language_,
+.hljs-meta .hljs-variable.constant_,
+.hljs-meta .hljs-variable.parameter,
+.hljs-meta .hljs-variable.class_,
+.hljs-meta .hljs-variable.class_.inherited__,
+.hljs-meta .hljs-variable.instance_,
+.hljs-meta .hljs-variable.instance_.inherited__,
+.hljs-meta .hljs-variable.global_,
+.hljs-meta .hljs-variable.global_.inherited__,
+.hljs-meta .hljs-variable.module_,
+.hljs-meta .hljs-variable.module_.inherited__,
+.hljs-meta .hljs-variable.namespace_,
+.hljs-meta .hljs-variable.namespace_.inherited__,
+.hljs-meta .hljs-variable.import_,
+.hljs-meta .hljs-variable.import_.inherited__,
+.hljs-meta .hljs-variable.export_,
+.hljs-meta .hljs-variable.export_.inherited__,
+.hljs-meta .hljs-variable.default_,
+.hljs-meta .hljs-variable.default_.inherited__,
+.hljs-meta .hljs-variable.declaration_,
+.hljs-meta .hljs-variable.declaration_.inherited__,
+.hljs-meta .hljs-variable.assignment_,
+.hljs-meta .hljs-variable.assignment_.inherited__,
+.hljs-meta .hljs-variable.initialization_,
+.hljs-meta .hljs-variable.initialization_.inherited_,
+.hljs-meta .hljs-variable.initialization_.inherited_ .hljs-keyword,
+.hljs-meta .hljs-variable.initialization_.inherited_ .hljs-built_in,
+.hljs-meta .hljs-variable.initialization_.inherited_ .hljs-type {
+  color: #9cdcfe;
+}
+
+/* 错误 */
+.hljs-error {
+  color: #f44747;
+}
+
+/* 链接 */
+.hljs-link {
+  color: #4fc1ff;
+  text-decoration: underline;
+}
+
+/* 标记 */
+.hljs-symbol,
+.hljs-symbol .hljs-meta,
+.hljs-symbol .hljs-meta .hljs-keyword,
+.hljs-symbol .hljs-meta .hljs-built_in,
+.hljs-symbol .hljs-meta .hljs-type,
+.hljs-symbol .hljs-meta .hljs-variable,
+.hljs-symbol .hljs-meta .hljs-variable.language_,
+.hljs-symbol .hljs-meta .hljs-variable.constant_,
+.hljs-symbol .hljs-meta .hljs-variable.parameter,
+.hljs-symbol .hljs-meta .hljs-variable.class_,
+.hljs-symbol .hljs-meta .hljs-variable.class_.inherited__,
+.hljs-symbol .hljs-meta .hljs-variable.instance_,
+.hljs-symbol .hljs-meta .hljs-variable.instance_.inherited__,
+.hljs-symbol .hljs-meta .hljs-variable.global_,
+.hljs-symbol .hljs-meta .hljs-variable.global_.inherited__,
+.hljs-symbol .hljs-meta .hljs-variable.module_,
+.hljs-symbol .hljs-meta .hljs-variable.module_.inherited__,
+.hljs-symbol .hljs-meta .hljs-variable.namespace_,
+.hljs-symbol .hljs-meta .hljs-variable.namespace_.inherited__,
+.hljs-symbol .hljs-meta .hljs-variable.import_,
+.hljs-symbol .hljs-meta .hljs-variable.import_.inherited__,
+.hljs-symbol .hljs-meta .hljs-variable.export_,
+.hljs-symbol .hljs-meta .hljs-variable.export_.inherited__,
+.hljs-symbol .hljs-meta .hljs-variable.default_,
+.hljs-symbol .hljs-meta .hljs-variable.default_.inherited__,
+.hljs-symbol .hljs-meta .hljs-variable.declaration_,
+.hljs-symbol .hljs-meta .hljs-variable.declaration_.inherited__,
+.hljs-symbol .hljs-meta .hljs-variable.assignment_,
+.hljs-symbol .hljs-meta .hljs-variable.assignment_.inherited__,
+.hljs-symbol .hljs-meta .hljs-variable.initialization_,
+.hljs-symbol .hljs-meta .hljs-variable.initialization_.inherited_,
+.hljs-symbol .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-keyword,
+.hljs-symbol .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-built_in,
+.hljs-symbol .hljs-meta .hljs-variable.initialization_.inherited_ .hljs-type {
+  color: #4fc1ff;
+}
+
+/* 添加 */
+.hljs-addition {
+  color: #4ec9b0;
+}
+
+/* 删除 */
+.hljs-deletion {
+  color: #f44747;
+}

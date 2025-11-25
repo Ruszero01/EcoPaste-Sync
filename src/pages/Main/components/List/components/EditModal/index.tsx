@@ -49,9 +49,9 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 	const getTextTypeLabel = (item: HistoryTablePayload): string => {
 		const { type, isCode, codeLanguage } = item;
 
-		// 如果是代码，显示编程语言名称（大写）
+		// 如果是代码，显示编程语言名称
 		if (isCode && codeLanguage) {
-			return codeLanguage.toUpperCase();
+			return getLanguageDisplayName(codeLanguage);
 		}
 
 		switch (type) {

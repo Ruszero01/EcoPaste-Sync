@@ -1,8 +1,9 @@
-import CodeEditor from "@/components/CodeEditor";
+import SyntaxHighlighter from "@/components/SyntaxHighlighter";
 import type { HistoryTablePayload } from "@/types/database";
 import { Flex } from "antd";
 import clsx from "clsx";
 import type { CSSProperties, FC } from "react";
+import { memo } from "react";
 
 const Text: FC<HistoryTablePayload> = (props) => {
 	const { value, subtype, isCode, codeLanguage } = props;
@@ -34,23 +35,22 @@ const Text: FC<HistoryTablePayload> = (props) => {
 			return renderColor();
 		}
 
-		// 如果是代码，使用代码编辑器组件
+		// 如果是代码，根据是否可编辑决定显示方式
 		if (isCode && codeLanguage) {
+			// 在剪贴板界面中显示语法高亮的纯文本
 			return (
-				<div className="max-h-96 overflow-hidden">
-					<CodeEditor
-						value={value}
-						codeLanguage={codeLanguage}
-						editable={false}
-					/>
-				</div>
+				<SyntaxHighlighter
+					value={value}
+					language={codeLanguage}
+					className="line-clamp-4"
+				/>
 			);
 		}
 
 		return value;
 	};
 
-	return <div className="line-clamp-4">{renderContent()}</div>;
+	return renderContent();
 };
 
 export default memo(Text);

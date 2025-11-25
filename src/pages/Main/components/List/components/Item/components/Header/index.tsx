@@ -88,9 +88,9 @@ const Header: FC<HeaderProps> = (props) => {
 
 		switch (type) {
 			case "text":
-				// 如果是代码，显示编程语言名称（大写）
+				// 如果是代码，显示编程语言名称
 				if (isCode && codeLanguage) {
-					return codeLanguage.toUpperCase();
+					return getLanguageDisplayName(codeLanguage);
 				}
 				return t("clipboard.label.plain_text");
 			case "rtf":
