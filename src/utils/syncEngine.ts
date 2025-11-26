@@ -156,8 +156,20 @@ export class SyncEngine {
 		previousConfig: SyncModeConfig | null,
 		newConfig: SyncModeConfig | null,
 	): boolean {
+		// 首次初始化不算模式变更
+		if (!previousConfig && newConfig) {
+			return false;
+		}
+		if (!previousConfig && !newConfig) {
+			return false;
+		}
+		if (previousConfig && !newConfig) {
+			return true; // 配置被清除算变更
+		}
+
+		// 到这里两个配置都不为null
 		if (!previousConfig || !newConfig) {
-			return true;
+			return false; // TypeScript类型保护
 		}
 
 		// 检查收藏模式是否发生变化
@@ -285,25 +297,25 @@ export class SyncEngine {
 			);
 
 			console.info(
-				`📊 本地数据: 原始 ${localRawData.length} 项，筛选后 ${filteredLocalData.length} 项，删除 ${localDeletedItems.length} 项`,
+				`📊 数据筛选: 本地 ${localRawData.length}→${filteredLocalData.length} 项，删除 ${localDeletedItems.length} 项`,
 			);
 
-			// 4. cloudDataManager 检查云端是否有数据
+			// 4. 检查云端数据
 			const remoteIndex = await cloudDataManager.downloadSyncIndex();
 
-			// 4. 获取云端数据
-			let allCloudSyncItems: SyncItem[] = [];
+			// 5. 获取云端筛选数据
 			let cloudSyncItems: SyncItem[] = [];
 
 			if (remoteIndex) {
-				allCloudSyncItems = cloudDataManager.getAllCloudItems(remoteIndex, {
-					includeDeleted: false,
-				});
 				cloudSyncItems = cloudDataManager.filterCloudDataForSync(
 					remoteIndex,
 					this.syncModeConfig,
 					{ includeDeleted: false },
 				);
+				// 云端数据筛选结果，调试时可取消注释
+				// console.info(`📊 云端数据: ${remoteIndex.items.length}→${cloudSyncItems.length} 项`);
+			} else {
+				console.info("📊 云端无数据");
 			}
 
 			// 6. 处理本地删除的项目：从云端删除对应记录和文件
@@ -359,7 +371,7 @@ export class SyncEngine {
 				(item) => !deletedItemIds.has(item.id),
 			);
 
-			// 10. 只处理真正有冲突的项目（ID相同但内容不同）
+			// 10. 冲突检测与解决（ID相同但内容不同的项目）
 			const realConflicts = detectRealConflicts(
 				filteredLocalData,
 				cloudSyncItems,
@@ -382,20 +394,32 @@ export class SyncEngine {
 				"merge",
 			);
 
-			// 10. 处理同步结果
+			// 11. 处理同步结果
 			const { localResult, cloudResult } = this.processSyncResults(
 				filteredLocalData,
 				cloudSyncItems,
 				conflictResults,
 			);
 
-			// 11. 处理需要上传的文件包
+			const hasLocalChanges =
+				localResult.itemsToAdd.length > 0 ||
+				localResult.itemsToUpdate.length > 0;
+			const hasCloudChanges =
+				cloudResult.itemsToAdd.length > 0 ||
+				cloudResult.itemsToUpdate.length > 0;
+
+			if (hasLocalChanges || hasCloudChanges) {
+				// 数据变更详情，调试时可取消注释
+				// console.info(`🔄 数据变更: 本地(+${localResult.itemsToAdd.length},*${localResult.itemsToUpdate.length}) 云端(+${cloudResult.itemsToAdd.length},*${cloudResult.itemsToUpdate.length})`);
+			}
+
+			// 12. 处理需要上传的文件包
 			const fileUploadResult = await fileSyncManager.handleFilePackageUploads(
 				localRawData,
 				cloudResult,
 			);
 
-			// 12. 处理需要下载的文件包（排除已删除项目和文件包类型，避免重复下载）
+			// 13. 处理需要下载的文件包（排除已删除项目和文件包类型，避免重复下载）
 			const itemsToDownload = [
 				...localResult.itemsToAdd,
 				...localResult.itemsToUpdate,
@@ -417,7 +441,7 @@ export class SyncEngine {
 				console.info("没有需要下载的文件包项目");
 			}
 
-			// 13. localDataManager 接收处理后的本地数据，对本地数据库进行操作
+			// 14. 应用本地数据变更
 			if (
 				localResult.itemsToAdd.length > 0 ||
 				localResult.itemsToUpdate.length > 0
@@ -427,7 +451,7 @@ export class SyncEngine {
 					localResult.itemsToAdd.length + localResult.itemsToUpdate.length;
 			}
 
-			// 14. cloudDataManager 接收处理后的云端数据，对云端数据进行操作
+			// 15. 应用云端数据变更
 			if (
 				cloudResult.itemsToAdd.length > 0 ||
 				cloudResult.itemsToUpdate.length > 0
@@ -460,31 +484,42 @@ export class SyncEngine {
 
 					result.uploaded = actuallyUploadedIds.length;
 
-					// 上传成功后，同步本地状态与云端保持一致
-					await this.syncLocalStatusWithCloud(allCloudSyncItems);
+					// 上传成功后，直接标记刚上传的项目为已同步
+					if (actuallyUploadedIds.length > 0) {
+						const { batchUpdateSyncStatus } = await import("@/database");
+						console.info(
+							`🔄 直接标记上传项目为已同步: ${actuallyUploadedIds.length} 个项目`,
+							actuallyUploadedIds,
+						);
+						await batchUpdateSyncStatus(actuallyUploadedIds, "synced");
+					}
+
+					// 对参与本次同步的数据进行状态一致性检查
+					await this.syncLocalStatusWithCloud(cloudSyncItems);
 				} else {
 					console.error("❌ 云端上传失败");
 				}
 			} else {
-				// 确保本地状态与云端存在性保持一致
-				await this.syncLocalStatusWithCloud(allCloudSyncItems);
+				// 即使没有上传项目，也要对参与同步的数据进行状态一致性检查
+				await this.syncLocalStatusWithCloud(cloudSyncItems);
 			}
 
-			// 13. 添加文件包上传结果（独立于数据上传计数）
+			// 16. 添加文件包上传结果（独立于数据上传计数）
 			if (fileUploadResult.uploaded > 0) {
 				// 文件包上传是额外的操作，已经通过 fileUploadResult.uploaded 统计
 				// 不再累加到 result.uploaded 中避免重复计数
 			}
 
-			// 14. 同步书签数据
+			// 17. 同步书签数据
 			await this.syncBookmarks();
 
-			// 15. 清理云端明确需要删除的数据（仅限本地已删除的项目）
-			// 注意：不进行模式清理，避免删除其他设备的有效数据
+			// 18. 完成同步和状态更新
 
 			try {
 				emit(LISTEN_KEY.REFRESH_CLIPBOARD_LIST);
-			} catch {}
+			} catch (error) {
+				console.warn("刷新剪贴板列表失败:", error);
+			}
 
 			result.success = true;
 			this.lastSyncTime = Date.now();
@@ -889,6 +924,40 @@ export class SyncEngine {
 	}
 
 	/**
+	 * 严格检查本地项目是否真的与云端项目匹配
+	 * 防止重新安装后本地新项目被错误标记为已同步
+	 * @param localItem 本地项目
+	 * @param cloudItem 云端项目
+	 * @returns 是否真的匹配
+	 */
+	private isItemActuallySynced(localItem: any, cloudItem: SyncItem): boolean {
+		// 基础字段匹配检查
+		if (localItem.type !== cloudItem.type) return false;
+		if (localItem.favorite !== cloudItem.favorite) return false;
+		if ((localItem.note || "") !== (cloudItem.note || "")) return false;
+
+		// 内容匹配检查（使用校验和）
+		const localChecksum = localItem.checksum || "";
+		const cloudChecksum = cloudItem.checksum || "";
+
+		if (localChecksum && cloudChecksum) {
+			// 如果双方都有校验和，优先使用校验和比较
+			return localChecksum === cloudChecksum;
+		}
+
+		// 如果没有校验和，使用内容比较
+		const localValue = localItem.value || "";
+		const cloudValue = cloudItem.value || "";
+
+		// 对于长内容，只比较前 1000 字符以提高性能
+		if (localValue.length > 1000 || cloudValue.length > 1000) {
+			return localValue.substring(0, 1000) === cloudValue.substring(0, 1000);
+		}
+
+		return localValue === cloudValue;
+	}
+
+	/**
 	 * 检查项目是否真的发生了变化
 	 * @param localItem 本地项目
 	 * @param cloudItem 云端项目
@@ -906,8 +975,8 @@ export class SyncEngine {
 
 	/**
 	 * 同步本地状态与云端存在性保持一致
-	 * 只要项目在云端存在且本地未删除，就应该标记为已同步
-	 * @param cloudSyncItems 云端同步项列表（完整数据，未经过滤）
+	 * 确保云端存在且匹配的本地项目状态正确
+	 * @param cloudSyncItems 参与同步的云端项目列表（已根据同步模式筛选）
 	 */
 	private async syncLocalStatusWithCloud(
 		cloudSyncItems: SyncItem[],
@@ -915,42 +984,43 @@ export class SyncEngine {
 		if (cloudSyncItems.length === 0) return;
 
 		try {
-			const { getHistoryData, batchUpdateSyncStatus } = await import(
+			const { batchUpdateSyncStatus, getHistoryData } = await import(
 				"@/database"
 			);
-			const localItems = await getHistoryData(true);
-
 			const mismatchedItems: Array<{ id: string; localStatus: string }> = [];
 
+			// 获取最新的本地数据（未经过滤）
+			const allLocalItems = await getHistoryData(true);
+
 			for (const cloudItem of cloudSyncItems) {
-				const localItem = localItems.find((item) => item.id === cloudItem.id);
+				const localItem = allLocalItems.find(
+					(item: any) => item.id === cloudItem.id,
+				);
 
 				if (localItem && !localItem.deleted) {
 					const localStatus = localItem.syncStatus || "none";
+					const isActuallySynced = this.isItemActuallySynced(
+						localItem,
+						cloudItem,
+					);
 
-					// 只要云端存在，本地就应该标记为已同步（反映云端存在性）
-					if (localStatus !== "synced") {
-						mismatchedItems.push({
-							id: cloudItem.id,
-							localStatus,
-						});
+					// 状态不匹配且项目实际已同步，需要更新状态
+					if (isActuallySynced && localStatus !== "synced") {
+						mismatchedItems.push({ id: cloudItem.id, localStatus });
 					}
 				}
 			}
 
+			// 批量更新状态不匹配的项目
 			if (mismatchedItems.length > 0) {
 				const itemsToSync = mismatchedItems.map((item) => item.id);
 				console.info(
-					`🔄 同步状态更新: ${mismatchedItems.length} 个项目标记为已同步`,
+					`🔄 状态更新: ${mismatchedItems.length} 个项目标记为已同步`,
 				);
-
-				const success = await batchUpdateSyncStatus(itemsToSync, "synced");
-				if (!success) {
-					console.error("❌ 同步项目状态失败");
-				}
+				await batchUpdateSyncStatus(itemsToSync, "synced");
 			}
 		} catch (error) {
-			console.error("❌ 同步本地状态与云端一致性失败:", error);
+			console.error("❌ 状态同步失败:", error);
 		}
 	}
 

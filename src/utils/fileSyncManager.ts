@@ -2,6 +2,7 @@ import { downloadFile, uploadFile } from "@/plugins/webdav";
 import type { WebDAVConfig } from "@/plugins/webdav";
 import { globalStore } from "@/stores/global";
 import type { HistoryItem, SyncItem } from "@/types/sync";
+import { resolveImagePath } from "@/utils/path";
 import { appDataDir, join } from "@tauri-apps/api/path";
 import { exists } from "@tauri-apps/plugin-fs";
 import { lstat } from "@tauri-apps/plugin-fs";
@@ -431,7 +432,19 @@ export class FileSyncManager {
 					value.includes("\\") ||
 					value.includes(".")
 				) {
-					filePaths.push(value);
+					// 对于图片类型，如果只是文件名，需要解析为完整路径
+					if (
+						originalItem.type === "image" &&
+						!value.includes("/") &&
+						!value.includes("\\")
+					) {
+						// 图片类型且只有文件名，使用 resolveImagePath 解析完整路径
+						const resolvedPath = resolveImagePath(value);
+						filePaths.push(resolvedPath);
+					} else {
+						// 其他情况直接使用原始路径
+						filePaths.push(value);
+					}
 				}
 			}
 		}

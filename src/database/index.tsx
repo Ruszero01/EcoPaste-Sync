@@ -436,16 +436,45 @@ export const cleanupDuplicateRecords = async () => {
 };
 
 /**
- * 清空历史记录表
+ * 重置整个数据库（强制清空并删除重建）
  */
-export const clearHistoryTable = async () => {
+export const resetDatabase = async () => {
 	try {
-		await executeSQL("DELETE FROM history;");
-		// 重置自增ID（如果有的话）
-		await executeSQL("VACUUM;");
+		// 1. 先尝试清空数据
+		try {
+			await executeSQL("DELETE FROM history;");
+			await executeSQL("VACUUM;");
+		} catch (error) {
+			console.warn("清空数据库表失败，继续删除文件:", error);
+		}
+
+		// 2. 关闭数据库连接
+		if (db) {
+			try {
+				await db.close();
+			} catch (error) {
+				console.warn("关闭数据库连接失败:", error);
+			}
+			db = null;
+		}
+
+		// 3. 删除数据库文件
+		const dbPath = await getSaveDatabasePath();
+		const { exists, remove } = await import("@tauri-apps/plugin-fs");
+
+		try {
+			if (await exists(dbPath)) {
+				await remove(dbPath);
+			}
+		} catch (error) {
+			console.warn("删除数据库文件失败:", error);
+		}
+
+		// 4. 重新初始化数据库
+		await initDatabase();
 		return true;
 	} catch (error) {
-		console.error("❌ 清空历史记录表失败:", error);
+		console.error("❌ 重置数据库失败:", error);
 		return false;
 	}
 };
@@ -530,34 +559,6 @@ export const getPendingSyncRecords = async (limit?: number) => {
 	} catch (error) {
 		console.error("❌ 获取待同步记录失败:", error);
 		return [];
-	}
-};
-
-/**
- * 重置整个数据库（删除并重新创建）
- */
-export const resetDatabase = async () => {
-	try {
-		// 关闭当前数据库连接
-		if (db) {
-			await db.close();
-			db = null;
-		}
-
-		// 删除数据库文件
-		const dbPath = await getSaveDatabasePath();
-		const { exists, remove } = await import("@tauri-apps/plugin-fs");
-
-		if (await exists(dbPath)) {
-			await remove(dbPath);
-		}
-
-		// 重新初始化数据库
-		await initDatabase();
-		return true;
-	} catch (error) {
-		console.error("❌ 重置数据库失败:", error);
-		return false;
 	}
 };
 
