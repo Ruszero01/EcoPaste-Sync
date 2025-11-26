@@ -58,10 +58,65 @@ export class SyncEngine {
 		cloudDataManager.setWebDAVConfig(config);
 		fileSyncManager.setWebDAVConfig(config);
 
+		// 修复版本升级后的同步状态问题
+		await this.fixSyncStatusAfterUpgrade();
+
 		const index = await cloudDataManager.downloadSyncIndex();
 		this.isInitialized = true;
 
 		return index !== null;
+	}
+
+	/**
+	 * 修复版本升级后的同步状态问题
+	 * 解决覆盖安装后所有数据被错误标记为已同步的问题
+	 */
+	private async fixSyncStatusAfterUpgrade(): Promise<void> {
+		if (!this.syncModeConfig) {
+			return; // 如果没有同步配置，跳过修复
+		}
+
+		try {
+			const { getHistoryData, batchUpdateSyncStatus } = await import(
+				"@/database"
+			);
+			const allItems = await getHistoryData(true);
+
+			// 找出同步状态异常的项目
+			const abnormalItems = allItems.filter((item) => {
+				// 如果项目显示为已同步，但实际不符合同步要求，需要修复
+				if (item.syncStatus === "synced") {
+					const isValidForSync =
+						localDataManager.filterLocalDataForSync(
+							[item],
+							this.syncModeConfig,
+							{ includeDeleted: false },
+						).length > 0;
+
+					return !isValidForSync;
+				}
+
+				// 如果同步状态为空或异常，也进行修复
+				if (!item.syncStatus || item.syncStatus === "") {
+					return true;
+				}
+
+				return false;
+			});
+
+			if (abnormalItems.length > 0) {
+				console.info(
+					`发现 ${abnormalItems.length} 个异常同步状态项目，正在修复...`,
+				);
+				await batchUpdateSyncStatus(
+					abnormalItems.map((item) => item.id),
+					"none",
+				);
+				console.info(`已修复 ${abnormalItems.length} 个异常同步状态项目`);
+			}
+		} catch (error) {
+			console.error("修复同步状态失败:", error);
+		}
 	}
 
 	setSyncModeConfig(config: SyncModeConfig): void {
@@ -71,9 +126,20 @@ export class SyncEngine {
 			if (configString === currentConfigString) return;
 		}
 
+		const previousConfig = this.syncModeConfig;
 		this.syncModeConfig = config;
 		this.clearCache();
 		cloudDataManager.clearCache();
+
+		// 检测是否发生了模式切换（特别是收藏模式的开关）
+		const modeChanged = this.hasSyncModeChanged(previousConfig, config);
+		if (modeChanged) {
+			console.info("🔄 检测到同步模式变更，触发全量同步");
+			// 在下一个事件循环中触发全量同步
+			setTimeout(() => {
+				this.triggerFullSyncAfterModeChange();
+			}, 100);
+		}
 	}
 
 	getDeviceId(): string {
@@ -81,11 +147,93 @@ export class SyncEngine {
 	}
 
 	/**
+	 * 检测同步模式是否发生重要变化
+	 * @param previousConfig 之前的配置
+	 * @param newConfig 新的配置
+	 * @returns 是否发生了重要变化
+	 */
+	private hasSyncModeChanged(
+		previousConfig: SyncModeConfig | null,
+		newConfig: SyncModeConfig | null,
+	): boolean {
+		if (!previousConfig || !newConfig) {
+			return true;
+		}
+
+		// 检查收藏模式是否发生变化
+		const previousFavoritesOnly =
+			previousConfig.settings?.onlyFavorites || false;
+		const newFavoritesOnly = newConfig.settings?.onlyFavorites || false;
+
+		if (previousFavoritesOnly !== newFavoritesOnly) {
+			return true;
+		}
+
+		// 检查内容类型设置是否发生变化
+		const previousTypes = {
+			includeText: previousConfig.settings?.includeText ?? true,
+			includeHtml: previousConfig.settings?.includeHtml ?? true,
+			includeRtf: previousConfig.settings?.includeRtf ?? true,
+			includeImages: previousConfig.settings?.includeImages ?? true,
+			includeFiles: previousConfig.settings?.includeFiles ?? true,
+		};
+
+		const newTypes = {
+			includeText: newConfig.settings?.includeText ?? true,
+			includeHtml: newConfig.settings?.includeHtml ?? true,
+			includeRtf: newConfig.settings?.includeRtf ?? true,
+			includeImages: newConfig.settings?.includeImages ?? true,
+			includeFiles: newConfig.settings?.includeFiles ?? true,
+		};
+
+		return JSON.stringify(previousTypes) !== JSON.stringify(newTypes);
+	}
+
+	/**
+	 * 模式变更后触发智能全量同步
+	 */
+	private async triggerFullSyncAfterModeChange(): Promise<void> {
+		if (!this.canSync() || !this.syncModeConfig) return;
+
+		try {
+			const { executeSQL, getHistoryData } = await import("@/database");
+
+			// 获取所有本地项目
+			const allItems = await getHistoryData(true);
+
+			// 重置已同步项目的状态，确保重新同步验证
+			const itemsToReset = allItems.filter(
+				(item) => item.syncStatus === "synced",
+			);
+
+			if (itemsToReset.length > 0) {
+				const itemIds = itemsToReset.map((item) => item.id);
+				const placeholders = itemIds.map(() => "?").join(",");
+
+				await executeSQL(
+					`UPDATE history SET syncStatus = 'none' WHERE id IN (${placeholders});`,
+					itemIds,
+				);
+
+				console.info(`🔄 模式变更：重置 ${itemsToReset.length} 个项目状态`);
+			}
+
+			// 触发同步事件
+			if (syncEventEmitter) {
+				syncEventEmitter();
+			}
+		} catch (error) {
+			console.error("🔄 模式变更后全量同步失败:", error);
+		}
+	}
+
+	/**
 	 * 执行完整的双向同步流程
-	 * 优化的统一流程设计：
-	 * 1. 根据文件模式筛选和过滤数据
-	 * 2. 同步数据（不包含文件内容）
-	 * 3. 按需处理文件包上传和下载
+	 * 重新设计：支持多设备不同同步模式的渐进式同步
+	 * 1. 筛选本地数据（基于当前模式）
+	 * 2. 筛选云端数据（基于当前模式）
+	 * 3. 执行模式感知的双向同步
+	 * 4. 保留所有云端数据，由各设备自行筛选使用
 	 */
 	async performBidirectionalSync(): Promise<SyncResult> {
 		if (this.syncInProgress) {
@@ -118,28 +266,39 @@ export class SyncEngine {
 			timestamp: startTime,
 		};
 
+		console.info("🚀 开始双向同步...");
+
 		try {
 			// 1. 获取原始本地数据（包含已删除的项目）
 			const localRawData = await getHistoryData(true);
 
-			// 2. 检测本地已删除的项目（软删除标记）
+			// 2. 检测本地已删除的项目
 			const localDeletedItems = localRawData.filter(
 				(item) => item.deleted === true || (item.deleted as any) === 1,
 			);
 
-			// 3. localDataManager 根据同步模式和文件限制筛选本地数据（不包括已删除的）
+			// 3. 根据同步模式筛选本地数据
 			let filteredLocalData = localDataManager.filterLocalDataForSync(
 				localRawData,
 				this.syncModeConfig,
 				{ includeDeleted: false },
 			);
 
+			console.info(
+				`📊 本地数据: 原始 ${localRawData.length} 项，筛选后 ${filteredLocalData.length} 项，删除 ${localDeletedItems.length} 项`,
+			);
+
 			// 4. cloudDataManager 检查云端是否有数据
 			const remoteIndex = await cloudDataManager.downloadSyncIndex();
 
-			// 5. cloudDataManager 筛选出云端符合条件的数据（不包括已删除的）
+			// 4. 获取云端数据
+			let allCloudSyncItems: SyncItem[] = [];
 			let cloudSyncItems: SyncItem[] = [];
+
 			if (remoteIndex) {
+				allCloudSyncItems = cloudDataManager.getAllCloudItems(remoteIndex, {
+					includeDeleted: false,
+				});
 				cloudSyncItems = cloudDataManager.filterCloudDataForSync(
 					remoteIndex,
 					this.syncModeConfig,
@@ -273,15 +432,19 @@ export class SyncEngine {
 				cloudResult.itemsToAdd.length > 0 ||
 				cloudResult.itemsToUpdate.length > 0
 			) {
+				console.info(
+					`📤 云端上传: 新增 ${cloudResult.itemsToAdd.length} 项, 更新 ${cloudResult.itemsToUpdate.length} 项`,
+				);
+
 				const uploadSuccess = await this.applyCloudChanges(cloudResult);
 				if (uploadSuccess) {
-					// 只计算数据上传，排除已删除项目避免重复计数
+					// 只计算实际需要上传的项目（新增项目 + 真正需要更新的项目）
 					const uploadedItemIds = [
 						...cloudResult.itemsToAdd.map((item) => item.id),
 						...cloudResult.itemsToUpdate.map((item) => item.id),
 					];
 
-					// 排除已删除的项目ID，避免重复计数
+					// 排除已删除项目ID，避免重复计数
 					const deletedItemIds = new Set(
 						localDeletedItems.map((item) => item.id),
 					);
@@ -289,11 +452,22 @@ export class SyncEngine {
 						(id) => !deletedItemIds.has(id),
 					);
 
-					result.uploaded = nonDeletedUploadedIds.length;
+					// 重新检查实际变更项目，避免重复计数
+					const actuallyUploadedIds = await this.filterActuallyChangedItems(
+						nonDeletedUploadedIds,
+						cloudResult,
+					);
 
-					// 上传成功后，更新本地项目的同步状态为"已同步"
-					await this.markItemsAsSynced(uploadedItemIds);
+					result.uploaded = actuallyUploadedIds.length;
+
+					// 上传成功后，同步本地状态与云端保持一致
+					await this.syncLocalStatusWithCloud(allCloudSyncItems);
+				} else {
+					console.error("❌ 云端上传失败");
 				}
+			} else {
+				// 确保本地状态与云端存在性保持一致
+				await this.syncLocalStatusWithCloud(allCloudSyncItems);
 			}
 
 			// 13. 添加文件包上传结果（独立于数据上传计数）
@@ -305,16 +479,26 @@ export class SyncEngine {
 			// 14. 同步书签数据
 			await this.syncBookmarks();
 
+			// 15. 清理云端明确需要删除的数据（仅限本地已删除的项目）
+			// 注意：不进行模式清理，避免删除其他设备的有效数据
+
 			try {
 				emit(LISTEN_KEY.REFRESH_CLIPBOARD_LIST);
 			} catch {}
 
 			result.success = true;
 			this.lastSyncTime = Date.now();
+
+			if (result.uploaded > 0 || result.downloaded > 0 || result.deleted > 0) {
+				console.info(
+					`✅ 同步完成: 上传 ${result.uploaded} 项，下载 ${result.downloaded} 项，删除 ${result.deleted} 项`,
+				);
+			}
 		} catch (error) {
 			result.errors.push(
 				`同步异常: ${error instanceof Error ? error.message : String(error)}`,
 			);
+			console.error("❌ 同步失败:", error);
 		} finally {
 			this.syncInProgress = false;
 		}
@@ -645,23 +829,128 @@ export class SyncEngine {
 	}
 
 	/**
-	 * 标记项目为已同步状态
-	 * @param itemIds 要标记的项目ID列表
+	 * 过滤真正发生变更的项目，避免重复计数
+	 * @param itemIds 要检查的项目ID列表
+	 * @param cloudResult 云端同步结果
+	 * @returns 真正需要上传的项目ID列表
 	 */
-	private async markItemsAsSynced(itemIds: string[]): Promise<void> {
+	private async filterActuallyChangedItems(
+		itemIds: string[],
+		cloudResult: {
+			itemsToAdd: SyncItem[];
+			itemsToUpdate: SyncItem[];
+			itemsToDelete: string[];
+		},
+	): Promise<string[]> {
 		if (itemIds.length === 0) {
-			return;
+			console.info("🔍 filterActuallyChangedItems: 没有项目需要检查");
+			return [];
 		}
 
 		try {
-			const { batchUpdateSyncStatus } = await import("@/database");
+			const { getHistoryData } = await import("@/database");
+			const localData = await getHistoryData(true);
 
-			const success = await batchUpdateSyncStatus(itemIds, "synced");
-			if (success) {
-				console.info(`已标记 ${itemIds.length} 个项目为已同步状态`);
+			const actuallyChangedIds: string[] = [];
+
+			for (const itemId of itemIds) {
+				// 检查是否为新增项目
+				const isAddItem = cloudResult.itemsToAdd.some(
+					(item) => item.id === itemId,
+				);
+				if (isAddItem) {
+					actuallyChangedIds.push(itemId);
+					continue;
+				}
+
+				// 检查是否为更新项目
+				const updateItem = cloudResult.itemsToUpdate.find(
+					(item) => item.id === itemId,
+				);
+				if (updateItem) {
+					const localItem = localData.find((item) => item.id === itemId);
+					if (localItem) {
+						const hasChanges = this.hasItemActuallyChanged(
+							localItem,
+							updateItem,
+						);
+						if (hasChanges) {
+							actuallyChangedIds.push(itemId);
+						}
+					}
+				}
+			}
+
+			return actuallyChangedIds;
+		} catch (error) {
+			console.error("❌ 过滤实际变更项目失败:", error);
+			return itemIds;
+		}
+	}
+
+	/**
+	 * 检查项目是否真的发生了变化
+	 * @param localItem 本地项目
+	 * @param cloudItem 云端项目
+	 * @returns 是否发生了变化
+	 */
+	private hasItemActuallyChanged(localItem: any, cloudItem: SyncItem): boolean {
+		// 检查关键字段是否发生变化
+		if (localItem.favorite !== cloudItem.favorite) return true;
+		if ((localItem.note || "") !== (cloudItem.note || "")) return true;
+		if ((localItem.value || "") !== (cloudItem.value || "")) return true;
+		if ((localItem.checksum || "") !== (cloudItem.checksum || "")) return true;
+
+		return false;
+	}
+
+	/**
+	 * 同步本地状态与云端存在性保持一致
+	 * 只要项目在云端存在且本地未删除，就应该标记为已同步
+	 * @param cloudSyncItems 云端同步项列表（完整数据，未经过滤）
+	 */
+	private async syncLocalStatusWithCloud(
+		cloudSyncItems: SyncItem[],
+	): Promise<void> {
+		if (cloudSyncItems.length === 0) return;
+
+		try {
+			const { getHistoryData, batchUpdateSyncStatus } = await import(
+				"@/database"
+			);
+			const localItems = await getHistoryData(true);
+
+			const mismatchedItems: Array<{ id: string; localStatus: string }> = [];
+
+			for (const cloudItem of cloudSyncItems) {
+				const localItem = localItems.find((item) => item.id === cloudItem.id);
+
+				if (localItem && !localItem.deleted) {
+					const localStatus = localItem.syncStatus || "none";
+
+					// 只要云端存在，本地就应该标记为已同步（反映云端存在性）
+					if (localStatus !== "synced") {
+						mismatchedItems.push({
+							id: cloudItem.id,
+							localStatus,
+						});
+					}
+				}
+			}
+
+			if (mismatchedItems.length > 0) {
+				const itemsToSync = mismatchedItems.map((item) => item.id);
+				console.info(
+					`🔄 同步状态更新: ${mismatchedItems.length} 个项目标记为已同步`,
+				);
+
+				const success = await batchUpdateSyncStatus(itemsToSync, "synced");
+				if (!success) {
+					console.error("❌ 同步项目状态失败");
+				}
 			}
 		} catch (error) {
-			console.error("标记已同步状态失败:", error);
+			console.error("❌ 同步本地状态与云端一致性失败:", error);
 		}
 	}
 

@@ -35,6 +35,9 @@ export interface HistoryItem extends BaseClipboardItem {
 	count?: number; // 使用次数
 	lastModified?: number; // 最后修改时间
 	deviceId?: string; // 创建设备ID
+	// 同步状态字段
+	syncStatus?: "none" | "synced" | "syncing" | "error"; // 同步状态
+	isCloudData?: boolean; // 是否为云端数据
 }
 
 /**

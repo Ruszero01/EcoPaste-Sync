@@ -166,8 +166,13 @@ export const selectSQL = async <List,>(
 		lazyDownload: Boolean(item.lazyDownload),
 		isCloudData: Boolean(item.isCloudData),
 		isCode: Boolean(item.isCode),
-		// 如果没有syncStatus，默认为'none'
-		syncStatus: item.syncStatus || "none",
+		// 确保同步状态的有效性，只允许有效的状态值
+		syncStatus:
+			item.syncStatus === "synced" ||
+			item.syncStatus === "syncing" ||
+			item.syncStatus === "error"
+				? item.syncStatus
+				: "none",
 	}));
 
 	return processedList as List;
@@ -598,7 +603,13 @@ export const getHistoryData = async (includeDeleted = false) => {
 			lazyDownload: Boolean(item.lazyDownload),
 			isCloudData: Boolean(item.isCloudData),
 			isCode: Boolean(item.isCode),
-			syncStatus: item.syncStatus || "none", // 确保有默认值
+			// 确保同步状态的有效性，只允许有效的状态值
+			syncStatus:
+				item.syncStatus === "synced" ||
+				item.syncStatus === "syncing" ||
+				item.syncStatus === "error"
+					? item.syncStatus
+					: "none",
 		}));
 	} else {
 		// 只获取未删除项
@@ -614,7 +625,13 @@ export const getHistoryData = async (includeDeleted = false) => {
 			lazyDownload: Boolean(item.lazyDownload),
 			isCloudData: Boolean(item.isCloudData),
 			isCode: Boolean(item.isCode),
-			syncStatus: item.syncStatus || "none", // 确保有默认值
+			// 确保同步状态的有效性，只允许有效的状态值
+			syncStatus:
+				item.syncStatus === "synced" ||
+				item.syncStatus === "syncing" ||
+				item.syncStatus === "error"
+					? item.syncStatus
+					: "none",
 		}));
 	}
 

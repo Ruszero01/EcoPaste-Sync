@@ -65,7 +65,7 @@ export class CloudDataManager {
 				}
 			}
 		} catch (error) {
-			console.warn("下载云端同步数据失败:", error);
+			console.error("❌ 下载云端同步数据失败:", error);
 		}
 
 		return null;
@@ -80,8 +80,6 @@ export class CloudDataManager {
 		try {
 			const filePath = this.getFullPath("sync-data.json");
 			const jsonData = JSON.stringify(index, null, 2);
-			console.info(`上传云端索引，包含 ${index.items.length} 个项目`);
-
 			const result = await uploadSyncData(
 				this.webdavConfig,
 				filePath,
@@ -91,13 +89,12 @@ export class CloudDataManager {
 			if (result.success) {
 				this.cachedIndex = index;
 				this.indexCacheTime = Date.now();
-				console.info("云端索引上传成功");
 				return true;
 			} else {
-				console.error(`云端索引上传失败: ${result.error_message}`);
+				console.error(`❌ 云端索引上传失败: ${result.error_message}`);
 			}
 		} catch (error) {
-			console.error("云端索引上传异常:", error);
+			console.error("❌ 云端索引上传异常:", error);
 		}
 
 		return false;
@@ -352,17 +349,12 @@ export class CloudDataManager {
 
 		try {
 			// 1. 更新云端索引，直接移除已删除的项目
-			console.info(`开始更新云端索引，要删除的项目: ${itemIds.join(", ")}`);
 			const currentIndex = await this.downloadSyncIndex();
 
 			if (currentIndex) {
-				console.info(`当前云端索引有 ${currentIndex.items.length} 个项目`);
-
 				const updatedItems = currentIndex.items.filter(
 					(item) => !itemIds.includes(item.id),
 				);
-
-				console.info(`过滤后的云端索引有 ${updatedItems.length} 个项目`);
 
 				// 创建更新后的索引
 				const updatedIndex: CloudSyncIndex = {
@@ -377,21 +369,20 @@ export class CloudDataManager {
 				updatedIndex.dataChecksum = this.calculateIndexChecksum(updatedIndex);
 				updatedIndex.statistics = this.calculateStatistics(updatedIndex);
 
-				console.info(`准备上传更新后的云端索引，包含 ${updatedIndex.items.length} 个项目`);
 				const indexUpdateSuccess = await this.uploadSyncIndex(updatedIndex);
 
 				if (indexUpdateSuccess) {
 					successCount = itemIds.length;
-					console.info(`云端索引更新成功，成功删除 ${successCount} 个项目`);
+					console.info(`🗑️ 云端删除成功: ${successCount} 个项目`);
 				} else {
 					failedCount = itemIds.length;
 					errors.push("更新云端索引失败");
-					console.error(`云端索引更新失败，无法删除 ${itemIds.length} 个项目`);
+					console.error(`❌ 云端删除失败: ${itemIds.length} 个项目`);
 				}
 			} else {
 				failedCount = itemIds.length;
 				errors.push("无法获取云端索引");
-				console.error(`无法获取云端索引，删除操作失败`);
+				console.error(`❌ 云端删除失败: 无法获取索引`);
 			}
 		} catch (error) {
 			failedCount = itemIds.length;
@@ -480,14 +471,160 @@ export class CloudDataManager {
 			}));
 		}
 
-		// 根据同步模式过滤数据
-		const filteredItems = filterItemsBySyncMode(
-			cloudItems as any[], // 需要类型转换，因为 filterItemsBySyncMode 需要 HistoryItem[]
+		// 使用专门的云端数据筛选逻辑，不考虑syncStatus（云端数据没有此字段）
+		const filteredItems = this.filterCloudItemsBySyncMode(
+			cloudItems,
 			syncConfig,
 			options,
 		);
 
-		return filteredItems.map((item) => item as SyncItem);
+		return filteredItems;
+	}
+
+	/**
+	 * 获取所有云端数据（不进行模式过滤）
+	 * @param remoteIndex 云端索引
+	 * @param options 过滤选项
+	 * @returns 所有云端同步项数据
+	 */
+	getAllCloudItems(
+		remoteIndex: CloudSyncIndex | null,
+		options: { includeDeleted?: boolean } = {},
+	): SyncItem[] {
+		if (!remoteIndex || !remoteIndex.items.length) {
+			return [];
+		}
+
+		const { includeDeleted = false } = options;
+
+		// 检查是否为新格式（包含完整的SyncItem数据）
+		const isNewFormat =
+			remoteIndex.items[0].value !== undefined &&
+			typeof remoteIndex.items[0].value === "string" &&
+			remoteIndex.items[0].count !== undefined;
+
+		let cloudItems: SyncItem[];
+
+		if (isNewFormat) {
+			// 新格式：直接使用完整的SyncItem数据
+			cloudItems = remoteIndex.items.map((item) => ({
+				id: item.id,
+				type: item.type,
+				value: item.value, // 完整的value字段内容
+				search: item.search || "",
+				createTime:
+					item.createTime ||
+					new Date(item.lastModified || Date.now()).toISOString(),
+				lastModified: item.lastModified || Date.now(),
+				favorite: item.favorite,
+				note: item.note || "",
+				checksum: item.checksum,
+				size: item.size || 0,
+				deviceId: item.deviceId || "",
+				group: this.determineGroup(item.type),
+				count: item.count || 0,
+				width: item.width || 0,
+				height: item.height || 0,
+				subtype: item.subtype,
+				deleted: item.deleted || false,
+			}));
+		} else {
+			// 旧格式：从指纹转换为SyncItem（兼容性处理）
+			cloudItems = remoteIndex.items.map((item: any) => ({
+				id: item.id,
+				type: item.type,
+				value: item.value || "", // 指纹中的基本元数据
+				search: "",
+				createTime: new Date(item.timestamp).toISOString(),
+				lastModified: item.timestamp,
+				favorite: item.favorite,
+				note: item.note || "",
+				checksum: item.checksum,
+				size: item.size || 0,
+				deviceId: "",
+				group: this.determineGroup(item.type),
+				count: 0,
+				deleted: item.deleted || false,
+			}));
+		}
+
+		// 只过滤删除状态，不进行模式过滤
+		return cloudItems.filter((item) => {
+			// 删除状态过滤
+			if (
+				!includeDeleted &&
+				(item.deleted === true || item.deleted === true)
+			) {
+				return false;
+			}
+			return true;
+		});
+	}
+
+	/**
+	 * 根据同步模式配置筛选云端数据
+	 * 云端数据筛选逻辑：只考虑同步模式，不考虑syncStatus
+	 * @param items 云端数据项
+	 * @param syncConfig 同步模式配置
+	 * @param options 过滤选项
+	 * @returns 过滤后的数据
+	 */
+	private filterCloudItemsBySyncMode(
+		items: SyncItem[],
+		syncConfig: SyncModeConfig | null,
+		options: { includeDeleted?: boolean } = {},
+	): SyncItem[] {
+		if (!syncConfig?.settings) {
+			return items;
+		}
+
+		const { includeDeleted = false } = options;
+		const settings = syncConfig.settings;
+
+		return items.filter((item) => {
+			// 1. 删除状态过滤
+			if (
+				!includeDeleted &&
+				(item.deleted === true || item.deleted === true)
+			) {
+				return false;
+			}
+
+			// 2. 收藏模式过滤
+			if (settings.onlyFavorites) {
+				if (!item.favorite) {
+					return false;
+				}
+			}
+
+			// 3. 内容类型过滤
+			let typeAllowed = true;
+			switch (item.type) {
+				case "text":
+					typeAllowed = settings.includeText;
+					break;
+				case "html":
+					typeAllowed = settings.includeHtml;
+					break;
+				case "rtf":
+					typeAllowed = settings.includeRtf;
+					break;
+				case "image":
+					typeAllowed = settings.includeImages;
+					break;
+				case "files":
+					typeAllowed = settings.includeFiles;
+					break;
+				default:
+					typeAllowed = true;
+			}
+
+			if (!typeAllowed) {
+				return false;
+			}
+
+			return true;
+		});
 	}
 
 	/**
