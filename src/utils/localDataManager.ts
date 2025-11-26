@@ -42,9 +42,18 @@ export const filterItemsBySyncMode = (
 	const settings = syncConfig.settings;
 
 	return items.filter((item) => {
-		// 1. 同步状态过滤 - 只同步需要同步的条目
+		// 1. 同步状态过滤 - 简化逻辑
+		// 允许未同步的项目（syncStatus为空、none）参与同步
+		// 已同步的项目（synced）需要符合同步模式才参与验证
 		if (item.syncStatus && item.syncStatus !== "none") {
-			return false;
+			// 已同步的项目，检查是否符合同步模式
+			const isFavorite = item.favorite;
+			const isInFavoritesMode = syncConfig?.settings?.onlyFavorites;
+
+			// 收藏模式下，只有收藏的已同步项目参与验证
+			if (isInFavoritesMode && !isFavorite) {
+				return false;
+			}
 		}
 
 		// 2. 删除状态过滤
@@ -56,12 +65,13 @@ export const filterItemsBySyncMode = (
 		}
 
 		// 3. 收藏模式过滤
-		if (settings.onlyFavorites) {
-			// syncFavoriteChanges 只影响收藏状态变化的同步行为，不影响收藏模式的筛选逻辑
+		if (syncConfig?.settings?.onlyFavorites) {
+			// 收藏模式：只同步收藏的项目
 			if (!item.favorite) {
 				return false;
 			}
 		}
+		// 注意：非收藏模式不在这里过滤，让所有项目都参与同步
 
 		// 4. 内容类型过滤
 		let typeAllowed = true;
