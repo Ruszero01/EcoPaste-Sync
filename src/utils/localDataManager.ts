@@ -709,64 +709,96 @@ export class LocalDataManager {
 		if (newItems.length > 0) {
 			console.info(`📝 数据库: 新增 ${newItems.length} 个项目`);
 
-			const insertPromises = newItems.map(async (item) => {
-				try {
-					const insertItem = {
-						id: item.id,
-						type: item.type,
-						group: item.group,
-						value: item.value || "",
-						search: item.search || "",
-						count: item.count || 0,
-						width: item.width,
-						height: item.height,
-						favorite: item.favorite ? 1 : 0,
-						createTime: item.createTime,
-						note: item.note || "",
-						subtype: item.subtype as any, // 类型断言以兼容数据库约束
-						deleted: item.deleted ? 1 : 0,
-						syncStatus: "synced", // 从云端下载的新数据标记为已同步
-						isCloudData: 1, // 标记为云端数据
-					} as any; // 类型断言以处理boolean到integer的转换
+			// 分批处理，避免一次性操作过多数据导致性能问题
+			const batchSize = 50;
+			const batches: Array<typeof newItems> = [];
 
-					const { insertWithDeduplicationForSync } = await import("@/database");
-					await insertWithDeduplicationForSync("history", insertItem);
-				} catch (error) {
-					console.error(`插入项目失败 (${item.id}):`, error);
-				}
-			});
+			for (let i = 0; i < newItems.length; i += batchSize) {
+				batches.push(newItems.slice(i, i + batchSize));
+			}
 
-			await Promise.allSettled(insertPromises);
+			for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+				const batch = batches[batchIndex];
+				console.info(
+					`📝 处理批次 ${batchIndex + 1}/${batches.length} (${batch.length} 项)`,
+				);
+
+				const insertPromises = batch.map(async (item) => {
+					try {
+						const insertItem = {
+							id: item.id,
+							type: item.type,
+							group: item.group,
+							value: item.value || "",
+							search: item.search || "",
+							count: item.count || 0,
+							width: item.width,
+							height: item.height,
+							favorite: item.favorite ? 1 : 0,
+							createTime: item.createTime,
+							note: item.note || "",
+							subtype: item.subtype as any, // 类型断言以兼容数据库约束
+							deleted: item.deleted ? 1 : 0,
+							syncStatus: "synced", // 从云端下载的新数据标记为已同步
+							isCloudData: 1, // 标记为云端数据
+						} as any; // 类型断言以处理boolean到integer的转换
+
+						const { insertWithDeduplicationForSync } = await import(
+							"@/database"
+						);
+						await insertWithDeduplicationForSync("history", insertItem);
+					} catch (error) {
+						console.error(`插入项目失败 (${item.id}):`, error);
+					}
+				});
+
+				await Promise.allSettled(insertPromises);
+			}
 		}
 
 		// 处理更新项目 - 只更新内容字段，不强制设置同步状态
 		if (updatedItems.length > 0) {
 			console.info(`📝 数据库: 更新 ${updatedItems.length} 个现有项目`);
 
-			const updatePromises = updatedItems.map(async (item) => {
-				try {
-					const updateItem = {
-						id: item.id,
-						type: item.type,
-						group: item.group,
-						value: item.value || "",
-						search: item.search || "",
-						favorite: item.favorite ? 1 : 0,
-						note: item.note?.trim() || "",
-						subtype: item.subtype as any, // 类型断言以兼容数据库约束
-						deleted: item.deleted ? 1 : 0,
-						// 关键修复：不强制设置 syncStatus，保持原有状态
-						// syncStatus: "synced", // 移除强制标记
-						isCloudData: 1, // 标记为云端数据
-					} as any; // 类型断言以处理boolean到integer的转换
+			// 分批处理，避免一次性操作过多数据导致性能问题
+			const batchSize = 50;
+			const batches: Array<typeof updatedItems> = [];
 
-					await updateSQL("history", updateItem);
-				} catch (error) {
-					console.error(`更新项目失败 (${item.id}):`, error);
-				}
-			});
+			for (let i = 0; i < updatedItems.length; i += batchSize) {
+				batches.push(updatedItems.slice(i, i + batchSize));
+			}
 
-			await Promise.allSettled(updatePromises);
+			for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+				const batch = batches[batchIndex];
+				console.info(
+					`📝 处理更新批次 ${batchIndex + 1}/${batches.length} (${batch.length} 项)`,
+				);
+
+				const updatePromises = batch.map(async (item) => {
+					try {
+						const updateItem = {
+							id: item.id,
+							type: item.type,
+							group: item.group,
+							value: item.value || "",
+							search: item.search || "",
+							favorite: item.favorite ? 1 : 0,
+							note: item.note?.trim() || "",
+							subtype: item.subtype as any, // 类型断言以兼容数据库约束
+							deleted: item.deleted ? 1 : 0,
+							// 关键修复：不强制设置 syncStatus，保持原有状态
+							// syncStatus: "synced", // 移除强制标记
+							isCloudData: 1, // 标记为云端数据
+						} as any; // 类型断言以处理boolean到integer的转换
+
+						await updateSQL("history", updateItem);
+					} catch (error) {
+						console.error(`更新项目失败 (${item.id}):`, error);
+					}
+				});
+
+				await Promise.allSettled(updatePromises);
+			}
 		}
 	}
 

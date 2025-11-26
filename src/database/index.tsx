@@ -444,16 +444,16 @@ export const resetDatabase = async () => {
 		try {
 			await executeSQL("DELETE FROM history;");
 			await executeSQL("VACUUM;");
-		} catch (_error) {
-			// 忽略清空失败，继续删除文件
+		} catch (error) {
+			console.warn("清空数据库表失败，继续删除文件:", error);
 		}
 
 		// 2. 关闭数据库连接
 		if (db) {
 			try {
 				await db.close();
-			} catch (_error) {
-				// 忽略关闭失败
+			} catch (error) {
+				console.warn("关闭数据库连接失败:", error);
 			}
 			db = null;
 		}
@@ -466,8 +466,8 @@ export const resetDatabase = async () => {
 			if (await exists(dbPath)) {
 				await remove(dbPath);
 			}
-		} catch (_error) {
-			// 忽略删除失败
+		} catch (error) {
+			console.warn("删除数据库文件失败:", error);
 		}
 
 		// 4. 重新初始化数据库

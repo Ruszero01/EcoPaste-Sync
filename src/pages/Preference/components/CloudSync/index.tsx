@@ -255,8 +255,9 @@ const CloudSync = () => {
 								setTimeout(() => {
 									syncEngine.setSyncModeConfig(syncModeConfigRef.current);
 								}, 100);
-							} catch (_initError) {
+							} catch (initError) {
 								// 如果初始化失败，重新测试连接
+								console.warn("同步引擎初始化失败，重新测试连接:", initError);
 								await validateConnectionStatus(storeConfig);
 							}
 						} else {
@@ -504,8 +505,9 @@ const CloudSync = () => {
 			const timeoutId = setTimeout(() => {
 				try {
 					syncEngine.setSyncModeConfig(syncModeConfig);
-				} catch (_error) {
+				} catch (error) {
 					// 同步引擎尚未初始化，配置将在引擎初始化后应用
+					console.debug("同步引擎尚未初始化:", error);
 				}
 			}, 300); // 300ms 防抖，避免快速连续更新
 			return () => clearTimeout(timeoutId);
@@ -539,7 +541,9 @@ const CloudSync = () => {
 	useEffect(() => {
 		if (connectionStatus === "success" && cloudSyncStore.serverConfig?.url) {
 			try {
-				configSync.initialize(cloudSyncStore.serverConfig);
+				if (cloudSyncStore.serverConfig) {
+					configSync.initialize(cloudSyncStore.serverConfig);
+				}
 			} catch (error) {
 				console.error("配置同步初始化失败:", error);
 			}
@@ -564,6 +568,11 @@ const CloudSync = () => {
 	const testWebDAVConnection = async () => {
 		setConnectionStatus("testing");
 		try {
+			if (!cloudSyncStore.serverConfig) {
+				appMessage.error("WebDAV配置为空");
+				setConnectionStatus("failed");
+				return;
+			}
 			const result = await testConnection(cloudSyncStore.serverConfig);
 			if (result.success) {
 				setConnectionStatus("success");
@@ -621,6 +630,7 @@ const CloudSync = () => {
 
 		// 检查WebDAV配置是否有效
 		if (
+			!cloudSyncStore.serverConfig ||
 			!cloudSyncStore.serverConfig.url ||
 			!cloudSyncStore.serverConfig.username ||
 			!cloudSyncStore.serverConfig.password
@@ -874,7 +884,7 @@ const CloudSync = () => {
 					form={form}
 					layout="vertical"
 					onFinish={handleConfigSubmit}
-					initialValues={cloudSyncStore.serverConfig}
+					initialValues={cloudSyncStore.serverConfig || {}}
 				>
 					{/* 服务器地址 */}
 					<ProListItem title="服务器地址">

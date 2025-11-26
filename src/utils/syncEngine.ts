@@ -517,7 +517,9 @@ export class SyncEngine {
 
 			try {
 				emit(LISTEN_KEY.REFRESH_CLIPBOARD_LIST);
-			} catch {}
+			} catch (error) {
+				console.warn("刷新剪贴板列表失败:", error);
+			}
 
 			result.success = true;
 			this.lastSyncTime = Date.now();
