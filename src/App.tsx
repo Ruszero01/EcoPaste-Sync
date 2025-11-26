@@ -44,7 +44,11 @@ const App = () => {
 	});
 
 	// 监听语言的变化
-	useImmediateKey(globalStore.appearance, "language", i18n.changeLanguage);
+	useImmediateKey(globalStore.appearance, "language", (language) => {
+		if (typeof language === "string") {
+			i18n.changeLanguage(language);
+		}
+	});
 
 	// 监听是否是暗黑模式
 	useImmediateKey(globalStore.appearance, "isDark", (value) => {

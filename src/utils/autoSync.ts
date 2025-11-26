@@ -149,6 +149,7 @@ class AutoSyncManager {
 	 * 初始化自动同步
 	 */
 	async initialize(config: Partial<AutoSyncConfig>): Promise<void> {
+		const oldConfig = { ...this.config };
 		this.config = { ...this.config, ...config };
 
 		try {
@@ -158,6 +159,9 @@ class AutoSyncManager {
 			}
 		} catch (error) {
 			console.error("❌ 自动同步初始化失败:", error);
+			// 恢复到旧配置
+			this.config = oldConfig;
+			throw error;
 		}
 	}
 

@@ -1,6 +1,7 @@
 import type { WebDAVConfig } from "@/plugins/webdav";
 import { downloadSyncData, uploadSyncData } from "@/plugins/webdav";
 import type { Store } from "@/types/store.d";
+import { type SyncInterval, autoSync } from "@/utils/autoSync";
 import { getSaveStorePath } from "@/utils/path";
 import { restoreStore, saveStore } from "@/utils/store";
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
@@ -79,7 +80,26 @@ export class ConfigSync {
 		}
 
 		try {
-			// 1. 从云端下载配置
+			// 1. 读取当前本地配置，保存重要信息
+			const configPath = await getSaveStorePath();
+			let localConfigData: Store;
+
+			try {
+				const localConfigContent = await readTextFile(configPath);
+				localConfigData = JSON.parse(localConfigContent) as Store;
+			} catch (readError) {
+				console.error("读取本地配置失败:", readError);
+				return {
+					success: false,
+					message: "读取本地配置失败",
+				};
+			}
+
+			// 保存本地服务器配置信息
+			const localServerConfig =
+				localConfigData.globalStore?.cloudSync?.serverConfig;
+
+			// 2. 从云端下载配置
 			const remotePath = `${this.webdavConfig.path}/store-config.json`;
 			const downloadResult = await downloadSyncData(
 				this.webdavConfig,
@@ -93,7 +113,7 @@ export class ConfigSync {
 				};
 			}
 
-			// 2. 解析云端配置
+			// 3. 解析云端配置
 			if (!downloadResult.data) {
 				return {
 					success: false,
@@ -111,19 +131,36 @@ export class ConfigSync {
 				};
 			}
 
-			// 3. 应用云端配置到本地文件
-			const configPath = await getSaveStorePath();
-			await writeTextFile(
-				configPath,
-				JSON.stringify(remoteConfigData, null, 2),
+			// 4. 合并配置：应用云端配置，但保留本地服务器配置信息
+			const mergedConfig = this.mergeRemoteConfigWithLocalSettings(
+				remoteConfigData,
+				localServerConfig,
 			);
 
-			// 4. 重新加载配置到store
+			// 5. 应用合并后的配置到本地文件
+			await writeTextFile(configPath, JSON.stringify(mergedConfig, null, 2));
+
+			// 6. 重新加载配置到store
 			await this.reloadStore();
+
+			// 7. 重新初始化自动同步以确保新的配置生效
+			try {
+				if (mergedConfig.globalStore?.cloudSync?.autoSyncSettings) {
+					const { enabled, intervalHours } =
+						mergedConfig.globalStore.cloudSync.autoSyncSettings;
+					// 确保intervalHours符合SyncInterval类型
+					const validInterval: SyncInterval = intervalHours as SyncInterval;
+					await autoSync.initialize({ enabled, intervalHours: validInterval });
+				}
+			} catch (error) {
+				console.error("⚠️ ConfigSync: 自动同步重新初始化失败:", error);
+				// 静默处理自动同步重新初始化失败，不影响配置同步的成功状态
+				// 自动同步功能可以稍后在CloudSync组件中重新初始化
+			}
 
 			return {
 				success: true,
-				message: "云端配置已应用",
+				message: "云端配置已应用，服务器配置保持不变，自动同步已重新初始化",
 			};
 		} catch (error) {
 			return {
@@ -146,23 +183,45 @@ export class ConfigSync {
 			filtered.globalStore.env = {};
 		}
 
-		// 2. 移除运行时状态和临时数据
+		// 2. 移除运行时状态和服务器配置信息，但保留用户偏好
 		if (filtered.globalStore?.cloudSync) {
 			const { cloudSync } = filtered.globalStore;
+
+			// 保存用户偏好配置（这些应该被同步）
+			const userAutoSyncSettings = cloudSync.autoSyncSettings;
+			const userSyncModeConfig = cloudSync.syncModeConfig;
+			const userFileSync = cloudSync.fileSync;
 
 			// 移除运行时状态，重新设置为默认值
 			cloudSync.lastSyncTime = 0;
 			cloudSync.isSyncing = false;
 
-			// WebDAV密码等敏感信息可以选择不同步，或者加密后同步
-			// 这里我们保留所有配置，但移除密码（出于安全考虑）
-			if (cloudSync.serverConfig) {
-				// 不同步密码，密码信息需要用户在每个设备上单独配置
-				cloudSync.serverConfig.password = "";
+			// 完全移除服务器配置信息，不应该同步到云端
+			// 理由：
+			// 1. 先有鸡还是先有蛋的问题：必须先配置服务器才能同步
+			// 2. 安全性考虑：密码等敏感信息不应同步
+			// 3. 避免覆盖：云端配置会覆盖本地服务器配置，导致连接失败
+			cloudSync.serverConfig = {
+				url: "",
+				username: "",
+				password: "",
+				path: "",
+				timeout: 30000, // 默认超时时间
+			};
+
+			// 恢复用户偏好配置（这些是重要的，需要同步）
+			if (userAutoSyncSettings) {
+				cloudSync.autoSyncSettings = { ...userAutoSyncSettings };
+			}
+			if (userSyncModeConfig) {
+				cloudSync.syncModeConfig = { ...userSyncModeConfig };
+			}
+			if (userFileSync) {
+				cloudSync.fileSync = { ...userFileSync };
 			}
 		}
 
-		// 4. 移除剪贴板存储中的临时状态
+		// 3. 移除剪贴板存储中的临时状态
 		if (filtered.clipboardStore?.internalCopy) {
 			filtered.clipboardStore.internalCopy = {
 				isCopying: false,
@@ -170,13 +229,14 @@ export class ConfigSync {
 			};
 		}
 
-		// 5. 移除不必要同步的配置项（这些配置通常是设备特定的）
+		// 4. 移除设备特定的配置项
 		if (filtered.globalStore?.app) {
 			const { app } = filtered.globalStore;
 			// autoStart 和 showTaskbarIcon 是平台相关的，不同设备可能有不同设置
-			// 保留用户的主观偏好设置
-			(app as any).autoStart = undefined;
-			(app as any).showTaskbarIcon = undefined;
+			// 保留用户的主观偏好设置，但重置为默认值避免冲突
+			app.autoStart = false; // 默认值
+			app.showTaskbarIcon = true; // 默认值
+			app.silentStart = false; // 默认值
 		}
 
 		return filtered;
@@ -187,6 +247,26 @@ export class ConfigSync {
 	 */
 	private async reloadStore(): Promise<void> {
 		await restoreStore();
+	}
+
+	/**
+	 * 合并云端配置和本地服务器配置
+	 */
+	private mergeRemoteConfigWithLocalSettings(
+		remoteConfig: Store,
+		localServerConfig: any,
+	): Store {
+		const merged = JSON.parse(JSON.stringify(remoteConfig)) as Store;
+
+		// 保留本地服务器配置信息，避免云端空配置覆盖本地设置
+		if (merged.globalStore?.cloudSync && localServerConfig) {
+			// 只有当本地服务器配置存在时才保留
+			if (localServerConfig.url || localServerConfig.username) {
+				merged.globalStore.cloudSync.serverConfig = { ...localServerConfig };
+			}
+		}
+
+		return merged;
 	}
 }
 

@@ -380,13 +380,8 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 							});
 
 						if (!hasChanged) {
-							console.info("🔄 书签数据无变化，跳过UI刷新");
 							return prevGroups;
 						}
-
-						console.info(
-							`🔄 书签数据已更新，UI将刷新: ${prevGroups.length} -> ${customGroups.length}个分组`,
-						);
 						return customGroups;
 					});
 

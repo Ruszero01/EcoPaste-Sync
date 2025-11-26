@@ -505,9 +505,8 @@ const CloudSync = () => {
 			const timeoutId = setTimeout(() => {
 				try {
 					syncEngine.setSyncModeConfig(syncModeConfig);
-				} catch (error) {
+				} catch (_error) {
 					// 同步引擎尚未初始化，配置将在引擎初始化后应用
-					console.debug("同步引擎尚未初始化:", error);
 				}
 			}, 300); // 300ms 防抖，避免快速连续更新
 			return () => clearTimeout(timeoutId);
@@ -516,25 +515,29 @@ const CloudSync = () => {
 
 	// 自动同步初始化 - 独立于连接状态加载
 	useEffect(() => {
-		if (connectionStatus === "success" && cloudSyncStore.serverConfig?.url) {
-			try {
-				if (autoSyncEnabled) {
-					autoSync.initialize({
-						enabled: true,
-						intervalHours: syncInterval,
-					});
-				} else {
-					autoSync.setEnabled(false);
+		const initializeAutoSync = async () => {
+			if (connectionStatus === "success" && cloudSyncStore.serverConfig?.url) {
+				try {
+					if (autoSyncEnabled) {
+						await autoSync.initialize({
+							enabled: true,
+							intervalHours: syncInterval,
+						});
+					} else {
+						await autoSync.setEnabled(false);
+					}
+				} catch (error) {
+					console.error("❌ CloudSync: 自动同步初始化失败:", error);
 				}
-			} catch (error) {
-				console.error("自动同步初始化失败:", error);
 			}
-		}
+		};
+
+		initializeAutoSync();
 	}, [
 		connectionStatus,
 		autoSyncEnabled,
 		syncInterval,
-		cloudSyncStore.serverConfig.url,
+		cloudSyncStore.serverConfig?.url,
 	]); // 只依赖 url 字段，避免整个对象变化导致的循环
 
 	// 配置同步初始化
