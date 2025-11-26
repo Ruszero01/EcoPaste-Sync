@@ -1,20 +1,28 @@
 import ProList from "@/components/ProList";
 import ProListItem from "@/components/ProListItem";
 import { LISTEN_KEY } from "@/constants";
-import { clearHistoryTable, resetDatabase } from "@/database";
-import { getDefaultSyncModeConfig } from "@/pages/Preference/components/CloudSync/syncModeConfig";
-import {
-	type WebDAVConfig,
-	getServerConfig,
-	setServerConfig,
-	testConnection,
-} from "@/plugins/webdav";
+import { resetDatabase } from "@/database";
+import { type WebDAVConfig, testConnection } from "@/plugins/webdav";
 import { globalStore } from "@/stores/global";
 import type { SyncModeConfig } from "@/types/sync.d";
 import { type SyncInterval, autoSync } from "@/utils/autoSync";
 import { configSync } from "@/utils/configSync";
 import { isDev } from "@/utils/is";
 import { syncEngine } from "@/utils/syncEngine";
+
+// 获取默认配置（双开关模式）
+const getDefaultSyncModeConfig = (): SyncModeConfig => {
+	return {
+		settings: {
+			includeText: true, // 总是启用
+			includeHtml: true, // 总是启用
+			includeRtf: true, // 总是启用
+			includeImages: false, // 文件模式开关，默认关闭
+			includeFiles: false, // 文件模式开关，默认关闭
+			onlyFavorites: false, // 收藏模式开关，默认关闭
+		},
+	};
+};
 import {
 	CheckCircleOutlined,
 	CloudOutlined,
@@ -76,13 +84,6 @@ const CloudSync = () => {
 	const [renderKey, setRenderKey] = useState(0); // 用于强制重新渲染
 	const [autoSyncEnabled, setAutoSyncEnabled] = useState(false);
 	const [syncInterval, setSyncInterval] = useState<SyncInterval>(1); // 默认1小时
-	const [webdavConfig, setWebdavConfig] = useState<WebDAVConfig>({
-		url: "",
-		username: "",
-		password: "",
-		path: "/EcoPaste-Sync",
-		timeout: 60000, // 增加默认超时时间到60秒，提高网络请求的可靠性
-	});
 	const [syncModeConfig, setSyncModeConfig] = useState<SyncModeConfig>(
 		getDefaultSyncModeConfig(),
 	);
@@ -226,10 +227,10 @@ const CloudSync = () => {
 	// 加载服务器配置
 	const loadServerConfig = useCallback(async () => {
 		try {
-			const config = await getServerConfig();
-			if (config?.url) {
-				setWebdavConfig(config);
-				form.setFieldsValue(config);
+			// 从全局store读取WebDAV配置
+			const storeConfig = cloudSyncStore.serverConfig;
+			if (storeConfig?.url) {
+				form.setFieldsValue(storeConfig);
 
 				// 检查缓存的连接状态是否仍然有效
 				const savedConnectionState = localStorage.getItem(
@@ -240,24 +241,23 @@ const CloudSync = () => {
 						const { status, configHash } = JSON.parse(savedConnectionState);
 
 						// 检查配置是否变化（移除时间限制，让连接状态持久化）
-						const currentConfigHash = btoa(JSON.stringify(config)).substring(
-							0,
-							16,
-						);
+						const currentConfigHash = btoa(
+							JSON.stringify(storeConfig),
+						).substring(0, 16);
 
 						if (configHash === currentConfigHash && status === "success") {
 							setConnectionStatus("success");
 
 							// 如果之前连接成功，直接初始化同步引擎
 							try {
-								await syncEngine.initialize(config);
+								await syncEngine.initialize(storeConfig);
 								// 设置同步模式配置 - 使用 ref 避免循环依赖
 								setTimeout(() => {
 									syncEngine.setSyncModeConfig(syncModeConfigRef.current);
 								}, 100);
 							} catch (_initError) {
 								// 如果初始化失败，重新测试连接
-								await validateConnectionStatus(config);
+								await validateConnectionStatus(storeConfig);
 							}
 						} else {
 							setConnectionStatus("idle");
@@ -280,7 +280,12 @@ const CloudSync = () => {
 		} finally {
 			setIsConfigLoading(false);
 		}
-	}, [form, validateConnectionStatus, appMessage.error]); // 移除 syncModeConfigRef 依赖，因为 ref 对象本身不会变化
+	}, [
+		form,
+		validateConnectionStatus,
+		appMessage.error,
+		cloudSyncStore.serverConfig,
+	]);
 
 	// 处理收藏模式开关变更（使用防抖优化）
 	const handleFavoritesModeChange = useCallback(
@@ -509,7 +514,7 @@ const CloudSync = () => {
 
 	// 自动同步初始化 - 独立于连接状态加载
 	useEffect(() => {
-		if (connectionStatus === "success" && webdavConfig.url) {
+		if (connectionStatus === "success" && cloudSyncStore.serverConfig?.url) {
 			try {
 				if (autoSyncEnabled) {
 					autoSync.initialize({
@@ -523,23 +528,29 @@ const CloudSync = () => {
 				console.error("自动同步初始化失败:", error);
 			}
 		}
-	}, [connectionStatus, autoSyncEnabled, syncInterval, webdavConfig.url]); // 只依赖 url 字段，避免整个对象变化导致的循环
+	}, [
+		connectionStatus,
+		autoSyncEnabled,
+		syncInterval,
+		cloudSyncStore.serverConfig.url,
+	]); // 只依赖 url 字段，避免整个对象变化导致的循环
 
 	// 配置同步初始化
 	useEffect(() => {
-		if (connectionStatus === "success" && webdavConfig) {
+		if (connectionStatus === "success" && cloudSyncStore.serverConfig?.url) {
 			try {
-				configSync.initialize(webdavConfig);
+				configSync.initialize(cloudSyncStore.serverConfig);
 			} catch (error) {
 				console.error("配置同步初始化失败:", error);
 			}
 		}
-	}, [connectionStatus, webdavConfig]);
+	}, [connectionStatus, cloudSyncStore.serverConfig]);
 
 	// 保存服务器配置
 	const saveServerConfig = async (config: WebDAVConfig) => {
 		try {
-			await setServerConfig(config);
+			// 保存到全局store
+			globalStore.cloudSync.serverConfig = { ...config };
 			return true;
 		} catch (error) {
 			console.error("保存配置失败", {
@@ -553,7 +564,7 @@ const CloudSync = () => {
 	const testWebDAVConnection = async () => {
 		setConnectionStatus("testing");
 		try {
-			const result = await testConnection(webdavConfig);
+			const result = await testConnection(cloudSyncStore.serverConfig);
 			if (result.success) {
 				setConnectionStatus("success");
 				appMessage.success("连接成功");
@@ -576,8 +587,6 @@ const CloudSync = () => {
 				...values,
 				timeout: 60000, // 增加默认超时时间到60秒，提高网络请求的可靠性
 			};
-
-			setWebdavConfig(config);
 
 			// 保存配置到本地
 			const saved = await saveServerConfig(config);
@@ -611,7 +620,11 @@ const CloudSync = () => {
 		}
 
 		// 检查WebDAV配置是否有效
-		if (!webdavConfig.url || !webdavConfig.username || !webdavConfig.password) {
+		if (
+			!cloudSyncStore.serverConfig.url ||
+			!cloudSyncStore.serverConfig.username ||
+			!cloudSyncStore.serverConfig.password
+		) {
 			appMessage.error("配置不完整，请先完成设置");
 			return;
 		}
@@ -620,9 +633,7 @@ const CloudSync = () => {
 
 		try {
 			// 确保同步引擎已初始化配置
-			const configToPass = Object.assign({}, webdavConfig);
-
-			await syncEngine.initialize(configToPass);
+			await syncEngine.initialize(cloudSyncStore.serverConfig);
 
 			// 构建包含文件大小限制的同步模式配置
 			const enhancedSyncModeConfig = {
@@ -797,36 +808,43 @@ const CloudSync = () => {
 		}
 	};
 
-	// 开发环境专用：数据库重置功能
-	const handleClearHistory = async () => {
+	// 开发环境专用：重置配置文件
+	const handleResetConfig = async () => {
 		modal.confirm({
-			title: "清空历史记录",
-			content: "确定要清空所有剪贴板历史记录吗？此操作无法撤销。",
+			title: "重置配置文件",
+			content:
+				"确定要重置所有配置吗？这将删除本地配置文件并恢复到初始设置，模拟软件重新安装。此操作无法撤销。",
 			okText: "确定",
 			cancelText: "取消",
 			okType: "danger",
 			onOk: async () => {
 				try {
-					const success = await clearHistoryTable();
-					if (success) {
-						appMessage.success("清空成功");
-						emit(LISTEN_KEY.REFRESH_CLIPBOARD_LIST);
-					} else {
-						appMessage.error("清空失败");
-					}
+					const { getSaveStorePath } = await import("@/utils/path");
+					const { remove } = await import("@tauri-apps/plugin-fs");
+
+					// 删除本地配置文件
+					const configPath = await getSaveStorePath();
+					await remove(configPath);
+
+					// 重新加载配置（会使用默认配置）
+					const { restoreStore } = await import("@/utils/store");
+					await restoreStore();
+
+					appMessage.success("配置已重置，建议重启应用");
 				} catch (error) {
-					console.error("清空历史记录失败:", error);
+					console.error("重置配置失败:", error);
 					appMessage.error("操作失败");
 				}
 			},
 		});
 	};
 
+	// 开发环境专用：重置数据库
 	const handleResetDatabase = async () => {
 		modal.confirm({
 			title: "重置数据库",
 			content:
-				"确定要重置整个数据库吗？这将删除所有数据并重新创建数据库。此操作无法撤销。",
+				"确定要重置数据库吗？这将清空所有剪贴板历史数据并重新创建数据库。此操作无法撤销。",
 			okText: "确定",
 			cancelText: "取消",
 			okType: "danger",
@@ -834,7 +852,7 @@ const CloudSync = () => {
 				try {
 					const success = await resetDatabase();
 					if (success) {
-						appMessage.success("重置成功");
+						appMessage.success("数据库已重置");
 						emit(LISTEN_KEY.REFRESH_CLIPBOARD_LIST);
 					} else {
 						appMessage.error("重置失败");
@@ -856,7 +874,7 @@ const CloudSync = () => {
 					form={form}
 					layout="vertical"
 					onFinish={handleConfigSubmit}
-					initialValues={webdavConfig}
+					initialValues={cloudSyncStore.serverConfig}
 				>
 					{/* 服务器地址 */}
 					<ProListItem title="服务器地址">
@@ -864,7 +882,7 @@ const CloudSync = () => {
 							name="url"
 							style={{ margin: 0, minWidth: 300, maxWidth: 400 }}
 						>
-							<Input placeholder="https://example.com/dav" />
+							<Input placeholder="https://webdav/sync" />
 						</Form.Item>
 					</ProListItem>
 
@@ -894,7 +912,7 @@ const CloudSync = () => {
 							name="path"
 							style={{ margin: 0, minWidth: 300, maxWidth: 400 }}
 						>
-							<Input placeholder="/EcoPaste-Sync" />
+							<Input placeholder="/path" />
 						</Form.Item>
 					</ProListItem>
 
@@ -1139,23 +1157,8 @@ const CloudSync = () => {
 			{isDev() && (
 				<ProList header="开发工具（仅限开发环境）">
 					<ProListItem
-						title="清空历史记录"
-						description="清空所有剪贴板历史记录，保留数据库结构"
-					>
-						<Button
-							type="default"
-							danger
-							size="small"
-							icon={<DeleteOutlined />}
-							onClick={handleClearHistory}
-						>
-							清空历史
-						</Button>
-					</ProListItem>
-
-					<ProListItem
 						title="重置数据库"
-						description="完全删除并重新创建数据库，删除所有数据"
+						description="清空所有剪贴板历史数据并重新创建数据库，强制删除避免锁定"
 					>
 						<Button
 							type="primary"
@@ -1165,6 +1168,21 @@ const CloudSync = () => {
 							onClick={handleResetDatabase}
 						>
 							重置数据库
+						</Button>
+					</ProListItem>
+
+					<ProListItem
+						title="重置配置文件"
+						description="删除本地配置文件并恢复初始设置，模拟软件重新安装"
+					>
+						<Button
+							type="primary"
+							danger
+							size="small"
+							icon={<DeleteOutlined />}
+							onClick={handleResetConfig}
+						>
+							重置配置
 						</Button>
 					</ProListItem>
 				</ProList>

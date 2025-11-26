@@ -645,14 +645,8 @@ const Main = () => {
 
 	// 检查云端数据更新（在窗口激活时）
 	const checkCloudDataOnFocus = async () => {
-		// 只在启用了实时同步时检查云端数据
-		try {
-			// const { realtimeSync } = await import("@/utils/realtimeSync");
-			// 检查远程变化
-			// await realtimeSync.checkForRemoteChanges();
-		} catch (_error) {
-			// 实时同步未启用或其他错误，忽略
-		}
+		// 实时同步功能已移除，现在只使用间隔自动同步
+		// 如需手动检查更新，用户可以点击同步按钮
 	};
 
 	// 监听滚动到顶部事件

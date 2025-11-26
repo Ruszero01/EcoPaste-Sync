@@ -135,21 +135,48 @@ export class ConfigSync {
 	}
 
 	/**
-	 * 过滤配置，移除环境和设备相关的字段
+	 * 过滤配置，移除环境相关和不需要同步的字段
 	 */
 	private filterConfigForSync(config: any): any {
-		const filtered = { ...config };
+		const filtered = JSON.parse(JSON.stringify(config)); // 深拷贝
 
-		// 移除环境相关的配置（如本地数据路径、平台信息等）
+		// 1. 移除环境相关的配置
 		if (filtered.globalStore?.env) {
-			filtered.globalStore = {
-				...filtered.globalStore,
-				env: {}, // 清空环境配置
+			filtered.globalStore.env = {};
+		}
+
+		// 2. 移除运行时状态和临时数据
+		if (filtered.globalStore?.cloudSync) {
+			const { cloudSync } = filtered.globalStore;
+
+			// 移除运行时状态
+			cloudSync.lastSyncTime = undefined;
+			cloudSync.isSyncing = undefined;
+
+			// WebDAV密码等敏感信息可以选择不同步，或者加密后同步
+			// 这里我们保留所有配置，但移除密码（出于安全考虑）
+			if (cloudSync.serverConfig) {
+				// 不同步密码，密码信息需要用户在每个设备上单独配置
+				cloudSync.serverConfig.password = "";
+			}
+		}
+
+		// 4. 移除剪贴板存储中的临时状态
+		if (filtered.clipboardStore?.internalCopy) {
+			filtered.clipboardStore.internalCopy = {
+				isCopying: false,
+				itemId: null,
 			};
 		}
 
-		// 注：WebDAV配置存储在单独的配置文件中，不在这里处理
-		// 所有其他配置（包括同步模式、快捷键、开关等）都会被同步
+		// 5. 移除不必要同步的配置项（这些配置通常是设备特定的）
+		if (filtered.globalStore?.app) {
+			const { app } = filtered.globalStore;
+			// autoStart 和 showTaskbarIcon 是平台相关的，不同设备可能有不同设置
+			// 保留用户的主观偏好设置
+			app.autoStart = undefined;
+			app.showTaskbarIcon = undefined;
+		}
 
 		return filtered;
 	}

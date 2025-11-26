@@ -52,16 +52,31 @@ export interface GlobalStore {
 
 	// 云同步设置
 	cloudSync: {
-		enabled: boolean;
-		autoSync: boolean;
-		syncInterval: number;
 		lastSyncTime: number;
 		isSyncing: boolean;
-		realtimeSync: {
+		// WebDAV服务器配置
+		serverConfig: {
+			url: string;
+			username: string;
+			password: string;
+			path: string;
+			timeout: number;
+		};
+		// 自动同步配置
+		autoSyncSettings: {
 			enabled: boolean;
-			autoSyncDelay: number;
-			lastSyncTime: number;
-			isSyncing: boolean;
+			intervalHours: number;
+		};
+		// 同步模式配置
+		syncModeConfig: {
+			settings: {
+				includeText: boolean;
+				includeHtml: boolean;
+				includeRtf: boolean;
+				includeImages: boolean;
+				includeFiles: boolean;
+				onlyFavorites: boolean;
+			};
 		};
 		// 文件同步设置
 		fileSync: {
@@ -73,22 +88,6 @@ export interface GlobalStore {
 				documents: boolean;
 				text: boolean;
 			};
-		};
-		// 同步模式配置（双开关模式）
-		syncModeConfig: {
-			settings: {
-				includeText: boolean;
-				includeHtml: boolean;
-				includeRtf: boolean;
-				includeImages: boolean;
-				includeFiles: boolean;
-				onlyFavorites: boolean;
-			};
-		};
-		// 自动同步配置（原localStorage中的配置）
-		autoSyncSettings: {
-			enabled: boolean;
-			intervalHours: number;
 		};
 	};
 }

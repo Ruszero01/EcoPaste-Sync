@@ -2,7 +2,6 @@ import { downloadSyncData, uploadSyncData } from "@/plugins/webdav";
 import type { WebDAVConfig } from "@/plugins/webdav";
 import type { CloudSyncIndex, SyncItem, SyncModeConfig } from "@/types/sync";
 import { calculateChecksum } from "@/utils/shared";
-import { filterItemsBySyncMode } from "./localDataManager";
 
 /**
  * 云端数据管理器
@@ -553,7 +552,7 @@ export class CloudDataManager {
 			// 删除状态过滤
 			if (
 				!includeDeleted &&
-				(item.deleted === true || item.deleted === true)
+				(item.deleted === true || (item.deleted as any) === 1)
 			) {
 				return false;
 			}
@@ -585,7 +584,7 @@ export class CloudDataManager {
 			// 1. 删除状态过滤
 			if (
 				!includeDeleted &&
-				(item.deleted === true || item.deleted === true)
+				(item.deleted === true || (item.deleted as any) === 1)
 			) {
 				return false;
 			}
@@ -733,7 +732,7 @@ export class CloudDataManager {
 			// 如果有文件元数据，将其存储在云端索引中
 			const itemWithMetadata = item as any;
 			if (itemWithMetadata._fileMetadata) {
-				itemCopy._fileMetadata = itemWithMetadata._fileMetadata;
+				(itemCopy as any)._fileMetadata = itemWithMetadata._fileMetadata;
 			}
 			if (itemWithMetadata._syncType) {
 				itemCopy._syncType = itemWithMetadata._syncType;

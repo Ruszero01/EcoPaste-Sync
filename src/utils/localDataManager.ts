@@ -572,6 +572,8 @@ export class LocalDataManager {
 					lastModified:
 						updateItem.lastModified || processedData[index].lastModified,
 					checksum: updateItem.checksum || processedData[index].checksum,
+					// 关键：不设置 syncStatus，保持原有状态
+					// syncStatus: undefined, // 保持原有状态
 					// 不包含 deviceId, _syncType 等临时字段
 				};
 			}
@@ -705,6 +707,8 @@ export class LocalDataManager {
 
 		// 处理新增项目
 		if (newItems.length > 0) {
+			console.info(`📝 数据库: 新增 ${newItems.length} 个项目`);
+
 			const insertPromises = newItems.map(async (item) => {
 				try {
 					const insertItem = {
@@ -721,7 +725,7 @@ export class LocalDataManager {
 						note: item.note || "",
 						subtype: item.subtype as any, // 类型断言以兼容数据库约束
 						deleted: item.deleted ? 1 : 0,
-						syncStatus: "synced", // 从云端下载的数据标记为已同步
+						syncStatus: "synced", // 从云端下载的新数据标记为已同步
 						isCloudData: 1, // 标记为云端数据
 					} as any; // 类型断言以处理boolean到integer的转换
 
@@ -735,8 +739,10 @@ export class LocalDataManager {
 			await Promise.allSettled(insertPromises);
 		}
 
-		// 处理更新项目
+		// 处理更新项目 - 只更新内容字段，不强制设置同步状态
 		if (updatedItems.length > 0) {
+			console.info(`📝 数据库: 更新 ${updatedItems.length} 个现有项目`);
+
 			const updatePromises = updatedItems.map(async (item) => {
 				try {
 					const updateItem = {
@@ -749,7 +755,8 @@ export class LocalDataManager {
 						note: item.note?.trim() || "",
 						subtype: item.subtype as any, // 类型断言以兼容数据库约束
 						deleted: item.deleted ? 1 : 0,
-						syncStatus: "synced", // 从云端更新的数据标记为已同步
+						// 关键修复：不强制设置 syncStatus，保持原有状态
+						// syncStatus: "synced", // 移除强制标记
 						isCloudData: 1, // 标记为云端数据
 					} as any; // 类型断言以处理boolean到integer的转换
 
