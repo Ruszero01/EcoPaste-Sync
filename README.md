@@ -1,6 +1,10 @@
 #
 
-![同步功能展示](./static/sync-light.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./static/sync-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="./static/sync-light.png">
+  <img alt="同步功能展示" src="./static/sync-light.png">
+</picture>
 
 ## 🌟 分支说明
 
