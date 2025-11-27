@@ -53,49 +53,6 @@ export default defineConfig(async () => ({
 	},
 	build: {
 		chunkSizeWarningLimit: 3000,
-		rollupOptions: {
-			output: {
-				manualChunks: {
-					// 将 Tauri 相关的 API 分离到单独的 chunk
-					tauri: [
-						"@tauri-apps/api/core",
-						"@tauri-apps/plugin-dialog",
-						"@tauri-apps/plugin-fs",
-						"@tauri-apps/plugin-log",
-						"@tauri-apps/plugin-opener",
-						"@tauri-apps/plugin-os",
-						"@tauri-apps/plugin-process",
-						"@tauri-apps/plugin-sql",
-					],
-
-					// 将 WebDAV 相关的 API 分离到单独的 chunk
-					webdav: ["@/plugins/webdav"],
-
-					// 将工具函数分离到单独的 chunk
-					utils: [
-						"@/utils/store",
-						"@/utils/path",
-						"@/utils/is",
-						"@/utils/autoSync",
-						"@/utils/configSync",
-						"@/utils/syncEngine",
-						"@/utils/localDataManager",
-						"@/utils/fileSyncManager",
-						"@/utils/bookmarkManager",
-						"@/utils/cloudDataManager",
-					],
-
-					// 将组件 hooks 分离到单独的 chunk
-					hooks: ["@/hooks/useWindowState", "@/hooks/useTray"],
-
-					// 将数据库相关分离到单独的 chunk
-					database: ["@/database"],
-
-					// 将常量分离到单独的 chunk
-					constants: ["@/constants"],
-				},
-			},
-		},
 	},
 	css: {
 		preprocessorOptions: {
