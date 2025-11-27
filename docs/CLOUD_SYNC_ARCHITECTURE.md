@@ -746,6 +746,9 @@ export const isDuplicateItem = (newItem: Partial<HistoryItem>, existingItem: His
 
 **文件命名规则**:
 
+- **{itemId}_{timestamp}_{originalName}**: 唯一标识+时间戳+原名
+- **最大1-100MB可配置**: 用户可配置文件大小限制（默认10MB），超出跳过并记录
+
 ```typescript
 export const generateRemoteFileName = (item: SyncItem, originalPath: string): string => {
   const timestamp = Date.now();

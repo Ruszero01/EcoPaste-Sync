@@ -386,24 +386,16 @@ graph LR
         end
 
         subgraph "files/ 目录结构"
-            K[images/<br/>图片文件存储]
-            L[documents/<br/>文档文件存储]
-            M[archives/<br/>压缩文件存储]
-            N[others/<br/>其他类型文件]
+            K[统一文件存储<br/>所有类型文件<br/>时间戳命名规则]
 
             D --> K
-            D --> L
-            D --> M
-            D --> N
         end
 
         subgraph "文件命名规则"
             O["{itemId}_{timestamp}_{originalName}<br/>唯一标识+时间戳+原名"]
-            P["文件类型子目录<br/>按文件类型分类存储"]
-            Q["最大100MB限制<br/>超出跳过并记录"]
+            P["最大1-100MB可配置<br/>用户可配置(默认10MB)<br/>超出跳过并记录"]
 
             O --> P
-            P --> Q
         end
     end
 ```
