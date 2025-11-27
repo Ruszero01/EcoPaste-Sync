@@ -16,11 +16,11 @@ graph TB
         LocalData[本地数据管理器<br/>localDataManager.ts<br/>智能筛选过滤]
         CloudData[云端数据管理器<br/>cloudDataManager.ts<br/>统一格式管理]
         FileSync[文件同步管理器<br/>fileSyncManager.ts<br/>文件包处理]
-        RealtimeSync[实时同步协调<br/>realtimeSync.ts<br/>事件总线]
+        AutoSync[自动同步管理<br/>autoSync.ts<br/>线程安全定时器和状态]
         BookmarkManager[书签管理器<br/>bookmarkManager.ts<br/>分组和排序]
-        BookmarkSync[书签同步管理<br/>bookmarkSync.ts<br/>时间戳同步]
+        BookmarkSync[书签同步管理<br/>bookmarkSync.ts<br/>基于时间戳的跨设备书签同步]
         ConflictResolver[冲突解决器<br/>syncConflictResolver.ts<br/>智能合并策略]
-        CodeDetector[代码检测器<br/>codeDetector.ts<br/>语法识别]
+        CodeDetector[代码检测器<br/>codeDetector.ts<br/>代码内容语法识别和语言检测]
     end
 
     subgraph "数据库层 Database Layer<br/>SQLite + 增强功能"
