@@ -2,6 +2,7 @@ import type { AudioRef } from "@/components/Audio";
 import Audio from "@/components/Audio";
 import { LISTEN_KEY } from "@/constants";
 import { executeSQL, insertWithDeduplication, updateSQL } from "@/database";
+import { useAudioEffect } from "@/hooks/useAudioEffect";
 import { initializeMicaEffect } from "@/plugins/window";
 import type { HistoryTablePayload, TablePayload } from "@/types/database";
 import type { Store } from "@/types/store";
@@ -60,6 +61,9 @@ const Main = () => {
 	const $eventBus = useEventEmitter<string>();
 	const windowHideTimer = useRef<NodeJS.Timeout>();
 
+	// 使用优化的音效播放 Hook
+	const { playSound } = useAudioEffect(audioRef);
+
 	useMount(() => {
 		state.$eventBus = $eventBus;
 
@@ -84,11 +88,12 @@ const Main = () => {
 
 		// 监听剪贴板更新
 		onClipboardUpdate(async (payload) => {
-			if (clipboardStore.audio.copy) {
-				audioRef.current?.play();
-			}
-
 			const { type, value, group } = payload;
+
+			// 使用优化的音效播放逻辑
+			if (clipboardStore.audio.copy) {
+				playSound();
+			}
 
 			const createTime = formatDate();
 

@@ -466,14 +466,25 @@ export const onClipboardUpdate = (fn: (payload: ClipboardPayload) => void) => {
 	let lastUpdated = 0;
 	let previousPayload: ClipboardPayload;
 	let processing = false;
+	let retryCount = 0;
+	const MAX_RETRY = 3;
 
-	return listen(COMMAND.CLIPBOARD_UPDATE, async () => {
-		// 防止并发处理
+	const processClipboardUpdate = async () => {
 		if (processing) {
+			retryCount++;
+			if (retryCount <= MAX_RETRY) {
+				// 根据重试次数调整延迟时间，递增延迟避免过度重试
+				const delay = Math.min(50 * retryCount, 150);
+				setTimeout(() => {
+					const retryEvent = new CustomEvent("clipboard-retry");
+					window.dispatchEvent(retryEvent);
+				}, delay);
+			}
 			return;
 		}
 
 		processing = true;
+		retryCount = 0;
 
 		try {
 			const payload = await readClipboard();
@@ -484,7 +495,8 @@ export const onClipboardUpdate = (fn: (payload: ClipboardPayload) => void) => {
 				return;
 			}
 
-			const expired = Date.now() - lastUpdated > 300; // 增加防抖时间到300ms
+			// 减少防抖时间到100ms，提高响应速度
+			const expired = Date.now() - lastUpdated > 100;
 
 			if (expired || !isEqual(payload, previousPayload)) {
 				fn(payload);
@@ -495,7 +507,19 @@ export const onClipboardUpdate = (fn: (payload: ClipboardPayload) => void) => {
 		} finally {
 			processing = false;
 		}
-	});
+	};
+
+	// 监听原始剪贴板更新事件
+	const unlisten = listen(COMMAND.CLIPBOARD_UPDATE, processClipboardUpdate);
+
+	// 监听重试事件
+	const retryUnlisten = listen("clipboard-retry", processClipboardUpdate);
+
+	// 返回清理函数
+	return () => {
+		unlisten.then((fn) => fn());
+		retryUnlisten.then((fn) => fn());
+	};
 };
 
 /**
