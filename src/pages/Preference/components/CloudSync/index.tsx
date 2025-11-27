@@ -224,13 +224,19 @@ const CloudSync = () => {
 		syncModeConfigRef.current = syncModeConfig;
 	}, [syncModeConfig]);
 
+	// 服务器配置状态
+	const [webdavConfig, setWebdavConfig] = useState<WebDAVConfig | null>(null);
+
 	// 加载服务器配置
 	const loadServerConfig = useCallback(async () => {
 		try {
-			// 从全局store读取WebDAV配置
-			const storeConfig = cloudSyncStore.serverConfig;
-			if (storeConfig?.url) {
-				form.setFieldsValue(storeConfig);
+			// 从后端读取WebDAV配置
+			const { getServerConfig } = await import("@/plugins/webdav");
+			const backendConfig = await getServerConfig();
+
+			if (backendConfig?.url) {
+				setWebdavConfig(backendConfig);
+				form.setFieldsValue(backendConfig);
 
 				// 检查缓存的连接状态是否仍然有效
 				const savedConnectionState = localStorage.getItem(
@@ -242,7 +248,7 @@ const CloudSync = () => {
 
 						// 检查配置是否变化（移除时间限制，让连接状态持久化）
 						const currentConfigHash = btoa(
-							JSON.stringify(storeConfig),
+							JSON.stringify(backendConfig),
 						).substring(0, 16);
 
 						if (configHash === currentConfigHash && status === "success") {
@@ -250,7 +256,7 @@ const CloudSync = () => {
 
 							// 如果之前连接成功，直接初始化同步引擎
 							try {
-								await syncEngine.initialize(storeConfig);
+								await syncEngine.initialize(backendConfig);
 								// 设置同步模式配置 - 使用 ref 避免循环依赖
 								setTimeout(() => {
 									syncEngine.setSyncModeConfig(syncModeConfigRef.current);
@@ -258,7 +264,7 @@ const CloudSync = () => {
 							} catch (initError) {
 								// 如果初始化失败，重新测试连接
 								console.warn("同步引擎初始化失败，重新测试连接:", initError);
-								await validateConnectionStatus(storeConfig);
+								await validateConnectionStatus(backendConfig);
 							}
 						} else {
 							setConnectionStatus("idle");
@@ -270,23 +276,20 @@ const CloudSync = () => {
 					setConnectionStatus("idle");
 				}
 			} else {
+				setWebdavConfig(null);
 				setConnectionStatus("idle");
 			}
 		} catch (error) {
 			console.error("❌ 加载配置失败", {
 				error: error instanceof Error ? error.message : String(error),
 			});
+			setWebdavConfig(null);
 			setConnectionStatus("failed");
 			appMessage.error("加载配置失败");
 		} finally {
 			setIsConfigLoading(false);
 		}
-	}, [
-		form,
-		validateConnectionStatus,
-		appMessage.error,
-		cloudSyncStore.serverConfig,
-	]);
+	}, [form, validateConnectionStatus, appMessage.error]);
 
 	// 处理收藏模式开关变更（使用防抖优化）
 	const handleFavoritesModeChange = useCallback(
@@ -516,48 +519,58 @@ const CloudSync = () => {
 	// 自动同步初始化 - 独立于连接状态加载
 	useEffect(() => {
 		const initializeAutoSync = async () => {
-			if (connectionStatus === "success" && cloudSyncStore.serverConfig?.url) {
-				try {
-					if (autoSyncEnabled) {
-						await autoSync.initialize({
-							enabled: true,
-							intervalHours: syncInterval,
-						});
-					} else {
-						await autoSync.setEnabled(false);
+			if (connectionStatus === "success") {
+				// 从后端读取配置检查是否有效
+				const { getServerConfig } = await import("@/plugins/webdav");
+				const config = await getServerConfig();
+
+				if (config?.url) {
+					try {
+						if (autoSyncEnabled) {
+							await autoSync.initialize({
+								enabled: true,
+								intervalHours: syncInterval,
+							});
+						} else {
+							await autoSync.setEnabled(false);
+						}
+					} catch (error) {
+						console.error("❌ CloudSync: 自动同步初始化失败:", error);
 					}
-				} catch (error) {
-					console.error("❌ CloudSync: 自动同步初始化失败:", error);
 				}
 			}
 		};
 
 		initializeAutoSync();
-	}, [
-		connectionStatus,
-		autoSyncEnabled,
-		syncInterval,
-		cloudSyncStore.serverConfig?.url,
-	]); // 只依赖 url 字段，避免整个对象变化导致的循环
+	}, [connectionStatus, autoSyncEnabled, syncInterval]); // 移除对全局store的依赖
 
 	// 配置同步初始化
 	useEffect(() => {
-		if (connectionStatus === "success" && cloudSyncStore.serverConfig?.url) {
-			try {
-				if (cloudSyncStore.serverConfig) {
-					configSync.initialize(cloudSyncStore.serverConfig);
+		if (connectionStatus === "success") {
+			const initializeConfigSync = async () => {
+				try {
+					// 从后端读取配置
+					const { getServerConfig } = await import("@/plugins/webdav");
+					const config = await getServerConfig();
+
+					if (config?.url) {
+						configSync.initialize(config);
+					}
+				} catch (error) {
+					console.error("配置同步初始化失败:", error);
 				}
-			} catch (error) {
-				console.error("配置同步初始化失败:", error);
-			}
+			};
+
+			initializeConfigSync();
 		}
-	}, [connectionStatus, cloudSyncStore.serverConfig]);
+	}, [connectionStatus]);
 
 	// 保存服务器配置
 	const saveServerConfig = async (config: WebDAVConfig) => {
 		try {
-			// 保存到全局store
-			globalStore.cloudSync.serverConfig = { ...config };
+			// 通过后端API保存配置
+			const { setServerConfig } = await import("@/plugins/webdav");
+			await setServerConfig(config);
 			return true;
 		} catch (error) {
 			console.error("保存配置失败", {
@@ -571,12 +584,16 @@ const CloudSync = () => {
 	const testWebDAVConnection = async () => {
 		setConnectionStatus("testing");
 		try {
-			if (!cloudSyncStore.serverConfig) {
+			// 从后端读取WebDAV配置
+			const { getServerConfig } = await import("@/plugins/webdav");
+			const backendConfig = await getServerConfig();
+
+			if (!backendConfig) {
 				appMessage.error("WebDAV配置为空");
 				setConnectionStatus("failed");
 				return;
 			}
-			const result = await testConnection(cloudSyncStore.serverConfig);
+			const result = await testConnection(backendConfig);
 			if (result.success) {
 				setConnectionStatus("success");
 				appMessage.success("连接成功");
@@ -631,13 +648,11 @@ const CloudSync = () => {
 			return;
 		}
 
-		// 检查WebDAV配置是否有效
-		if (
-			!cloudSyncStore.serverConfig ||
-			!cloudSyncStore.serverConfig.url ||
-			!cloudSyncStore.serverConfig.username ||
-			!cloudSyncStore.serverConfig.password
-		) {
+		// 从后端读取WebDAV配置并检查是否有效
+		const { getServerConfig } = await import("@/plugins/webdav");
+		const config = await getServerConfig();
+
+		if (!config || !config.url || !config.username || !config.password) {
 			appMessage.error("配置不完整，请先完成设置");
 			return;
 		}
@@ -646,7 +661,7 @@ const CloudSync = () => {
 
 		try {
 			// 确保同步引擎已初始化配置
-			await syncEngine.initialize(cloudSyncStore.serverConfig);
+			await syncEngine.initialize(config);
 
 			// 构建包含文件大小限制的同步模式配置
 			const enhancedSyncModeConfig = {
@@ -887,7 +902,7 @@ const CloudSync = () => {
 					form={form}
 					layout="vertical"
 					onFinish={handleConfigSubmit}
-					initialValues={cloudSyncStore.serverConfig || {}}
+					initialValues={{ path: "/EcoPaste-Sync", ...webdavConfig }}
 				>
 					{/* 服务器地址 */}
 					<ProListItem title="服务器地址">
