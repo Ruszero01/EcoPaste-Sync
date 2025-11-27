@@ -80,24 +80,8 @@ export class ConfigSync {
 		}
 
 		try {
-			// 1. 读取当前本地配置，保存重要信息
+			// 1. 获取本地配置文件路径
 			const configPath = await getSaveStorePath();
-			let localConfigData: Store;
-
-			try {
-				const localConfigContent = await readTextFile(configPath);
-				localConfigData = JSON.parse(localConfigContent) as Store;
-			} catch (readError) {
-				console.error("读取本地配置失败:", readError);
-				return {
-					success: false,
-					message: "读取本地配置失败",
-				};
-			}
-
-			// 保存本地服务器配置信息
-			const localServerConfig =
-				localConfigData.globalStore?.cloudSync?.serverConfig;
 
 			// 2. 从云端下载配置
 			const remotePath = `${this.webdavConfig.path}/store-config.json`;
@@ -131,23 +115,20 @@ export class ConfigSync {
 				};
 			}
 
-			// 4. 合并配置：应用云端配置，但保留本地服务器配置信息
-			const mergedConfig = this.mergeRemoteConfigWithLocalSettings(
-				remoteConfigData,
-				localServerConfig,
+			// 4. 直接应用云端配置（WebDAV配置已独立存储）
+			await writeTextFile(
+				configPath,
+				JSON.stringify(remoteConfigData, null, 2),
 			);
 
-			// 5. 应用合并后的配置到本地文件
-			await writeTextFile(configPath, JSON.stringify(mergedConfig, null, 2));
-
-			// 6. 重新加载配置到store
+			// 5. 重新加载配置到store
 			await this.reloadStore();
 
-			// 7. 重新初始化自动同步以确保新的配置生效
+			// 6. 重新初始化自动同步以确保新的配置生效
 			try {
-				if (mergedConfig.globalStore?.cloudSync?.autoSyncSettings) {
+				if (remoteConfigData.globalStore?.cloudSync?.autoSyncSettings) {
 					const { enabled, intervalHours } =
-						mergedConfig.globalStore.cloudSync.autoSyncSettings;
+						remoteConfigData.globalStore.cloudSync.autoSyncSettings;
 					// 确保intervalHours符合SyncInterval类型
 					const validInterval: SyncInterval = intervalHours as SyncInterval;
 					await autoSync.initialize({ enabled, intervalHours: validInterval });
@@ -160,7 +141,7 @@ export class ConfigSync {
 
 			return {
 				success: true,
-				message: "云端配置已应用，服务器配置保持不变，自动同步已重新初始化",
+				message: "云端配置已应用",
 			};
 		} catch (error) {
 			return {
@@ -201,13 +182,9 @@ export class ConfigSync {
 			// 1. 先有鸡还是先有蛋的问题：必须先配置服务器才能同步
 			// 2. 安全性考虑：密码等敏感信息不应同步
 			// 3. 避免覆盖：云端配置会覆盖本地服务器配置，导致连接失败
-			cloudSync.serverConfig = {
-				url: "",
-				username: "",
-				password: "",
-				path: "",
-				timeout: 30000, // 默认超时时间
-			};
+			const { serverConfig: _removed, ...cloudSyncWithoutServerConfig } =
+				cloudSync;
+			Object.assign(cloudSync, cloudSyncWithoutServerConfig);
 
 			// 恢复用户偏好配置（这些是重要的，需要同步）
 			if (userAutoSyncSettings) {
@@ -247,26 +224,6 @@ export class ConfigSync {
 	 */
 	private async reloadStore(): Promise<void> {
 		await restoreStore();
-	}
-
-	/**
-	 * 合并云端配置和本地服务器配置
-	 */
-	private mergeRemoteConfigWithLocalSettings(
-		remoteConfig: Store,
-		localServerConfig: any,
-	): Store {
-		const merged = JSON.parse(JSON.stringify(remoteConfig)) as Store;
-
-		// 保留本地服务器配置信息，避免云端空配置覆盖本地设置
-		if (merged.globalStore?.cloudSync && localServerConfig) {
-			// 只有当本地服务器配置存在时才保留
-			if (localServerConfig.url || localServerConfig.username) {
-				merged.globalStore.cloudSync.serverConfig = { ...localServerConfig };
-			}
-		}
-
-		return merged;
 	}
 }
 
