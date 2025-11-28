@@ -26,7 +26,16 @@ interface HeaderProps {
 
 const Header: FC<HeaderProps> = (props) => {
 	const { data } = props;
-	const { id, type, favorite, subtype, search, isCode, codeLanguage } = data;
+	const {
+		id,
+		type,
+		favorite,
+		subtype,
+		search,
+		isCode,
+		codeLanguage,
+		sourceAppName,
+	} = data;
 	const { state } = useContext(MainContext);
 	const { t } = useTranslation();
 	const { content } = useSnapshot(clipboardStore);
@@ -173,8 +182,18 @@ const Header: FC<HeaderProps> = (props) => {
 			gap="small"
 			className="text-color-2"
 		>
-			{/* 左上角：类型 */}
-			<Flex className="font-medium text-xs">{renderType()}</Flex>
+			{/* 左上角：来源应用 + 类型 */}
+			<Flex align="center" gap={4} className="font-medium text-xs">
+				{sourceAppName && (
+					<span
+						className="rounded bg-neutral-200/80 px-1.5 py-0.5 text-neutral-600 dark:bg-neutral-800/80 dark:text-neutral-400"
+						title={`来源: ${sourceAppName}`}
+					>
+						{sourceAppName}
+					</span>
+				)}
+				<span>{renderType()}</span>
+			</Flex>
 
 			{/* 右上角：操作按钮 */}
 			<Flex

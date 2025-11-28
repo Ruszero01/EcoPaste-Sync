@@ -18,6 +18,9 @@ export interface ClipboardPayload {
 	// 代码检测相关字段
 	isCode?: boolean;
 	codeLanguage?: string;
+	// 来源应用相关字段
+	sourceAppName?: string;
+	sourceAppIcon?: string;
 }
 
 export interface WindowsOCR {

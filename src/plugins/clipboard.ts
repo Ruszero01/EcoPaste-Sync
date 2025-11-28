@@ -1,3 +1,4 @@
+import { getActiveWindowInfo } from "@/plugins/activeWindow";
 import { systemOCR } from "@/plugins/ocr";
 import { clipboardStore } from "@/stores/clipboard";
 import type { HistoryTablePayload } from "@/types/database";
@@ -454,6 +455,17 @@ export const readClipboard = async () => {
 	else {
 		const textPayload = await readText();
 		payload = { ...textPayload, type: "text" };
+	}
+
+	// 获取活动窗口信息
+	try {
+		const windowInfo = await getActiveWindowInfo();
+		payload.sourceAppName = windowInfo.app_name;
+		// 暂时不获取icon，后续可以通过系统API获取
+		// payload.sourceAppIcon = ...;
+	} catch (error) {
+		console.warn("获取活动窗口信息失败:", error);
+		// 即使失败也不影响剪贴板内容的正常读取
 	}
 
 	return payload;

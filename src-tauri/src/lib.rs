@@ -106,6 +106,8 @@ pub fn run() {
         .plugin(tauri_plugin_eco_webdav::init())
         // 自定义自动同步插件
         .plugin(tauri_plugin_eco_auto_sync::init())
+        // 自定义活动窗口插件
+        .plugin(tauri_plugin_eco_active_window::init())
         // Shell 插件：https://github.com/tauri-apps/plugins-workspace/tree/v2/plugins/shell
         .plugin(tauri_plugin_shell::init())
         .on_window_event(|window, event| match event {

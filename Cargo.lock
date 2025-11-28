@@ -1370,6 +1370,7 @@ dependencies = [
  "tauri-plugin-autostart",
  "tauri-plugin-dialog",
  "tauri-plugin-drag",
+ "tauri-plugin-eco-active-window",
  "tauri-plugin-eco-auto-sync",
  "tauri-plugin-eco-autostart",
  "tauri-plugin-eco-clipboard",
@@ -6110,6 +6111,18 @@ dependencies = [
  "tauri",
  "tauri-plugin",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "tauri-plugin-eco-active-window"
+version = "0.1.0"
+dependencies = [
+ "cocoa 0.26.0",
+ "objc",
+ "serde",
+ "tauri",
+ "tauri-plugin",
+ "windows 0.58.0",
 ]
 
 [[package]]
