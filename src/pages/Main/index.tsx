@@ -210,23 +210,74 @@ const Main = () => {
 			const currentAutoSort = clipboardStore.content.autoSort;
 
 			if (isDuplicate && !currentAutoSort) {
-				// 自动排序关闭且发现重复项，不更新时间戳，只激活
+				// 自动排序关闭且发现重复项，更新时间和来源应用信息但不移动位置
 				const latestItem = existingDuplicateItem;
 
 				if (latestItem) {
 					state.activeId = latestItem.id;
-				}
 
-				// 手动排序模式下不更新数据库时间戳，保持原有位置
+					// 优先使用最新的来源应用信息，如果新的来源应用信息为空，则保留现有的
+					const sourceAppName =
+						payload.sourceAppName || latestItem.sourceAppName;
+					const sourceAppIcon =
+						payload.sourceAppIcon || latestItem.sourceAppIcon;
+
+					// 更新数据库中的时间戳和来源应用信息，但不改变位置
+					try {
+						await updateSQL("history", {
+							id: latestItem.id,
+							createTime,
+							sourceAppName,
+							sourceAppIcon,
+							// 如果内容有变化（如图片OCR文字），也要更新
+							search:
+								payload.search !== latestItem.search
+									? payload.search
+									: latestItem.search,
+							value:
+								payload.value !== latestItem.value
+									? payload.value
+									: latestItem.value,
+						});
+
+						// 更新本地状态中的时间戳和来源应用信息
+						const originalIndex = findIndex(state.list, { id: latestItem.id });
+						if (originalIndex !== -1) {
+							state.list[originalIndex] = {
+								...state.list[originalIndex],
+								createTime,
+								sourceAppName,
+								sourceAppIcon,
+								// 如果内容有变化，也更新内容
+								search:
+									payload.search !== latestItem.search
+										? payload.search
+										: state.list[originalIndex].search,
+								value:
+									payload.value !== latestItem.value
+										? payload.value
+										: state.list[originalIndex].value,
+							};
+						}
+					} catch (error) {
+						console.error("更新重复项失败:", error);
+					}
+				}
 			} else {
 				// 使用数据库层面的去重插入
 				try {
 					let data: HistoryTablePayload;
 
 					if (isDuplicate) {
-						// 如果是重复项且自动排序开启，使用现有ID但更新时间
+						// 如果是重复项且自动排序开启，使用现有ID但更新时间和来源应用信息
+						// 优先使用最新的来源应用信息，如果新的来源应用信息为空，则保留现有的
+						const sourceAppName =
+							payload.sourceAppName || existingDuplicateItem!.sourceAppName;
+						const sourceAppIcon =
+							payload.sourceAppIcon || existingDuplicateItem!.sourceAppIcon;
+
 						data = {
-							...payload,
+							...payload, // 包含最新的剪贴板数据
 							createTime,
 							id: existingDuplicateItem!.id, // 使用现有ID
 							favorite: existingDuplicateItem!.favorite || false, // 保持现有的收藏状态
@@ -234,6 +285,9 @@ const Main = () => {
 							subtype: existingDuplicateItem!.subtype || undefined, // 保持现有的子类型信息
 							syncStatus: existingDuplicateItem!.syncStatus, // 保持原有的同步状态
 							isCloudData: existingDuplicateItem!.isCloudData, // 保持原有的云端数据标记
+							// 优先使用最新的来源应用信息，如果新的为空则保留现有的
+							sourceAppName,
+							sourceAppIcon,
 						};
 					} else {
 						// 新内容，生成新ID
@@ -256,7 +310,7 @@ const Main = () => {
 							error.message.includes("UNIQUE constraint failed")
 						) {
 							// 检测到ID冲突，尝试更新现有记录
-							// 使用更新而不是插入，保持原有的同步状态
+							// 使用更新而不是插入，保持原有的同步状态，但更新来源应用信息
 							await updateSQL("history", {
 								id: data.id,
 								createTime: data.createTime,
@@ -265,6 +319,9 @@ const Main = () => {
 								favorite: data.favorite,
 								syncStatus: data.syncStatus, // 保持原有的同步状态
 								isCloudData: data.isCloudData, // 保持原有的云端数据标记
+								// 优先使用最新的来源应用信息，如果新的为空则保留现有的
+								sourceAppName: data.sourceAppName,
+								sourceAppIcon: data.sourceAppIcon,
 							});
 						} else {
 							throw error; // 重新抛出其他错误
