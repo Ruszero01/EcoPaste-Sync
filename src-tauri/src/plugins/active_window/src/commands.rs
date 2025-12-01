@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use tauri::command;
 use std::io::Cursor;
 use base64::{Engine as _, engine::general_purpose};
+use image::codecs::png::PngEncoder;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActiveWindowInfo {
@@ -230,7 +231,8 @@ pub fn get_app_icon(app_path: String) -> Result<String, String> {
     .ok_or("Failed to convert icon pixels to image")?;
 
     let mut buffer = Cursor::new(Vec::new());
-    img.write_to(&mut buffer, image::ImageOutputFormat::Png)
+    let encoder = PngEncoder::new(&mut buffer);
+    img.write_with_encoder(encoder)
         .map_err(|e| e.to_string())?;
 
     let base64_str = general_purpose::STANDARD.encode(buffer.get_ref());
