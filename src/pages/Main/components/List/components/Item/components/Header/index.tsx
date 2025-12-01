@@ -206,7 +206,7 @@ const Header: FC<HeaderProps> = (props) => {
 						/>
 						{/* 悬停提示 */}
 						{showTooltip && sourceAppName && (
-							<div className="absolute top-full left-0 z-50 mt-1 rounded bg-neutral-900 px-2 py-1 text-white text-xs shadow-lg">
+							<div className="absolute top-full left-0 z-50 mt-1 whitespace-nowrap rounded bg-neutral-900 px-2 py-1 text-white text-xs shadow-lg">
 								{sourceAppName}
 							</div>
 						)}
@@ -228,7 +228,7 @@ const Header: FC<HeaderProps> = (props) => {
 						</div>
 						{/* 悬停提示 */}
 						{showTooltip && (
-							<div className="absolute top-full left-0 z-50 mt-1 rounded bg-neutral-900 px-2 py-1 text-white text-xs shadow-lg">
+							<div className="absolute top-full left-0 z-50 mt-1 whitespace-nowrap rounded bg-neutral-900 px-2 py-1 text-white text-xs shadow-lg">
 								来源: {sourceAppName}
 							</div>
 						)}
