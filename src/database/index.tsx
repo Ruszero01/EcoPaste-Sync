@@ -74,6 +74,19 @@ export const initDatabase = async () => {
 	} catch (_error) {
 		// 字段已存在，忽略错误
 	}
+
+	// 添加来源应用相关字段
+	try {
+		await executeSQL("ALTER TABLE history ADD COLUMN sourceAppName TEXT");
+	} catch (_error) {
+		// 字段已存在，忽略错误
+	}
+
+	try {
+		await executeSQL("ALTER TABLE history ADD COLUMN sourceAppIcon TEXT");
+	} catch (_error) {
+		// 字段已存在，忽略错误
+	}
 };
 
 /**

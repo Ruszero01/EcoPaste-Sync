@@ -138,6 +138,7 @@ export interface ClipboardStore {
 		autoSort: boolean;
 		showOriginalContent: boolean;
 		codeDetection: boolean; // 新增：代码检测开关
+		showSourceApp: boolean; // 新增：显示来源应用开关
 	};
 
 	// 历史记录

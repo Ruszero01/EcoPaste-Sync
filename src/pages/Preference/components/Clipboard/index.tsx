@@ -176,6 +176,19 @@ const ClipboardSettings = () => {
 				/>
 
 				<ProSwitch
+					title={t(
+						"preference.clipboard.content_settings.label.show_source_app",
+					)}
+					description={t(
+						"preference.clipboard.content_settings.hints.show_source_app",
+					)}
+					value={content.showSourceApp}
+					onChange={(value) => {
+						clipboardStore.content.showSourceApp = value;
+					}}
+				/>
+
+				<ProSwitch
 					title="代码识别"
 					description="自动识别剪贴板中的代码内容并启用语法高亮"
 					value={content.codeDetection}
