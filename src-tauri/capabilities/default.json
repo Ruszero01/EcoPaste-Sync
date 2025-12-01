@@ -68,6 +68,14 @@
 			]
 		},
 		{
+			"identifier": "eco-active-window:allow-get-app-icon",
+			"allow": [
+				{
+					"cmd": "get_app_icon"
+				}
+			]
+		},
+		{
 			"identifier": "eco-auto-sync:allow-start-auto-sync",
 			"allow": [
 				{

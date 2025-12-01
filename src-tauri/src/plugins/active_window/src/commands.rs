@@ -1,11 +1,14 @@
 use serde::{Deserialize, Serialize};
 use tauri::command;
+use std::io::Cursor;
+use base64::{Engine as _, engine::general_purpose};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActiveWindowInfo {
     pub app_name: String,
     pub window_title: String,
     pub process_name: String,
+    pub process_path: String,
 }
 
 #[cfg(target_os = "windows")]
@@ -75,6 +78,7 @@ pub fn get_active_window_info() -> Result<ActiveWindowInfo, String> {
             app_name,
             window_title,
             process_name,
+            process_path: exe_path_str,
         })
     }
 }
@@ -125,6 +129,7 @@ pub fn get_active_window_info() -> Result<ActiveWindowInfo, String> {
             app_name: app_name.clone(),
             window_title: String::new(), // macOS较难获取窗口标题，暂时留空
             process_name,
+            process_path: String::new(), // macOS当前实现暂不返回路径
         })
     }
 }
@@ -181,6 +186,7 @@ pub fn get_active_window_info() -> Result<ActiveWindowInfo, String> {
                 app_name: process_name.clone(),
                 window_title,
                 process_name,
+                process_path: String::new(), // Linux当前实现暂不返回路径
             });
         }
     }
@@ -192,4 +198,43 @@ pub fn get_active_window_info() -> Result<ActiveWindowInfo, String> {
 #[command]
 pub fn get_active_window_info() -> Result<ActiveWindowInfo, String> {
     Err("Unsupported platform".to_string())
+}
+
+/// 获取应用程序图标并返回 Base64 编码的 PNG 数据
+#[command]
+pub fn get_app_icon(app_path: String) -> Result<String, String> {
+    // 1. 处理路径：特别是 macOS，需要确保路径指向 .app 包，而不是内部二进制文件
+    let final_path = if cfg!(target_os = "macos") {
+        // 简单的逻辑：如果路径包含 .app，截取到 .app 截止
+        if let Some(index) = app_path.find(".app") {
+            &app_path[..index + 4]
+        } else {
+            &app_path
+        }
+    } else {
+        &app_path
+    };
+
+    // 2. 获取图标 (大小设为 64)
+    // get_file_icon 返回的是一个包含像素数据的结构体
+    let icon_result = file_icon_provider::get_file_icon(final_path, 64)
+        .map_err(|e| format!("Failed to get icon: {}", e))?;
+
+    // 3. 将原始像素数据转换为 PNG 格式的 Base64 字符串
+    // file-icon-provider 返回的是 raw rgba pixels，需要用 image crate 封装
+    let img = image::RgbaImage::from_raw(
+        icon_result.width,
+        icon_result.height,
+        icon_result.pixels,
+    )
+    .ok_or("Failed to convert icon pixels to image")?;
+
+    let mut buffer = Cursor::new(Vec::new());
+    img.write_to(&mut buffer, image::ImageOutputFormat::Png)
+        .map_err(|e| e.to_string())?;
+
+    let base64_str = general_purpose::STANDARD.encode(buffer.get_ref());
+
+    // 4. 返回带有 Data URI Scheme 的字符串，前端可直接作为 src 使用
+    Ok(format!("data:image/png;base64,{}", base64_str))
 }

@@ -12,6 +12,12 @@ crate-type = ["staticlib", "cdylib", "lib"]
 [dependencies]
 tauri.workspace = true
 serde.workspace = true
+# 用于获取文件/应用图标
+file_icon_provider = "0.4.0"
+# 用于图像处理
+image = "0.24"
+# 用于 Base64 编码
+base64 = "0.21"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.58", features = [

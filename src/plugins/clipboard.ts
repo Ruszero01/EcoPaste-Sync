@@ -461,8 +461,18 @@ export const readClipboard = async () => {
 	try {
 		const windowInfo = await getActiveWindowInfo();
 		payload.sourceAppName = windowInfo.app_name;
-		// 暂时不获取icon，后续可以通过系统API获取
-		// payload.sourceAppIcon = ...;
+
+		// 获取应用图标（仅在Windows上有进程路径）
+		if (windowInfo.process_path) {
+			try {
+				const { getAppIcon } = await import("@/plugins/activeWindow");
+				const iconBase64 = await getAppIcon(windowInfo.process_path);
+				payload.sourceAppIcon = iconBase64;
+			} catch (iconError) {
+				console.warn("获取应用图标失败:", iconError);
+				// 即使获取失败也不影响剪贴板内容的正常读取
+			}
+		}
 	} catch (error) {
 		console.warn("获取活动窗口信息失败:", error);
 		// 即使失败也不影响剪贴板内容的正常读取

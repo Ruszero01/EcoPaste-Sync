@@ -4,10 +4,11 @@ import { transferData } from "@/pages/Preference/components/Clipboard/components
 import { clipboardStore } from "@/stores/clipboard";
 import type { HistoryTablePayload } from "@/types/database";
 import type { OperationButton } from "@/types/store";
+import { useCreation } from "ahooks";
 import { Flex } from "antd";
 import clsx from "clsx";
 import type { FC, MouseEvent } from "react";
-import { memo, useContext } from "react";
+import { memo, useContext, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSnapshot } from "valtio";
 
@@ -35,10 +36,12 @@ const Header: FC<HeaderProps> = (props) => {
 		isCode,
 		codeLanguage,
 		sourceAppName,
+		sourceAppIcon,
 	} = data;
 	const { state } = useContext(MainContext);
 	const { t } = useTranslation();
 	const { content } = useSnapshot(clipboardStore);
+	const [showTooltip, setShowTooltip] = useState(false);
 
 	const operationButtons = useCreation(() => {
 		return content.operationButtons.map((key) => {
@@ -182,16 +185,54 @@ const Header: FC<HeaderProps> = (props) => {
 			gap="small"
 			className="text-color-2"
 		>
-			{/* 左上角：来源应用 + 类型 */}
+			{/* 左上角：来源应用图标 + 类型 */}
 			<Flex align="center" gap={4} className="font-medium text-xs">
-				{sourceAppName && (
-					<span
-						className="rounded bg-neutral-200/80 px-1.5 py-0.5 text-neutral-600 dark:bg-neutral-800/80 dark:text-neutral-400"
-						title={`来源: ${sourceAppName}`}
+				{sourceAppIcon ? (
+					<div
+						className="relative"
+						onMouseEnter={() => sourceAppName && setShowTooltip(true)}
+						onMouseLeave={() => setShowTooltip(false)}
 					>
-						{sourceAppName}
-					</span>
-				)}
+						<img
+							src={sourceAppIcon}
+							alt={sourceAppName}
+							className="h-4 w-4 rounded"
+							style={{
+								maxWidth: "16px",
+								maxHeight: "16px",
+								objectFit: "contain",
+							}}
+						/>
+						{/* 悬停提示 */}
+						{showTooltip && sourceAppName && (
+							<div className="absolute top-full left-0 z-50 mt-1 rounded bg-neutral-900 px-2 py-1 text-white text-xs shadow-lg">
+								{sourceAppName}
+							</div>
+						)}
+					</div>
+				) : sourceAppName ? (
+					<div
+						className="relative"
+						onMouseEnter={() => setShowTooltip(true)}
+						onMouseLeave={() => setShowTooltip(false)}
+					>
+						<div
+							className="flex h-4 w-4 items-center justify-center rounded bg-neutral-300 font-medium text-[10px] text-neutral-700 dark:bg-neutral-600 dark:text-neutral-300"
+							style={{
+								width: "16px",
+								height: "16px",
+							}}
+						>
+							{sourceAppName.substring(0, 3).toUpperCase()}
+						</div>
+						{/* 悬停提示 */}
+						{showTooltip && (
+							<div className="absolute top-full left-0 z-50 mt-1 rounded bg-neutral-900 px-2 py-1 text-white text-xs shadow-lg">
+								来源: {sourceAppName}
+							</div>
+						)}
+					</div>
+				) : null}
 				<span>{renderType()}</span>
 			</Flex>
 

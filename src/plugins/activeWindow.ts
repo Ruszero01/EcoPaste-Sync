@@ -4,8 +4,13 @@ export interface ActiveWindowInfo {
 	app_name: string;
 	window_title: string;
 	process_name: string;
+	process_path: string;
 }
 
 export const getActiveWindowInfo = async (): Promise<ActiveWindowInfo> => {
 	return invoke("plugin:eco-active-window|get_active_window_info");
+};
+
+export const getAppIcon = async (appPath: string): Promise<string> => {
+	return invoke("plugin:eco-active-window|get_app_icon", { appPath });
 };

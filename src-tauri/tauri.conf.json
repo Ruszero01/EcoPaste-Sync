@@ -119,7 +119,7 @@
 			]
 		},
 		"eco-active-window": {
-			"allow": ["allow-get_active_window_info"]
+			"allow": ["allow-get_active_window_info", "allow-get_app_icon"]
 		}
 	}
 }
