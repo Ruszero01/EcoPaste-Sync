@@ -13,9 +13,9 @@ crate-type = ["staticlib", "cdylib", "lib"]
 tauri.workspace = true
 serde.workspace = true
 # 用于获取文件/应用图标
-file_icon_provider = "0.4.0"
+file_icon_provider.workspace = true
 # 用于图像处理
-image = "0.24"
+image.workspace = true
 # 用于 Base64 编码
 base64 = "0.21"
 
