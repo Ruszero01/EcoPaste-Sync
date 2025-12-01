@@ -187,7 +187,8 @@ const Header: FC<HeaderProps> = (props) => {
 		>
 			{/* 左上角：来源应用图标 + 类型 */}
 			<Flex align="center" gap={4} className="font-medium text-xs">
-				{sourceAppIcon ? (
+				{/* 仅在开启显示来源应用时显示图标和名称 */}
+				{content.showSourceApp && sourceAppIcon ? (
 					<div
 						className="relative"
 						onMouseEnter={() => sourceAppName && setShowTooltip(true)}
@@ -210,7 +211,7 @@ const Header: FC<HeaderProps> = (props) => {
 							</div>
 						)}
 					</div>
-				) : sourceAppName ? (
+				) : content.showSourceApp && sourceAppName ? (
 					<div
 						className="relative"
 						onMouseEnter={() => setShowTooltip(true)}
