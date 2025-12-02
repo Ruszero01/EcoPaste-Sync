@@ -1,7 +1,7 @@
 import UnoIcon from "@/components/UnoIcon";
 import { updateSQL } from "@/database";
 import { MainContext } from "@/pages/Main";
-import { smartPasteClipboard } from "@/plugins/clipboard";
+import { batchPasteClipboard, smartPasteClipboard } from "@/plugins/clipboard";
 import type { HistoryTablePayload } from "@/types/database";
 import { formatDate } from "@/utils/dayjs";
 import { joinPath } from "@/utils/path";
@@ -519,22 +519,82 @@ const Item: FC<ItemProps> = (props) => {
 
 	// 粘贴
 	const pasteValue = async () => {
-		await smartPasteClipboard(data);
+		// 检查是否在多选模式且有选中的项目
+		const isMultiSelectMode =
+			clipboardStore.multiSelect.isMultiSelecting &&
+			clipboardStore.multiSelect.selectedIds.size > 0;
 
-		// 粘贴已有条目后，也触发移动到顶部并更新时间
-		const index = findIndex(state.list, { id });
+		if (isMultiSelectMode && clipboardStore.multiSelect.selectedIds.has(id)) {
+			// 批量粘贴逻辑
+			const selectedIds = Array.from(clipboardStore.multiSelect.selectedIds);
+			const selectedItems = state.list.filter((item) =>
+				selectedIds.includes(item.id),
+			);
 
-		if (index !== -1) {
-			const createTime = formatDate();
+			if (selectedItems.length > 0) {
+				// 按照在列表中的顺序排序选中的项目
+				const sortedSelectedItems = selectedItems.sort((a, b) => {
+					const indexA = state.list.findIndex((item) => item.id === a.id);
+					const indexB = state.list.findIndex((item) => item.id === b.id);
+					return indexA - indexB;
+				});
 
-			// 从原位置移除
-			const [targetItem] = state.list.splice(index, 1);
+				await batchPasteClipboard(sortedSelectedItems);
 
-			// 移动到顶部并更新时间
-			state.list.unshift({ ...targetItem, createTime });
+				// 更新所有选中项目的时间并移动到顶部
+				const createTime = formatDate();
+				const updatedItems = sortedSelectedItems.map((item) => ({
+					...item,
+					createTime,
+				}));
 
-			// 更新数据库
-			await updateSQL("history", { id, createTime });
+				// 从原位置移除所有选中项目
+				for (const selectedItem of sortedSelectedItems) {
+					const index = findIndex(state.list, { id: selectedItem.id });
+					if (index !== -1) {
+						state.list.splice(index, 1);
+					}
+				}
+
+				// 将更新后的项目添加到顶部（保持原有顺序）
+				for (let i = updatedItems.length - 1; i >= 0; i--) {
+					state.list.unshift(updatedItems[i]);
+				}
+
+				// 批量更新数据库
+				for (const selectedItem of sortedSelectedItems) {
+					await updateSQL("history", { id: selectedItem.id, createTime });
+				}
+
+				// 清除多选状态
+				clipboardStore.multiSelect.isMultiSelecting = false;
+				clipboardStore.multiSelect.selectedIds.clear();
+				clipboardStore.multiSelect.lastSelectedId = null;
+
+				// 设置激活项为第一个粘贴的项目
+				if (updatedItems.length > 0) {
+					state.activeId = updatedItems[0].id;
+				}
+			}
+		} else {
+			// 单个粘贴逻辑
+			await smartPasteClipboard(data);
+
+			// 粘贴已有条目后，也触发移动到顶部并更新时间
+			const index = findIndex(state.list, { id });
+
+			if (index !== -1) {
+				const createTime = formatDate();
+
+				// 从原位置移除
+				const [targetItem] = state.list.splice(index, 1);
+
+				// 移动到顶部并更新时间
+				state.list.unshift({ ...targetItem, createTime });
+
+				// 更新数据库
+				await updateSQL("history", { id, createTime });
+			}
 		}
 	};
 
@@ -572,6 +632,14 @@ const Item: FC<ItemProps> = (props) => {
 		// 如果是多选模式且当前项目被选中，显示批量操作菜单
 		if (isMultiSelectMode && clipboardStore.multiSelect.selectedIds.has(id)) {
 			const batchItems: ContextMenuItem[] = [
+				{
+					text: `批量粘贴选中的 ${selectedCount} 个项目`,
+					action: pasteValue,
+				},
+				{
+					text: "---", // 分隔符
+					action: () => {},
+				},
 				{
 					text: `批量删除选中的 ${selectedCount} 个项目`,
 					action: handleBatchDelete,

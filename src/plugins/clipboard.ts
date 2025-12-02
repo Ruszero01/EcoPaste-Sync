@@ -418,69 +418,86 @@ export const readClipboard = async () => {
 
 	const { copyPlain } = clipboardStore.content;
 
-	const has = {
-		files: await hasFiles(),
-		image: await hasImage(),
-		html: await hasHTML(),
-		rtf: await hasRTF(),
-		text: await hasText(),
-	};
+	try {
+		const has = {
+			files: await hasFiles(),
+			image: await hasImage(),
+			html: await hasHTML(),
+			rtf: await hasRTF(),
+			text: await hasText(),
+		};
 
-	// 优先处理图片内容（无论是否有文本，解决截图软件复制问题）
-	if (has.image) {
-		const imagePayload = await readImage();
-		payload = { ...imagePayload, type: "image" };
-	}
-	// 处理文件内容
-	else if (has.files) {
-		const filesPayload = await readFiles();
-
-		// 如果是单个图片文件，由于上面已经优先处理了image格式，
-		// 这里到达说明图片文件是通过文件方式复制的（非截图软件）
-		if (filesPayload.group === "image") {
-			payload = { ...filesPayload, type: "image" };
-		} else {
-			payload = { ...filesPayload, type: "files" };
+		// 优先处理图片内容（无论是否有文本，解决截图软件复制问题）
+		if (has.image) {
+			const imagePayload = await readImage();
+			payload = { ...imagePayload, type: "image" };
 		}
-	}
-	// 处理富文本内容
-	else if (!copyPlain && has.html) {
-		const htmlPayload = await readHTML();
-		payload = { ...htmlPayload, type: "html" };
-	} else if (!copyPlain && has.rtf) {
-		const rtfPayload = await readRTF();
-		payload = { ...rtfPayload, type: "rtf" };
-	}
-	// 最后处理纯文本
-	else {
-		const textPayload = await readText();
-		payload = { ...textPayload, type: "text" };
-	}
+		// 处理文件内容
+		else if (has.files) {
+			const filesPayload = await readFiles();
 
-	// 获取活动窗口信息（仅在开启显示来源应用时）
-	if (clipboardStore.content.showSourceApp) {
-		try {
-			const windowInfo = await getActiveWindowInfo();
-			payload.sourceAppName = windowInfo.app_name;
-
-			// 获取应用图标（仅在Windows上有进程路径）
-			if (windowInfo.process_path) {
-				try {
-					const { getAppIcon } = await import("@/plugins/activeWindow");
-					const iconBase64 = await getAppIcon(windowInfo.process_path);
-					payload.sourceAppIcon = iconBase64;
-				} catch (iconError) {
-					console.warn("获取应用图标失败:", iconError);
-					// 即使获取失败也不影响剪贴板内容的正常读取
-				}
+			// 如果是单个图片文件，由于上面已经优先处理了image格式，
+			// 这里到达说明图片文件是通过文件方式复制的（非截图软件）
+			if (filesPayload.group === "image") {
+				payload = { ...filesPayload, type: "image" };
+			} else {
+				payload = { ...filesPayload, type: "files" };
 			}
-		} catch (error) {
-			console.warn("获取活动窗口信息失败:", error);
-			// 即使失败也不影响剪贴板内容的正常读取
 		}
-	}
+		// 处理富文本内容
+		else if (!copyPlain && has.html) {
+			const htmlPayload = await readHTML();
+			payload = { ...htmlPayload, type: "html" };
+		} else if (!copyPlain && has.rtf) {
+			const rtfPayload = await readRTF();
+			payload = { ...rtfPayload, type: "rtf" };
+		}
+		// 最后处理纯文本
+		else {
+			const textPayload = await readText();
+			payload = { ...textPayload, type: "text" };
+		}
 
-	return payload;
+		// 获取活动窗口信息（仅在开启显示来源应用时）
+		if (clipboardStore.content.showSourceApp) {
+			try {
+				const windowInfo = await getActiveWindowInfo();
+				payload.sourceAppName = windowInfo.app_name;
+
+				// 获取应用图标（仅在Windows上有进程路径）
+				if (windowInfo.process_path) {
+					try {
+						const { getAppIcon } = await import("@/plugins/activeWindow");
+						const iconBase64 = await getAppIcon(windowInfo.process_path);
+						payload.sourceAppIcon = iconBase64;
+					} catch (iconError) {
+						console.warn("获取应用图标失败:", iconError);
+						// 即使获取失败也不影响剪贴板内容的正常读取
+					}
+				}
+			} catch (error) {
+				console.warn("获取活动窗口信息失败:", error);
+				// 即使失败也不影响剪贴板内容的正常读取
+			}
+		}
+
+		return payload;
+	} catch (error) {
+		// 如果是批量粘贴过程中的错误，返回一个空的文本payload
+		if (clipboardStore.internalCopy.isCopying) {
+			console.warn("批量粘贴过程中读取剪贴板失败，返回空内容:", error);
+			return {
+				value: "",
+				search: "",
+				count: 0,
+				group: "text" as const,
+				type: "text" as const,
+			};
+		}
+
+		// 其他情况下重新抛出错误
+		throw error;
+	}
 };
 
 /**
@@ -552,6 +569,20 @@ export const onClipboardUpdate = (fn: (payload: ClipboardPayload) => void) => {
 
 			lastUpdated = now;
 			previousPayload = payload;
+		} catch (error) {
+			// 捕获剪贴板读取错误，特别是批量粘贴过程中的"No image data in clipboard"错误
+			console.warn(
+				"剪贴板更新处理失败，可能是批量粘贴过程中的临时错误:",
+				error,
+			);
+
+			// 如果是批量粘贴过程中的错误，直接忽略，不影响正常功能
+			if (clipboardStore.internalCopy.isCopying) {
+				return;
+			}
+
+			// 其他错误也静默处理，避免影响用户体验
+			return;
 		} finally {
 			processing = false;
 		}
@@ -660,4 +691,144 @@ export const smartPasteClipboard = async (
 
 	// 直接使用原有逻辑，同步阶段已确保所有文件都是本地可用的
 	return pasteClipboard(data, plain);
+};
+
+/**
+ * 批量粘贴剪贴板数据
+ * @param dataList 数据列表
+ * @param plain 是否纯文本粘贴
+ */
+export const batchPasteClipboard = async (
+	dataList?: HistoryTablePayload[],
+	plain = false,
+) => {
+	if (!dataList || dataList.length === 0) return;
+
+	// 设置批量粘贴标志，避免批量粘贴过程中的换行符被误认为是新的剪贴板内容
+	clipboardStore.internalCopy = {
+		isCopying: true,
+		itemId: "batch-paste",
+	};
+
+	try {
+		// 获取实际值函数
+		const getActualValue = (val: string) => {
+			if (!val || typeof val !== "string") {
+				return val;
+			}
+
+			try {
+				// 尝试解析为JSON
+				const parsed = JSON.parse(val);
+
+				// 如果是字符串数组，返回第一个值
+				if (
+					Array.isArray(parsed) &&
+					parsed.length > 0 &&
+					typeof parsed[0] === "string"
+				) {
+					return parsed[0];
+				}
+			} catch (_error) {
+				// JSON解析失败，继续使用原始值
+			}
+
+			return val; // 返回原始值
+		};
+
+		// 依次粘贴每个条目，保持单个条目粘贴的逻辑
+		for (let i = 0; i < dataList.length; i++) {
+			const data = dataList[i];
+			if (!data) continue;
+
+			const { type, value, search } = data;
+			let content = "";
+
+			if (plain) {
+				if (type === "files") {
+					// 文件类型：解析JSON数组并用换行连接
+					try {
+						const filePaths = JSON.parse(value);
+						content = filePaths.join("\n");
+					} catch {
+						content = value;
+					}
+				} else {
+					// 其他类型使用search字段
+					content = search || getActualValue(value);
+				}
+			} else {
+				// 非纯文本模式，根据类型处理
+				switch (type) {
+					case "text":
+						content = search || getActualValue(value);
+						break;
+					case "html":
+						// HTML类型保持原格式，不转换为纯文本
+						content = value;
+						break;
+					case "rtf":
+						// RTF类型保持原格式，不转换为纯文本
+						content = value;
+						break;
+					case "files":
+						try {
+							const filePaths = JSON.parse(value);
+							content = filePaths.join("\n");
+						} catch {
+							content = value;
+						}
+						break;
+					case "image":
+						// 图片类型在批量粘贴时使用OCR文本或原始路径
+						// 首先尝试使用search（OCR文本），如果不存在则使用value（图片路径）
+						content = search || value;
+						break;
+					default:
+						content = getActualValue(value);
+						break;
+				}
+			}
+
+			// 过滤空白内容，避免空白行错误加入剪贴板
+			if (content && content.trim() !== "") {
+				if (plain) {
+					// 纯文本模式：直接写入文本内容
+					await writeText(content);
+				} else {
+					// 非纯文本模式：使用与单个粘贴完全一致的逻辑
+					// 构造与单个粘贴相同的数据结构
+					const pasteData: HistoryTablePayload = {
+						...data,
+						// 对于纯文本类型，使用处理后的content
+						// 对于其他类型，保持原始数据
+						...(type === "text" ? { value: content } : {}),
+					};
+
+					// 使用与单个粘贴相同的writeClipboard函数
+					await writeClipboard(pasteData);
+				}
+
+				// 执行粘贴操作
+				await paste();
+
+				// 添加短暂延迟，确保粘贴操作完成
+				await new Promise((resolve) => setTimeout(resolve, 50));
+
+				// 如果不是最后一个项目，执行换行粘贴
+				if (i < dataList.length - 1) {
+					await writeText("\n");
+					await paste();
+					// 添加短暂延迟，确保换行操作完成
+					await new Promise((resolve) => setTimeout(resolve, 50));
+				}
+			}
+		}
+	} finally {
+		// 清除批量粘贴标志
+		clipboardStore.internalCopy = {
+			isCopying: false,
+			itemId: null,
+		};
+	}
 };
