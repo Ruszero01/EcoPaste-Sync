@@ -730,7 +730,7 @@ const Item: FC<ItemProps> = (props) => {
 	const handleMultiSelect = (event: MouseEvent) => {
 		const { multiSelect } = clipboardStore;
 
-		// 如果是shift+点击，进行多选操作
+		// 如果是shift+点击，进行连续多选操作
 		if (event.shiftKey) {
 			event.stopPropagation();
 
@@ -788,7 +788,45 @@ const Item: FC<ItemProps> = (props) => {
 			return;
 		}
 
-		// 如果是多选状态且不是shift+点击，取消多选但继续处理点击
+		// 如果是ctrl+点击（或mac上的cmd+点击），进行加选操作
+		if (event.ctrlKey || event.metaKey) {
+			event.stopPropagation();
+
+			// 开始多选模式
+			if (!multiSelect.isMultiSelecting) {
+				clipboardStore.multiSelect.isMultiSelecting = true;
+
+				// 如果有当前聚焦的项目，先将其加入选中列表
+				if (state.activeId && state.activeId !== id) {
+					clipboardStore.multiSelect.selectedIds.add(state.activeId);
+				}
+			}
+
+			// 如果当前项目已经被选中，则取消选中
+			if (multiSelect.selectedIds.has(id)) {
+				clipboardStore.multiSelect.selectedIds.delete(id);
+
+				// 如果没有选中的项目了，退出多选模式
+				if (multiSelect.selectedIds.size === 0) {
+					clipboardStore.multiSelect.isMultiSelecting = false;
+					clipboardStore.multiSelect.lastSelectedId = null;
+				} else {
+					// 更新lastSelectedId为最后一个选中的项目
+					const selectedArray = Array.from(multiSelect.selectedIds);
+					const lastSelected = selectedArray[selectedArray.length - 1];
+					clipboardStore.multiSelect.lastSelectedId = lastSelected;
+				}
+			} else {
+				// 如果当前项目未被选中，则添加到选中列表
+				clipboardStore.multiSelect.selectedIds.add(id);
+				clipboardStore.multiSelect.lastSelectedId = id;
+			}
+
+			state.activeId = id;
+			return;
+		}
+
+		// 如果是多选状态且不是shift+点击或ctrl+点击，取消多选但继续处理点击
 		if (multiSelect.isMultiSelecting) {
 			clipboardStore.multiSelect.isMultiSelecting = false;
 			clipboardStore.multiSelect.selectedIds.clear();
@@ -796,8 +834,8 @@ const Item: FC<ItemProps> = (props) => {
 			// 不return，继续处理正常点击逻辑
 		}
 
-		// 对于正常点击（非shift+点击），设置lastSelectedId以便后续shift+点击使用
-		if (!event.shiftKey) {
+		// 对于正常点击（非shift+点击或ctrl+点击），设置lastSelectedId以便后续shift+点击使用
+		if (!event.shiftKey && !event.ctrlKey && !event.metaKey) {
 			clipboardStore.multiSelect.lastSelectedId = id;
 		}
 	};
