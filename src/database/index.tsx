@@ -583,26 +583,73 @@ export const batchDeleteItems = async (ids: string[]) => {
 	if (!ids || ids.length === 0) return { success: true, deletedCount: 0 };
 
 	try {
-		const placeholders = ids.map(() => "?").join(",");
+		// 先获取要删除的条目信息，以便找出所有相关重复条目
+		const itemsToDelete = (await executeSQL(
+			`SELECT * FROM history WHERE id IN (${ids.map(() => "?").join(",")})`,
+			ids,
+		)) as any[];
 
-		// 批量软删除：标记为已删除，并设置同步状态为待同步
+		// 找出所有需要删除的ID（包括重复条目）
+		const allIdsToDelete = new Set<string>();
+
+		for (const item of itemsToDelete) {
+			allIdsToDelete.add(item.id);
+
+			// 对于文件和图片类型，删除所有相同路径的条目（不管类型）
+			if (item.type === "files" || item.type === "image") {
+				let filePath = item.value;
+
+				// 如果是files类型，尝试从JSON中提取文件路径
+				if (item.type === "files" && item.value?.startsWith("[")) {
+					try {
+						const filePaths = JSON.parse(item.value);
+						filePath = filePaths[0];
+					} catch {
+						// 解析失败，使用原值
+					}
+				}
+
+				// 查找所有相同文件路径的条目
+				const duplicateItems = (await executeSQL(
+					`SELECT id FROM history WHERE (type = "files" OR type = "image") AND deleted = 0 AND (
+						value = ? OR
+						value LIKE ? OR
+						? LIKE value
+					)`,
+					[
+						filePath,
+						`%"${filePath.replace(/\\/g, "/")}%`,
+						`${filePath.replace(/\\/g, "/")}%`,
+					],
+				)) as any[];
+
+				// 将所有重复条目也加入删除列表
+				for (const duplicate of duplicateItems) {
+					allIdsToDelete.add(duplicate.id);
+				}
+			}
+		}
+
+		// 执行批量软删除：标记为已删除，并设置同步状态为待同步
+		const allIdsArray = Array.from(allIdsToDelete);
+		const placeholders = allIdsArray.map(() => "?").join(",");
 		const currentTime = Date.now();
 		await executeSQL(
 			`UPDATE history SET deleted = 1, syncStatus = 'pending', lastModified = ? WHERE id IN (${placeholders})`,
-			[currentTime, ...ids],
+			[currentTime, ...allIdsArray],
 		);
 
 		// 验证删除是否成功
 		const verifyResult = (await executeSQL(
 			`SELECT COUNT(*) as count FROM history WHERE id IN (${placeholders}) AND deleted = 1`,
-			ids,
+			allIdsArray,
 		)) as any[];
 
 		const deletedCount = verifyResult[0]?.count || 0;
 
-		if (deletedCount !== ids.length) {
+		if (deletedCount !== allIdsArray.length) {
 			console.error("❌ 批量删除部分失败", {
-				expected: ids.length,
+				expected: allIdsArray.length,
 				actual: deletedCount,
 			});
 			return { success: false, deletedCount, error: "部分条目删除失败" };

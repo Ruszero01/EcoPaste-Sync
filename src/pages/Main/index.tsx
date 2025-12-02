@@ -713,7 +713,11 @@ const Main = () => {
 				key = `${item.type}:${item.value}`;
 			}
 
-			if (!seenKeys.has(key)) {
+			// 只有未删除的条目才参与去重，已删除的条目直接保留在结果中
+			// 但不显示在界面上（因为前面查询已经过滤了 deleted = 0）
+			if (item.deleted) {
+				uniqueItems.push(item);
+			} else if (!seenKeys.has(key)) {
 				seenKeys.add(key);
 				uniqueItems.push(item);
 			}
