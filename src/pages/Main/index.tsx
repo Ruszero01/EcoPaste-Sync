@@ -556,6 +556,33 @@ const Main = () => {
 		showWindow("preference");
 	});
 
+	// Ctrl+A 全选功能
+	useKeyPress(["ctrl.a", "meta.a"], (event) => {
+		// 阻止默认行为（避免浏览器全选）
+		event.preventDefault();
+
+		// 检查是否有剪贴板条目
+		if (state.list.length === 0) return;
+
+		// 进入多选模式
+		clipboardStore.multiSelect.isMultiSelecting = true;
+		clipboardStore.multiSelect.selectedIds.clear();
+
+		// 选择所有条目
+		for (const item of state.list) {
+			clipboardStore.multiSelect.selectedIds.add(item.id);
+		}
+
+		// 设置最后一个选中的ID
+		clipboardStore.multiSelect.lastSelectedId =
+			state.list[state.list.length - 1]?.id || null;
+
+		// 聚焦到第一个条目
+		if (state.list.length > 0) {
+			state.activeId = state.list[0].id;
+		}
+	});
+
 	// 缓存机制，避免重复查询
 	let lastQueryParams = "";
 	// const cachedResult: HistoryTablePayload[] = [];
