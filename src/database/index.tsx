@@ -586,9 +586,10 @@ export const batchDeleteItems = async (ids: string[]) => {
 		const placeholders = ids.map(() => "?").join(",");
 
 		// 批量软删除：标记为已删除，并设置同步状态为待同步
+		const currentTime = Date.now();
 		await executeSQL(
-			`UPDATE history SET deleted = 1, syncStatus = 'pending', lastModified = ${Date.now()} WHERE id IN (${placeholders})`,
-			ids,
+			`UPDATE history SET deleted = 1, syncStatus = 'pending', lastModified = ? WHERE id IN (${placeholders})`,
+			[currentTime, ...ids],
 		);
 
 		// 验证删除是否成功
@@ -627,15 +628,16 @@ export const batchUpdateFavorite = async (ids: string[], favorite: boolean) => {
 		const favoriteValue = favorite ? 1 : 0;
 
 		// 批量更新收藏状态，并设置同步状态为待同步
+		const currentTime = Date.now();
 		await executeSQL(
-			`UPDATE history SET favorite = ${favoriteValue}, syncStatus = 'pending', lastModified = ${Date.now()} WHERE id IN (${placeholders})`,
-			ids,
+			`UPDATE history SET favorite = ?, syncStatus = 'pending', lastModified = ? WHERE id IN (${placeholders})`,
+			[favoriteValue, currentTime, ...ids],
 		);
 
 		// 验证更新是否成功
 		const verifyResult = (await executeSQL(
-			`SELECT COUNT(*) as count FROM history WHERE id IN (${placeholders}) AND favorite = ${favoriteValue}`,
-			ids,
+			`SELECT COUNT(*) as count FROM history WHERE id IN (${placeholders}) AND favorite = ?`,
+			[...ids, favoriteValue],
 		)) as any[];
 
 		const updatedCount = verifyResult[0]?.count || 0;
