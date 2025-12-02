@@ -44,4 +44,11 @@ export const clipboardStore = proxy<ClipboardStore>({
 		isCopying: false,
 		itemId: null,
 	},
+
+	// 多选状态
+	multiSelect: {
+		isMultiSelecting: false,
+		selectedIds: new Set(),
+		lastSelectedId: null,
+	},
 });

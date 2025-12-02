@@ -716,6 +716,33 @@ const Main = () => {
 		// 这个监听器主要用于调试，实际逻辑在 List 组件中处理
 	});
 
+	// 全局点击事件，用于清除多选状态
+	useEffect(() => {
+		const handleGlobalClick = (event: MouseEvent) => {
+			// 如果正在多选状态，且点击的不是剪贴板条目，则清除多选
+			if (clipboardStore.multiSelect.isMultiSelecting) {
+				const target = event.target as Element;
+
+				// 检查点击的目标是否在剪贴板条目内
+				const isClickInsideItem = target.closest("[data-item-id]");
+
+				if (!isClickInsideItem) {
+					clipboardStore.multiSelect.isMultiSelecting = false;
+					clipboardStore.multiSelect.selectedIds.clear();
+					clipboardStore.multiSelect.lastSelectedId = null;
+				}
+			}
+		};
+
+		// 添加全局点击监听器
+		document.addEventListener("click", handleGlobalClick);
+
+		// 清理函数
+		return () => {
+			document.removeEventListener("click", handleGlobalClick);
+		};
+	}, [clipboardStore.multiSelect.isMultiSelecting]);
+
 	// 清理计时器
 	useUnmount(() => {
 		if (windowHideTimer.current) {

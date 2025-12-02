@@ -72,7 +72,10 @@ const Item: FC<ItemProps> = (props) => {
 	const { state, forceRefreshList } = useContext(MainContext);
 	const { t, i18n: i18nInstance } = useTranslation();
 	const { env } = useSnapshot(globalStore);
-	const { content } = useSnapshot(clipboardStore);
+	const { content, multiSelect } = useSnapshot(clipboardStore);
+
+	// 判断当前项目是否被多选
+	const isSelected = multiSelect.selectedIds.has(id);
 
 	// 辅助函数：从JSON数组格式中提取实际值
 	const getActualValue = (val: string) => {
@@ -507,8 +510,86 @@ const Item: FC<ItemProps> = (props) => {
 		menu.popup();
 	};
 
+	// 处理多选逻辑
+	const handleMultiSelect = (event: MouseEvent) => {
+		const { multiSelect } = clipboardStore;
+
+		// 如果是shift+点击，进行多选操作
+		if (event.shiftKey) {
+			event.stopPropagation();
+
+			// 如果当前没有多选状态，开始多选
+			if (!multiSelect.isMultiSelecting) {
+				clipboardStore.multiSelect.isMultiSelecting = true;
+				clipboardStore.multiSelect.selectedIds.clear();
+			}
+
+			// 如果有上次选中的项目，选择范围
+			if (multiSelect.lastSelectedId) {
+				const lastSelectedIndex = state.list.findIndex(
+					(item) => item.id === multiSelect.lastSelectedId,
+				);
+				const currentIndex = index;
+
+				if (lastSelectedIndex !== -1) {
+					const startIndex = Math.min(lastSelectedIndex, currentIndex);
+					const endIndex = Math.max(lastSelectedIndex, currentIndex);
+
+					// 选择范围内的所有项目，包括起始和结束项目
+					for (let i = startIndex; i <= endIndex; i++) {
+						if (state.list[i]) {
+							clipboardStore.multiSelect.selectedIds.add(state.list[i].id);
+						}
+					}
+				} else {
+					// 如果找不到上次选中的项目，只选中当前项目
+					clipboardStore.multiSelect.selectedIds.add(id);
+				}
+			} else {
+				// 如果没有上次选中的项目，选中当前聚焦的项目作为起点
+				const currentActiveIndex = state.list.findIndex(
+					(item) => item.id === state.activeId,
+				);
+
+				if (currentActiveIndex !== -1) {
+					// 有聚焦项目时，选择从聚焦项目到当前项目的范围
+					const startIndex = Math.min(currentActiveIndex, index);
+					const endIndex = Math.max(currentActiveIndex, index);
+
+					for (let i = startIndex; i <= endIndex; i++) {
+						if (state.list[i]) {
+							clipboardStore.multiSelect.selectedIds.add(state.list[i].id);
+						}
+					}
+				} else {
+					// 没有聚焦项目，只选中当前项目
+					clipboardStore.multiSelect.selectedIds.add(id);
+				}
+			}
+
+			clipboardStore.multiSelect.lastSelectedId = id;
+			state.activeId = id;
+			return;
+		}
+
+		// 如果是多选状态且不是shift+点击，取消多选但继续处理点击
+		if (multiSelect.isMultiSelecting) {
+			clipboardStore.multiSelect.isMultiSelecting = false;
+			clipboardStore.multiSelect.selectedIds.clear();
+			clipboardStore.multiSelect.lastSelectedId = null;
+			// 不return，继续处理正常点击逻辑
+		}
+
+		// 对于正常点击（非shift+点击），设置lastSelectedId以便后续shift+点击使用
+		if (!event.shiftKey) {
+			clipboardStore.multiSelect.lastSelectedId = id;
+		}
+	};
+
 	// 点击事件
-	const handleClick = (type: typeof content.autoPaste) => {
+	const handleClick = (type: typeof content.autoPaste, event: MouseEvent) => {
+		handleMultiSelect(event);
+
 		state.activeId = id;
 
 		if (content.autoPaste !== type) return;
@@ -655,16 +736,18 @@ const Item: FC<ItemProps> = (props) => {
 			vertical
 			draggable
 			gap={4}
+			data-item-id={id}
 			className={clsx(
 				className,
 				"group antd-input! b-color-2 absolute inset-0 mx-0 h-full rounded-md p-1.5",
 				{
 					"antd-input-focus!": state.activeId === id,
+					"border-2 border-blue-500!": isSelected,
 				},
 			)}
 			onContextMenu={handleContextMenu}
-			onClick={() => handleClick("single")}
-			onDoubleClick={() => handleClick("double")}
+			onClick={(event) => handleClick("single", event)}
+			onDoubleClick={(event) => handleClick("double", event)}
 			onDragStart={handleDragStart}
 		>
 			{/* 同步状态指示灯 */}

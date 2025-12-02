@@ -153,4 +153,11 @@ export interface ClipboardStore {
 		isCopying: boolean;
 		itemId: string | null;
 	};
+
+	// 多选状态
+	multiSelect: {
+		isMultiSelecting: boolean;
+		selectedIds: Set<string>;
+		lastSelectedId: string | null;
+	};
 }
