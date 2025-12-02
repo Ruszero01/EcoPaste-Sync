@@ -576,6 +576,86 @@ export const getPendingSyncRecords = async (limit?: number) => {
 };
 
 /**
+ * 批量删除剪贴板条目（软删除）
+ * @param ids 要删除的条目ID数组
+ */
+export const batchDeleteItems = async (ids: string[]) => {
+	if (!ids || ids.length === 0) return { success: true, deletedCount: 0 };
+
+	try {
+		const placeholders = ids.map(() => "?").join(",");
+
+		// 批量软删除：标记为已删除，并设置同步状态为待同步
+		await executeSQL(
+			`UPDATE history SET deleted = 1, syncStatus = 'pending', lastModified = ${Date.now()} WHERE id IN (${placeholders})`,
+			ids,
+		);
+
+		// 验证删除是否成功
+		const verifyResult = (await executeSQL(
+			`SELECT COUNT(*) as count FROM history WHERE id IN (${placeholders}) AND deleted = 1`,
+			ids,
+		)) as any[];
+
+		const deletedCount = verifyResult[0]?.count || 0;
+
+		if (deletedCount !== ids.length) {
+			console.error("❌ 批量删除部分失败", {
+				expected: ids.length,
+				actual: deletedCount,
+			});
+			return { success: false, deletedCount, error: "部分条目删除失败" };
+		}
+
+		return { success: true, deletedCount };
+	} catch (error) {
+		console.error("❌ 批量删除失败:", error);
+		return { success: false, deletedCount: 0, error };
+	}
+};
+
+/**
+ * 批量收藏/取消收藏剪贴板条目
+ * @param ids 要操作的条目ID数组
+ * @param favorite 是否收藏，true为收藏，false为取消收藏
+ */
+export const batchUpdateFavorite = async (ids: string[], favorite: boolean) => {
+	if (!ids || ids.length === 0) return { success: true, updatedCount: 0 };
+
+	try {
+		const placeholders = ids.map(() => "?").join(",");
+		const favoriteValue = favorite ? 1 : 0;
+
+		// 批量更新收藏状态，并设置同步状态为待同步
+		await executeSQL(
+			`UPDATE history SET favorite = ${favoriteValue}, syncStatus = 'pending', lastModified = ${Date.now()} WHERE id IN (${placeholders})`,
+			ids,
+		);
+
+		// 验证更新是否成功
+		const verifyResult = (await executeSQL(
+			`SELECT COUNT(*) as count FROM history WHERE id IN (${placeholders}) AND favorite = ${favoriteValue}`,
+			ids,
+		)) as any[];
+
+		const updatedCount = verifyResult[0]?.count || 0;
+
+		if (updatedCount !== ids.length) {
+			console.error("❌ 批量更新收藏状态部分失败", {
+				expected: ids.length,
+				actual: updatedCount,
+			});
+			return { success: false, updatedCount, error: "部分条目更新失败" };
+		}
+
+		return { success: true, updatedCount };
+	} catch (error) {
+		console.error("❌ 批量更新收藏状态失败:", error);
+		return { success: false, updatedCount: 0, error };
+	}
+};
+
+/**
  * 关闭数据库连接池
  */
 export const closeDatabase = async () => {

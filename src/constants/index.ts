@@ -33,6 +33,8 @@ export const LISTEN_KEY = {
 	CLOSE_DATABASE: "close-database",
 	TOGGLE_LISTEN_CLIPBOARD: "toggle-listen-clipboard",
 	CLIPBOARD_ITEM_FAVORITE: "clipboard-item-favorite",
+	CLIPBOARD_ITEM_BATCH_DELETE: "clipboard-item-batch-delete",
+	CLIPBOARD_ITEM_BATCH_FAVORITE: "clipboard-item-batch-favorite",
 	ACTIVATE_BACK_TOP: "activate-back-top",
 	REALTIME_SYNC_COMPLETED: "realtime-sync-completed",
 	REALTIME_SYNC_ERROR: "realtime-sync-error",

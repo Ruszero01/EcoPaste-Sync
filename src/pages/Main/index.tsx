@@ -591,8 +591,14 @@ const Main = () => {
 
 	// 强制刷新列表的函数（仅更新列表，不触发其他事件）
 	const forceRefreshList = () => {
+		// 彻底清除所有缓存，确保删除操作能立即反映
 		getListCache.current.clear();
 		lastQueryParams = "";
+		// 清除防抖计时器，确保立即刷新
+		if (getListDebounceTimer.current) {
+			clearTimeout(getListDebounceTimer.current);
+			getListDebounceTimer.current = null;
+		}
 		// 直接调用getList而不是使用防抖，避免延迟
 		getList();
 	};

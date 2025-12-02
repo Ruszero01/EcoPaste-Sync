@@ -103,7 +103,12 @@ const Item: FC<ItemProps> = (props) => {
 	};
 
 	state.$eventBus?.useSubscription((key) => {
-		if (id !== state.eventBusId) return;
+		// 处理批量操作：如果是批量操作，不检查id匹配
+		const isBatchOperation =
+			key === LISTEN_KEY.CLIPBOARD_ITEM_BATCH_DELETE ||
+			key === LISTEN_KEY.CLIPBOARD_ITEM_BATCH_FAVORITE;
+
+		if (!isBatchOperation && id !== state.eventBusId) return;
 
 		switch (key) {
 			case LISTEN_KEY.CLIPBOARD_ITEM_PREVIEW:
@@ -118,6 +123,10 @@ const Item: FC<ItemProps> = (props) => {
 				return selectNextOrPrev();
 			case LISTEN_KEY.CLIPBOARD_ITEM_FAVORITE:
 				return toggleFavorite();
+			case LISTEN_KEY.CLIPBOARD_ITEM_BATCH_DELETE:
+				return handleBatchDelete();
+			case LISTEN_KEY.CLIPBOARD_ITEM_BATCH_FAVORITE:
+				return handleBatchFavorite();
 		}
 	});
 
@@ -229,6 +238,133 @@ const Item: FC<ItemProps> = (props) => {
 					favorite: favorite,
 				};
 			}
+		}
+	};
+
+	// 批量删除处理函数
+	const handleBatchDelete = async () => {
+		// 只在第一个被选中的项目中处理，避免重复执行
+		const firstSelectedId = Array.from(
+			clipboardStore.multiSelect.selectedIds,
+		)[0];
+		if (id !== firstSelectedId) return;
+
+		// 获取所有选中的项目ID
+		const selectedIds = Array.from(clipboardStore.multiSelect.selectedIds);
+
+		// 显示确认对话框
+		let confirmed = true;
+
+		if (clipboardStore.content.deleteConfirm) {
+			confirmed = await deleteModal.confirm({
+				centered: true,
+				content: `确定要删除选中的 ${selectedIds.length} 个项目吗？`,
+				afterClose() {
+					// 关闭确认框后焦点还在，需要手动取消焦点
+					(document.activeElement as HTMLElement)?.blur();
+				},
+			});
+		}
+
+		if (!confirmed) return;
+
+		try {
+			// 执行批量删除
+			const result = await batchDeleteItems(selectedIds);
+
+			if (result.success) {
+				// 清除多选状态
+				clipboardStore.multiSelect.isMultiSelecting = false;
+				clipboardStore.multiSelect.selectedIds.clear();
+				clipboardStore.multiSelect.lastSelectedId = null;
+
+				// 立即刷新列表，确保数据库操作完成
+				if (forceRefreshList) {
+					forceRefreshList();
+				}
+
+				// 从本地状态中移除已删除的项目（在刷新后执行，确保状态同步）
+				// 创建新数组避免直接修改正在遍历的数组
+				const remainingItems = state.list.filter(
+					(item) => !selectedIds.includes(item.id),
+				);
+				state.list.splice(0, state.list.length, ...remainingItems);
+
+				// 设置新的激活项
+				if (remainingItems.length > 0) {
+					state.activeId = remainingItems[0]?.id;
+				} else {
+					state.activeId = undefined;
+				}
+
+				// 显示成功提示
+				message.success(`成功删除 ${result.deletedCount} 个项目`);
+			} else {
+				message.error(`批量删除失败: ${result.error}`);
+			}
+		} catch (error) {
+			console.error("❌ 批量删除失败:", error);
+			message.error("批量删除操作失败");
+		}
+	};
+
+	// 批量收藏处理函数
+	const handleBatchFavorite = async () => {
+		// 只在第一个被选中的项目中处理，避免重复执行
+		const firstSelectedId = Array.from(
+			clipboardStore.multiSelect.selectedIds,
+		)[0];
+		if (id !== firstSelectedId) return;
+
+		// 获取所有选中的项目ID
+		const selectedIds = Array.from(clipboardStore.multiSelect.selectedIds);
+
+		// 检查是否都是收藏的或都不是收藏的，以确定操作类型
+		const selectedItems = state.list.filter((item) =>
+			selectedIds.includes(item.id),
+		);
+		const areAllFavorited =
+			selectedItems.length > 0 && selectedItems.every((item) => item.favorite);
+		const newFavoriteStatus = !areAllFavorited; // 如果全部收藏，则取消收藏；否则全部收藏
+
+		// 提前定义action变量，避免作用域问题
+		const action = newFavoriteStatus ? "收藏" : "取消收藏";
+
+		try {
+			// 执行批量收藏/取消收藏
+			const result = await batchUpdateFavorite(selectedIds, newFavoriteStatus);
+
+			if (result.success) {
+				// 更新本地状态
+				for (const selectedId of selectedIds) {
+					const itemIndex = findIndex(state.list, { id: selectedId });
+					if (itemIndex !== -1) {
+						state.list[itemIndex] = {
+							...state.list[itemIndex],
+							favorite: newFavoriteStatus,
+							lastModified: Date.now(),
+						};
+					}
+				}
+
+				// 刷新列表，确保状态同步
+				if (forceRefreshList) {
+					forceRefreshList();
+				}
+
+				// 清除多选状态
+				clipboardStore.multiSelect.isMultiSelecting = false;
+				clipboardStore.multiSelect.selectedIds.clear();
+				clipboardStore.multiSelect.lastSelectedId = null;
+
+				// 显示成功提示
+				message.success(`成功${action} ${result.updatedCount} 个项目`);
+			} else {
+				message.error(`批量${action}失败: ${result.error}`);
+			}
+		} catch (error) {
+			console.error("❌ 批量收藏失败:", error);
+			message.error("批量收藏操作失败");
 		}
 	};
 
@@ -426,6 +562,57 @@ const Item: FC<ItemProps> = (props) => {
 
 		state.activeId = id;
 
+		// 检查是否在多选模式且有选中的项目
+		const isMultiSelectMode =
+			clipboardStore.multiSelect.isMultiSelecting &&
+			clipboardStore.multiSelect.selectedIds.size > 0;
+		const selectedCount = clipboardStore.multiSelect.selectedIds.size;
+
+		// 如果是多选模式且当前项目被选中，显示批量操作菜单
+		if (isMultiSelectMode && clipboardStore.multiSelect.selectedIds.has(id)) {
+			const batchItems: ContextMenuItem[] = [
+				{
+					text: `批量删除选中的 ${selectedCount} 个项目`,
+					action: handleBatchDelete,
+				},
+				{
+					text: `批量收藏选中的 ${selectedCount} 个项目`,
+					action: handleBatchFavorite,
+				},
+				{
+					text: "---", // 分隔符
+					action: () => {},
+				},
+				{
+					text: "取消多选",
+					action: () => {
+						clipboardStore.multiSelect.isMultiSelecting = false;
+						clipboardStore.multiSelect.selectedIds.clear();
+						clipboardStore.multiSelect.lastSelectedId = null;
+					},
+				},
+			];
+
+			const batchMenu = await Menu.new();
+
+			for await (const item of batchItems) {
+				if (item.text === "---") {
+					// 添加分隔符
+					await batchMenu.append({
+						text: "",
+						enabled: false,
+					});
+				} else {
+					const menuItem = await MenuItem.new(item);
+					await batchMenu.append(menuItem);
+				}
+			}
+
+			batchMenu.popup();
+			return;
+		}
+
+		// 常规右键菜单
 		const items: ContextMenuItem[] = [
 			{
 				text: t("clipboard.button.context_menu.copy"),
@@ -498,6 +685,34 @@ const Item: FC<ItemProps> = (props) => {
 				action: deleteItem,
 			},
 		];
+
+		// 如果在多选模式但当前项目没有被选中，添加"全选"选项
+		if (isMultiSelectMode) {
+			items.unshift({
+				text: "全选所有可见项目",
+				action: () => {
+					clipboardStore.multiSelect.isMultiSelecting = true;
+					clipboardStore.multiSelect.selectedIds.clear();
+					for (const item of state.list) {
+						clipboardStore.multiSelect.selectedIds.add(item.id);
+					}
+					clipboardStore.multiSelect.lastSelectedId =
+						state.list[state.list.length - 1]?.id || null;
+				},
+			});
+			items.unshift({
+				text: "选择所有可见项目",
+				action: () => {
+					clipboardStore.multiSelect.isMultiSelecting = true;
+					clipboardStore.multiSelect.selectedIds.clear();
+					for (const item of state.list) {
+						clipboardStore.multiSelect.selectedIds.add(item.id);
+					}
+					clipboardStore.multiSelect.lastSelectedId =
+						state.list[state.list.length - 1]?.id || null;
+				},
+			});
+		}
 
 		const menu = await Menu.new();
 
