@@ -10,7 +10,7 @@ import { Menu, MenuItem, type MenuItemOptions } from "@tauri-apps/api/menu";
 import { downloadDir, resolveResource } from "@tauri-apps/api/path";
 import { copyFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import { openPath, openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
-import { Flex, type FlexProps, message } from "antd";
+import { App, Flex, type FlexProps } from "antd";
 import type { HookAPI } from "antd/es/modal/useModal";
 import clsx from "clsx";
 import dayjs from "dayjs";
@@ -45,6 +45,7 @@ interface ContextMenuItem extends MenuItemOptions {
 dayjs.extend(relativeTime);
 
 const Item: FC<ItemProps> = (props) => {
+	const { message } = App.useApp();
 	const {
 		index,
 		data,
