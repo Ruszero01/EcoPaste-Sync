@@ -894,8 +894,11 @@ const Item: FC<ItemProps> = (props) => {
 			return;
 		}
 
-		// 如果是多选状态且不是shift+点击或ctrl+点击，取消多选但继续处理点击
-		if (multiSelect.isMultiSelecting) {
+		// 如果是多选状态且不是shift+点击或ctrl+点击，只有点击未选中的条目才取消多选
+		if (
+			multiSelect.isMultiSelecting &&
+			!clipboardStore.multiSelect.selectedIds.has(id)
+		) {
 			clipboardStore.multiSelect.isMultiSelecting = false;
 			clipboardStore.multiSelect.selectedIds.clear();
 			clipboardStore.multiSelect.lastSelectedId = null;
@@ -916,7 +919,18 @@ const Item: FC<ItemProps> = (props) => {
 
 		if (content.autoPaste !== type) return;
 
-		pasteValue();
+		// 检查是否在多选模式且有选中的项目
+		const isMultiSelectMode =
+			clipboardStore.multiSelect.isMultiSelecting &&
+			clipboardStore.multiSelect.selectedIds.size > 0;
+
+		// 如果是多选模式且当前项目被选中，执行批量粘贴
+		if (isMultiSelectMode && clipboardStore.multiSelect.selectedIds.has(id)) {
+			pasteValue(); // pasteValue函数内部已经包含了批量粘贴逻辑
+		} else {
+			// 单个粘贴逻辑
+			pasteValue();
+		}
 	};
 
 	// 拖拽事件

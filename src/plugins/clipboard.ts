@@ -711,117 +711,23 @@ export const batchPasteClipboard = async (
 	};
 
 	try {
-		// 获取实际值函数
-		const getActualValue = (val: string) => {
-			if (!val || typeof val !== "string") {
-				return val;
-			}
-
-			try {
-				// 尝试解析为JSON
-				const parsed = JSON.parse(val);
-
-				// 如果是字符串数组，返回第一个值
-				if (
-					Array.isArray(parsed) &&
-					parsed.length > 0 &&
-					typeof parsed[0] === "string"
-				) {
-					return parsed[0];
-				}
-			} catch (_error) {
-				// JSON解析失败，继续使用原始值
-			}
-
-			return val; // 返回原始值
-		};
-
-		// 依次粘贴每个条目，保持单个条目粘贴的逻辑
+		// 依次粘贴每个条目，完全使用单个条目粘贴的逻辑
 		for (let i = 0; i < dataList.length; i++) {
 			const data = dataList[i];
 			if (!data) continue;
 
-			const { type, value, search } = data;
-			let content = "";
+			// 使用与单个粘贴完全相同的逻辑
+			await pasteClipboard(data, plain);
 
-			if (plain) {
-				if (type === "files") {
-					// 文件类型：解析JSON数组并用换行连接
-					try {
-						const filePaths = JSON.parse(value);
-						content = filePaths.join("\n");
-					} catch {
-						content = value;
-					}
-				} else {
-					// 其他类型使用search字段
-					content = search || getActualValue(value);
-				}
-			} else {
-				// 非纯文本模式，根据类型处理
-				switch (type) {
-					case "text":
-						content = search || getActualValue(value);
-						break;
-					case "html":
-						// HTML类型保持原格式，不转换为纯文本
-						content = value;
-						break;
-					case "rtf":
-						// RTF类型保持原格式，不转换为纯文本
-						content = value;
-						break;
-					case "files":
-						try {
-							const filePaths = JSON.parse(value);
-							content = filePaths.join("\n");
-						} catch {
-							content = value;
-						}
-						break;
-					case "image":
-						// 图片类型在批量粘贴时使用OCR文本或原始路径
-						// 首先尝试使用search（OCR文本），如果不存在则使用value（图片路径）
-						content = search || value;
-						break;
-					default:
-						content = getActualValue(value);
-						break;
-				}
-			}
+			// 添加短暂延迟，确保粘贴操作完成
+			await new Promise((resolve) => setTimeout(resolve, 50));
 
-			// 过滤空白内容，避免空白行错误加入剪贴板
-			if (content && content.trim() !== "") {
-				if (plain) {
-					// 纯文本模式：直接写入文本内容
-					await writeText(content);
-				} else {
-					// 非纯文本模式：使用与单个粘贴完全一致的逻辑
-					// 构造与单个粘贴相同的数据结构
-					const pasteData: HistoryTablePayload = {
-						...data,
-						// 对于纯文本类型，使用处理后的content
-						// 对于其他类型，保持原始数据
-						...(type === "text" ? { value: content } : {}),
-					};
-
-					// 使用与单个粘贴相同的writeClipboard函数
-					await writeClipboard(pasteData);
-				}
-
-				// 执行粘贴操作
+			// 如果不是最后一个项目，执行换行粘贴
+			if (i < dataList.length - 1) {
+				await writeText("\n");
 				await paste();
-
-				// 添加短暂延迟，确保粘贴操作完成
+				// 添加短暂延迟，确保换行操作完成
 				await new Promise((resolve) => setTimeout(resolve, 50));
-
-				// 如果不是最后一个项目，执行换行粘贴
-				if (i < dataList.length - 1) {
-					await writeText("\n");
-					await paste();
-					// 添加短暂延迟，确保换行操作完成
-					await new Promise((resolve) => setTimeout(resolve, 50));
-				}
 			}
 		}
 	} finally {
