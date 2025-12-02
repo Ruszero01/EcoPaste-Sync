@@ -493,6 +493,10 @@ export const onClipboardUpdate = (fn: (payload: ClipboardPayload) => void) => {
 	let retryCount = 0;
 	const MAX_RETRY = 3;
 
+	// 用于防重复处理的缓存
+	const contentHashCache = new Map<string, number>();
+	const CONTENT_CACHE_TTL = 500; // 500ms内的相同内容视为重复
+
 	const processClipboardUpdate = async () => {
 		if (processing) {
 			retryCount++;
@@ -513,20 +517,40 @@ export const onClipboardUpdate = (fn: (payload: ClipboardPayload) => void) => {
 		try {
 			const payload = await readClipboard();
 
-			const { group, count } = payload;
+			const { group, count, type, value } = payload;
 
 			if (group === "text" && count === 0) {
 				return;
 			}
 
+			// 创建内容哈希用于去重
+			const contentKey = `${type}:${group}:${value?.substring(0, 100)}`;
+			const now = Date.now();
+
+			// 检查是否是短时间内重复的内容
+			const lastProcessedTime = contentHashCache.get(contentKey);
+			if (lastProcessedTime && now - lastProcessedTime < CONTENT_CACHE_TTL) {
+				return; // 跳过重复内容
+			}
+
+			// 更新缓存
+			contentHashCache.set(contentKey, now);
+
+			// 清理过期的缓存项
+			for (const [key, time] of contentHashCache.entries()) {
+				if (now - time > CONTENT_CACHE_TTL * 2) {
+					contentHashCache.delete(key);
+				}
+			}
+
 			// 减少防抖时间到100ms，提高响应速度
-			const expired = Date.now() - lastUpdated > 100;
+			const expired = now - lastUpdated > 100;
 
 			if (expired || !isEqual(payload, previousPayload)) {
 				fn(payload);
 			}
 
-			lastUpdated = Date.now();
+			lastUpdated = now;
 			previousPayload = payload;
 		} finally {
 			processing = false;
