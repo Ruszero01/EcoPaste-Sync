@@ -689,7 +689,11 @@ const Item: FC<ItemProps> = (props) => {
 			},
 			{
 				text: t("clipboard.button.context_menu.edit"),
-				hide: type !== "text" && type !== "html" && type !== "rtf",
+				hide:
+					type !== "text" &&
+					type !== "html" &&
+					type !== "rtf" &&
+					type !== "markdown",
 				action: () => openEditModal?.(),
 			},
 			{

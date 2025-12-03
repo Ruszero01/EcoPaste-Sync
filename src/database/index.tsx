@@ -392,9 +392,9 @@ export const insertWithDeduplication = async (
 				params.push(type);
 			}
 
-			// 对于HTML和RTF类型，我们使用search字段进行比较，因为value可能包含格式信息
+			// 对于HTML、RTF和Markdown类型，我们使用search字段进行比较，因为value可能包含格式信息
 			// 而search字段通常包含纯文本内容
-			if (type === "html" || type === "rtf") {
+			if (type === "html" || type === "rtf" || type === "markdown") {
 				const searchValue = (payload as HistoryTablePayload).search;
 				if (searchValue) {
 					conditions.push("search = ?");

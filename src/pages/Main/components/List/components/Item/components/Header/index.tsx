@@ -73,7 +73,12 @@ const Header: FC<HeaderProps> = (props) => {
 				);
 			case "edit":
 				// 只在文本类条目上显示
-				return type === "text" || type === "html" || type === "rtf";
+				return (
+					type === "text" ||
+					type === "html" ||
+					type === "rtf" ||
+					type === "markdown"
+				);
 			case "copy":
 			case "note":
 			case "star":
@@ -110,6 +115,8 @@ const Header: FC<HeaderProps> = (props) => {
 				return t("clipboard.label.rtf");
 			case "html":
 				return t("clipboard.label.html");
+			case "markdown":
+				return "Markdown";
 			case "image":
 				return t("clipboard.label.image");
 			case "files": {

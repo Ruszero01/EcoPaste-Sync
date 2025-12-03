@@ -57,6 +57,7 @@
 		"@tauri-apps/plugin-updater": "^2.7.0",
 		"@uiw/codemirror-theme-github": "^4.25.3",
 		"@uiw/react-codemirror": "^4.25.3",
+		"@uiw/react-md-editor": "^4.0.9",
 		"@unocss/reset": "^0.63.6",
 		"ahooks": "^3.8.4",
 		"antd": "^5.24.7",
