@@ -4,7 +4,7 @@ import { MainContext } from "@/pages/Main";
 import { clipboardStore } from "@/stores/clipboard";
 import type { HistoryTablePayload } from "@/types/database";
 import { useBoolean } from "ahooks";
-import { Form, Input, Modal } from "antd";
+import { Form, Input, Modal, Select } from "antd";
 import { find } from "lodash-es";
 import { forwardRef, useContext, useImperativeHandle, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -17,6 +17,42 @@ interface FormFields {
 	content: string;
 }
 
+// 支持的文本类型选项
+const TEXT_TYPE_OPTIONS = [
+	{ value: "text", label: "纯文本" },
+	{ value: "html", label: "HTML" },
+	{ value: "rtf", label: "富文本" },
+	{ value: "code", label: "代码" },
+];
+
+// 支持的代码语言选项
+const CODE_LANGUAGE_OPTIONS = [
+	{ value: "javascript", label: "JavaScript" },
+	{ value: "typescript", label: "TypeScript" },
+	{ value: "python", label: "Python" },
+	{ value: "java", label: "Java" },
+	{ value: "cpp", label: "C++" },
+	{ value: "c", label: "C" },
+	{ value: "csharp", label: "C#" },
+	{ value: "rust", label: "Rust" },
+	{ value: "go", label: "Go" },
+	{ value: "php", label: "PHP" },
+	{ value: "ruby", label: "Ruby" },
+	{ value: "swift", label: "Swift" },
+	{ value: "kotlin", label: "Kotlin" },
+	{ value: "scala", label: "Scala" },
+	{ value: "sql", label: "SQL" },
+	{ value: "html", label: "HTML" },
+	{ value: "css", label: "CSS" },
+	{ value: "json", label: "JSON" },
+	{ value: "xml", label: "XML" },
+	{ value: "yaml", label: "YAML" },
+	{ value: "markdown", label: "Markdown" },
+	{ value: "bash", label: "Bash" },
+	{ value: "shell", label: "Shell" },
+	{ value: "powershell", label: "PowerShell" },
+];
+
 const EditModal = forwardRef<EditModalRef>((_, ref) => {
 	const { t } = useTranslation();
 	const { state } = useContext(MainContext);
@@ -24,6 +60,10 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 	const [item, setItem] = useState<HistoryTablePayload>();
 	const [form] = Form.useForm<FormFields>();
 	const [content, setContent] = useState<string>("");
+	// 当前选择的文本类型
+	const [selectedType, setSelectedType] = useState<string>("text");
+	// 当前选择的代码语言（仅当类型为代码时使用）
+	const [selectedCodeLanguage, setSelectedCodeLanguage] = useState<string>("");
 
 	// 获取剪贴板内容的可编辑形式
 	const getEditableContent = (item: HistoryTablePayload): string => {
@@ -45,25 +85,45 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 		}
 	};
 
-	// 获取文本类型的显示名称
-	const getTextTypeLabel = (item: HistoryTablePayload): string => {
-		const { type, isCode, codeLanguage } = item;
-
-		// 如果是代码，显示编程语言名称
-		if (isCode && codeLanguage) {
-			return getLanguageDisplayName(codeLanguage);
+	// 初始化类型选择状态
+	const initializeTypeSelection = (item: HistoryTablePayload) => {
+		if (item.isCode && item.codeLanguage) {
+			setSelectedType("code");
+			setSelectedCodeLanguage(item.codeLanguage);
+		} else {
+			setSelectedType(item.type || "text");
+			setSelectedCodeLanguage("");
 		}
+	};
 
-		switch (type) {
-			case "text":
-				return t("clipboard.label.plain_text");
-			case "html":
-				return t("clipboard.label.html");
-			case "rtf":
-				return t("clipboard.label.rtf");
-			default:
-				return t("clipboard.label.plain_text");
+	// 处理文本类型变化
+	const handleTypeChange = (type: string) => {
+		setSelectedType(type);
+		// 如果不是代码类型，清空代码语言选择
+		if (type !== "code") {
+			setSelectedCodeLanguage("");
 		}
+	};
+
+	// 处理代码语言变化
+	const handleCodeLanguageChange = (language: string) => {
+		setSelectedCodeLanguage(language);
+	};
+
+	// 判断是否使用代码编辑器
+	const shouldUseCodeEditor = () => {
+		return selectedType === "code" && selectedCodeLanguage;
+	};
+
+	// 获取当前代码语言
+	const getCurrentCodeLanguage = () => {
+		if (selectedType === "code" && selectedCodeLanguage) {
+			return selectedCodeLanguage;
+		}
+		if (item?.type === "html") {
+			return "html";
+		}
+		return undefined;
 	};
 
 	useImperativeHandle(ref, () => ({
@@ -79,6 +139,8 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 				});
 
 				setItem(findItem);
+				// 初始化类型选择
+				initializeTypeSelection(findItem);
 			}
 
 			toggle();
@@ -92,16 +154,31 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 			// 使用统一的时间戳
 			const currentTime = Date.now();
 
+			// 根据用户选择的类型更新项目属性
+			if (selectedType === "code") {
+				item.type = "text"; // 代码在数据库中存储为text类型
+				item.isCode = true;
+				item.codeLanguage = selectedCodeLanguage;
+			} else {
+				// 确保类型是有效的ClipboardPayload类型
+				item.type = selectedType as "text" | "html" | "rtf";
+				item.isCode = false;
+				item.codeLanguage = "";
+			}
+
 			// 更新本地数据
 			item.value = content;
 			item.lastModified = currentTime;
 			// 重置同步状态为'none'，表示需要同步
 			item.syncStatus = "none";
 
-			// 更新数据库，包含新的内容、时间戳和同步状态
+			// 更新数据库，包含新的内容、类型、时间戳和同步状态
 			await updateSQL("history", {
 				id,
 				value: content,
+				type: item.type,
+				isCode: item.isCode,
+				codeLanguage: item.codeLanguage,
 				lastModified: currentTime,
 				syncStatus: "none",
 			});
@@ -122,16 +199,6 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 		toggle();
 	};
 
-	// 判断是否使用代码编辑器
-	const shouldUseCodeEditor = (item?: HistoryTablePayload) => {
-		if (!item) return false;
-		return (
-			item.type === "html" ||
-			item.type === "rtf" ||
-			(item.isCode && item.codeLanguage)
-		);
-	};
-
 	return (
 		<Modal
 			forceRender
@@ -143,21 +210,37 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 			width={900}
 		>
 			<Form form={form} initialValues={{ content }} onFinish={handleOk}>
-				<Form.Item className="mb-0!" label={item ? getTextTypeLabel(item) : ""}>
-					{shouldUseCodeEditor(item) ? (
+				{/* 类型选择区域 */}
+				<Form.Item className="mb-4">
+					<div className="flex gap-2">
+						<Select
+							value={selectedType}
+							onChange={handleTypeChange}
+							style={{ width: 120 }}
+							options={TEXT_TYPE_OPTIONS}
+						/>
+						{selectedType === "code" && (
+							<Select
+								value={selectedCodeLanguage}
+								onChange={handleCodeLanguageChange}
+								style={{ width: 150 }}
+								placeholder="选择代码语言"
+								options={CODE_LANGUAGE_OPTIONS}
+							/>
+						)}
+					</div>
+				</Form.Item>
+
+				{/* 内容编辑区域 */}
+				<Form.Item className="mb-0!">
+					{shouldUseCodeEditor() ? (
 						<div
 							className="overflow-hidden rounded border"
 							style={{ borderColor: "#424242" }}
 						>
 							<CodeEditor
 								value={content}
-								codeLanguage={
-									item?.type === "html"
-										? "html"
-										: item?.isCode
-											? item?.codeLanguage
-											: undefined
-								}
+								codeLanguage={getCurrentCodeLanguage()}
 								onChange={(value) => {
 									const newContent = value || "";
 									setContent(newContent);
