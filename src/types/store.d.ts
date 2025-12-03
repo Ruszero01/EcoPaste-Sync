@@ -160,4 +160,10 @@ export interface ClipboardStore {
 		selectedIds: Set<string>;
 		lastSelectedId: string | null;
 	};
+
+	// 批量拖拽信息
+	batchDragInfo: {
+		items: HistoryTablePayload[];
+		isDragging: boolean;
+	};
 }

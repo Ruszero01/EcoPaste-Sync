@@ -935,119 +935,380 @@ const Item: FC<ItemProps> = (props) => {
 
 	// 拖拽事件
 	const handleDragStart = async (event: DragEvent) => {
-		if (group === "text") {
-			// 文本类型：使用 Web Native 拖拽，支持粘贴到其他应用
-			const actualValue = getActualValue(value);
-			const dataTransfer = event.dataTransfer;
+		// 检查是否在多选模式且有选中的项目
+		const isMultiSelectMode =
+			clipboardStore.multiSelect.isMultiSelecting &&
+			clipboardStore.multiSelect.selectedIds.size > 0 &&
+			clipboardStore.multiSelect.selectedIds.has(id);
 
-			if (!dataTransfer) return;
+		// 如果是多选模式，存储批量拖拽信息
+		if (isMultiSelectMode) {
+			// 获取所有选中的项目ID，并按在列表中的顺序排序
+			const selectedIds = Array.from(clipboardStore.multiSelect.selectedIds);
+			const selectedItems = state.list.filter((item) =>
+				selectedIds.includes(item.id),
+			);
+			const sortedSelectedItems = selectedItems.sort((a, b) => {
+				const indexA = state.list.findIndex((item) => item.id === a.id);
+				const indexB = state.list.findIndex((item) => item.id === b.id);
+				return indexA - indexB;
+			});
 
-			// 设置拖拽效果
-			dataTransfer.effectAllowed = "copy";
+			// 将批量拖拽信息存储到全局状态，供onDragEnd使用
+			clipboardStore.batchDragInfo = {
+				items: sortedSelectedItems,
+				isDragging: true,
+			};
 
-			// 根据内容类型设置适当的格式
-			if (type === "html") {
-				// 对于HTML类型，需要提取纯文本版本作为text/plain
-				let plainTextValue = actualValue;
-				try {
+			// 只拖拽第一条数据
+			const firstItem = sortedSelectedItems[0];
+			if (!firstItem) return;
+
+			// 使用第一条数据的信息进行拖拽
+			const {
+				type: firstType,
+				value: firstValue,
+				group: firstGroup,
+			} = firstItem;
+			const actualValue = getActualValue(firstValue);
+
+			if (firstGroup === "text") {
+				// 文本类型：使用 Web Native 拖拽
+				const dataTransfer = event.dataTransfer;
+				if (!dataTransfer) return;
+
+				dataTransfer.effectAllowed = "copy";
+
+				// 根据内容类型设置适当的格式
+				if (firstType === "html") {
+					let plainTextValue = actualValue;
+					try {
+						const tempDiv = document.createElement("div");
+						tempDiv.innerHTML = actualValue;
+						plainTextValue =
+							tempDiv.textContent || tempDiv.innerText || actualValue;
+					} catch {
+						// 如果HTML解析失败，使用原值
+					}
+
+					dataTransfer.setData("text/plain", plainTextValue);
+					dataTransfer.setData("text/html", actualValue);
+				} else {
+					dataTransfer.setData("text/plain", actualValue);
+				}
+
+				if (firstType === "rtf") {
+					dataTransfer.setData("text/rtf", actualValue);
+				}
+
+				dataTransfer.setData("application/x-ecopaste-clipboard", actualValue);
+
+				// 创建批量拖拽预览
+				const dragPreview = document.createElement("div");
+				const isDarkMode = document.documentElement.classList.contains("dark");
+
+				dragPreview.className = `pointer-events-none fixed z-50 select-none rounded-md border px-2.5 py-1.5 font-medium text-xs shadow-lg backdrop-blur-xl transition-all duration-200 ${
+					isDarkMode
+						? "border-neutral-700/50 bg-neutral-800/90 text-neutral-300"
+						: "border-neutral-300/50 bg-neutral-200/90 text-neutral-700"
+				}`;
+
+				const arrow = document.createElement("div");
+				arrow.className = `-translate-y-1/2 absolute top-1/2 h-0 w-0 border-transparent ${
+					isDarkMode
+						? "border-transparent border-t-8 border-r-8 border-r-neutral-800/90 border-b-8"
+						: "border-transparent border-t-8 border-r-8 border-r-neutral-200/90 border-b-8"
+				}`;
+				arrow.style.left = "-8px";
+
+				const contentSpan = document.createElement("span");
+				contentSpan.className = "relative z-10 max-w-40 truncate";
+				contentSpan.style.cssText = `
+					max-width: 200px;
+					display: -webkit-box;
+					-webkit-line-clamp: 3;
+					-webkit-box-orient: vertical;
+					overflow: hidden;
+					white-space: pre-wrap;
+				`;
+
+				// 显示批量拖拽提示
+				contentSpan.textContent = `拖拽 ${sortedSelectedItems.length} 个项目`;
+
+				dragPreview.appendChild(arrow);
+				dragPreview.appendChild(contentSpan);
+
+				dataTransfer.setDragImage(dragPreview, 0, 20);
+
+				document.body.appendChild(dragPreview);
+				setTimeout(() => {
+					if (document.body.contains(dragPreview)) {
+						document.body.removeChild(dragPreview);
+					}
+				}, 100);
+
+				return;
+			}
+
+			// 非文本类型：使用 Tauri 拖拽插件
+			event.preventDefault();
+
+			const icon = await resolveResource("assets/drag-icon.png");
+
+			// 文件类型特殊处理：多选时合并所有文件路径
+			if (firstGroup === "files") {
+				// 收集所有选中项目的文件路径
+				const allFiles: string[] = [];
+				for (const selectedItem of sortedSelectedItems) {
+					if (selectedItem.group === "files") {
+						try {
+							const files = JSON.parse(selectedItem.value);
+							if (Array.isArray(files)) {
+								allFiles.push(...files);
+							}
+						} catch (error) {
+							console.warn("解析文件路径失败:", selectedItem.value, error);
+						}
+					}
+				}
+
+				if (allFiles.length > 0) {
+					return startDrag({ icon, item: allFiles });
+				}
+			}
+
+			if (firstGroup === "image") {
+				return startDrag({ item: [firstValue], icon: firstValue });
+			}
+
+			startDrag({ icon, item: JSON.parse(firstValue) });
+		} else {
+			// 单个拖拽逻辑（保持原有逻辑不变）
+			if (group === "text") {
+				const actualValue = getActualValue(value);
+				const dataTransfer = event.dataTransfer;
+
+				if (!dataTransfer) return;
+
+				dataTransfer.effectAllowed = "copy";
+
+				if (type === "html") {
+					let plainTextValue = actualValue;
+					try {
+						const tempDiv = document.createElement("div");
+						tempDiv.innerHTML = actualValue;
+						plainTextValue =
+							tempDiv.textContent || tempDiv.innerText || actualValue;
+					} catch {
+						// 如果HTML解析失败，使用原值
+					}
+
+					dataTransfer.setData("text/plain", plainTextValue);
+					dataTransfer.setData("text/html", actualValue);
+				} else {
+					dataTransfer.setData("text/plain", actualValue);
+				}
+
+				if (type === "rtf") {
+					dataTransfer.setData("text/rtf", actualValue);
+				}
+
+				dataTransfer.setData("application/x-ecopaste-clipboard", actualValue);
+
+				// 创建拖拽预览
+				const dragPreview = document.createElement("div");
+				const isDarkMode = document.documentElement.classList.contains("dark");
+
+				dragPreview.className = `pointer-events-none fixed z-50 select-none rounded-md border px-2.5 py-1.5 font-medium text-xs shadow-lg backdrop-blur-xl transition-all duration-200 ${
+					isDarkMode
+						? "border-neutral-700/50 bg-neutral-800/90 text-neutral-300"
+						: "border-neutral-300/50 bg-neutral-200/90 text-neutral-700"
+				}`;
+
+				const arrow = document.createElement("div");
+				arrow.className = `-translate-y-1/2 absolute top-1/2 h-0 w-0 border-transparent ${
+					isDarkMode
+						? "border-transparent border-t-8 border-r-8 border-r-neutral-800/90 border-b-8"
+						: "border-transparent border-t-8 border-r-8 border-r-neutral-200/90 border-b-8"
+				}`;
+				arrow.style.left = "-8px";
+
+				const contentSpan = document.createElement("span");
+				contentSpan.className = "relative z-10 max-w-40 truncate";
+				contentSpan.style.cssText = `
+					max-width: 200px;
+					display: -webkit-box;
+					-webkit-line-clamp: 3;
+					-webkit-box-orient: vertical;
+					overflow: hidden;
+					white-space: pre-wrap;
+				`;
+
+				let previewContent = actualValue.trim();
+				if (type === "html") {
 					const tempDiv = document.createElement("div");
-					tempDiv.innerHTML = actualValue;
-					plainTextValue =
-						tempDiv.textContent || tempDiv.innerText || actualValue;
-				} catch {
-					// 如果HTML解析失败，使用原值
+					tempDiv.innerHTML = previewContent;
+					previewContent =
+						tempDiv.textContent || tempDiv.innerText || previewContent;
 				}
 
-				// 设置纯文本版本作为主要格式
-				dataTransfer.setData("text/plain", plainTextValue);
-				// 设置HTML格式作为富文本版本
-				dataTransfer.setData("text/html", actualValue);
+				contentSpan.textContent = previewContent;
+
+				dragPreview.appendChild(arrow);
+				dragPreview.appendChild(contentSpan);
+
+				dataTransfer.setDragImage(dragPreview, 0, 20);
+
+				document.body.appendChild(dragPreview);
+				setTimeout(() => {
+					if (document.body.contains(dragPreview)) {
+						document.body.removeChild(dragPreview);
+					}
+				}, 100);
+
+				return;
+			}
+
+			// 非文本类型：使用 Tauri 拖拽插件
+			event.preventDefault();
+
+			const icon = await resolveResource("assets/drag-icon.png");
+
+			if (group === "image") {
+				return startDrag({ item: [value], icon: value });
+			}
+
+			startDrag({ icon, item: JSON.parse(value) });
+		}
+	};
+
+	// 拖拽结束事件
+	const handleDragEnd = async () => {
+		// 检查是否有批量拖拽信息
+		const batchDragInfo = clipboardStore.batchDragInfo;
+		if (!batchDragInfo || !batchDragInfo.isDragging) return;
+
+		try {
+			// 等待一小段时间确保拖拽操作完成
+			await new Promise((resolve) => setTimeout(resolve, 100));
+
+			// 检查第一个项目的类型，如果是文件类型，不需要执行批量粘贴
+			// 因为文件拖拽到资源管理器已经完成了操作
+			const firstItem = batchDragInfo.items[0];
+			if (firstItem && firstItem.group === "files") {
+				// 文件类型拖拽完成后，只需要更新状态和清除多选
+				// 更新所有项目的时间并移动到顶部
+				const createTime = formatDate();
+				const updatedItems = batchDragInfo.items.map(
+					(item: HistoryTablePayload) => ({
+						...item,
+						createTime,
+					}),
+				);
+
+				// 从原位置移除所有选中项目
+				for (const selectedItem of batchDragInfo.items) {
+					const index = findIndex(state.list, { id: selectedItem.id });
+					if (index !== -1) {
+						state.list.splice(index, 1);
+					}
+				}
+
+				// 将更新后的项目添加到顶部（保持原有顺序）
+				for (let i = updatedItems.length - 1; i >= 0; i--) {
+					state.list.unshift(updatedItems[i]);
+				}
+
+				// 批量更新数据库
+				for (const selectedItem of batchDragInfo.items) {
+					await updateSQL("history", { id: selectedItem.id, createTime });
+				}
+
+				// 清除多选状态
+				clipboardStore.multiSelect.isMultiSelecting = false;
+				clipboardStore.multiSelect.selectedIds.clear();
+				clipboardStore.multiSelect.lastSelectedId = null;
+
+				// 设置激活项为第一个项目
+				if (updatedItems.length > 0) {
+					state.activeId = updatedItems[0].id;
+				}
 			} else {
-				// 非HTML类型，只需要设置纯文本
-				dataTransfer.setData("text/plain", actualValue);
-			}
+				// 非文件类型：批量粘贴时跳过第一个项目，因为第一个项目已经通过拖拽粘贴了
+				const remainingItems = batchDragInfo.items.slice(1);
+				if (remainingItems.length > 0) {
+					// 先执行一次换行操作，因为拖拽粘贴没有换行
+					// 设置内部复制标志，避免换行操作触发剪贴板更新
+					clipboardStore.internalCopy = {
+						isCopying: true,
+						itemId: "drag-newline",
+					};
 
-			// 设置富文本格式
-			if (type === "rtf") {
-				dataTransfer.setData("text/rtf", actualValue);
-			}
+					try {
+						const { writeText } = await import("@/plugins/clipboard");
+						const { paste } = await import("@/plugins/paste");
+						await writeText("\n");
+						await paste();
+						// 添加短暂延迟，确保换行操作完成
+						await new Promise((resolve) => setTimeout(resolve, 50));
+					} finally {
+						// 清除换行操作的复制标志
+						clipboardStore.internalCopy = {
+							isCopying: false,
+							itemId: null,
+						};
+					}
 
-			// 设置自定义格式用于应用间识别
-			dataTransfer.setData("application/x-ecopaste-clipboard", actualValue);
-
-			// 创建类似书签预览的拖拽预览
-			const dragPreview = document.createElement("div");
-			const isDarkMode = document.documentElement.classList.contains("dark");
-
-			// 使用书签预览的样式类
-			dragPreview.className = `pointer-events-none fixed z-50 select-none rounded-md border px-2.5 py-1.5 font-medium text-xs shadow-lg backdrop-blur-xl transition-all duration-200 ${
-				isDarkMode
-					? "border-neutral-700/50 bg-neutral-800/90 text-neutral-300"
-					: "border-neutral-300/50 bg-neutral-200/90 text-neutral-700"
-			}`;
-
-			// 创建尖角箭头
-			const arrow = document.createElement("div");
-			arrow.className = `-translate-y-1/2 absolute top-1/2 h-0 w-0 border-transparent ${
-				isDarkMode
-					? "border-transparent border-t-8 border-r-8 border-r-neutral-800/90 border-b-8"
-					: "border-transparent border-t-8 border-r-8 border-r-neutral-200/90 border-b-8"
-			}`;
-			arrow.style.left = "-8px";
-
-			// 创建内容容器
-			const contentSpan = document.createElement("span");
-			contentSpan.className = "relative z-10 max-w-40 truncate";
-			contentSpan.style.cssText = `
-				max-width: 200px;
-				display: -webkit-box;
-				-webkit-line-clamp: 3;
-				-webkit-box-orient: vertical;
-				overflow: hidden;
-				white-space: pre-wrap;
-			`;
-
-			// 设置预览内容
-			let previewContent = actualValue.trim();
-			if (type === "html") {
-				// 对于HTML，提取纯文本显示
-				const tempDiv = document.createElement("div");
-				tempDiv.innerHTML = previewContent;
-				previewContent =
-					tempDiv.textContent || tempDiv.innerText || previewContent;
-			}
-
-			contentSpan.textContent = previewContent;
-
-			// 组装预览元素
-			dragPreview.appendChild(arrow);
-			dragPreview.appendChild(contentSpan);
-
-			// 设置拖拽预览，让尖角对准鼠标
-			dataTransfer.setDragImage(dragPreview, 0, 20);
-
-			// 将预览元素添加到body以确保渲染
-			document.body.appendChild(dragPreview);
-			// 短暂延迟后移除，让浏览器有时间截图
-			setTimeout(() => {
-				if (document.body.contains(dragPreview)) {
-					document.body.removeChild(dragPreview);
+					// 然后批量粘贴剩余的项目
+					await batchPasteClipboard(remainingItems);
 				}
-			}, 100);
+			}
 
-			return;
+			// 更新所有项目的时间并移动到顶部
+			const createTime = formatDate();
+			const updatedItems = batchDragInfo.items.map(
+				(item: HistoryTablePayload) => ({
+					...item,
+					createTime,
+				}),
+			);
+
+			// 从原位置移除所有选中项目
+			for (const selectedItem of batchDragInfo.items) {
+				const index = findIndex(state.list, { id: selectedItem.id });
+				if (index !== -1) {
+					state.list.splice(index, 1);
+				}
+			}
+
+			// 将更新后的项目添加到顶部（保持原有顺序）
+			for (let i = updatedItems.length - 1; i >= 0; i--) {
+				state.list.unshift(updatedItems[i]);
+			}
+
+			// 批量更新数据库
+			for (const selectedItem of batchDragInfo.items) {
+				await updateSQL("history", { id: selectedItem.id, createTime });
+			}
+
+			// 清除多选状态
+			clipboardStore.multiSelect.isMultiSelecting = false;
+			clipboardStore.multiSelect.selectedIds.clear();
+			clipboardStore.multiSelect.lastSelectedId = null;
+
+			// 设置激活项为第一个粘贴的项目
+			if (updatedItems.length > 0) {
+				state.activeId = updatedItems[0].id;
+			}
+		} catch (error) {
+			console.error("❌ 批量拖拽粘贴失败:", error);
+		} finally {
+			// 清除批量拖拽信息
+			clipboardStore.batchDragInfo = {
+				items: [],
+				isDragging: false,
+			};
 		}
-
-		// 非文本类型：使用 Tauri 拖拽插件，支持拖拽到文件系统
-		event.preventDefault();
-
-		const icon = await resolveResource("assets/drag-icon.png");
-
-		if (group === "image") {
-			return startDrag({ item: [value], icon: value });
-		}
-
-		startDrag({ icon, item: JSON.parse(value) });
 	};
 
 	// 渲染内容
@@ -1085,6 +1346,7 @@ const Item: FC<ItemProps> = (props) => {
 			onClick={(event) => handleClick("single", event)}
 			onDoubleClick={(event) => handleClick("double", event)}
 			onDragStart={handleDragStart}
+			onDragEnd={handleDragEnd}
 		>
 			{/* 同步状态指示灯 */}
 			<SyncStatus data={data} />

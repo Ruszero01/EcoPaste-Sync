@@ -51,4 +51,10 @@ export const clipboardStore = proxy<ClipboardStore>({
 		selectedIds: new Set(),
 		lastSelectedId: null,
 	},
+
+	// 批量拖拽信息
+	batchDragInfo: {
+		items: [],
+		isDragging: false,
+	},
 });
