@@ -1,4 +1,7 @@
-import { getActiveWindowInfo } from "@/plugins/activeWindow";
+import {
+	type ActiveWindowInfo,
+	getActiveWindowInfo,
+} from "@/plugins/activeWindow";
 import { systemOCR } from "@/plugins/ocr";
 import { clipboardStore } from "@/stores/clipboard";
 import type { HistoryTablePayload } from "@/types/database";
@@ -32,6 +35,7 @@ const COMMAND = {
 	WRITE_HTML: "plugin:eco-clipboard|write_html",
 	WRITE_RTF: "plugin:eco-clipboard|write_rtf",
 	WRITE_TEXT: "plugin:eco-clipboard|write_text",
+	GET_CLIPBOARD_SOURCE_INFO: "plugin:eco-clipboard|get_clipboard_source_info",
 	CLIPBOARD_UPDATE: "plugin:eco-clipboard://clipboard_update",
 };
 
@@ -458,10 +462,34 @@ export const readClipboard = async () => {
 			payload = { ...textPayload, type: "text" };
 		}
 
-		// 获取活动窗口信息（仅在开启显示来源应用时）
-		if (clipboardStore.content.showSourceApp) {
+		// 获取来源应用信息（仅在开启显示来源应用且非内部复制时）
+		if (
+			clipboardStore.content.showSourceApp &&
+			!clipboardStore.internalCopy.isCopying
+		) {
 			try {
-				const windowInfo = await getActiveWindowInfo();
+				let windowInfo: ActiveWindowInfo;
+
+				// Windows平台优先使用GetClipboardOwner获取剪贴板来源
+				if (isWin) {
+					try {
+						windowInfo = await invoke<ActiveWindowInfo>(
+							COMMAND.GET_CLIPBOARD_SOURCE_INFO,
+						);
+						// 成功使用GetClipboardOwner获取剪贴板来源
+					} catch (clipboardOwnerError) {
+						console.warn(
+							"GetClipboardOwner失败，回退到活动窗口方式:",
+							clipboardOwnerError,
+						);
+						// 回退到原有的活动窗口获取方式
+						windowInfo = await getActiveWindowInfo();
+					}
+				} else {
+					// 其他平台使用原有的活动窗口获取方式
+					windowInfo = await getActiveWindowInfo();
+				}
+
 				payload.sourceAppName = windowInfo.app_name;
 
 				// 获取应用图标（仅在Windows上有进程路径）
@@ -476,7 +504,7 @@ export const readClipboard = async () => {
 					}
 				}
 			} catch (error) {
-				console.warn("获取活动窗口信息失败:", error);
+				console.warn("获取来源应用信息失败:", error);
 				// 即使失败也不影响剪贴板内容的正常读取
 			}
 		}
@@ -512,7 +540,6 @@ export const onClipboardUpdate = (fn: (payload: ClipboardPayload) => void) => {
 
 	// 用于防重复处理的缓存
 	const contentHashCache = new Map<string, number>();
-	const CONTENT_CACHE_TTL = 500; // 500ms内的相同内容视为重复
 
 	const processClipboardUpdate = async () => {
 		if (processing) {
@@ -532,6 +559,11 @@ export const onClipboardUpdate = (fn: (payload: ClipboardPayload) => void) => {
 		retryCount = 0;
 
 		try {
+			// 如果是内部复制操作，直接跳过处理，避免获取来源应用信息
+			if (clipboardStore.internalCopy.isCopying) {
+				return;
+			}
+
 			const payload = await readClipboard();
 
 			const { group, count, type, value } = payload;
@@ -544,21 +576,8 @@ export const onClipboardUpdate = (fn: (payload: ClipboardPayload) => void) => {
 			const contentKey = `${type}:${group}:${value?.substring(0, 100)}`;
 			const now = Date.now();
 
-			// 检查是否是短时间内重复的内容
-			const lastProcessedTime = contentHashCache.get(contentKey);
-			if (lastProcessedTime && now - lastProcessedTime < CONTENT_CACHE_TTL) {
-				return; // 跳过重复内容
-			}
-
 			// 更新缓存
 			contentHashCache.set(contentKey, now);
-
-			// 清理过期的缓存项
-			for (const [key, time] of contentHashCache.entries()) {
-				if (now - time > CONTENT_CACHE_TTL * 2) {
-					contentHashCache.delete(key);
-				}
-			}
 
 			// 减少防抖时间到100ms，提高响应速度
 			const expired = now - lastUpdated > 100;
