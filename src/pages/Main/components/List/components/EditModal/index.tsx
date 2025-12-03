@@ -89,18 +89,28 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 
 	// 初始化类型选择状态
 	const initializeTypeSelection = (item: HistoryTablePayload) => {
-		if (item.isCode && item.codeLanguage && item.codeLanguage !== "markdown") {
+		// 优先检查数据库中保存的类型
+		if (item.type === "markdown") {
+			// 如果数据库中明确保存为markdown类型，直接使用Markdown编辑器
+			setSelectedType("markdown");
+			setSelectedCodeLanguage("");
+		} else if (
+			item.isCode &&
+			item.codeLanguage &&
+			item.codeLanguage !== "markdown"
+		) {
+			// 如果是代码类型且不是markdown，使用代码编辑器
 			setSelectedType("code");
 			setSelectedCodeLanguage(item.codeLanguage);
 		} else if (
-			item.type === "markdown" ||
 			(item.isCode === false && item.codeLanguage === "markdown") ||
 			detectMarkdown(item.value)
 		) {
-			// 如果是已保存的Markdown类型或检测到Markdown格式，设置为Markdown类型
+			// 如果是旧版本的markdown格式或检测到Markdown格式，设置为Markdown类型
 			setSelectedType("markdown");
 			setSelectedCodeLanguage("");
 		} else {
+			// 其他情况使用保存的类型或默认为文本
 			setSelectedType(item.type || "text");
 			setSelectedCodeLanguage("");
 		}

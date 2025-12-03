@@ -19,11 +19,6 @@ export function detectCode(code: string, minLength = 10): CodeDetectionResult {
 
 	const trimmedCode = code.trim();
 
-	// 首先检查是否为Markdown格式，如果是则不识别为代码
-	if (detectMarkdown(trimmedCode)) {
-		return { isCode: false, language: "", relevance: 0 };
-	}
-
 	// 首先检查是否为自然语言或日志
 	if (isNaturalLanguagePattern(trimmedCode)) {
 		return { isCode: false, language: "", relevance: 0 };

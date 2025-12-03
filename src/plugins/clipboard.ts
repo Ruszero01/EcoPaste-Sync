@@ -6,7 +6,7 @@ import { systemOCR } from "@/plugins/ocr";
 import { clipboardStore } from "@/stores/clipboard";
 import type { HistoryTablePayload } from "@/types/database";
 import type { ClipboardPayload, ReadImage, WindowsOCR } from "@/types/plugin";
-import { detectCode } from "@/utils/codeDetector";
+import { detectCode, detectMarkdown } from "@/utils/codeDetector";
 import { isColor, isEmail, isURL } from "@/utils/is";
 import { resolveImagePath } from "@/utils/path";
 import { getSaveImagePath } from "@/utils/path";
@@ -338,6 +338,23 @@ export const readText = async (): Promise<ClipboardPayload> => {
 };
 
 /**
+ * 读取 Markdown 内容
+ */
+export const readMarkdown = async (): Promise<ClipboardPayload> => {
+	const { value, count, subtype, isCode, codeLanguage } = await readText();
+
+	return {
+		value,
+		count,
+		search: value,
+		group: "text",
+		subtype,
+		isCode,
+		codeLanguage,
+	};
+};
+
+/**
  * 文件写入剪贴板
  */
 export const writeFiles = (value: string) => {
@@ -456,10 +473,26 @@ export const readClipboard = async () => {
 			const rtfPayload = await readRTF();
 			payload = { ...rtfPayload, type: "rtf" };
 		}
-		// 最后处理纯文本
-		else {
+		// 处理Markdown内容
+		else if (has.text) {
 			const textPayload = await readText();
-			payload = { ...textPayload, type: "text" };
+
+			// 检测是否为Markdown内容
+			if (detectMarkdown(textPayload.value)) {
+				payload = { ...textPayload, type: "markdown" };
+			} else {
+				payload = { ...textPayload, type: "text" };
+			}
+		}
+		// 如果没有文本内容，返回空的文本payload
+		else {
+			payload = {
+				value: "",
+				search: "",
+				count: 0,
+				group: "text" as const,
+				type: "text" as const,
+			};
 		}
 
 		// 获取来源应用信息（仅在开启显示来源应用且非内部复制时）
