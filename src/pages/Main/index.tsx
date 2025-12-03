@@ -139,17 +139,63 @@ const Main = () => {
 				getListCache.current.clear();
 				lastQueryParams = "";
 
-				// 如果是插入新记录（不是更新现有记录），则需要刷新UI
+				// 获取当前的自动排序设置
+				const currentAutoSort = clipboardStore.content.autoSort;
+
+				// 如果是插入新记录（不是更新现有记录）
 				if (!result.isUpdate) {
-					// 刷新列表
-					await getList();
-					// 触发滚动到顶部
-					emit(LISTEN_KEY.ACTIVATE_BACK_TOP, "new-content");
+					if (currentAutoSort) {
+						// 自动排序模式下：刷新列表，新记录会自动排在顶部
+						await getList();
+						// 设置活动ID为新添加的记录
+						state.activeId = data.id;
+						// 触发滚动到顶部
+						emit(LISTEN_KEY.ACTIVATE_BACK_TOP, "new-content");
+					} else {
+						// 手动排序模式下：直接在顶部插入新记录，不刷新整个列表
+						state.list.unshift({ ...data, id: data.id });
+						// 设置活动ID为新添加的记录
+						state.activeId = data.id;
+						// 触发滚动到顶部
+						emit(LISTEN_KEY.ACTIVATE_BACK_TOP, "new-content");
+					}
 				} else {
-					// 如果是更新现有记录，也要刷新列表以显示最新的时间戳
-					await getList();
-					// 触发滚动到顶部，显示更新的记录
-					emit(LISTEN_KEY.ACTIVATE_BACK_TOP, "updated-content");
+					// 如果是更新现有记录
+					const updatedItemId = result.insertId;
+
+					if (currentAutoSort) {
+						// 自动排序模式下：刷新列表，更新的记录会根据时间重新排序
+						await getList();
+						if (updatedItemId) {
+							// 设置活动ID为更新的记录
+							state.activeId = updatedItemId;
+						}
+						// 触发滚动到顶部，显示更新的记录
+						emit(LISTEN_KEY.ACTIVATE_BACK_TOP, "updated-content");
+					} else {
+						// 手动排序模式下：只更新记录信息，保持原位置
+						if (updatedItemId) {
+							// 找到要更新的记录在列表中的位置
+							const itemIndex = state.list.findIndex(
+								(item) => item.id === updatedItemId,
+							);
+							if (itemIndex !== -1) {
+								// 更新该记录的信息，但保持位置不变
+								// 使用现有的记录作为基础，只更新需要更新的字段
+								const existingItem = state.list[itemIndex];
+								state.list[itemIndex] = {
+									...existingItem,
+									...data,
+									id: updatedItemId, // 确保使用数据库中的ID
+									createTime: data.createTime,
+								};
+								// 设置活动ID为更新的记录
+								state.activeId = updatedItemId;
+								// 触发滚动到对应条目位置
+								emit(LISTEN_KEY.ACTIVATE_BACK_TOP, "updated-content");
+							}
+						}
+					}
 				}
 			} catch (error) {
 				console.error("处理剪贴板数据失败:", error);

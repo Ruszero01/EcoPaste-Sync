@@ -50,7 +50,8 @@ const List = () => {
 		else if (
 			event?.payload === "main" ||
 			event?.payload === "new-content" ||
-			event?.payload === "duplicate-content"
+			event?.payload === "duplicate-content" ||
+			event?.payload === "updated-content"
 		) {
 			setScrollTrigger((prev) => prev + 1); // 增加触发器，强制重新滚动
 		}

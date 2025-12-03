@@ -576,11 +576,6 @@ export const onClipboardUpdate = (fn: (payload: ClipboardPayload) => void) => {
 			const contentKey = `${type}:${group}:${value?.substring(0, 100)}`;
 			const now = Date.now();
 
-			// 检查是否是重复内容（不基于时间，完全基于内容匹配）
-			if (contentHashCache.has(contentKey)) {
-				return; // 跳过重复内容
-			}
-
 			// 更新缓存
 			contentHashCache.set(contentKey, now);
 
