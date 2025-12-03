@@ -1,3 +1,4 @@
+import { AudioInitializer } from "@/components/AudioInitializer";
 import { LISTEN_KEY } from "@/constants";
 import { useTray } from "@/hooks/useTray";
 import { HappyProvider } from "@ant-design/happy-work-theme";
@@ -116,7 +117,16 @@ const App = () => {
 		>
 			<AntdApp>
 				<HappyProvider>
-					{ready && <RouterProvider router={router} />}
+					<AudioInitializer
+						onInitialized={() => {
+							// 音频系统初始化完成
+						}}
+						onError={(err) => {
+							error(`Audio initialization failed: ${err.message}`);
+						}}
+					>
+						{ready && <RouterProvider router={router} />}
+					</AudioInitializer>
 				</HappyProvider>
 			</AntdApp>
 		</ConfigProvider>
