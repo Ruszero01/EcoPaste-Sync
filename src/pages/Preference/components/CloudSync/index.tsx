@@ -1,7 +1,7 @@
 import ProList from "@/components/ProList";
 import ProListItem from "@/components/ProListItem";
 import { LISTEN_KEY } from "@/constants";
-import { resetDatabase } from "@/database";
+import { getDatabaseInfo, resetDatabase } from "@/database";
 import { type WebDAVConfig, testConnection } from "@/plugins/webdav";
 import { globalStore } from "@/stores/global";
 import type { SyncModeConfig } from "@/types/sync.d";
@@ -29,6 +29,7 @@ import {
 	CloudSyncOutlined,
 	DeleteOutlined,
 	DownloadOutlined,
+	InfoCircleOutlined,
 	ScheduleOutlined,
 	UploadOutlined,
 } from "@ant-design/icons";
@@ -893,6 +894,48 @@ const CloudSync = () => {
 		});
 	};
 
+	// 开发环境专用：显示数据库信息
+	const handleShowDatabaseInfo = async () => {
+		try {
+			const dbInfo = await getDatabaseInfo();
+			if (dbInfo) {
+				console.group("📊 数据库信息");
+				console.info("=== 基本统计 ===");
+				console.info("总记录数:", dbInfo.totalCount);
+				console.info("活跃记录数:", dbInfo.activeCount);
+				console.info("已删除记录数:", dbInfo.deletedCount);
+				console.info("收藏记录数:", dbInfo.favoriteCount);
+				console.info("数据库文件大小:", dbInfo.dbSize);
+
+				console.info("\n=== 类型分布 ===");
+				for (const [type, count] of Object.entries(dbInfo.typeCounts)) {
+					console.info(`${type}: ${count} 条`);
+				}
+
+				console.info("\n=== 同步状态分布 ===");
+				for (const [status, count] of Object.entries(dbInfo.syncStatusCounts)) {
+					console.info(`${status}: ${count} 条`);
+				}
+
+				console.info("\n=== 最近10条记录 ===");
+				for (const [index, record] of dbInfo.recentRecords.entries()) {
+					console.info(
+						`#${index + 1} [${record.type}] ${record.createTime} - ${record.value} (收藏: ${record.favorite}, 同步: ${record.syncStatus}, 云端: ${record.isCloudData})`,
+					);
+				}
+
+				console.groupEnd();
+
+				appMessage.success("数据库信息已打印到控制台");
+			} else {
+				appMessage.error("获取数据库信息失败");
+			}
+		} catch (error) {
+			console.error("显示数据库信息失败:", error);
+			appMessage.error("操作失败");
+		}
+	};
+
 	return (
 		<>
 			{modalContextHolder}
@@ -1211,6 +1254,20 @@ const CloudSync = () => {
 							onClick={handleResetConfig}
 						>
 							重置配置
+						</Button>
+					</ProListItem>
+
+					<ProListItem
+						title="显示数据库信息"
+						description="在控制台打印数据库条目数量和每条数据的关键信息"
+					>
+						<Button
+							type="primary"
+							size="small"
+							icon={<InfoCircleOutlined />}
+							onClick={handleShowDatabaseInfo}
+						>
+							显示数据库信息
 						</Button>
 					</ProListItem>
 				</ProList>

@@ -1,4 +1,8 @@
-import type { TableName, TablePayload } from "@/types/database";
+import type {
+	HistoryTablePayload,
+	TableName,
+	TablePayload,
+} from "@/types/database";
 import {} from "@tauri-apps/plugin-fs";
 import Database from "@tauri-apps/plugin-sql";
 import { entries, isBoolean, isNil, map, omitBy, some } from "lodash-es";
@@ -215,7 +219,7 @@ export const insertSQL = (tableName: TableName, payload: TablePayload) => {
 export const insertWithDeduplicationForSync = async (
 	tableName: TableName,
 	payload: TablePayload,
-) => {
+): Promise<{ insertId?: string; rowsAffected: number; isUpdate?: boolean }> => {
 	const { id } = payload;
 
 	if (!id) {
@@ -234,12 +238,18 @@ export const insertWithDeduplicationForSync = async (
 			const existing = existingRecords[0];
 
 			if (existing.deleted === 1) {
-				return;
+				return {
+					rowsAffected: 0,
+					isUpdate: false,
+				};
 			}
 			// 如果记录存在且未被删除，则更新它
 			const { updateSQL } = await import("@/database");
 			await updateSQL(tableName, payload);
-			return;
+			return {
+				rowsAffected: 1,
+				isUpdate: true,
+			};
 		}
 		// 如果记录不存在，则插入新记录
 		const { keys, values } = handlePayload(payload);
@@ -249,7 +259,10 @@ export const insertWithDeduplicationForSync = async (
 			`INSERT INTO ${tableName} (${keys}) VALUES (${refs});`,
 			values,
 		);
-		return;
+		return {
+			rowsAffected: 1,
+			isUpdate: false,
+		};
 	} catch (error) {
 		console.error(`❌ 同步插入失败: ${id}`, error);
 		throw error;
@@ -257,7 +270,7 @@ export const insertWithDeduplicationForSync = async (
 };
 
 /**
- * 去重插入的 sql 语句（先删除相同内容的记录，再插入新记录）
+ * 去重插入的 sql 语句（检测重复内容，如果存在则更新现有记录，否则插入新记录）
  * @param tableName 表名称
  * @param payload 插入的数据
  * @param identifier 去重标识（默认使用 type + value）
@@ -266,93 +279,214 @@ export const insertWithDeduplication = async (
 	tableName: TableName,
 	payload: TablePayload,
 	_identifier = "default",
-) => {
-	// 如果是 history 表，进行基于 value 的去重（智能处理文件类型变化）
+): Promise<{ insertId?: string; rowsAffected: number; isUpdate?: boolean }> => {
+	// 如果是 history 表，进行基于内容的去重检测和更新
 	if (tableName === "history") {
-		const { type, value, group } = payload;
+		const {
+			type,
+			value,
+			group,
+			id: payloadId,
+		} = payload as HistoryTablePayload;
+		const currentTime = dayjs().format("YYYY-MM-DD HH:mm:ss");
+
+		// 如果提供了ID，优先使用ID进行去重
+		if (payloadId) {
+			const existingRecords = (await executeSQL(
+				`SELECT * FROM ${tableName} WHERE id = ? AND deleted = 0;`,
+				[payloadId],
+			)) as any[];
+
+			if (existingRecords.length > 0) {
+				// 更新现有记录的时间戳
+				await executeSQL(
+					`UPDATE ${tableName} SET createTime = ?, lastModified = ? WHERE id = ?`,
+					[currentTime, Date.now(), payloadId],
+				);
+
+				return {
+					insertId: payloadId,
+					rowsAffected: 1,
+					isUpdate: true,
+				};
+			}
+		}
+
+		// 查找重复的现有记录
+		let existingRecord: any = null;
 
 		// 对于图片和文件类型，基于文件路径进行智能去重（支持跨类型去重）
-		if (type === "image" || type === "files") {
-			if (value !== undefined) {
-				let filePath = value;
+		if (type === "image" || (type === "files" && value !== undefined)) {
+			let filePath = value;
 
-				// 如果是files类型，尝试从JSON中提取文件路径
-				if (type === "files" && value.startsWith("[")) {
-					try {
-						const filePaths = JSON.parse(value);
-						filePath = filePaths[0]; // 使用第一个文件路径
-					} catch {
-						// 解析失败，使用原值
-					}
+			// 如果是files类型，尝试从JSON中提取文件路径
+			if (type === "files" && value.startsWith("[")) {
+				try {
+					const filePaths = JSON.parse(value);
+					filePath = filePaths[0]; // 使用第一个文件路径
+				} catch {
+					// 解析失败，使用原值
 				}
+			}
 
-				// 标准化路径格式，确保一致的比较
-				const normalizedPath = filePath.toLowerCase().replace(/\\/g, "/");
-				const normalizedValue = value.toLowerCase().replace(/\\/g, "/");
+			// 标准化路径格式
+			const normalizedPath = filePath.toLowerCase().replace(/\\/g, "/");
 
-				// 查找所有相同文件路径的记录（使用LIKE匹配以处理路径格式差异）
-				const pathPattern1 = `%${normalizedPath}%`;
-				const pathPattern2 = `%${normalizedValue}%`;
+			// 对于files类型，使用更精确的匹配逻辑
+			if (type === "files") {
+				// 首先尝试精确匹配整个JSON数组
+				const exactRecords = (await executeSQL(
+					`SELECT * FROM ${tableName} WHERE type = "files" AND value = ? AND deleted = 0 ORDER BY createTime DESC LIMIT 1`,
+					[value],
+				)) as any[];
 
-				// 删除所有相同文件路径的记录（不管是files还是image类型），但只删除未删除的记录
-				const deleteSQL1 = `DELETE FROM ${tableName} WHERE LOWER(REPLACE(value, '\\', '/')) LIKE ? AND type = "files" AND deleted = 0;`;
-				const deleteSQL2 = `DELETE FROM ${tableName} WHERE LOWER(REPLACE(value, '\\', '/')) LIKE ? AND type = "image" AND deleted = 0;`;
+				if (exactRecords.length > 0) {
+					existingRecord = exactRecords[0];
+				} else {
+					// 如果精确匹配失败，再尝试基于文件路径的模糊匹配
+					const records = (await executeSQL(
+						`SELECT * FROM ${tableName} WHERE
+						 (type = "files" OR type = "image")
+						 AND LOWER(REPLACE(value, '\\', '/')) LIKE ?
+						 AND deleted = 0
+						 ORDER BY createTime DESC LIMIT 1`,
+						[`%${normalizedPath}%`],
+					)) as any[];
 
-				await executeSQL(deleteSQL1, [pathPattern1]);
-				await executeSQL(deleteSQL2, [pathPattern1]);
-
-				// 对于files类型，如果原始value与提取的路径不同，也要匹配原始value
-				if (type === "files" && normalizedValue !== normalizedPath) {
-					await executeSQL(deleteSQL1, [pathPattern2]);
-					await executeSQL(deleteSQL2, [pathPattern2]);
+					existingRecord = records.length > 0 ? records[0] : null;
 				}
-
-				// 也检查是否有text类型记录包含相同文件路径，但只删除未删除的记录
-				const textRecords = (await executeSQL(
-					`SELECT id FROM ${tableName} WHERE type = "text" AND LOWER(REPLACE(value, '\\', '/')) LIKE ? AND deleted = 0;`,
+			} else {
+				// 对于image类型，使用原有的模糊匹配逻辑
+				const records = (await executeSQL(
+					`SELECT * FROM ${tableName} WHERE
+					 (type = "files" OR type = "image")
+					 AND LOWER(REPLACE(value, '\\', '/')) LIKE ?
+					 AND deleted = 0
+					 ORDER BY createTime DESC LIMIT 1`,
 					[`%${normalizedPath}%`],
 				)) as any[];
 
-				if (textRecords.length > 0) {
-					const deleteSQL3 = `DELETE FROM ${tableName} WHERE type = "text" AND LOWER(REPLACE(value, '\\', '/')) LIKE ? AND deleted = 0;`;
-					await executeSQL(deleteSQL3, [`%${normalizedPath}%`]);
-				}
+				// 也检查text类型是否有相同文件路径
+				const textRecords = (await executeSQL(
+					`SELECT * FROM ${tableName} WHERE type = "text"
+					 AND LOWER(REPLACE(value, '\\', '/')) LIKE ?
+					 AND deleted = 0
+					 ORDER BY createTime DESC LIMIT 1`,
+					[`%${normalizedPath}%`],
+				)) as any[];
+
+				existingRecord =
+					records.length > 0
+						? records[0]
+						: textRecords.length > 0
+							? textRecords[0]
+							: null;
 			}
 		} else {
-			// 对于其他类型，使用原有的 type + value + group 去重逻辑
-			const deleteKeys = [];
-			const deleteValues = [];
+			// 对于其他类型，使用更智能的去重逻辑
+			const conditions = ["deleted = 0"];
+			const params: any[] = [];
 
 			if (type !== undefined) {
-				deleteKeys.push("type = ?");
-				deleteValues.push(type);
-			}
-			if (value !== undefined) {
-				deleteKeys.push("value = ?");
-				deleteValues.push(value);
-			}
-			if (group !== undefined) {
-				deleteKeys.push("[group] = ?");
-				deleteValues.push(group);
+				conditions.push("type = ?");
+				params.push(type);
 			}
 
-			if (deleteKeys.length > 0) {
-				// 只删除未删除的记录，保留软删除的记录
-				const deleteSQL = `DELETE FROM ${tableName} WHERE ${deleteKeys.join(" AND ")} AND deleted = 0;`;
-				await executeSQL(deleteSQL, deleteValues);
+			// 对于HTML和RTF类型，我们使用search字段进行比较，因为value可能包含格式信息
+			// 而search字段通常包含纯文本内容
+			if (type === "html" || type === "rtf") {
+				const searchValue = (payload as HistoryTablePayload).search;
+				if (searchValue) {
+					conditions.push("search = ?");
+					params.push(searchValue);
+				}
+			} else if (value !== undefined) {
+				// 对于其他类型，使用value字段比较
+				conditions.push("value = ?");
+				params.push(value);
 			}
+
+			if (group !== undefined) {
+				conditions.push("[group] = ?");
+				params.push(group);
+			}
+
+			if (params.length > 0) {
+				const records = (await executeSQL(
+					`SELECT * FROM ${tableName} WHERE ${conditions.join(" AND ")} ORDER BY createTime DESC LIMIT 1`,
+					params,
+				)) as any[];
+
+				existingRecord = records.length > 0 ? records[0] : null;
+			}
+		}
+
+		// 如果找到重复记录，则更新现有记录
+		if (existingRecord) {
+			const updateData: Partial<HistoryTablePayload> = {
+				// 更新时间戳为当前时间
+				createTime: currentTime,
+				lastModified: Date.now(),
+				// 更新来源应用信息（如果新的不为空）
+				sourceAppName:
+					(payload as HistoryTablePayload).sourceAppName ||
+					existingRecord.sourceAppName,
+				sourceAppIcon:
+					(payload as HistoryTablePayload).sourceAppIcon ||
+					existingRecord.sourceAppIcon,
+				// 更新搜索字段
+				search: (payload as HistoryTablePayload).search,
+				// 更新内容（如果不同）
+				value: value !== existingRecord.value ? value : existingRecord.value,
+				// 保持现有的其他属性不变
+				id: existingRecord.id,
+				favorite: existingRecord.favorite,
+				note: existingRecord.note,
+				syncStatus: existingRecord.syncStatus,
+				isCloudData: existingRecord.isCloudData,
+			};
+
+			// 构建更新SQL
+			const updateKeys = Object.keys(updateData).filter(
+				(key) => updateData[key as keyof HistoryTablePayload] !== undefined,
+			);
+			const updateValues = updateKeys.map(
+				(key) => updateData[key as keyof HistoryTablePayload],
+			);
+			const setClause = updateKeys
+				.map((key) => `${key === "group" ? "[group]" : key} = ?`)
+				.join(", ");
+
+			if (updateKeys.length > 0) {
+				await executeSQL(`UPDATE ${tableName} SET ${setClause} WHERE id = ?`, [
+					...updateValues,
+					existingRecord.id,
+				]);
+			}
+
+			// 返回更新后的记录，并标记为更新操作
+			return {
+				insertId: existingRecord.id,
+				rowsAffected: 1,
+				isUpdate: true,
+			};
 		}
 	}
 
-	// 插入新记录
+	// 没有找到重复记录，插入新记录
 	const { keys, values } = handlePayload(payload);
 	const refs = map(values, () => "?");
 
-	// 使用 INSERT OR REPLACE 确保原子性操作，避免UNIQUE约束冲突
-	return executeSQL(
-		`INSERT OR REPLACE INTO ${tableName} (${keys}) VALUES (${refs});`,
+	await executeSQL(
+		`INSERT INTO ${tableName} (${keys}) VALUES (${refs});`,
 		values,
 	);
+
+	// 对于新插入的记录，返回一个特殊标识，让UI知道这是新记录
+	return {
+		rowsAffected: 1,
+		isUpdate: false,
+	};
 };
 
 /**
@@ -572,6 +706,135 @@ export const getPendingSyncRecords = async (limit?: number) => {
 	} catch (error) {
 		console.error("❌ 获取待同步记录失败:", error);
 		return [];
+	}
+};
+
+/**
+ * 批量删除剪贴板条目（软删除）
+ * @param ids 要删除的条目ID数组
+ */
+export const batchDeleteItems = async (ids: string[]) => {
+	if (!ids || ids.length === 0) return { success: true, deletedCount: 0 };
+
+	try {
+		// 先获取要删除的条目信息，以便找出所有相关重复条目
+		const itemsToDelete = (await executeSQL(
+			`SELECT * FROM history WHERE id IN (${ids.map(() => "?").join(",")})`,
+			ids,
+		)) as any[];
+
+		// 找出所有需要删除的ID（包括重复条目）
+		const allIdsToDelete = new Set<string>();
+
+		for (const item of itemsToDelete) {
+			allIdsToDelete.add(item.id);
+
+			// 对于文件和图片类型，删除所有相同路径的条目（不管类型）
+			if (item.type === "files" || item.type === "image") {
+				let filePath = item.value;
+
+				// 如果是files类型，尝试从JSON中提取文件路径
+				if (item.type === "files" && item.value?.startsWith("[")) {
+					try {
+						const filePaths = JSON.parse(item.value);
+						filePath = filePaths[0];
+					} catch {
+						// 解析失败，使用原值
+					}
+				}
+
+				// 查找所有相同文件路径的条目
+				const duplicateItems = (await executeSQL(
+					`SELECT id FROM history WHERE (type = "files" OR type = "image") AND deleted = 0 AND (
+						value = ? OR
+						value LIKE ? OR
+						? LIKE value
+					)`,
+					[
+						filePath,
+						`%"${filePath.replace(/\\/g, "/")}%`,
+						`${filePath.replace(/\\/g, "/")}%`,
+					],
+				)) as any[];
+
+				// 将所有重复条目也加入删除列表
+				for (const duplicate of duplicateItems) {
+					allIdsToDelete.add(duplicate.id);
+				}
+			}
+		}
+
+		// 执行批量软删除：标记为已删除，并设置同步状态为待同步
+		const allIdsArray = Array.from(allIdsToDelete);
+		const placeholders = allIdsArray.map(() => "?").join(",");
+		const currentTime = Date.now();
+		await executeSQL(
+			`UPDATE history SET deleted = 1, syncStatus = 'pending', lastModified = ? WHERE id IN (${placeholders})`,
+			[currentTime, ...allIdsArray],
+		);
+
+		// 验证删除是否成功
+		const verifyResult = (await executeSQL(
+			`SELECT COUNT(*) as count FROM history WHERE id IN (${placeholders}) AND deleted = 1`,
+			allIdsArray,
+		)) as any[];
+
+		const deletedCount = verifyResult[0]?.count || 0;
+
+		if (deletedCount !== allIdsArray.length) {
+			console.error("❌ 批量删除部分失败", {
+				expected: allIdsArray.length,
+				actual: deletedCount,
+			});
+			return { success: false, deletedCount, error: "部分条目删除失败" };
+		}
+
+		return { success: true, deletedCount };
+	} catch (error) {
+		console.error("❌ 批量删除失败:", error);
+		return { success: false, deletedCount: 0, error };
+	}
+};
+
+/**
+ * 批量收藏/取消收藏剪贴板条目
+ * @param ids 要操作的条目ID数组
+ * @param favorite 是否收藏，true为收藏，false为取消收藏
+ */
+export const batchUpdateFavorite = async (ids: string[], favorite: boolean) => {
+	if (!ids || ids.length === 0) return { success: true, updatedCount: 0 };
+
+	try {
+		const placeholders = ids.map(() => "?").join(",");
+		const favoriteValue = favorite ? 1 : 0;
+
+		// 批量更新收藏状态，并设置同步状态为待同步
+		const currentTime = Date.now();
+		await executeSQL(
+			`UPDATE history SET favorite = ?, syncStatus = 'pending', lastModified = ? WHERE id IN (${placeholders})`,
+			[favoriteValue, currentTime, ...ids],
+		);
+
+		// 验证更新是否成功
+		const verifyResult = (await executeSQL(
+			`SELECT COUNT(*) as count FROM history WHERE id IN (${placeholders}) AND favorite = ?`,
+			[...ids, favoriteValue],
+		)) as any[];
+
+		const updatedCount = verifyResult[0]?.count || 0;
+
+		if (updatedCount !== ids.length) {
+			console.error("❌ 批量更新收藏状态部分失败", {
+				expected: ids.length,
+				actual: updatedCount,
+			});
+			return { success: false, updatedCount, error: "部分条目更新失败" };
+		}
+
+		return { success: true, updatedCount };
+	} catch (error) {
+		console.error("❌ 批量更新收藏状态失败:", error);
+		return { success: false, updatedCount: 0, error };
 	}
 };
 
@@ -981,4 +1244,101 @@ export const deleteFromDatabase = async (
 	}
 
 	return results;
+};
+
+/**
+ * 获取数据库统计信息和关键数据
+ */
+export const getDatabaseInfo = async () => {
+	try {
+		// 获取总记录数
+		const totalCountResult = (await executeSQL(
+			"SELECT COUNT(*) as total FROM history;",
+		)) as any[];
+		const totalCount = totalCountResult[0]?.total || 0;
+
+		// 获取活跃记录数（未删除）
+		const activeCountResult = (await executeSQL(
+			"SELECT COUNT(*) as active FROM history WHERE deleted = 0;",
+		)) as any[];
+		const activeCount = activeCountResult[0]?.active || 0;
+
+		// 获取已删除记录数
+		const deletedCountResult = (await executeSQL(
+			"SELECT COUNT(*) as deleted FROM history WHERE deleted = 1;",
+		)) as any[];
+		const deletedCount = deletedCountResult[0]?.deleted || 0;
+
+		// 获取收藏记录数
+		const favoriteCountResult = (await executeSQL(
+			"SELECT COUNT(*) as favorite FROM history WHERE favorite = 1 AND deleted = 0;",
+		)) as any[];
+		const favoriteCount = favoriteCountResult[0]?.favorite || 0;
+
+		// 获取各类型记录数
+		const typeCountResult = (await executeSQL(
+			"SELECT type, COUNT(*) as count FROM history WHERE deleted = 0 GROUP BY type;",
+		)) as any[];
+		const typeCounts = typeCountResult.reduce((acc, item) => {
+			acc[item.type] = item.count;
+			return acc;
+		}, {});
+
+		// 获取同步状态统计
+		const syncStatusResult = (await executeSQL(
+			"SELECT syncStatus, COUNT(*) as count FROM history WHERE deleted = 0 GROUP BY syncStatus;",
+		)) as any[];
+		const syncStatusCounts = syncStatusResult.reduce((acc, item) => {
+			acc[item.syncStatus || "none"] = item.count;
+			return acc;
+		}, {});
+
+		// 获取最近10条记录的关键信息
+		const recentRecordsResult = (await executeSQL(
+			"SELECT id, type, [group], value, search, favorite, createTime, syncStatus, isCloudData FROM history WHERE deleted = 0 ORDER BY createTime DESC LIMIT 10;",
+		)) as any[];
+
+		const recentRecords = recentRecordsResult.map((record) => ({
+			id: record.id,
+			type: record.type,
+			group: record.group,
+			value:
+				record.value?.length > 50
+					? `${record.value.substring(0, 50)}...`
+					: record.value,
+			search: record.search,
+			favorite: Boolean(record.favorite),
+			createTime: record.createTime,
+			syncStatus: record.syncStatus || "none",
+			isCloudData: Boolean(record.isCloudData),
+		}));
+
+		// 获取数据库文件大小（如果可能）
+		let dbSize = "未知";
+		try {
+			const { getSaveDatabasePath } = await import("@/utils/path");
+			const { exists } = await import("@tauri-apps/plugin-fs");
+			const dbPath = await getSaveDatabasePath();
+			if (await exists(dbPath)) {
+				// 由于metadata方法不可用，我们暂时显示为已知大小
+				dbSize = "数据库文件存在";
+			}
+		} catch (_error) {
+			// 忽略获取文件大小的错误
+		}
+
+		return {
+			totalCount,
+			activeCount,
+			deletedCount,
+			favoriteCount,
+			typeCounts,
+			syncStatusCounts,
+			recentRecords,
+			dbSize,
+		};
+	} catch (error) {
+		console.error("❌ 获取数据库信息失败:", error);
+		return null;
+	}
 };

@@ -11,7 +11,7 @@ import { setSyncEventListener } from "@/utils/syncEngine";
 import { emit } from "@tauri-apps/api/event";
 import { useReactive } from "ahooks";
 import type { EventEmitter } from "ahooks/lib/useEventEmitter";
-import { find, findIndex, isNil, last, range } from "lodash-es";
+import { findIndex, last, range } from "lodash-es";
 import { nanoid } from "nanoid";
 import { createContext } from "react";
 import { useSnapshot } from "valtio";
@@ -97,96 +97,12 @@ const Main = () => {
 
 			const createTime = formatDate();
 
-			// 检查是否有重复项 - 更严格的重复检测
-			const findItem = find(state.list, { type, value });
-
-			// 对于图片和文件类型，进行跨类型和同类型去重检测
-			let crossTypeDuplicateItem: HistoryTablePayload | undefined;
-			if (type === "image" || type === "files") {
-				// 检查是否存在相同文件路径的记录（包括不同类型和相同类型）
-				crossTypeDuplicateItem = state.list.find((item) => {
-					if (item.type === "image" || item.type === "files") {
-						let itemFilePath = item.value;
-						let currentFilePath = value;
-
-						// 辅助函数：从值中提取第一个文件路径
-						const extractFirstPath = (val: any) => {
-							if (!val || typeof val !== "string") return val;
-
-							try {
-								const parsed = JSON.parse(val);
-
-								// 如果是字符串数组，返回第一个
-								if (
-									Array.isArray(parsed) &&
-									parsed.length > 0 &&
-									typeof parsed[0] === "string"
-								) {
-									return parsed[0];
-								}
-
-								// 如果是对象数组，提取第一个对象的路径
-								if (
-									Array.isArray(parsed) &&
-									parsed.length > 0 &&
-									typeof parsed[0] === "object"
-								) {
-									const firstItem = parsed[0];
-									return (
-										firstItem.originalPath ||
-										firstItem.path ||
-										firstItem.fileName ||
-										val
-									);
-								}
-							} catch {
-								// 解析失败，返回原值
-							}
-
-							return val;
-						};
-
-						// 提取文件路径
-						itemFilePath = extractFirstPath(item.value);
-						currentFilePath = extractFirstPath(value);
-
-						// 确保是字符串
-						if (
-							typeof itemFilePath !== "string" ||
-							typeof currentFilePath !== "string"
-						) {
-							return false;
-						}
-
-						// 标准化路径格式进行比较（处理大小写和路径分隔符差异）
-						const normalizedItemPath = itemFilePath
-							.toLowerCase()
-							.replace(/\\/g, "/");
-						const normalizedCurrentPath = currentFilePath
-							.toLowerCase()
-							.replace(/\\/g, "/");
-
-						return normalizedItemPath === normalizedCurrentPath;
-					}
-					return false;
-				});
-			}
-
-			// 检查是否需要去重（重复项）
-			const isDuplicate = !!findItem || !!crossTypeDuplicateItem;
-			const existingDuplicateItem = findItem || crossTypeDuplicateItem;
-
-			// 检查是否是应用内部复制操作触发的剪切板更新
+			// 检查是否是应用内部复制操作
 			const isInternalCopy = clipboardStore.internalCopy.isCopying;
-			const internalCopyItemId = clipboardStore.internalCopy.itemId;
 
-			// 如果是内部复制操作且是重复项目，跳过处理（避免重复移动到顶部）
-			if (
-				isInternalCopy &&
-				isDuplicate &&
-				existingDuplicateItem?.id === internalCopyItemId
-			) {
-				return; // 跳过内部复制操作触发的重复处理
+			// 如果是内部复制操作，跳过处理
+			if (isInternalCopy) {
+				return;
 			}
 
 			// 额外检查：防止短时间内处理相同内容
@@ -206,191 +122,37 @@ const Main = () => {
 			state.lastProcessedTime = now;
 			state.lastProcessedPayload = { type, value, group };
 
-			// 获取最新的自动排序设置，确保响应状态变化
-			const currentAutoSort = clipboardStore.content.autoSort;
+			// 数据库层面已经处理了去重，直接插入新数据
+			try {
+				const data: HistoryTablePayload = {
+					...payload,
+					createTime,
+					id: nanoid(),
+					favorite: false,
+					syncStatus: "none", // 新项目默认为未同步状态
+					isCloudData: false, // 标记为本地数据
+				};
 
-			if (isDuplicate && !currentAutoSort) {
-				// 自动排序关闭且发现重复项，更新时间和来源应用信息但不移动位置
-				const latestItem = existingDuplicateItem;
+				const result = await insertWithDeduplication("history", data);
 
-				if (latestItem) {
-					state.activeId = latestItem.id;
+				// 清除缓存，因为数据已更新
+				getListCache.current.clear();
+				lastQueryParams = "";
 
-					// 优先使用最新的来源应用信息，如果新的来源应用信息为空，则保留现有的
-					const sourceAppName =
-						payload.sourceAppName || latestItem.sourceAppName;
-					const sourceAppIcon =
-						payload.sourceAppIcon || latestItem.sourceAppIcon;
-
-					// 更新数据库中的时间戳和来源应用信息，但不改变位置
-					try {
-						await updateSQL("history", {
-							id: latestItem.id,
-							createTime,
-							sourceAppName,
-							sourceAppIcon,
-							// 如果内容有变化（如图片OCR文字），也要更新
-							search:
-								payload.search !== latestItem.search
-									? payload.search
-									: latestItem.search,
-							value:
-								payload.value !== latestItem.value
-									? payload.value
-									: latestItem.value,
-						});
-
-						// 更新本地状态中的时间戳和来源应用信息
-						const originalIndex = findIndex(state.list, { id: latestItem.id });
-						if (originalIndex !== -1) {
-							state.list[originalIndex] = {
-								...state.list[originalIndex],
-								createTime,
-								sourceAppName,
-								sourceAppIcon,
-								// 如果内容有变化，也更新内容
-								search:
-									payload.search !== latestItem.search
-										? payload.search
-										: state.list[originalIndex].search,
-								value:
-									payload.value !== latestItem.value
-										? payload.value
-										: state.list[originalIndex].value,
-							};
-						}
-					} catch (error) {
-						console.error("更新重复项失败:", error);
-					}
+				// 如果是插入新记录（不是更新现有记录），则需要刷新UI
+				if (!result.isUpdate) {
+					// 刷新列表
+					await getList();
+					// 触发滚动到顶部
+					emit(LISTEN_KEY.ACTIVATE_BACK_TOP, "new-content");
+				} else {
+					// 如果是更新现有记录，也要刷新列表以显示最新的时间戳
+					await getList();
+					// 触发滚动到顶部，显示更新的记录
+					emit(LISTEN_KEY.ACTIVATE_BACK_TOP, "updated-content");
 				}
-			} else {
-				// 使用数据库层面的去重插入
-				try {
-					let data: HistoryTablePayload;
-
-					if (isDuplicate) {
-						// 如果是重复项且自动排序开启，使用现有ID但更新时间和来源应用信息
-						// 优先使用最新的来源应用信息，如果新的来源应用信息为空，则保留现有的
-						const sourceAppName =
-							payload.sourceAppName || existingDuplicateItem!.sourceAppName;
-						const sourceAppIcon =
-							payload.sourceAppIcon || existingDuplicateItem!.sourceAppIcon;
-
-						data = {
-							...payload, // 包含最新的剪贴板数据
-							createTime,
-							id: existingDuplicateItem!.id, // 使用现有ID
-							favorite: existingDuplicateItem!.favorite || false, // 保持现有的收藏状态
-							note: existingDuplicateItem!.note || "", // 保持现有的备注信息
-							subtype: existingDuplicateItem!.subtype || undefined, // 保持现有的子类型信息
-							syncStatus: existingDuplicateItem!.syncStatus, // 保持原有的同步状态
-							isCloudData: existingDuplicateItem!.isCloudData, // 保持原有的云端数据标记
-							// 优先使用最新的来源应用信息，如果新的为空则保留现有的
-							sourceAppName,
-							sourceAppIcon,
-						};
-					} else {
-						// 新内容，生成新ID
-						data = {
-							...payload,
-							createTime,
-							id: nanoid(),
-							favorite: false,
-							syncStatus: "none", // 新项目默认为未同步状态
-							isCloudData: false, // 标记为本地数据
-						};
-					}
-
-					try {
-						await insertWithDeduplication("history", data);
-					} catch (error) {
-						// 如果是约束冲突错误，尝试更新现有记录而不是插入
-						if (
-							error instanceof Error &&
-							error.message.includes("UNIQUE constraint failed")
-						) {
-							// 检测到ID冲突，尝试更新现有记录
-							// 使用更新而不是插入，保持原有的同步状态，但更新来源应用信息
-							await updateSQL("history", {
-								id: data.id,
-								createTime: data.createTime,
-								note: data.note,
-								subtype: data.subtype,
-								favorite: data.favorite,
-								syncStatus: data.syncStatus, // 保持原有的同步状态
-								isCloudData: data.isCloudData, // 保持原有的云端数据标记
-								// 优先使用最新的来源应用信息，如果新的为空则保留现有的
-								sourceAppName: data.sourceAppName,
-								sourceAppIcon: data.sourceAppIcon,
-							});
-						} else {
-							throw error; // 重新抛出其他错误
-						}
-					}
-
-					// 清除缓存，因为数据已更新
-					getListCache.current.clear();
-					lastQueryParams = "";
-
-					// 根据自动排序设置和内容类型决定如何处理界面列表
-					if (
-						state.group === group ||
-						(isNil(state.group) && !state.favorite)
-					) {
-						if (isDuplicate && !currentAutoSort) {
-							// 重复内容且自动排序关闭：保持原位置，只更新时间戳
-							const originalIndex = findIndex(state.list, {
-								id: existingDuplicateItem!.id,
-							});
-							if (originalIndex !== -1) {
-								// 直接在原位置更新数据
-								state.list[originalIndex] = {
-									...state.list[originalIndex],
-									createTime,
-								};
-								state.activeId = existingDuplicateItem!.id;
-							}
-							// 不需要添加新项目，因为只是更新现有项目
-						} else {
-							// 新内容始终添加到顶部，重复内容在自动排序开启时移动到顶部
-							// 对于重复内容，需要先移除原项目再添加到顶部
-							if (isDuplicate) {
-								const originalIndex = findIndex(state.list, {
-									id: existingDuplicateItem!.id,
-								});
-								if (originalIndex !== -1) {
-									state.list.splice(originalIndex, 1);
-								}
-							}
-							state.list.unshift(data);
-							state.activeId = data.id;
-						}
-					}
-
-					// 新内容总是触发滚动到顶部，重复内容根据自动排序设置决定
-					if (!isDuplicate || currentAutoSort) {
-						emit(
-							LISTEN_KEY.ACTIVATE_BACK_TOP,
-							isDuplicate ? "duplicate-content" : "new-content",
-						);
-					}
-				} catch (_error) {
-					// 数据库去重插入失败
-
-					// 如果是重复内容且去重失败，尝试简单的更新操作
-					if (isDuplicate && existingDuplicateItem) {
-						try {
-							// 对于重复内容，只更新数据库时间戳，不改变UI位置
-							await updateSQL("history", {
-								id: existingDuplicateItem.id,
-								createTime,
-							});
-						} catch (_updateError) {
-							// 更新时间戳也失败
-						}
-					}
-					// 对于新内容，如果去重失败，直接忽略（因为这是很少见的情况）
-				}
+			} catch (error) {
+				console.error("处理剪贴板数据失败:", error);
 			}
 		});
 	});
@@ -556,6 +318,33 @@ const Main = () => {
 		showWindow("preference");
 	});
 
+	// Ctrl+A 全选功能
+	useKeyPress(["ctrl.a", "meta.a"], (event) => {
+		// 阻止默认行为（避免浏览器全选）
+		event.preventDefault();
+
+		// 检查是否有剪贴板条目
+		if (state.list.length === 0) return;
+
+		// 进入多选模式
+		clipboardStore.multiSelect.isMultiSelecting = true;
+		clipboardStore.multiSelect.selectedIds.clear();
+
+		// 选择所有条目
+		for (const item of state.list) {
+			clipboardStore.multiSelect.selectedIds.add(item.id);
+		}
+
+		// 设置最后一个选中的ID
+		clipboardStore.multiSelect.lastSelectedId =
+			state.list[state.list.length - 1]?.id || null;
+
+		// 聚焦到第一个条目
+		if (state.list.length > 0) {
+			state.activeId = state.list[0].id;
+		}
+	});
+
 	// 缓存机制，避免重复查询
 	let lastQueryParams = "";
 	// const cachedResult: HistoryTablePayload[] = [];
@@ -564,8 +353,14 @@ const Main = () => {
 
 	// 强制刷新列表的函数（仅更新列表，不触发其他事件）
 	const forceRefreshList = () => {
+		// 彻底清除所有缓存，确保删除操作能立即反映
 		getListCache.current.clear();
 		lastQueryParams = "";
+		// 清除防抖计时器，确保立即刷新
+		if (getListDebounceTimer.current) {
+			clearTimeout(getListDebounceTimer.current);
+			getListDebounceTimer.current = null;
+		}
 		// 直接调用getList而不是使用防抖，避免延迟
 		getList();
 	};
@@ -654,42 +449,11 @@ const Main = () => {
 			);
 		}
 
-		// 智能去重处理：对于文件和图片类型，基于文件路径去重；其他类型基于 type:value
-		const uniqueItems: HistoryTablePayload[] = [];
-		const seenKeys = new Set<string>();
-
-		for (const item of rawData) {
-			let key: string;
-
-			// 对于文件和图片类型，基于文件路径去重（忽略类型差异）
-			if (item.type === "files" || item.type === "image") {
-				// 尝试从JSON中提取文件路径
-				if (item.type === "files" && item.value?.startsWith("[")) {
-					try {
-						const filePaths = JSON.parse(item.value);
-						// 使用第一个文件路径作为key，确保所有相同路径的文件使用相同的key
-						key = `file:${filePaths[0]}`;
-					} catch {
-						key = `file:${item.value}`;
-					}
-				} else {
-					key = `file:${item.value}`;
-				}
-			} else {
-				// 其他类型使用原有的 type:value 组合
-				key = `${item.type}:${item.value}`;
-			}
-
-			if (!seenKeys.has(key)) {
-				seenKeys.add(key);
-				uniqueItems.push(item);
-			}
-		}
-
+		// 数据库层面已经进行了去重处理，这里直接使用原始数据
 		// 更新缓存
-		getListCache.current.set(queryParams, uniqueItems);
+		getListCache.current.set(queryParams, rawData);
 		lastQueryParams = queryParams;
-		state.list = uniqueItems;
+		state.list = rawData;
 	};
 
 	// 防抖版本的getList，避免频繁调用
@@ -715,6 +479,33 @@ const Main = () => {
 	useTauriListen(LISTEN_KEY.ACTIVATE_BACK_TOP, (_event) => {
 		// 这个监听器主要用于调试，实际逻辑在 List 组件中处理
 	});
+
+	// 全局点击事件，用于清除多选状态
+	useEffect(() => {
+		const handleGlobalClick = (event: MouseEvent) => {
+			// 如果正在多选状态，且点击的不是剪贴板条目，则清除多选
+			if (clipboardStore.multiSelect.isMultiSelecting) {
+				const target = event.target as Element;
+
+				// 检查点击的目标是否在剪贴板条目内
+				const isClickInsideItem = target.closest("[data-item-id]");
+
+				if (!isClickInsideItem) {
+					clipboardStore.multiSelect.isMultiSelecting = false;
+					clipboardStore.multiSelect.selectedIds.clear();
+					clipboardStore.multiSelect.lastSelectedId = null;
+				}
+			}
+		};
+
+		// 添加全局点击监听器
+		document.addEventListener("click", handleGlobalClick);
+
+		// 清理函数
+		return () => {
+			document.removeEventListener("click", handleGlobalClick);
+		};
+	}, [clipboardStore.multiSelect.isMultiSelecting]);
 
 	// 清理计时器
 	useUnmount(() => {

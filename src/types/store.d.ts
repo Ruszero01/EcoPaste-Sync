@@ -153,4 +153,17 @@ export interface ClipboardStore {
 		isCopying: boolean;
 		itemId: string | null;
 	};
+
+	// 多选状态
+	multiSelect: {
+		isMultiSelecting: boolean;
+		selectedIds: Set<string>;
+		lastSelectedId: string | null;
+	};
+
+	// 批量拖拽信息
+	batchDragInfo: {
+		items: HistoryTablePayload[];
+		isDragging: boolean;
+	};
 }

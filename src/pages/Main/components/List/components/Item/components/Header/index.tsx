@@ -1,4 +1,5 @@
 import UnoIcon from "@/components/UnoIcon";
+import { LISTEN_KEY } from "@/constants";
 import { MainContext } from "@/pages/Main";
 import { transferData } from "@/pages/Preference/components/Clipboard/components/OperationButton";
 import { clipboardStore } from "@/stores/clipboard";
@@ -154,7 +155,29 @@ const Header: FC<HeaderProps> = (props) => {
 
 		event.stopPropagation();
 
+		// 检查是否在多选模式
+		const { multiSelect } = clipboardStore;
+		const isMultiSelectMode =
+			multiSelect.isMultiSelecting && multiSelect.selectedIds.size > 0;
+
 		state.activeId = id;
+
+		// 如果是多选模式且当前项目被选中，执行批量操作
+		if (isMultiSelectMode && multiSelect.selectedIds.has(id)) {
+			switch (key) {
+				case "delete":
+					// 触发批量删除 - 删除操作允许在任何选中的项目上执行
+					return state.$eventBus?.emit(LISTEN_KEY.CLIPBOARD_ITEM_BATCH_DELETE);
+				case "star":
+					// 触发批量收藏 - 收藏操作允许在任何选中的项目上执行
+					return state.$eventBus?.emit(
+						LISTEN_KEY.CLIPBOARD_ITEM_BATCH_FAVORITE,
+					);
+				default:
+					// 其他操作不批量处理，只处理当前项目
+					return;
+			}
+		}
 
 		switch (key) {
 			case "copy":
