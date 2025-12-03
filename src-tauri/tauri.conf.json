@@ -1,9 +1,9 @@
 {
 	"$schema": "https://schema.tauri.app/config/2.0.0",
 	"productName": "EcoPaste-Sync",
-	"mainBinaryName": "EcoPaste",
+	"mainBinaryName": "EcoPaste-Sync",
 	"version": "../package.json",
-	"identifier": "com.ayangweb.EcoPaste",
+	"identifier": "com.Rains.EcoPaste-Sync",
 	"build": {
 		"beforeDevCommand": "pnpm dev",
 		"devUrl": "http://localhost:3000",
@@ -15,7 +15,7 @@
 		"windows": [
 			{
 				"label": "main",
-				"title": "EcoPaste",
+				"title": "EcoPaste-Sync",
 				"url": "index.html/#/",
 				"width": 360,
 				"height": 600,
@@ -67,7 +67,7 @@
 		"active": true,
 		"createUpdaterArtifacts": true,
 		"targets": ["nsis", "dmg", "app", "appimage", "deb", "rpm"],
-		"shortDescription": "EcoPaste",
+		"shortDescription": "EcoPaste-Sync",
 		"icon": [
 			"icons/32x32.png",
 			"icons/128x128.png",

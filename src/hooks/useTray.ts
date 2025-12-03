@@ -97,14 +97,14 @@ export const useTray = () => {
 				action: toggle,
 			}),
 			PredefinedMenuItem.new({ item: "Separator" }),
-			MenuItem.new({
+			/* MenuItem.new({
 				text: t("component.tray.label.check_update"),
 				action: () => {
 					showWindow();
 
 					emit(LISTEN_KEY.UPDATE_APP, true);
 				},
-			}),
+			}), */
 			MenuItem.new({
 				text: t("component.tray.label.open_source_address"),
 				action: () => openUrl(GITHUB_LINK),

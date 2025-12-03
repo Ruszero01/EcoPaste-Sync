@@ -8,7 +8,7 @@ import RowHeight from "./components/RowHeight";
 import ThemeMode from "./components/ThemeMode";
 
 const General = () => {
-	const { app, update } = useSnapshot(globalStore);
+	const { app } = useSnapshot(globalStore);
 	const { t } = useTranslation();
 
 	// 监听自动启动变更
@@ -71,6 +71,7 @@ const General = () => {
 				<RowHeight />
 			</ProList>
 
+			{/* 更新设置已隐藏 - fork分支不需要这些设置
 			<ProList header={t("preference.settings.update_settings.title")}>
 				<ProSwitch
 					title={t("preference.settings.update_settings.label.auto_update")}
@@ -91,6 +92,7 @@ const General = () => {
 					}}
 				/>
 			</ProList>
+			*/}
 		</>
 	);
 };
