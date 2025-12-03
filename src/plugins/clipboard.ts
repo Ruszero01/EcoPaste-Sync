@@ -620,7 +620,18 @@ export const writeClipboard = async (data?: HistoryTablePayload) => {
 		case "image":
 			return await writeImage(resolveImagePath(value));
 		case "files":
-			return writeFiles(value);
+			// 对于文件类型，确保value是有效的JSON字符串
+			if (typeof value === "string") {
+				return writeFiles(value);
+			}
+			// 如果value不是字符串，尝试转换为JSON字符串
+			try {
+				const jsonValue = JSON.stringify(value);
+				return writeFiles(jsonValue);
+			} catch (error) {
+				console.error("文件路径JSON序列化失败:", error);
+				throw new Error("无效的文件路径数据");
+			}
 	}
 };
 

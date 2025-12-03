@@ -332,31 +332,56 @@ export const insertWithDeduplication = async (
 			// 标准化路径格式
 			const normalizedPath = filePath.toLowerCase().replace(/\\/g, "/");
 
-			// 查找相同文件路径的记录（包括files、image和包含文件路径的text类型）
-			const records = (await executeSQL(
-				`SELECT * FROM ${tableName} WHERE
-				 (type = "files" OR type = "image")
-				 AND LOWER(REPLACE(value, '\\', '/')) LIKE ?
-				 AND deleted = 0
-				 ORDER BY createTime DESC LIMIT 1`,
-				[`%${normalizedPath}%`],
-			)) as any[];
+			// 对于files类型，使用更精确的匹配逻辑
+			if (type === "files") {
+				// 首先尝试精确匹配整个JSON数组
+				const exactRecords = (await executeSQL(
+					`SELECT * FROM ${tableName} WHERE type = "files" AND value = ? AND deleted = 0 ORDER BY createTime DESC LIMIT 1`,
+					[value],
+				)) as any[];
 
-			// 也检查text类型是否有相同文件路径
-			const textRecords = (await executeSQL(
-				`SELECT * FROM ${tableName} WHERE type = "text"
-				 AND LOWER(REPLACE(value, '\\', '/')) LIKE ?
-				 AND deleted = 0
-				 ORDER BY createTime DESC LIMIT 1`,
-				[`%${normalizedPath}%`],
-			)) as any[];
+				if (exactRecords.length > 0) {
+					existingRecord = exactRecords[0];
+				} else {
+					// 如果精确匹配失败，再尝试基于文件路径的模糊匹配
+					const records = (await executeSQL(
+						`SELECT * FROM ${tableName} WHERE
+						 (type = "files" OR type = "image")
+						 AND LOWER(REPLACE(value, '\\', '/')) LIKE ?
+						 AND deleted = 0
+						 ORDER BY createTime DESC LIMIT 1`,
+						[`%${normalizedPath}%`],
+					)) as any[];
 
-			existingRecord =
-				records.length > 0
-					? records[0]
-					: textRecords.length > 0
-						? textRecords[0]
-						: null;
+					existingRecord = records.length > 0 ? records[0] : null;
+				}
+			} else {
+				// 对于image类型，使用原有的模糊匹配逻辑
+				const records = (await executeSQL(
+					`SELECT * FROM ${tableName} WHERE
+					 (type = "files" OR type = "image")
+					 AND LOWER(REPLACE(value, '\\', '/')) LIKE ?
+					 AND deleted = 0
+					 ORDER BY createTime DESC LIMIT 1`,
+					[`%${normalizedPath}%`],
+				)) as any[];
+
+				// 也检查text类型是否有相同文件路径
+				const textRecords = (await executeSQL(
+					`SELECT * FROM ${tableName} WHERE type = "text"
+					 AND LOWER(REPLACE(value, '\\', '/')) LIKE ?
+					 AND deleted = 0
+					 ORDER BY createTime DESC LIMIT 1`,
+					[`%${normalizedPath}%`],
+				)) as any[];
+
+				existingRecord =
+					records.length > 0
+						? records[0]
+						: textRecords.length > 0
+							? textRecords[0]
+							: null;
+			}
 		} else {
 			// 对于其他类型，使用更智能的去重逻辑
 			const conditions = ["deleted = 0"];
