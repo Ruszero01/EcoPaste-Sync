@@ -1,12 +1,20 @@
 import ProList from "@/components/ProList";
 import ProListItem from "@/components/ProListItem";
-import { joinPath } from "@/utils/path";
+import { LISTEN_KEY } from "@/constants";
+import {
+	getSaveDataPath,
+	getSaveDatabasePath,
+	getSaveImagePath,
+	joinPath,
+} from "@/utils/path";
+import { wait } from "@/utils/shared";
 import { NodeIndexOutlined, ReloadOutlined } from "@ant-design/icons";
 import { emit } from "@tauri-apps/api/event";
 import { appLogDir, dataDir as tauriDataDir } from "@tauri-apps/api/path";
 import { open } from "@tauri-apps/plugin-dialog";
+import { exists } from "@tauri-apps/plugin-fs";
 import { openPath } from "@tauri-apps/plugin-opener";
-import { Button, Space, Tooltip, message } from "antd";
+import { Button, Modal, Space, Tooltip, message } from "antd";
 import { isEqual, isString } from "lodash-es";
 import type { FC } from "react";
 import { fullName, transfer } from "tauri-plugin-fs-pro-api";
@@ -23,6 +31,43 @@ const SavePath: FC<{ state: State }> = (props) => {
 		setLogDir(await appLogDir());
 	});
 
+	// 检查目标路径中是否已存在数据文件
+	const checkExistingData = async (dstPath: string): Promise<boolean> => {
+		try {
+			// 检查目标路径中是否存在数据库文件
+			const dbPath = await getSaveDatabasePath();
+			const dbName = dbPath.split(/[/\\]/).pop() || "";
+			const targetDbPath = joinPath(dstPath, dbName);
+
+			// 检查数据库文件是否存在
+			const dbExists = await exists(targetDbPath);
+
+			// 检查图片目录是否存在
+			const imageDir = joinPath(dstPath, "images");
+			const imageDirExists = await exists(imageDir);
+
+			return dbExists || imageDirExists;
+		} catch (error) {
+			console.error("检查现有数据时出错:", error);
+			return false;
+		}
+	};
+
+	// 显示确认对话框，询问用户如何处理现有数据
+	const showDataExistsDialog = (): Promise<boolean> => {
+		return new Promise((resolve) => {
+			Modal.confirm({
+				title: "发现已有数据",
+				content:
+					'目标路径中已存在数据文件，是否使用现有数据？选择"是"将使用现有数据，选择"否"将覆盖现有数据。',
+				okText: "使用现有数据",
+				cancelText: "覆盖现有数据",
+				onOk: () => resolve(true), // 使用现有数据
+				onCancel: () => resolve(false), // 覆盖现有数据
+			});
+		});
+	};
+
 	const handleChange = async (isDefault = false) => {
 		try {
 			const dstDir = isDefault ? dataDir : await open({ directory: true });
@@ -37,6 +82,26 @@ const SavePath: FC<{ state: State }> = (props) => {
 
 			await wait();
 
+			// 检查目标路径中是否已存在数据文件
+			const hasExistingData = await checkExistingData(dstPath);
+
+			if (hasExistingData) {
+				// 如果存在数据，询问用户如何处理
+				const useExisting = await showDataExistsDialog();
+
+				if (useExisting) {
+					// 使用现有数据，直接更新路径
+					globalStore.env.saveDataDir = dstPath;
+					emit(LISTEN_KEY.REFRESH_CLIPBOARD_LIST);
+					message.success(
+						t("preference.data_backup.storage_settings.hints.change_success"),
+					);
+					return;
+				}
+				// 否则继续执行覆盖操作
+			}
+
+			// 没有现有数据或用户选择覆盖，执行原有的转移逻辑
 			await transfer(getSaveDataPath(), dstPath, {
 				includes: [
 					await fullName(getSaveImagePath()),
