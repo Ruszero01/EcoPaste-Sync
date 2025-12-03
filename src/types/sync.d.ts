@@ -8,7 +8,7 @@
  */
 export interface BaseClipboardItem {
 	id: string;
-	type: "text" | "image" | "files" | "html" | "rtf";
+	type: "text" | "image" | "files" | "html" | "rtf" | "markdown";
 	group: "text" | "image" | "files";
 	value: string; // 文本内容或文件引用
 	search: string; // 搜索关键词
@@ -194,7 +194,7 @@ export interface CloudSyncIndex extends CloudSyncData {}
 // 云端项目指纹
 export interface CloudItemFingerprint {
 	id: string;
-	type: "text" | "image" | "files" | "html" | "rtf";
+	type: "text" | "image" | "files" | "html" | "rtf" | "markdown";
 	checksum: string;
 	favoriteChecksum?: string;
 	size: number;
@@ -301,6 +301,7 @@ export interface SyncModeConfig {
 		includeText: boolean; // 是否包含文本（总是启用）
 		includeHtml: boolean; // 是否包含HTML（总是启用）
 		includeRtf: boolean; // 是否包含富文本（总是启用）
+		includeMarkdown: boolean; // 是否包含Markdown（总是启用）
 		includeImages: boolean; // 是否包含图片（文件模式开关）
 		includeFiles: boolean; // 是否包含文件（文件模式开关）
 		onlyFavorites: boolean; // 仅同步收藏内容（收藏模式开关）
