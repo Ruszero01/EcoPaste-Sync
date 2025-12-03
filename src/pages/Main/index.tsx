@@ -1,4 +1,3 @@
-import type { AudioRef } from "@/components/Audio";
 import Audio from "@/components/Audio";
 import { LISTEN_KEY } from "@/constants";
 import { executeSQL, insertWithDeduplication, updateSQL } from "@/database";
@@ -57,12 +56,11 @@ const Main = () => {
 	const { window } = useSnapshot(clipboardStore);
 
 	const state = useReactive<State>(INITIAL_STATE);
-	const audioRef = useRef<AudioRef>(null);
 	const $eventBus = useEventEmitter<string>();
 	const windowHideTimer = useRef<NodeJS.Timeout>();
 
 	// 使用优化的音效播放 Hook
-	const { playSound } = useAudioEffect(audioRef);
+	const { playSound, isReady, initAudio } = useAudioEffect();
 
 	useMount(() => {
 		state.$eventBus = $eventBus;
@@ -92,7 +90,11 @@ const Main = () => {
 
 			// 使用优化的音效播放逻辑
 			if (clipboardStore.audio.copy) {
-				playSound();
+				// 如果音频系统未准备好，先初始化
+				if (!isReady) {
+					await initAudio();
+				}
+				await playSound("copy");
 			}
 
 			const createTime = formatDate();
@@ -581,7 +583,7 @@ const Main = () => {
 
 	return (
 		<>
-			<Audio hiddenIcon ref={audioRef} />
+			<Audio hiddenIcon />
 
 			<MainContext.Provider
 				value={{
