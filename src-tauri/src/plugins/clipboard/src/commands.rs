@@ -2,6 +2,7 @@ use clipboard_rs::{
     common::RustImage, Clipboard, ClipboardContent, ClipboardContext, ClipboardHandler,
     ClipboardWatcher, ClipboardWatcherContext, ContentFormat, RustImageData, WatcherShutdown,
 };
+use serde::{Deserialize, Serialize};
 use std::{
     fs::create_dir_all,
     hash::{DefaultHasher, Hash, Hasher},
@@ -62,6 +63,14 @@ pub struct ReadImage {
     width: u32,
     height: u32,
     image: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ClipboardSourceInfo {
+    pub app_name: String,
+    pub window_title: String,
+    pub process_name: String,
+    pub process_path: String,
 }
 
 #[command]
@@ -313,4 +322,88 @@ pub async fn get_image_dimensions(path: String) -> Result<ReadImage, String> {
         height,
         image: path,
     })
+}
+
+#[cfg(target_os = "windows")]
+#[command]
+pub fn get_clipboard_source_info() -> Result<ClipboardSourceInfo, String> {
+    use windows::Win32::Foundation::{HWND, MAX_PATH};
+    use windows::Win32::System::DataExchange::GetClipboardOwner;
+    use windows::Win32::System::Threading::{
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetWindowTextW, GetWindowThreadProcessId,
+    };
+
+    unsafe {
+        // 1. 获取剪贴板所有者的窗口句柄
+        // 即使当前焦点已经变了，只要没发生新的复制，Owner 还是原来的
+        let hwnd_owner: HWND = GetClipboardOwner()
+            .map_err(|e| format!("Failed to get clipboard owner: {}", e))?;
+
+        if hwnd_owner.is_invalid() {
+            // 如果获取失败（极少数情况），回退到获取当前活动窗口
+            return Err("Failed to get clipboard owner".to_string());
+        }
+
+        // 2. 获取窗口标题
+        let mut window_title = vec![0u16; 512];
+        let title_len = GetWindowTextW(hwnd_owner, &mut window_title);
+        let window_title = if title_len > 0 {
+            String::from_utf16_lossy(&window_title[..title_len as usize])
+        } else {
+            String::new()
+        };
+
+        // 3. 通过句柄获取 PID
+        let mut process_id: u32 = 0;
+        GetWindowThreadProcessId(hwnd_owner, Some(&mut process_id as *mut u32));
+
+        if process_id == 0 {
+            return Err("Failed to get process ID from clipboard owner".to_string());
+        }
+
+        // 4. 打开进程以获取进程信息
+        let process_handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, process_id)
+            .map_err(|e| format!("Failed to open process: {}", e))?;
+
+        // 5. 获取进程可执行文件路径
+        let mut exe_path = vec![0u16; MAX_PATH as usize];
+        let mut exe_path_len = exe_path.len() as u32;
+
+        QueryFullProcessImageNameW(
+            process_handle,
+            PROCESS_NAME_WIN32,
+            windows::core::PWSTR(exe_path.as_mut_ptr()),
+            &mut exe_path_len,
+        )
+        .map_err(|e| format!("Failed to get process image name: {}", e))?;
+
+        let exe_path_str = String::from_utf16_lossy(&exe_path[..exe_path_len as usize]);
+
+        // 6. 从路径中提取文件名作为进程名
+        let process_name = std::path::Path::new(&exe_path_str)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("Unknown")
+            .to_string();
+
+        // 7. 尝试从可执行文件中提取应用名称（使用进程名作为fallback）
+        let app_name = process_name.clone();
+
+        Ok(ClipboardSourceInfo {
+            app_name,
+            window_title,
+            process_name,
+            process_path: exe_path_str,
+        })
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+#[command]
+pub fn get_clipboard_source_info() -> Result<ClipboardSourceInfo, String> {
+    // 非 Windows 平台暂时返回错误，让前端回退到活动窗口获取方式
+    Err("GetClipboardOwner is only supported on Windows".to_string())
 }

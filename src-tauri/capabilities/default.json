@@ -60,6 +60,14 @@
 		"eco-autostart:default",
 		"eco-webdav:default",
 		{
+			"identifier": "eco-clipboard:allow-get-clipboard-source-info",
+			"allow": [
+				{
+					"cmd": "get_clipboard_source_info"
+				}
+			]
+		},
+		{
 			"identifier": "eco-active-window:allow-get-active-window-info",
 			"allow": [
 				{
