@@ -19,6 +19,11 @@ export function detectCode(code: string, minLength = 10): CodeDetectionResult {
 
 	const trimmedCode = code.trim();
 
+	// 首先检查是否为Markdown格式，如果是则不识别为代码
+	if (detectMarkdown(trimmedCode)) {
+		return { isCode: false, language: "", relevance: 0 };
+	}
+
 	// 首先检查是否为自然语言或日志
 	if (isNaturalLanguagePattern(trimmedCode)) {
 		return { isCode: false, language: "", relevance: 0 };
@@ -841,4 +846,72 @@ export function getLanguageDisplayName(language: string): string {
 		displayNames[language.toLowerCase()] ||
 		language.charAt(0).toUpperCase() + language.slice(1)
 	);
+}
+
+/**
+ * 检测文本是否为Markdown格式
+ * @param text - 文本内容
+ * @returns 是否为Markdown格式
+ */
+export function detectMarkdown(text: string): boolean {
+	if (!text || text.trim().length < 10) {
+		return false;
+	}
+
+	const trimmedText = text.trim();
+	const lines = trimmedText.split("\n");
+
+	// Markdown特征计数
+	let markdownFeatures = 0;
+
+	// 1. 检查标题格式 (# ## ###)
+	const headerCount = lines.filter((line) => /^#{1,6}\s+.+/.test(line)).length;
+	if (headerCount > 0) markdownFeatures++;
+
+	// 2. 检查列表格式 (- * + 或数字.)
+	const listCount = lines.filter((line) =>
+		/^(\s*[-*+]\s+|\s*\d+\.\s+)/.test(line),
+	).length;
+	if (listCount > 0) markdownFeatures++;
+
+	// 3. 检查代码块格式 (``` 或 ~~~)
+	const codeBlockCount =
+		(trimmedText.match(/```[\s\S]*?```/g) || []).length +
+		(trimmedText.match(/~~~[\s\S]*?~~~/g) || []).length;
+	if (codeBlockCount > 0) markdownFeatures++;
+
+	// 4. 检查链接格式 [text](url)
+	const linkCount = (trimmedText.match(/\[([^\]]+)\]\(([^)]+)\)/g) || [])
+		.length;
+	if (linkCount > 0) markdownFeatures++;
+
+	// 5. 检查图片格式 ![alt](url)
+	const imageCount = (trimmedText.match(/!\[([^\]]*)\]\(([^)]+)\)/g) || [])
+		.length;
+	if (imageCount > 0) markdownFeatures++;
+
+	// 6. 检查粗体/斜体格式 (**text** *text*)
+	const emphasisCount = (
+		trimmedText.match(/\*\*[^*]+\*\*|__[^_]+__|\*[^*]+\*|_[^_]+_/g) || []
+	).length;
+	if (emphasisCount > 0) markdownFeatures++;
+
+	// 7. 检查引用格式 (> )
+	const quoteCount = lines.filter((line) => /^\s*>/.test(line)).length;
+	if (quoteCount > 0) markdownFeatures++;
+
+	// 8. 检查行内代码格式 (`code`)
+	const inlineCodeCount = (trimmedText.match(/`[^`]+`/g) || []).length;
+	if (inlineCodeCount > 0) markdownFeatures++;
+
+	// 9. 检查表格格式 (| | |)
+	const tableCount = lines.filter((line) => /\|.*\|/.test(line)).length;
+	if (tableCount >= 2) markdownFeatures++; // 至少需要两行才能构成表格
+
+	// 10. 检查水平分割线 (--- 或 ***)
+	const hrCount = (trimmedText.match(/^(-{3,}|\*{3,})$/gm) || []).length;
+	if (hrCount > 0) markdownFeatures++;
+
+	// 如果有3个或以上的Markdown特征，认为是Markdown文档
+	return markdownFeatures >= 3;
 }

@@ -3,6 +3,8 @@ import { updateSQL } from "@/database";
 import { MainContext } from "@/pages/Main";
 import { clipboardStore } from "@/stores/clipboard";
 import type { HistoryTablePayload } from "@/types/database";
+import { detectMarkdown } from "@/utils/codeDetector";
+import MDEditor from "@uiw/react-md-editor";
 import { useBoolean } from "ahooks";
 import { Form, Input, Modal, Select } from "antd";
 import { find } from "lodash-es";
@@ -22,6 +24,7 @@ const TEXT_TYPE_OPTIONS = [
 	{ value: "text", label: "纯文本" },
 	{ value: "html", label: "HTML" },
 	{ value: "rtf", label: "富文本" },
+	{ value: "markdown", label: "Markdown" },
 	{ value: "code", label: "代码" },
 ];
 
@@ -47,7 +50,6 @@ const CODE_LANGUAGE_OPTIONS = [
 	{ value: "json", label: "JSON" },
 	{ value: "xml", label: "XML" },
 	{ value: "yaml", label: "YAML" },
-	{ value: "markdown", label: "Markdown" },
 	{ value: "bash", label: "Bash" },
 	{ value: "shell", label: "Shell" },
 	{ value: "powershell", label: "PowerShell" },
@@ -87,9 +89,17 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 
 	// 初始化类型选择状态
 	const initializeTypeSelection = (item: HistoryTablePayload) => {
-		if (item.isCode && item.codeLanguage) {
+		if (item.isCode && item.codeLanguage && item.codeLanguage !== "markdown") {
 			setSelectedType("code");
 			setSelectedCodeLanguage(item.codeLanguage);
+		} else if (
+			item.type === "markdown" ||
+			(item.isCode === false && item.codeLanguage === "markdown") ||
+			detectMarkdown(item.value)
+		) {
+			// 如果是已保存的Markdown类型或检测到Markdown格式，设置为Markdown类型
+			setSelectedType("markdown");
+			setSelectedCodeLanguage("");
 		} else {
 			setSelectedType(item.type || "text");
 			setSelectedCodeLanguage("");
@@ -113,6 +123,11 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 	// 判断是否使用代码编辑器
 	const shouldUseCodeEditor = () => {
 		return selectedType === "code" && selectedCodeLanguage;
+	};
+
+	// 判断是否使用Markdown编辑器
+	const shouldUseMarkdownEditor = () => {
+		return selectedType === "markdown";
 	};
 
 	// 获取当前代码语言
@@ -155,18 +170,29 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 			const currentTime = Date.now();
 
 			// 根据用户选择的类型更新项目属性
+			let updateType: "text" | "html" | "rtf" | "markdown";
+			let updateIsCode: boolean;
+			let updateCodeLanguage: string;
+
 			if (selectedType === "code") {
-				item.type = "text"; // 代码在数据库中存储为text类型
-				item.isCode = true;
-				item.codeLanguage = selectedCodeLanguage;
+				updateType = "text"; // 代码在数据库中存储为text类型
+				updateIsCode = true;
+				updateCodeLanguage = selectedCodeLanguage;
+			} else if (selectedType === "markdown") {
+				updateType = "markdown"; // Markdown直接存储为markdown类型
+				updateIsCode = false;
+				updateCodeLanguage = "";
 			} else {
 				// 确保类型是有效的ClipboardPayload类型
-				item.type = selectedType as "text" | "html" | "rtf";
-				item.isCode = false;
-				item.codeLanguage = "";
+				updateType = selectedType as "text" | "html" | "rtf";
+				updateIsCode = false;
+				updateCodeLanguage = "";
 			}
 
 			// 更新本地数据
+			item.type = updateType;
+			item.isCode = updateIsCode;
+			item.codeLanguage = updateCodeLanguage;
 			item.value = content;
 			item.lastModified = currentTime;
 			// 重置同步状态为'none'，表示需要同步
@@ -176,9 +202,9 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 			await updateSQL("history", {
 				id,
 				value: content,
-				type: item.type,
-				isCode: item.isCode,
-				codeLanguage: item.codeLanguage,
+				type: updateType,
+				isCode: updateIsCode,
+				codeLanguage: updateCodeLanguage,
 				lastModified: currentTime,
 				syncStatus: "none",
 			});
@@ -247,6 +273,22 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 									form.setFieldsValue({ content: newContent });
 								}}
 								editable={true}
+							/>
+						</div>
+					) : shouldUseMarkdownEditor() ? (
+						<div
+							className="overflow-hidden rounded border"
+							style={{ borderColor: "#424242" }}
+						>
+							<MDEditor
+								value={content}
+								onChange={(value?: string) => {
+									const newContent = value || "";
+									setContent(newContent);
+									form.setFieldsValue({ content: newContent });
+								}}
+								height={400}
+								preview="edit"
 							/>
 						</div>
 					) : (
