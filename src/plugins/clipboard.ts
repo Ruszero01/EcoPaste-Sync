@@ -325,15 +325,6 @@ export const readText = async (): Promise<ClipboardPayload> => {
 
 	data.subtype = await getClipboardSubtype(data);
 
-	// 代码检测（如果启用）
-	if (clipboardStore.content.codeDetection) {
-		const codeDetection = detectCode(text);
-		if (codeDetection.isCode) {
-			data.isCode = true;
-			data.codeLanguage = codeDetection.language;
-		}
-	}
-
 	return data;
 };
 
@@ -475,13 +466,71 @@ export const readClipboard = async () => {
 		}
 		// 处理Markdown内容
 		else if (has.text) {
-			const textPayload = await readText();
+			const text = await invoke<string>(COMMAND.READ_TEXT);
 
-			// 检测是否为Markdown内容
-			if (detectMarkdown(textPayload.value)) {
-				payload = { ...textPayload, type: "markdown" };
+			// 统一检测逻辑：先检测markdown，再检测代码
+			let isMarkdown = false;
+			let isCodeContent = false;
+			let codeLanguage = "";
+
+			// 首先检测是否为Markdown内容
+			if (detectMarkdown(text)) {
+				isMarkdown = true;
+			}
+			// 如果不是markdown，再进行代码检测
+			else if (clipboardStore.content.codeDetection) {
+				const codeDetection = detectCode(text);
+				if (codeDetection.isCode) {
+					if (codeDetection.language === "markdown") {
+						// 代码检测返回markdown语言，将其作为markdown类型处理
+						isMarkdown = true;
+					} else {
+						// 普通代码
+						isCodeContent = true;
+						codeLanguage = codeDetection.language;
+					}
+				}
+			}
+
+			// 获取子类型
+			const subtype = await getClipboardSubtype({
+				value: text,
+				search: text,
+				count: text.length,
+				group: "text",
+			});
+
+			// 构建基础payload
+			const basePayload: ClipboardPayload = {
+				value: text,
+				search: text,
+				count: text.length,
+				group: "text",
+				subtype,
+			};
+
+			// 根据检测结果设置type和相关字段
+			if (isMarkdown) {
+				payload = {
+					...basePayload,
+					type: "markdown",
+					isCode: false,
+					codeLanguage: "",
+				};
+			} else if (isCodeContent) {
+				payload = {
+					...basePayload,
+					type: "text",
+					isCode: true,
+					codeLanguage,
+				};
 			} else {
-				payload = { ...textPayload, type: "text" };
+				payload = {
+					...basePayload,
+					type: "text",
+					isCode: false,
+					codeLanguage: "",
+				};
 			}
 		}
 		// 如果没有文本内容，返回空的文本payload
