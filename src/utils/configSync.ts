@@ -135,8 +135,6 @@ export class ConfigSync {
 				}
 			} catch (error) {
 				console.error("⚠️ ConfigSync: 自动同步重新初始化失败:", error);
-				// 静默处理自动同步重新初始化失败，不影响配置同步的成功状态
-				// 自动同步功能可以稍后在CloudSync组件中重新初始化
 			}
 
 			return {
@@ -164,38 +162,13 @@ export class ConfigSync {
 			filtered.globalStore.env = {};
 		}
 
-		// 2. 移除运行时状态和服务器配置信息，但保留用户偏好
+		// 2. 移除运行时状态
 		if (filtered.globalStore?.cloudSync) {
 			const { cloudSync } = filtered.globalStore;
-
-			// 保存用户偏好配置（这些应该被同步）
-			const userAutoSyncSettings = cloudSync.autoSyncSettings;
-			const userSyncModeConfig = cloudSync.syncModeConfig;
-			const userFileSync = cloudSync.fileSync;
 
 			// 移除运行时状态，重新设置为默认值
 			cloudSync.lastSyncTime = 0;
 			cloudSync.isSyncing = false;
-
-			// 完全移除服务器配置信息，不应该同步到云端
-			// 理由：
-			// 1. 先有鸡还是先有蛋的问题：必须先配置服务器才能同步
-			// 2. 安全性考虑：密码等敏感信息不应同步
-			// 3. 避免覆盖：云端配置会覆盖本地服务器配置，导致连接失败
-			const { serverConfig: _removed, ...cloudSyncWithoutServerConfig } =
-				cloudSync;
-			Object.assign(cloudSync, cloudSyncWithoutServerConfig);
-
-			// 恢复用户偏好配置（这些是重要的，需要同步）
-			if (userAutoSyncSettings) {
-				cloudSync.autoSyncSettings = { ...userAutoSyncSettings };
-			}
-			if (userSyncModeConfig) {
-				cloudSync.syncModeConfig = { ...userSyncModeConfig };
-			}
-			if (userFileSync) {
-				cloudSync.fileSync = { ...userFileSync };
-			}
 		}
 
 		// 3. 移除剪贴板存储中的临时状态
@@ -208,12 +181,16 @@ export class ConfigSync {
 
 		// 4. 移除设备特定的配置项
 		if (filtered.globalStore?.app) {
-			const { app } = filtered.globalStore;
-			// autoStart 和 showTaskbarIcon 是平台相关的，不同设备可能有不同设置
-			// 保留用户的主观偏好设置，但重置为默认值避免冲突
-			app.autoStart = false; // 默认值
-			app.showTaskbarIcon = true; // 默认值
-			app.silentStart = false; // 默认值
+			// 过滤掉平台相关的配置项，避免在不同设备间同步
+			const {
+				autoStart,
+				showTaskbarIcon,
+				silentStart,
+				...appWithoutPlatformSpecific
+			} = filtered.globalStore.app;
+			// 使用类型断言
+			filtered.globalStore.app =
+				appWithoutPlatformSpecific as typeof filtered.globalStore.app;
 		}
 
 		return filtered;
