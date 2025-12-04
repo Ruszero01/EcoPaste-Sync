@@ -88,17 +88,6 @@ const Main = () => {
 		onClipboardUpdate(async (payload) => {
 			const { type, value, group } = payload;
 
-			// 使用优化的音效播放逻辑
-			if (clipboardStore.audio.copy) {
-				// 如果音频系统未准备好，先初始化
-				if (!isReady) {
-					await initAudio();
-				}
-				await playSound("copy");
-			}
-
-			const createTime = formatDate();
-
 			// 检查是否是应用内部复制操作
 			const isInternalCopy = clipboardStore.internalCopy.isCopying;
 
@@ -106,6 +95,24 @@ const Main = () => {
 			if (isInternalCopy) {
 				return;
 			}
+
+			// 使用优化的音效播放逻辑
+			if (clipboardStore.audio.copy) {
+				// 使用微任务延迟播放音效，确保不阻塞主要处理逻辑
+				setTimeout(async () => {
+					try {
+						// 如果音频系统未准备好，先初始化
+						if (!isReady) {
+							await initAudio();
+						}
+						await playSound("copy");
+					} catch (error) {
+						console.warn("音效播放失败:", error);
+					}
+				}, 0);
+			}
+
+			const createTime = formatDate();
 
 			// 额外检查：防止短时间内处理相同内容
 			const now = Date.now();

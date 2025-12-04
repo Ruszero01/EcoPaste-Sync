@@ -48,10 +48,26 @@ class AudioManager {
 					}
 				};
 
-				// 监听多种用户交互事件
-				document.addEventListener("click", resumeAudio, { once: true });
-				document.addEventListener("keydown", resumeAudio, { once: true });
-				document.addEventListener("touchstart", resumeAudio, { once: true });
+				// 监听多种用户交互事件，使用 { once: false } 确保可以多次尝试
+				document.addEventListener("click", resumeAudio, {
+					once: false,
+					passive: true,
+				});
+				document.addEventListener("keydown", resumeAudio, {
+					once: false,
+					passive: true,
+				});
+				document.addEventListener("touchstart", resumeAudio, {
+					once: false,
+					passive: true,
+				});
+				document.addEventListener("mousedown", resumeAudio, {
+					once: false,
+					passive: true,
+				});
+
+				// 立即尝试恢复一次
+				await resumeAudio();
 			}
 
 			// 预加载音效文件
@@ -79,10 +95,25 @@ class AudioManager {
 				// Preloaded sound: ${key}
 			} catch (error) {
 				console.warn(`Failed to preload sound ${key}:`, error);
+				// 如果预加载失败，尝试延迟重试
+				setTimeout(() => {
+					this.retryLoadSound(key, url);
+				}, 1000);
 			}
 		});
 
 		await Promise.allSettled(loadPromises);
+	}
+
+	// 重试加载音效
+	private async retryLoadSound(key: string, url: string): Promise<void> {
+		try {
+			const buffer = await this.loadAudioBuffer(url);
+			this.audioBuffers.set(key, buffer);
+			// Successfully retried loading sound: ${key}
+		} catch (error) {
+			console.warn(`Failed to retry load sound ${key}:`, error);
+		}
 	}
 
 	// 加载音频缓冲区
@@ -119,13 +150,32 @@ class AudioManager {
 
 			// 确保音频上下文处于运行状态
 			if (this.audioContext.state === "suspended") {
-				await this.audioContext.resume();
+				try {
+					await this.audioContext.resume();
+				} catch (error) {
+					console.warn("Failed to resume AudioContext during play:", error);
+				}
 			}
 
-			const buffer = this.audioBuffers.get(soundName);
+			let buffer = this.audioBuffers.get(soundName);
 			if (!buffer) {
-				console.warn(`Sound not found: ${soundName}`);
-				return false;
+				// 如果音效未加载，尝试即时加载
+				const soundFiles = {
+					copy: new URL("/src/assets/audio/copy.mp3", import.meta.url).href,
+				};
+				const url = soundFiles[soundName as keyof typeof soundFiles];
+				if (url) {
+					try {
+						buffer = await this.loadAudioBuffer(url);
+						this.audioBuffers.set(soundName, buffer);
+					} catch (error) {
+						console.warn(`Failed to load sound on demand ${soundName}:`, error);
+						return false;
+					}
+				} else {
+					console.warn(`Sound not found: ${soundName}`);
+					return false;
+				}
 			}
 
 			// 创建音频源
@@ -195,15 +245,26 @@ export const useAudioEffect = () => {
 			try {
 				await audioManager.current.initialize();
 				setIsReady(true);
+
+				// 初始化完成后，尝试播放一个静音音效来激活音频上下文
+				setTimeout(async () => {
+					try {
+						await audioManager.current.playSound("copy", { volume: 0 });
+					} catch {
+						// 静默忽略静音播放的错误
+					}
+				}, 100);
 			} catch (error) {
 				console.error("Failed to initialize audio:", error);
 			}
 		};
 
-		initAudio();
+		// 延迟初始化，确保页面完全加载
+		const timer = setTimeout(initAudio, 500);
 
 		// 清理函数
 		return () => {
+			clearTimeout(timer);
 			// 不在组件卸载时清理，因为可能有其他组件在使用
 		};
 	}, []);
@@ -231,10 +292,26 @@ export const useAudioEffect = () => {
 					);
 					if (!success) {
 						console.warn(`Failed to play sound: ${soundName}`);
+						// 如果播放失败，尝试重试一次
+						setTimeout(async () => {
+							try {
+								await audioManager.current.playSound(soundName, options);
+							} catch (retryError) {
+								console.warn("音效重试播放失败:", retryError);
+							}
+						}, 100);
 					}
 					return success;
 				} catch (error) {
 					console.warn("音效播放失败:", error);
+					// 如果出现异常，也尝试重试一次
+					setTimeout(async () => {
+						try {
+							await audioManager.current.playSound(soundName, options);
+						} catch (retryError) {
+							console.warn("音效重试播放失败:", retryError);
+						}
+					}, 100);
 					return false;
 				}
 			});
@@ -257,6 +334,8 @@ export const useAudioEffect = () => {
 		try {
 			await audioManager.current.initialize();
 			setIsReady(true);
+			// 初始化后尝试播放一个静音的测试音效，确保音频系统完全激活
+			await audioManager.current.playSound("copy", { volume: 0 });
 			return true;
 		} catch (error) {
 			console.error("Failed to initialize audio:", error);
