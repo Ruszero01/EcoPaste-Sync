@@ -532,33 +532,55 @@ const Item: FC<ItemProps> = (props) => {
 			);
 
 			if (selectedItems.length > 0) {
-				// 按照在列表中的顺序排序选中的项目
-				const sortedSelectedItems = selectedItems.sort((a, b) => {
-					const indexA = state.list.findIndex((item) => item.id === a.id);
-					const indexB = state.list.findIndex((item) => item.id === b.id);
-					return indexA - indexB;
-				});
+				// 按照用户选中的顺序排序项目，而不是按照列表中的顺序
+				// 获取选中ID的数组，这个数组保持了用户选择的顺序
+				const selectedIdsArray = Array.from(
+					clipboardStore.multiSelect.selectedIds,
+				);
+				const sortedSelectedItems: HistoryTablePayload[] = [];
+
+				// 按照选中顺序添加项目，确保顺序正确
+				for (const id of selectedIdsArray) {
+					const item = selectedItems.find((item) => item.id === id);
+					if (item) {
+						sortedSelectedItems.push(item);
+					}
+				}
 
 				await batchPasteClipboard(sortedSelectedItems);
 
-				// 更新所有选中项目的时间并移动到顶部
+				// 获取当前的自动排序设置
+				const currentAutoSort = clipboardStore.content.autoSort;
+
+				// 更新所有选中项目的时间
 				const createTime = formatDate();
 				const updatedItems = sortedSelectedItems.map((item) => ({
 					...item,
 					createTime,
 				}));
 
-				// 从原位置移除所有选中项目
-				for (const selectedItem of sortedSelectedItems) {
-					const index = findIndex(state.list, { id: selectedItem.id });
-					if (index !== -1) {
-						state.list.splice(index, 1);
+				if (currentAutoSort) {
+					// 自动排序开启：移动到顶部
+					// 从原位置移除所有选中项目
+					for (const selectedItem of sortedSelectedItems) {
+						const index = findIndex(state.list, { id: selectedItem.id });
+						if (index !== -1) {
+							state.list.splice(index, 1);
+						}
 					}
-				}
 
-				// 将更新后的项目添加到顶部（保持原有顺序）
-				for (let i = updatedItems.length - 1; i >= 0; i--) {
-					state.list.unshift(updatedItems[i]);
+					// 将更新后的项目添加到顶部（保持原有顺序）
+					for (let i = updatedItems.length - 1; i >= 0; i--) {
+						state.list.unshift(updatedItems[i]);
+					}
+				} else {
+					// 自动排序关闭：保持原位置，只更新时间
+					for (const selectedItem of sortedSelectedItems) {
+						const index = findIndex(state.list, { id: selectedItem.id });
+						if (index !== -1) {
+							state.list[index] = { ...state.list[index], createTime };
+						}
+					}
 				}
 
 				// 批量更新数据库
@@ -947,16 +969,24 @@ const Item: FC<ItemProps> = (props) => {
 
 		// 如果是多选模式，存储批量拖拽信息
 		if (isMultiSelectMode) {
-			// 获取所有选中的项目ID，并按在列表中的顺序排序
-			const selectedIds = Array.from(clipboardStore.multiSelect.selectedIds);
-			const selectedItems = state.list.filter((item) =>
-				selectedIds.includes(item.id),
+			// 获取所有选中的项目ID，并按照用户选中的顺序排序
+			const selectedIdsArray = Array.from(
+				clipboardStore.multiSelect.selectedIds,
 			);
-			const sortedSelectedItems = selectedItems.sort((a, b) => {
-				const indexA = state.list.findIndex((item) => item.id === a.id);
-				const indexB = state.list.findIndex((item) => item.id === b.id);
-				return indexA - indexB;
-			});
+			const selectedItems = state.list.filter((item) =>
+				selectedIdsArray.includes(item.id),
+			);
+
+			// 按照用户选中的顺序排序项目，而不是按照列表中的顺序
+			const sortedSelectedItems: HistoryTablePayload[] = [];
+
+			// 按照选中顺序添加项目，确保顺序正确
+			for (const id of selectedIdsArray) {
+				const item = selectedItems.find((item) => item.id === id);
+				if (item) {
+					sortedSelectedItems.push(item);
+				}
+			}
 
 			// 将批量拖拽信息存储到全局状态，供onDragEnd使用
 			clipboardStore.batchDragInfo = {
@@ -1201,7 +1231,11 @@ const Item: FC<ItemProps> = (props) => {
 			const firstItem = batchDragInfo.items[0];
 			if (firstItem && firstItem.group === "files") {
 				// 文件类型拖拽完成后，只需要更新状态和清除多选
-				// 更新所有项目的时间并移动到顶部
+
+				// 获取当前的自动排序设置
+				const currentAutoSort = clipboardStore.content.autoSort;
+
+				// 更新所有项目的时间
 				const createTime = formatDate();
 				const updatedItems = batchDragInfo.items.map(
 					(item: HistoryTablePayload) => ({
@@ -1210,17 +1244,28 @@ const Item: FC<ItemProps> = (props) => {
 					}),
 				);
 
-				// 从原位置移除所有选中项目
-				for (const selectedItem of batchDragInfo.items) {
-					const index = findIndex(state.list, { id: selectedItem.id });
-					if (index !== -1) {
-						state.list.splice(index, 1);
+				if (currentAutoSort) {
+					// 自动排序开启：移动到顶部
+					// 从原位置移除所有选中项目
+					for (const selectedItem of batchDragInfo.items) {
+						const index = findIndex(state.list, { id: selectedItem.id });
+						if (index !== -1) {
+							state.list.splice(index, 1);
+						}
 					}
-				}
 
-				// 将更新后的项目添加到顶部（保持原有顺序）
-				for (let i = updatedItems.length - 1; i >= 0; i--) {
-					state.list.unshift(updatedItems[i]);
+					// 将更新后的项目添加到顶部（保持原有顺序）
+					for (let i = updatedItems.length - 1; i >= 0; i--) {
+						state.list.unshift(updatedItems[i]);
+					}
+				} else {
+					// 自动排序关闭：保持原位置，只更新时间
+					for (const selectedItem of batchDragInfo.items) {
+						const index = findIndex(state.list, { id: selectedItem.id });
+						if (index !== -1) {
+							state.list[index] = { ...state.list[index], createTime };
+						}
+					}
 				}
 
 				// 批量更新数据库
@@ -1268,7 +1313,10 @@ const Item: FC<ItemProps> = (props) => {
 				}
 			}
 
-			// 更新所有项目的时间并移动到顶部
+			// 获取当前的自动排序设置
+			const currentAutoSort = clipboardStore.content.autoSort;
+
+			// 更新所有项目的时间
 			const createTime = formatDate();
 			const updatedItems = batchDragInfo.items.map(
 				(item: HistoryTablePayload) => ({
@@ -1277,17 +1325,28 @@ const Item: FC<ItemProps> = (props) => {
 				}),
 			);
 
-			// 从原位置移除所有选中项目
-			for (const selectedItem of batchDragInfo.items) {
-				const index = findIndex(state.list, { id: selectedItem.id });
-				if (index !== -1) {
-					state.list.splice(index, 1);
+			if (currentAutoSort) {
+				// 自动排序开启：移动到顶部
+				// 从原位置移除所有选中项目
+				for (const selectedItem of batchDragInfo.items) {
+					const index = findIndex(state.list, { id: selectedItem.id });
+					if (index !== -1) {
+						state.list.splice(index, 1);
+					}
 				}
-			}
 
-			// 将更新后的项目添加到顶部（保持原有顺序）
-			for (let i = updatedItems.length - 1; i >= 0; i--) {
-				state.list.unshift(updatedItems[i]);
+				// 将更新后的项目添加到顶部（保持原有顺序）
+				for (let i = updatedItems.length - 1; i >= 0; i--) {
+					state.list.unshift(updatedItems[i]);
+				}
+			} else {
+				// 自动排序关闭：保持原位置，只更新时间
+				for (const selectedItem of batchDragInfo.items) {
+					const index = findIndex(state.list, { id: selectedItem.id });
+					if (index !== -1) {
+						state.list[index] = { ...state.list[index], createTime };
+					}
+				}
 			}
 
 			// 批量更新数据库
