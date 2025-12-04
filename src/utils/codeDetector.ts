@@ -849,7 +849,7 @@ export function getLanguageDisplayName(language: string): string {
  * @returns 是否为Markdown格式
  */
 export function detectMarkdown(text: string): boolean {
-	if (!text || text.trim().length < 10) {
+	if (!text || text.trim().length < 5) {
 		return false;
 	}
 

@@ -664,6 +664,7 @@ export const writeClipboard = async (data?: HistoryTablePayload) => {
 
 	switch (type) {
 		case "text":
+		case "markdown":
 			return writeText(value);
 		case "rtf":
 			return writeRTF(search, value);
