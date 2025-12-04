@@ -17,6 +17,7 @@ const getDefaultSyncModeConfig = (): SyncModeConfig => {
 			includeText: true, // 总是启用
 			includeHtml: true, // 总是启用
 			includeRtf: true, // 总是启用
+			includeMarkdown: true, // 总是启用
 			includeImages: false, // 文件模式开关，默认关闭
 			includeFiles: false, // 文件模式开关，默认关闭
 			onlyFavorites: false, // 收藏模式开关，默认关闭
@@ -195,6 +196,7 @@ const CloudSync = () => {
 					includeText: storeSyncModeConfig.settings.includeText,
 					includeHtml: storeSyncModeConfig.settings.includeHtml,
 					includeRtf: storeSyncModeConfig.settings.includeRtf,
+					includeMarkdown: storeSyncModeConfig.settings.includeMarkdown || true,
 					includeImages: storeSyncModeConfig.settings.includeImages,
 					includeFiles: storeSyncModeConfig.settings.includeFiles,
 					onlyFavorites: storeSyncModeConfig.settings.onlyFavorites,
@@ -316,6 +318,7 @@ const CloudSync = () => {
 						includeText: newConfig.settings.includeText,
 						includeHtml: newConfig.settings.includeHtml,
 						includeRtf: newConfig.settings.includeRtf,
+						includeMarkdown: newConfig.settings.includeMarkdown,
 						includeImages: newConfig.settings.includeImages,
 						includeFiles: newConfig.settings.includeFiles,
 						onlyFavorites: enabled,
@@ -362,6 +365,7 @@ const CloudSync = () => {
 						includeText: newConfig.settings.includeText,
 						includeHtml: newConfig.settings.includeHtml,
 						includeRtf: newConfig.settings.includeRtf,
+						includeMarkdown: newConfig.settings.includeMarkdown,
 						includeImages: enabled,
 						includeFiles: enabled,
 						onlyFavorites: newConfig.settings.onlyFavorites,
@@ -919,8 +923,12 @@ const CloudSync = () => {
 
 				console.info("\n=== 最近10条记录 ===");
 				for (const [index, record] of dbInfo.recentRecords.entries()) {
+					const sourceInfo = record.sourceAppName
+						? ` 来源: ${record.sourceAppName}${record.sourceAppIcon ? " [有图标]" : ""}`
+						: " 无来源信息";
+
 					console.info(
-						`#${index + 1} [${record.type}] ${record.createTime} - ${record.value} (收藏: ${record.favorite}, 同步: ${record.syncStatus}, 云端: ${record.isCloudData})`,
+						`#${index + 1} [${record.type}] ${record.createTime} - ${record.value} (收藏: ${record.favorite}, 同步: ${record.syncStatus}, 云端: ${record.isCloudData}${sourceInfo})`,
 					);
 				}
 
