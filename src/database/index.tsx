@@ -244,8 +244,16 @@ export const insertWithDeduplicationForSync = async (
 				};
 			}
 			// 如果记录存在且未被删除，则更新它
+			// 但保留原始的来源应用信息
 			const { updateSQL } = await import("@/database");
-			await updateSQL(tableName, payload);
+
+			// 如果是history表，保留原始来源应用信息
+			if (tableName === "history") {
+				const { sourceAppName, sourceAppIcon, ...updatePayload } = payload;
+				await updateSQL(tableName, updatePayload);
+			} else {
+				await updateSQL(tableName, payload);
+			}
 			return {
 				rowsAffected: 1,
 				isUpdate: true,
@@ -427,13 +435,9 @@ export const insertWithDeduplication = async (
 				// 更新时间戳为当前时间
 				createTime: currentTime,
 				lastModified: Date.now(),
-				// 更新来源应用信息（如果新的不为空）
-				sourceAppName:
-					(payload as HistoryTablePayload).sourceAppName ||
-					existingRecord.sourceAppName,
-				sourceAppIcon:
-					(payload as HistoryTablePayload).sourceAppIcon ||
-					existingRecord.sourceAppIcon,
+				// 保留原始来源应用信息，不更新
+				sourceAppName: existingRecord.sourceAppName,
+				sourceAppIcon: existingRecord.sourceAppIcon,
 				// 更新搜索字段
 				search: (payload as HistoryTablePayload).search,
 				// 更新内容（如果不同）
@@ -1295,7 +1299,7 @@ export const getDatabaseInfo = async () => {
 
 		// 获取最近10条记录的关键信息
 		const recentRecordsResult = (await executeSQL(
-			"SELECT id, type, [group], value, search, favorite, createTime, syncStatus, isCloudData FROM history WHERE deleted = 0 ORDER BY createTime DESC LIMIT 10;",
+			"SELECT id, type, [group], value, search, favorite, createTime, syncStatus, isCloudData, sourceAppName, sourceAppIcon FROM history WHERE deleted = 0 ORDER BY createTime DESC LIMIT 10;",
 		)) as any[];
 
 		const recentRecords = recentRecordsResult.map((record) => ({
@@ -1311,6 +1315,8 @@ export const getDatabaseInfo = async () => {
 			createTime: record.createTime,
 			syncStatus: record.syncStatus || "none",
 			isCloudData: Boolean(record.isCloudData),
+			sourceAppName: record.sourceAppName,
+			sourceAppIcon: record.sourceAppIcon,
 		}));
 
 		// 获取数据库文件大小（如果可能）

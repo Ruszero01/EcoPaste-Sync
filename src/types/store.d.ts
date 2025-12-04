@@ -73,6 +73,7 @@ export interface GlobalStore {
 				includeText: boolean;
 				includeHtml: boolean;
 				includeRtf: boolean;
+				includeMarkdown: boolean;
 				includeImages: boolean;
 				includeFiles: boolean;
 				onlyFavorites: boolean;

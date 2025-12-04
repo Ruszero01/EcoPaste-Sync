@@ -185,11 +185,19 @@ const Main = () => {
 								// 更新该记录的信息，但保持位置不变
 								// 使用现有的记录作为基础，只更新需要更新的字段
 								const existingItem = state.list[itemIndex];
+
+								// 保留原始来源应用信息，不被新数据覆盖
+								const { sourceAppName, sourceAppIcon, ...dataWithoutSource } =
+									data;
+
 								state.list[itemIndex] = {
 									...existingItem,
-									...data,
+									...dataWithoutSource,
 									id: updatedItemId, // 确保使用数据库中的ID
 									createTime: data.createTime,
+									// 明确保留原始来源应用信息
+									sourceAppName: existingItem.sourceAppName,
+									sourceAppIcon: existingItem.sourceAppIcon,
 								};
 								// 设置活动ID为更新的记录
 								state.activeId = updatedItemId;
