@@ -160,6 +160,10 @@ export interface ClipboardStore {
 		isMultiSelecting: boolean;
 		selectedIds: Set<string>;
 		lastSelectedId: string | null;
+		// 记录选择顺序的数组，用于保持用户选择的顺序
+		selectedOrder: string[];
+		// 记录Shift选择的方向：'up'（从下往上）或'down'（从上往下）或null
+		shiftSelectDirection: "up" | "down" | null;
 	};
 
 	// 批量拖拽信息

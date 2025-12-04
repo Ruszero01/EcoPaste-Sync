@@ -50,6 +50,10 @@ export const clipboardStore = proxy<ClipboardStore>({
 		isMultiSelecting: false,
 		selectedIds: new Set(),
 		lastSelectedId: null,
+		// 记录选择顺序的数组，用于保持用户选择的顺序
+		selectedOrder: [],
+		// 记录Shift选择的方向：'up'（从下往上）或'down'（从上往下）或null
+		shiftSelectDirection: null,
 	},
 
 	// 批量拖拽信息

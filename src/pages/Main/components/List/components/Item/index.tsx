@@ -278,6 +278,8 @@ const Item: FC<ItemProps> = (props) => {
 				clipboardStore.multiSelect.isMultiSelecting = false;
 				clipboardStore.multiSelect.selectedIds.clear();
 				clipboardStore.multiSelect.lastSelectedId = null;
+				clipboardStore.multiSelect.shiftSelectDirection = null;
+				clipboardStore.multiSelect.selectedOrder = [];
 
 				// 立即刷新列表，确保数据库操作完成
 				if (forceRefreshList) {
@@ -357,6 +359,8 @@ const Item: FC<ItemProps> = (props) => {
 				clipboardStore.multiSelect.isMultiSelecting = false;
 				clipboardStore.multiSelect.selectedIds.clear();
 				clipboardStore.multiSelect.lastSelectedId = null;
+				clipboardStore.multiSelect.shiftSelectDirection = null;
+				clipboardStore.multiSelect.selectedOrder = [];
 
 				// 显示成功提示
 				message.success(`成功${action} ${result.updatedCount} 个项目`);
@@ -532,15 +536,13 @@ const Item: FC<ItemProps> = (props) => {
 			);
 
 			if (selectedItems.length > 0) {
-				// 按照用户选中的顺序排序项目，而不是按照列表中的顺序
-				// 获取选中ID的数组，这个数组保持了用户选择的顺序
-				const selectedIdsArray = Array.from(
-					clipboardStore.multiSelect.selectedIds,
-				);
+				// 使用记录的选择顺序数组，而不是Set
+				// 这样可以保持用户选择的顺序，无论是Ctrl加选还是Shift连选
+				const selectedOrderArray = clipboardStore.multiSelect.selectedOrder;
 				const sortedSelectedItems: HistoryTablePayload[] = [];
 
 				// 按照选中顺序添加项目，确保顺序正确
-				for (const id of selectedIdsArray) {
+				for (const id of selectedOrderArray) {
 					const item = selectedItems.find((item) => item.id === id);
 					if (item) {
 						sortedSelectedItems.push(item);
@@ -592,6 +594,8 @@ const Item: FC<ItemProps> = (props) => {
 				clipboardStore.multiSelect.isMultiSelecting = false;
 				clipboardStore.multiSelect.selectedIds.clear();
 				clipboardStore.multiSelect.lastSelectedId = null;
+				clipboardStore.multiSelect.shiftSelectDirection = null;
+				clipboardStore.multiSelect.selectedOrder = [];
 
 				// 设置激活项为第一个粘贴的项目
 				if (updatedItems.length > 0) {
@@ -680,6 +684,8 @@ const Item: FC<ItemProps> = (props) => {
 						clipboardStore.multiSelect.isMultiSelecting = false;
 						clipboardStore.multiSelect.selectedIds.clear();
 						clipboardStore.multiSelect.lastSelectedId = null;
+						clipboardStore.multiSelect.shiftSelectDirection = null;
+						clipboardStore.multiSelect.selectedOrder = [];
 					},
 				},
 			];
@@ -788,11 +794,14 @@ const Item: FC<ItemProps> = (props) => {
 				action: () => {
 					clipboardStore.multiSelect.isMultiSelecting = true;
 					clipboardStore.multiSelect.selectedIds.clear();
+					clipboardStore.multiSelect.selectedOrder = [];
 					for (const item of state.list) {
 						clipboardStore.multiSelect.selectedIds.add(item.id);
+						clipboardStore.multiSelect.selectedOrder.push(item.id);
 					}
 					clipboardStore.multiSelect.lastSelectedId =
 						state.list[state.list.length - 1]?.id || null;
+					clipboardStore.multiSelect.shiftSelectDirection = "down"; // 从上到下选择
 				},
 			});
 			items.unshift({
@@ -800,11 +809,14 @@ const Item: FC<ItemProps> = (props) => {
 				action: () => {
 					clipboardStore.multiSelect.isMultiSelecting = true;
 					clipboardStore.multiSelect.selectedIds.clear();
+					clipboardStore.multiSelect.selectedOrder = [];
 					for (const item of state.list) {
 						clipboardStore.multiSelect.selectedIds.add(item.id);
+						clipboardStore.multiSelect.selectedOrder.push(item.id);
 					}
 					clipboardStore.multiSelect.lastSelectedId =
 						state.list[state.list.length - 1]?.id || null;
+					clipboardStore.multiSelect.shiftSelectDirection = "down"; // 从上到下选择
 				},
 			});
 		}
@@ -832,6 +844,7 @@ const Item: FC<ItemProps> = (props) => {
 			if (!multiSelect.isMultiSelecting) {
 				clipboardStore.multiSelect.isMultiSelecting = true;
 				clipboardStore.multiSelect.selectedIds.clear();
+				clipboardStore.multiSelect.selectedOrder = [];
 			}
 
 			// 如果有上次选中的项目，选择范围
@@ -845,15 +858,39 @@ const Item: FC<ItemProps> = (props) => {
 					const startIndex = Math.min(lastSelectedIndex, currentIndex);
 					const endIndex = Math.max(lastSelectedIndex, currentIndex);
 
-					// 选择范围内的所有项目，包括起始和结束项目
-					for (let i = startIndex; i <= endIndex; i++) {
-						if (state.list[i]) {
-							clipboardStore.multiSelect.selectedIds.add(state.list[i].id);
+					// 确定选择方向
+					const direction = currentIndex > lastSelectedIndex ? "down" : "up";
+					clipboardStore.multiSelect.shiftSelectDirection = direction;
+
+					// 清空之前的选择和顺序
+					clipboardStore.multiSelect.selectedIds.clear();
+					clipboardStore.multiSelect.selectedOrder = [];
+
+					// 根据选择方向按顺序添加项目
+					if (direction === "down") {
+						// 从上往下：按照列表顺序添加
+						for (let i = startIndex; i <= endIndex; i++) {
+							if (state.list[i]) {
+								clipboardStore.multiSelect.selectedIds.add(state.list[i].id);
+								clipboardStore.multiSelect.selectedOrder.push(state.list[i].id);
+							}
+						}
+					} else {
+						// 从下往上：按照逆序添加
+						for (let i = endIndex; i >= startIndex; i--) {
+							if (state.list[i]) {
+								clipboardStore.multiSelect.selectedIds.add(state.list[i].id);
+								clipboardStore.multiSelect.selectedOrder.push(state.list[i].id);
+							}
 						}
 					}
 				} else {
 					// 如果找不到上次选中的项目，只选中当前项目
+					clipboardStore.multiSelect.selectedIds.clear();
+					clipboardStore.multiSelect.selectedOrder = [];
 					clipboardStore.multiSelect.selectedIds.add(id);
+					clipboardStore.multiSelect.selectedOrder.push(id);
+					clipboardStore.multiSelect.shiftSelectDirection = null;
 				}
 			} else {
 				// 如果没有上次选中的项目，选中当前聚焦的项目作为起点
@@ -866,14 +903,39 @@ const Item: FC<ItemProps> = (props) => {
 					const startIndex = Math.min(currentActiveIndex, index);
 					const endIndex = Math.max(currentActiveIndex, index);
 
-					for (let i = startIndex; i <= endIndex; i++) {
-						if (state.list[i]) {
-							clipboardStore.multiSelect.selectedIds.add(state.list[i].id);
+					// 确定选择方向
+					const direction = index > currentActiveIndex ? "down" : "up";
+					clipboardStore.multiSelect.shiftSelectDirection = direction;
+
+					// 清空之前的选择和顺序
+					clipboardStore.multiSelect.selectedIds.clear();
+					clipboardStore.multiSelect.selectedOrder = [];
+
+					// 根据选择方向按顺序添加项目
+					if (direction === "down") {
+						// 从上往下：按照列表顺序添加
+						for (let i = startIndex; i <= endIndex; i++) {
+							if (state.list[i]) {
+								clipboardStore.multiSelect.selectedIds.add(state.list[i].id);
+								clipboardStore.multiSelect.selectedOrder.push(state.list[i].id);
+							}
+						}
+					} else {
+						// 从下往上：按照逆序添加
+						for (let i = endIndex; i >= startIndex; i--) {
+							if (state.list[i]) {
+								clipboardStore.multiSelect.selectedIds.add(state.list[i].id);
+								clipboardStore.multiSelect.selectedOrder.push(state.list[i].id);
+							}
 						}
 					}
 				} else {
 					// 没有聚焦项目，只选中当前项目
+					clipboardStore.multiSelect.selectedIds.clear();
+					clipboardStore.multiSelect.selectedOrder = [];
 					clipboardStore.multiSelect.selectedIds.add(id);
+					clipboardStore.multiSelect.selectedOrder.push(id);
+					clipboardStore.multiSelect.shiftSelectDirection = null;
 				}
 			}
 
@@ -889,31 +951,45 @@ const Item: FC<ItemProps> = (props) => {
 			// 开始多选模式
 			if (!multiSelect.isMultiSelecting) {
 				clipboardStore.multiSelect.isMultiSelecting = true;
+				clipboardStore.multiSelect.selectedOrder = [];
 
 				// 如果有当前聚焦的项目，先将其加入选中列表
 				if (state.activeId && state.activeId !== id) {
 					clipboardStore.multiSelect.selectedIds.add(state.activeId);
+					clipboardStore.multiSelect.selectedOrder.push(state.activeId);
 				}
 			}
 
 			// 如果当前项目已经被选中，则取消选中
 			if (multiSelect.selectedIds.has(id)) {
 				clipboardStore.multiSelect.selectedIds.delete(id);
+				// 从选择顺序数组中移除
+				const orderIndex = clipboardStore.multiSelect.selectedOrder.indexOf(id);
+				if (orderIndex > -1) {
+					clipboardStore.multiSelect.selectedOrder.splice(orderIndex, 1);
+				}
 
 				// 如果没有选中的项目了，退出多选模式
 				if (multiSelect.selectedIds.size === 0) {
 					clipboardStore.multiSelect.isMultiSelecting = false;
 					clipboardStore.multiSelect.lastSelectedId = null;
+					clipboardStore.multiSelect.shiftSelectDirection = null;
+					clipboardStore.multiSelect.selectedOrder = [];
 				} else {
 					// 更新lastSelectedId为最后一个选中的项目
-					const selectedArray = Array.from(multiSelect.selectedIds);
-					const lastSelected = selectedArray[selectedArray.length - 1];
+					const lastSelected =
+						clipboardStore.multiSelect.selectedOrder[
+							clipboardStore.multiSelect.selectedOrder.length - 1
+						];
 					clipboardStore.multiSelect.lastSelectedId = lastSelected;
 				}
 			} else {
 				// 如果当前项目未被选中，则添加到选中列表
 				clipboardStore.multiSelect.selectedIds.add(id);
+				clipboardStore.multiSelect.selectedOrder.push(id);
 				clipboardStore.multiSelect.lastSelectedId = id;
+				// Ctrl加选时重置Shift选择方向
+				clipboardStore.multiSelect.shiftSelectDirection = null;
 			}
 
 			state.activeId = id;
@@ -928,12 +1004,16 @@ const Item: FC<ItemProps> = (props) => {
 			clipboardStore.multiSelect.isMultiSelecting = false;
 			clipboardStore.multiSelect.selectedIds.clear();
 			clipboardStore.multiSelect.lastSelectedId = null;
+			clipboardStore.multiSelect.shiftSelectDirection = null;
+			clipboardStore.multiSelect.selectedOrder = [];
 			// 不return，继续处理正常点击逻辑
 		}
 
 		// 对于正常点击（非shift+点击或ctrl+点击），设置lastSelectedId以便后续shift+点击使用
 		if (!event.shiftKey && !event.ctrlKey && !event.metaKey) {
 			clipboardStore.multiSelect.lastSelectedId = id;
+			clipboardStore.multiSelect.shiftSelectDirection = null;
+			clipboardStore.multiSelect.selectedOrder = [];
 		}
 	};
 
@@ -969,19 +1049,18 @@ const Item: FC<ItemProps> = (props) => {
 
 		// 如果是多选模式，存储批量拖拽信息
 		if (isMultiSelectMode) {
-			// 获取所有选中的项目ID，并按照用户选中的顺序排序
-			const selectedIdsArray = Array.from(
-				clipboardStore.multiSelect.selectedIds,
-			);
+			// 使用记录的选择顺序数组，而不是Set
+			// 这样可以保持用户选择的顺序，无论是Ctrl加选还是Shift连选
+			const selectedOrderArray = clipboardStore.multiSelect.selectedOrder;
 			const selectedItems = state.list.filter((item) =>
-				selectedIdsArray.includes(item.id),
+				selectedOrderArray.includes(item.id),
 			);
 
 			// 按照用户选中的顺序排序项目，而不是按照列表中的顺序
 			const sortedSelectedItems: HistoryTablePayload[] = [];
 
 			// 按照选中顺序添加项目，确保顺序正确
-			for (const id of selectedIdsArray) {
+			for (const id of selectedOrderArray) {
 				const item = selectedItems.find((item) => item.id === id);
 				if (item) {
 					sortedSelectedItems.push(item);
@@ -1277,6 +1356,8 @@ const Item: FC<ItemProps> = (props) => {
 				clipboardStore.multiSelect.isMultiSelecting = false;
 				clipboardStore.multiSelect.selectedIds.clear();
 				clipboardStore.multiSelect.lastSelectedId = null;
+				clipboardStore.multiSelect.shiftSelectDirection = null;
+				clipboardStore.multiSelect.selectedOrder = [];
 
 				// 设置激活项为第一个项目
 				if (updatedItems.length > 0) {
@@ -1358,6 +1439,8 @@ const Item: FC<ItemProps> = (props) => {
 			clipboardStore.multiSelect.isMultiSelecting = false;
 			clipboardStore.multiSelect.selectedIds.clear();
 			clipboardStore.multiSelect.lastSelectedId = null;
+			clipboardStore.multiSelect.shiftSelectDirection = null;
+			clipboardStore.multiSelect.selectedOrder = [];
 
 			// 设置激活项为第一个粘贴的项目
 			if (updatedItems.length > 0) {
