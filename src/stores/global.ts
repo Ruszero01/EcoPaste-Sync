@@ -54,6 +54,7 @@ export const globalStore = proxy<GlobalStore>({
 				includeText: true, // 总是启用
 				includeHtml: true, // 总是启用
 				includeRtf: true, // 总是启用
+				includeMarkdown: true, // 总是启用
 				includeImages: false, // 文件模式开关，默认关闭
 				includeFiles: false, // 文件模式开关，默认关闭
 				onlyFavorites: false, // 收藏模式开关，默认关闭
