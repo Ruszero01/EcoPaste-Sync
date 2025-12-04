@@ -34,40 +34,9 @@ class AudioManager {
 				window.AudioContext || (window as any).webkitAudioContext
 			)();
 
-			// 如果音频上下文被挂起，尝试恢复
+			// 如果音频上下文被挂起，设置用户交互监听器来恢复
 			if (this.audioContext.state === "suspended") {
-				// 添加用户交互监听器来恢复音频上下文
-				const resumeAudio = async () => {
-					if (this.audioContext && this.audioContext.state === "suspended") {
-						try {
-							await this.audioContext.resume();
-							// AudioContext resumed successfully
-						} catch (error) {
-							console.warn("Failed to resume AudioContext:", error);
-						}
-					}
-				};
-
-				// 监听多种用户交互事件，使用 { once: false } 确保可以多次尝试
-				document.addEventListener("click", resumeAudio, {
-					once: false,
-					passive: true,
-				});
-				document.addEventListener("keydown", resumeAudio, {
-					once: false,
-					passive: true,
-				});
-				document.addEventListener("touchstart", resumeAudio, {
-					once: false,
-					passive: true,
-				});
-				document.addEventListener("mousedown", resumeAudio, {
-					once: false,
-					passive: true,
-				});
-
-				// 立即尝试恢复一次
-				await resumeAudio();
+				await this.setupResumeHandlers();
 			}
 
 			// 预加载音效文件
@@ -79,6 +48,40 @@ class AudioManager {
 			console.error("Failed to initialize AudioManager:", error);
 			throw error;
 		}
+	}
+
+	// 设置恢复处理器
+	private async setupResumeHandlers(): Promise<void> {
+		const resumeAudio = async () => {
+			if (this.audioContext && this.audioContext.state === "suspended") {
+				try {
+					await this.audioContext.resume();
+					console.info(
+						"AudioContext resumed successfully via user interaction",
+					);
+				} catch (error) {
+					console.warn("Failed to resume AudioContext:", error);
+				}
+			}
+		};
+
+		// 监听多种用户交互事件，使用 { once: false } 确保可以多次尝试
+		const events = [
+			"click",
+			"keydown",
+			"touchstart",
+			"mousedown",
+			"pointerdown",
+		];
+		for (const event of events) {
+			document.addEventListener(event, resumeAudio, {
+				once: false,
+				passive: true,
+			});
+		}
+
+		// 立即尝试恢复一次
+		await resumeAudio();
 	}
 
 	// 预加载音效
@@ -135,6 +138,49 @@ class AudioManager {
 		}
 	}
 
+	// 等待音频上下文状态恢复
+	private async waitForAudioContextReady(): Promise<boolean> {
+		if (!this.audioContext) return false;
+
+		const state = this.audioContext.state;
+
+		// 如果已经是 running 状态，直接返回
+		if (state === "running") return true;
+
+		// 如果是 suspended，尝试恢复并等待
+		if (state === "suspended") {
+			try {
+				// 尝试恢复
+				const resumePromise = this.audioContext.resume();
+
+				// 等待恢复，但不超过3秒
+				await Promise.race([
+					resumePromise,
+					new Promise((_, reject) =>
+						setTimeout(() => reject(new Error("Resume timeout")), 3000),
+					),
+				]);
+
+				// 再次检查状态
+				const newState = this.audioContext.state;
+				if (newState === "running") {
+					console.info("AudioContext successfully resumed");
+				} else {
+					console.warn("AudioContext state after resume:", newState);
+				}
+				// 即使状态不是 running，也尝试播放，可能成功
+				return true;
+			} catch (error) {
+				console.warn("Failed to resume AudioContext:", error);
+				// 即使恢复失败，也尝试播放，可能浏览器会允许播放
+				return true;
+			}
+		}
+
+		// 其他状态（如 closed），返回 false
+		return false;
+	}
+
 	// 播放音效
 	async playSound(
 		soundName: string,
@@ -148,13 +194,11 @@ class AudioManager {
 				return false;
 			}
 
-			// 确保音频上下文处于运行状态
-			if (this.audioContext.state === "suspended") {
-				try {
-					await this.audioContext.resume();
-				} catch (error) {
-					console.warn("Failed to resume AudioContext during play:", error);
-				}
+			// 等待音频上下文状态恢复
+			const isReady = await this.waitForAudioContextReady();
+			if (!isReady) {
+				console.warn("AudioContext not ready for playback");
+				return false;
 			}
 
 			let buffer = this.audioBuffers.get(soundName);
@@ -250,17 +294,33 @@ export const useAudioEffect = () => {
 				setTimeout(async () => {
 					try {
 						await audioManager.current.playSound("copy", { volume: 0 });
+						console.info("Silent audio played to activate AudioContext");
 					} catch {
 						// 静默忽略静音播放的错误
 					}
-				}, 100);
+				}, 200);
+
+				// 再延迟一点再尝试一次，确保状态稳定
+				setTimeout(async () => {
+					try {
+						const state = audioManager.current.getContextState();
+						if (state === "suspended") {
+							console.info(
+								"AudioContext still suspended, attempting manual resume...",
+							);
+							await audioManager.current.playSound("copy", { volume: 0 });
+						}
+					} catch {
+						// 静默忽略错误
+					}
+				}, 500);
 			} catch (error) {
 				console.error("Failed to initialize audio:", error);
 			}
 		};
 
 		// 延迟初始化，确保页面完全加载
-		const timer = setTimeout(initAudio, 500);
+		const timer = setTimeout(initAudio, 300);
 
 		// 清理函数
 		return () => {
@@ -292,14 +352,20 @@ export const useAudioEffect = () => {
 					);
 					if (!success) {
 						console.warn(`Failed to play sound: ${soundName}`);
-						// 如果播放失败，尝试重试一次
+						// 如果播放失败，尝试重试一次，间隔更短
 						setTimeout(async () => {
 							try {
-								await audioManager.current.playSound(soundName, options);
+								const retrySuccess = await audioManager.current.playSound(
+									soundName,
+									options,
+								);
+								if (retrySuccess) {
+									console.info("音效重试播放成功");
+								}
 							} catch (retryError) {
 								console.warn("音效重试播放失败:", retryError);
 							}
-						}, 100);
+						}, 50);
 					}
 					return success;
 				} catch (error) {
@@ -307,11 +373,17 @@ export const useAudioEffect = () => {
 					// 如果出现异常，也尝试重试一次
 					setTimeout(async () => {
 						try {
-							await audioManager.current.playSound(soundName, options);
+							const retrySuccess = await audioManager.current.playSound(
+								soundName,
+								options,
+							);
+							if (retrySuccess) {
+								console.info("音效异常重试播放成功");
+							}
 						} catch (retryError) {
-							console.warn("音效重试播放失败:", retryError);
+							console.warn("音效异常重试播放失败:", retryError);
 						}
-					}, 100);
+					}, 50);
 					return false;
 				}
 			});
