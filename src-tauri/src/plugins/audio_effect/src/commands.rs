@@ -27,15 +27,6 @@ impl AudioService {
         // 启动专门的音频线程
         thread::spawn(move || {
             println!("音频服务线程启动");
-            
-            // 音频线程：OutputStream 必须待在这个线程
-            let (_stream, handle) = match OutputStream::try_default() {
-                Ok(s) => s,
-                Err(e) => {
-                    eprintln!("音频错误: 无法初始化输出流 - {}", e);
-                    return;
-                }
-            };
 
             // 预加载音频数据 - 使用更稳定的路径
             let mut preloaded = HashMap::new();
@@ -47,6 +38,15 @@ impl AudioService {
                 match cmd {
                     AudioCommand::Play { name, volume } => {
                         println!("音频线程收到播放命令: {}", name);
+                        
+                        // 每次播放时重新创建 OutputStream，确保使用当前默认设备
+                        let (_stream, handle) = match OutputStream::try_default() {
+                            Ok(s) => s,
+                            Err(e) => {
+                                eprintln!("音频错误: 无法初始化输出流 - {}", e);
+                                continue;
+                            }
+                        };
                         
                         // 获取预加载的音频数据
                         if let Some(audio_data) = preloaded.get(&name) {
@@ -77,11 +77,10 @@ impl AudioService {
                             // 播放音频
                             sink.append(source);
 
-                            // 使用 detach() 让音频在后台继续播放
-                            // 由于 OutputStream 在同一个线程中，不会因为函数结束而被 drop
-                            sink.detach();
+                            // 等待音频播放完成，确保 OutputStream 不被过早销毁
+                            sink.sleep_until_end();
                             
-                            println!("音频播放开始: {}", name);
+                            println!("音频播放完成: {}", name);
                         } else {
                             eprintln!("音频错误: 未找到音频文件 '{}'", name);
                         }
