@@ -11,6 +11,7 @@ use tauri::{command, State};
 #[derive(Debug)]
 pub enum AudioCommand {
     Play { name: String, volume: f32 },
+    Exit, // 添加优雅退出命令
 }
 
 // 音频服务结构体
@@ -36,9 +37,9 @@ impl AudioService {
                 }
             };
 
-            // 预加载音频数据
+            // 预加载音频数据 - 使用更稳定的路径
             let mut preloaded = HashMap::new();
-            let copy_audio_data = include_bytes!("../../../../../src/assets/audio/copy.mp3").to_vec();
+            let copy_audio_data = include_bytes!("../../../../assets/audio/copy.mp3").to_vec();
             preloaded.insert("copy".to_string(), Arc::new(copy_audio_data));
 
             // 音频播放循环
@@ -85,6 +86,10 @@ impl AudioService {
                             eprintln!("音频错误: 未找到音频文件 '{}'", name);
                         }
                     }
+                    AudioCommand::Exit => {
+                        println!("收到退出命令，正在关闭音频服务线程");
+                        break;
+                    }
                 }
             }
             
@@ -92,6 +97,12 @@ impl AudioService {
         });
 
         Self { tx }
+    }
+
+    // 添加优雅退出方法
+    pub fn shutdown(&self) -> Result<(), String> {
+        self.tx.send(AudioCommand::Exit)
+            .map_err(|e| format!("Failed to send exit command: {}", e))
     }
 }
 
@@ -134,8 +145,14 @@ impl AudioManager {
     }
 
     // 清理资源
-    pub fn cleanup(&self) {
-        println!("Audio manager cleaned up");
+    pub fn cleanup(&self, audio_service: &AudioService) -> Result<(), String> {
+        println!("Audio manager cleaning up...");
+        
+        // 发送退出命令到音频服务线程
+        audio_service.shutdown()?;
+        
+        println!("Audio manager cleaned up successfully");
+        Ok(())
     }
 }
 
@@ -164,7 +181,7 @@ pub async fn stop_all_sounds(
 #[command]
 pub async fn cleanup_audio(
     manager: State<'_, AudioManager>,
+    audio_service: State<'_, AudioService>,
 ) -> Result<(), String> {
-    manager.cleanup();
-    Ok(())
+    manager.cleanup(&audio_service.inner())
 }
