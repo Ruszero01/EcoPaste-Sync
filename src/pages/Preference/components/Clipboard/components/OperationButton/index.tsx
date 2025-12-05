@@ -103,7 +103,9 @@ const OperationButton = () => {
 		return (
 			<Flex key={key} align="center" gap={4} className="max-w-31.25">
 				<UnoIcon name={icon} />
-				<span className="truncate">{t(title)}</span>
+				<span className="truncate" title="">
+					{t(title)}
+				</span>
 			</Flex>
 		);
 	};
@@ -165,6 +167,12 @@ const OperationButton = () => {
 					dataSource={transferData}
 					targetKeys={content.operationButtons}
 					render={renderTransferData}
+					showSearch={false}
+					titles={["", ""]}
+					listStyle={{
+						width: 200,
+						height: 300,
+					}}
 					onChange={(keys) => {
 						clipboardStore.content.operationButtons = keys as Key[];
 					}}

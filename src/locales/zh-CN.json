@@ -76,7 +76,8 @@
 					"delete_confirm": "删除确认",
 					"auto_sort": "自动排序",
 					"show_original_content": "显示原内容",
-					"show_source_app": "显示来源应用"
+					"show_source_app": "显示来源应用",
+					"code_detection": "代码识别"
 				},
 				"hints": {
 					"auto_paste": "鼠标左键操作时，快速粘贴内容至输入位置",
@@ -88,7 +89,8 @@
 					"delete_confirm": "删除剪贴板内容时弹出确认对话框",
 					"auto_sort": "复制已存在的内容时排列到最前面",
 					"show_original_content": "添加备注后，鼠标悬停时是否显示原内容",
-					"show_source_app": "在剪贴板历史中显示来源应用的图标和名称"
+					"show_source_app": "在剪贴板历史中显示来源应用的图标和名称",
+					"code_detection": "自动识别剪贴板中的代码内容并启用语法高亮"
 				}
 			}
 		},
@@ -288,7 +290,7 @@
 				"preview_image": "预览图片",
 				"download_image": "下载图片",
 				"show_in_finder": "在 Finder 中显示",
-				"show_in_file_explorer": "在文件资源管理器中显示",
+				"show_in_file_explorer": "在资源管理器显示",
 				"delete": "删除"
 			},
 			"create_group": "新建分组"

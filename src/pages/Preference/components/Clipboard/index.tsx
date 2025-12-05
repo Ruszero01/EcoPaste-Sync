@@ -1,4 +1,4 @@
-import AudioPreview from "@/components/Audio";
+import Audio from "@/components/Audio";
 import ProList from "@/components/ProList";
 import ProSwitch from "@/components/ProSwitch";
 import { Typography } from "antd";
@@ -43,7 +43,7 @@ const ClipboardSettings = () => {
 						clipboardStore.audio.copy = value;
 					}}
 				>
-					<AudioPreview
+					<Audio
 						iconProps={{
 							size: 22,
 							className: "flex!",
@@ -113,6 +113,21 @@ const ClipboardSettings = () => {
 				/>
 
 				<ProSwitch
+					title={t(
+						"preference.clipboard.content_settings.label.paste_as_plain",
+					)}
+					description={t(
+						"preference.clipboard.content_settings.hints.paste_as_plain",
+					)}
+					value={content.pastePlain}
+					onChange={(value) => {
+						clipboardStore.content.pastePlain = value;
+					}}
+				/>
+
+				<OperationButton />
+
+				<ProSwitch
 					title={t("preference.clipboard.content_settings.label.auto_favorite")}
 					description={t(
 						"preference.clipboard.content_settings.hints.auto_favorite",
@@ -174,16 +189,18 @@ const ClipboardSettings = () => {
 				/>
 
 				<ProSwitch
-					title="代码识别"
-					description="自动识别剪贴板中的代码内容并启用语法高亮"
+					title={t(
+						"preference.clipboard.content_settings.label.code_detection",
+					)}
+					description={t(
+						"preference.clipboard.content_settings.hints.code_detection",
+					)}
 					value={content.codeDetection}
 					onChange={(value) => {
 						clipboardStore.content.codeDetection = value;
 					}}
 				/>
 			</ProList>
-
-			<OperationButton />
 		</>
 	);
 };
