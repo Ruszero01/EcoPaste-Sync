@@ -11,4 +11,6 @@ permissions = [
     "allow-upload-sync-data",
     "allow-download-sync-data",
     "allow-delete-file",
+    "allow-upload-file",
+    "allow-download-file"
 ]

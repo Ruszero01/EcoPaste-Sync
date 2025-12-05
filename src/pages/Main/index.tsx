@@ -1,4 +1,3 @@
-import Audio from "@/components/Audio";
 import { LISTEN_KEY } from "@/constants";
 import { executeSQL, insertWithDeduplication, updateSQL } from "@/database";
 import { useAudioEffect } from "@/hooks/useAudioEffect";
@@ -60,7 +59,7 @@ const Main = () => {
 	const windowHideTimer = useRef<NodeJS.Timeout>();
 
 	// 使用优化的音效播放 Hook
-	const { playSound, isReady, initAudio } = useAudioEffect();
+	const { playSound } = useAudioEffect();
 
 	useMount(() => {
 		state.$eventBus = $eventBus;
@@ -101,10 +100,6 @@ const Main = () => {
 				// 使用微任务延迟播放音效，确保不阻塞主要处理逻辑
 				setTimeout(async () => {
 					try {
-						// 如果音频系统未准备好，先初始化
-						if (!isReady) {
-							await initAudio();
-						}
 						await playSound("copy");
 					} catch (error) {
 						console.warn("音效播放失败:", error);
@@ -598,8 +593,6 @@ const Main = () => {
 
 	return (
 		<>
-			<Audio hiddenIcon />
-
 			<MainContext.Provider
 				value={{
 					state,
