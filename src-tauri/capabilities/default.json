@@ -53,13 +53,14 @@
 				}
 			]
 		},
-		"eco-window:default",
 		"eco-active-window:default",
+		"eco-audio-effect:default",
+		"eco-auto-sync:default",
+		"eco-autostart:default",
 		"eco-clipboard:default",
 		"eco-ocr:default",
 		"eco-paste:default",
-		"eco-autostart:default",
 		"eco-webdav:default",
-		"eco-audio-effect:default"
+		"eco-window:default"
 	]
 }
