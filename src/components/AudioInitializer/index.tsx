@@ -1,4 +1,4 @@
-import { audioManager } from "@/hooks/useAudioEffect";
+import { useAudioEffect } from "@/hooks/useAudioEffect";
 import { useEffect, useState } from "react";
 
 interface AudioInitializerProps {
@@ -14,6 +14,7 @@ export const AudioInitializer = ({
 }: AudioInitializerProps) => {
 	const [, setIsInitialized] = useState(false);
 	const [initAttempted, setInitAttempted] = useState(false);
+	const { audioManager } = useAudioEffect();
 
 	useEffect(() => {
 		const initializeAudio = async () => {
@@ -35,7 +36,7 @@ export const AudioInitializer = ({
 		const timer = setTimeout(initializeAudio, 100);
 
 		return () => clearTimeout(timer);
-	}, [initAttempted, onInitialized, onError]);
+	}, [initAttempted, onInitialized, onError, audioManager]);
 
 	// 添加用户交互监听器，确保音频上下文可以被恢复
 	useEffect(() => {
@@ -61,7 +62,7 @@ export const AudioInitializer = ({
 				document.removeEventListener(event, handleUserInteraction);
 			}
 		};
-	}, []);
+	}, [audioManager]);
 
 	return <>{children}</>;
 };

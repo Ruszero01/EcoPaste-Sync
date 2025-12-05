@@ -54,118 +54,12 @@
 			]
 		},
 		"eco-window:default",
+		"eco-active-window:default",
 		"eco-clipboard:default",
 		"eco-ocr:default",
 		"eco-paste:default",
 		"eco-autostart:default",
 		"eco-webdav:default",
-		{
-			"identifier": "eco-clipboard:allow-get-clipboard-source-info",
-			"allow": [
-				{
-					"cmd": "get_clipboard_source_info"
-				}
-			]
-		},
-		{
-			"identifier": "eco-active-window:allow-get-active-window-info",
-			"allow": [
-				{
-					"cmd": "get_active_window_info"
-				}
-			]
-		},
-		{
-			"identifier": "eco-active-window:allow-get-app-icon",
-			"allow": [
-				{
-					"cmd": "get_app_icon"
-				}
-			]
-		},
-		{
-			"identifier": "eco-auto-sync:allow-start-auto-sync",
-			"allow": [
-				{
-					"args": [
-						{
-							"name": "interval_hours",
-							"type": "number"
-						}
-					],
-					"cmd": "start_auto_sync"
-				}
-			]
-		},
-		{
-			"identifier": "eco-auto-sync:allow-stop-auto-sync",
-			"allow": [
-				{
-					"cmd": "stop_auto_sync"
-				}
-			]
-		},
-		{
-			"identifier": "eco-auto-sync:allow-get-auto-sync-status",
-			"allow": [
-				{
-					"cmd": "get_auto_sync_status"
-				}
-			]
-		},
-		{
-			"identifier": "eco-auto-sync:allow-update-sync-interval",
-			"allow": [
-				{
-					"args": [
-						{
-							"name": "interval_hours",
-							"type": "number"
-						}
-					],
-					"cmd": "update_sync_interval"
-				}
-			]
-		},
-		{
-			"identifier": "eco-webdav:allow-upload-sync-data",
-			"allow": [
-				{
-					"cmd": "upload_sync_data"
-				}
-			]
-		},
-		{
-			"identifier": "eco-webdav:allow-download-sync-data",
-			"allow": [
-				{
-					"cmd": "download_sync_data"
-				}
-			]
-		},
-		{
-			"identifier": "eco-webdav:allow-delete-file",
-			"allow": [
-				{
-					"cmd": "delete_file"
-				}
-			]
-		},
-		{
-			"identifier": "eco-webdav:allow-upload-file",
-			"allow": [
-				{
-					"cmd": "upload_file"
-				}
-			]
-		},
-		{
-			"identifier": "eco-webdav:allow-download-file",
-			"allow": [
-				{
-					"cmd": "download_file"
-				}
-			]
-		}
+		"eco-audio-effect:default"
 	]
 }

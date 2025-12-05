@@ -75,7 +75,11 @@
 			"icons/icon.icns",
 			"icons/icon.ico"
 		],
-		"resources": ["assets/tray.ico", "assets/drag-icon.png"]
+		"resources": [
+			"assets/tray.ico",
+			"assets/drag-icon.png",
+			"assets/audio/copy.mp3"
+		]
 	},
 	"plugins": {
 		"updater": {
@@ -84,26 +88,6 @@
 		},
 		"fs": {
 			"requireLiteralLeadingDot": false
-		},
-		"eco-webdav": {
-			"allow": [
-				"allow-set-server-config",
-				"allow-get-server-config",
-				"allow-test-connection",
-				"allow-test-webdav-operations",
-				"allow-upload-sync-data",
-				"allow-download-sync-data",
-				"allow-upload-file",
-				"allow-download-file"
-			]
-		},
-		"eco-auto-sync": {
-			"allow": [
-				"allow-start-auto-sync",
-				"allow-stop-auto-sync",
-				"allow-get-auto-sync-status",
-				"allow-update-sync-interval"
-			]
 		},
 		"eco-window": {
 			"allow": [
@@ -117,9 +101,6 @@
 				"allow-clear-mica-effect",
 				"allow-is-mica-supported"
 			]
-		},
-		"eco-active-window": {
-			"allow": ["allow-get_active_window_info", "allow-get_app_icon"]
 		}
 	}
 }

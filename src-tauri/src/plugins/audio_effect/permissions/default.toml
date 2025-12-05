@@ -1,0 +1,11 @@
+"$schema" = "schemas/schema.json"
+
+[default]
+description = "Default permissions for the plugin"
+permissions = [
+	"allow-play-sound",
+	"allow-preload-audio",
+	"allow-init-audio-manager",
+	"allow-stop-all-sounds",
+	"allow-cleanup-audio"
+]

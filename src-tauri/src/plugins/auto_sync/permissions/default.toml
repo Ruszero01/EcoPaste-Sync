@@ -1,0 +1,10 @@
+"$schema" = "schemas/schema.json"
+
+[default]
+description = "Default permissions for the plugin"
+permissions = [
+	"allow-start-auto-sync",
+	"allow-stop-auto-sync",
+	"allow-get-auto-sync-status",
+	"allow-update-sync-interval"
+]
