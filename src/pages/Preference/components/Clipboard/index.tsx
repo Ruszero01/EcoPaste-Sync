@@ -1,4 +1,4 @@
-import Audio from "@/components/Audio";
+import AudioPreview from "@/components/Audio";
 import ProList from "@/components/ProList";
 import ProSwitch from "@/components/ProSwitch";
 import { Typography } from "antd";
@@ -43,7 +43,7 @@ const ClipboardSettings = () => {
 						clipboardStore.audio.copy = value;
 					}}
 				>
-					<Audio
+					<AudioPreview
 						iconProps={{
 							size: 22,
 							className: "flex!",
@@ -111,21 +111,6 @@ const ClipboardSettings = () => {
 						clipboardStore.content.copyPlain = value;
 					}}
 				/>
-
-				<ProSwitch
-					title={t(
-						"preference.clipboard.content_settings.label.paste_as_plain",
-					)}
-					description={t(
-						"preference.clipboard.content_settings.hints.paste_as_plain",
-					)}
-					value={content.pastePlain}
-					onChange={(value) => {
-						clipboardStore.content.pastePlain = value;
-					}}
-				/>
-
-				<OperationButton />
 
 				<ProSwitch
 					title={t("preference.clipboard.content_settings.label.auto_favorite")}
@@ -197,6 +182,8 @@ const ClipboardSettings = () => {
 					}}
 				/>
 			</ProList>
+
+			<OperationButton />
 		</>
 	);
 };

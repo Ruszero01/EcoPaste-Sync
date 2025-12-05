@@ -20,22 +20,6 @@ export const playSound = async (
 	}
 };
 
-export const preloadAudio = async (
-	name: string,
-	filePath: string,
-): Promise<boolean> => {
-	try {
-		await invoke("plugin:eco-audio-effect|preload_audio", {
-			name,
-			filePath,
-		});
-		return true;
-	} catch (error) {
-		console.error("Failed to preload audio:", error);
-		return false;
-	}
-};
-
 export const stopAllSounds = async (): Promise<boolean> => {
 	try {
 		await invoke("plugin:eco-audio-effect|stop_all_sounds");
