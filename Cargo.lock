@@ -6418,6 +6418,7 @@ version = "0.1.0"
 dependencies = [
  "alsa",
  "coreaudio-rs",
+ "crossbeam-channel",
  "rodio",
  "serde",
  "tauri",
