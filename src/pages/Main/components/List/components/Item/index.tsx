@@ -270,8 +270,9 @@ const Item: FC<ItemProps> = (props) => {
 		if (!confirmed) return;
 
 		try {
-			// 执行批量删除
-			const result = await batchDeleteItems(selectedIds);
+			// 使用删除管理器执行批量删除
+			const { deleteManager } = await import("@/utils/deleteManager");
+			const result = await deleteManager.deleteItems(selectedIds);
 
 			if (result.success) {
 				// 清除多选状态
@@ -301,9 +302,21 @@ const Item: FC<ItemProps> = (props) => {
 				}
 
 				// 显示成功提示
-				message.success(`成功删除 ${result.deletedCount} 个项目`);
+				const softDeletedCount = result.softDeletedIds?.length || 0;
+				const hardDeletedCount = result.hardDeletedIds?.length || 0;
+				let deleteMessage = `成功删除 ${result.deletedCount} 个项目`;
+
+				if (softDeletedCount > 0 && hardDeletedCount > 0) {
+					deleteMessage += `（其中 ${softDeletedCount} 个已同步项目将在下次同步时从云端删除）`;
+				} else if (softDeletedCount > 0) {
+					deleteMessage += "（这些项目将在下次同步时从云端删除）";
+				}
+
+				message.success(deleteMessage);
 			} else {
-				message.error(`批量删除失败: ${result.error}`);
+				message.error(
+					`批量删除失败: ${result.errors?.join("; ") || "未知错误"}`,
+				);
 			}
 		} catch (error) {
 			console.error("❌ 批量删除失败:", error);
@@ -502,12 +515,14 @@ const Item: FC<ItemProps> = (props) => {
 		}
 
 		try {
-			// 统一使用软删除策略，让同步系统处理云端删除
-			await updateSQL("history", {
-				id,
-				deleted: 1, // 标记为已删除
-				syncStatus: "pending", // 标记为需要同步处理
-			} as any);
+			// 使用删除管理器执行删除
+			const { deleteManager } = await import("@/utils/deleteManager");
+			const result = await deleteManager.deleteItem(id);
+
+			if (!result.success) {
+				message.error(`删除失败: ${result.errors?.join("; ") || "未知错误"}`);
+				return;
+			}
 
 			// 使用强制刷新函数，确保缓存和lastQueryParams都被正确重置
 			if (forceRefreshList) {
@@ -516,8 +531,14 @@ const Item: FC<ItemProps> = (props) => {
 
 			// 从本地状态中移除
 			remove(state.list, { id });
+
+			// 显示成功提示
+			message.success("删除成功");
 		} catch (error) {
 			console.error(`❌ 删除条目失败: ${id}`, error);
+			message.error(
+				`删除失败: ${error instanceof Error ? error.message : "未知错误"}`,
+			);
 		}
 	};
 

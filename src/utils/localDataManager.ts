@@ -1,5 +1,6 @@
 import { globalStore } from "@/stores/global";
 import type { HistoryItem, SyncItem, SyncModeConfig } from "@/types/sync";
+import { deleteManager } from "./deleteManager";
 import { calculateChecksum } from "./shared";
 
 /**
@@ -664,24 +665,24 @@ export class LocalDataManager {
 	}
 
 	/**
-	 * 从数据库删除项目
+	 * 从数据库删除项目（使用统一的删除管理器）
+	 * - 已同步的项目：使用软删除（标记deleted=1），等待同步到云端后再彻底删除
+	 * - 未同步的项目：直接从数据库彻底删除
 	 * @param itemIds 要删除的项目ID列表
 	 */
 	private async deleteItemsFromDatabase(itemIds: string[]): Promise<void> {
-		const { updateSQL } = await import("@/database");
-
-		const deletePromises = itemIds.map(async (itemId) => {
-			try {
-				await updateSQL("history", {
-					id: itemId,
-					deleted: 1,
-				} as any);
-			} catch (error) {
-				console.error(`删除项目失败 (${itemId}):`, error);
+		try {
+			const result = await deleteManager.deleteItems(itemIds);
+			if (result.success) {
+				console.info(
+					`🗑️ 删除项目完成: 总计 ${result.deletedCount} 个，软删除 ${result.softDeletedIds?.length || 0} 个，硬删除 ${result.hardDeletedIds?.length || 0} 个`,
+				);
+			} else {
+				console.error("删除项目失败:", result.errors);
 			}
-		});
-
-		await Promise.allSettled(deletePromises);
+		} catch (error) {
+			console.error("删除项目异常:", error);
+		}
 	}
 
 	/**
