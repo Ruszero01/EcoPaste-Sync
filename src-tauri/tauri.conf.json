@@ -75,11 +75,7 @@
 			"icons/icon.icns",
 			"icons/icon.ico"
 		],
-		"resources": [
-			"assets/tray.ico",
-			"assets/drag-icon.png",
-			"assets/audio/copy.mp3"
-		]
+		"resources": ["assets/tray.ico", "assets/drag-icon.png"]
 	},
 	"plugins": {
 		"updater": {
