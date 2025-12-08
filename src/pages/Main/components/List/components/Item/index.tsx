@@ -219,17 +219,22 @@ const Item: FC<ItemProps> = (props) => {
 			state.list[itemIndex] = {
 				...state.list[itemIndex],
 				favorite: nextFavorite,
-				lastModified: Date.now(), // 更新本地状态的时间戳
 			};
 		}
 
 		try {
-			// 更新收藏状态时同时更新最后修改时间，确保同步引擎能检测到变更
-			await updateSQL("history", {
-				id,
-				favorite: nextFavorite ? 1 : 0,
-				lastModified: Date.now(),
-			} as any);
+			// 使用批量更新函数，但不改变同步状态，保持单个收藏的原有行为
+			const result = await batchUpdateFavorite([id], nextFavorite, false);
+
+			if (!result.success) {
+				const errorMessage =
+					typeof result.error === "string"
+						? result.error
+						: result.error instanceof Error
+							? result.error.message
+							: "收藏状态更新失败";
+				throw new Error(errorMessage);
+			}
 		} catch (error) {
 			console.error("收藏状态更新失败:", error);
 			// 如果数据库更新失败，恢复本地状态
@@ -244,145 +249,196 @@ const Item: FC<ItemProps> = (props) => {
 
 	// 批量删除处理函数
 	const handleBatchDelete = async () => {
-		// 只在第一个被选中的项目中处理，避免重复执行
-		const firstSelectedId = Array.from(
-			clipboardStore.multiSelect.selectedIds,
-		)[0];
-		if (id !== firstSelectedId) return;
-
 		// 获取所有选中的项目ID
 		const selectedIds = Array.from(clipboardStore.multiSelect.selectedIds);
 
-		// 显示确认对话框
-		let confirmed = true;
+		// 使用全局标志防止重复执行
+		if (clipboardStore.batchOperationInProgress) return;
 
-		if (clipboardStore.content.deleteConfirm) {
-			confirmed = await deleteModal.confirm({
-				centered: true,
-				content: `确定要删除选中的 ${selectedIds.length} 个项目吗？`,
-				afterClose() {
-					// 关闭确认框后焦点还在，需要手动取消焦点
-					(document.activeElement as HTMLElement)?.blur();
-				},
-			});
-		}
-
-		if (!confirmed) return;
+		// 设置批量操作进行中标志
+		clipboardStore.batchOperationInProgress = true;
 
 		try {
-			// 使用删除管理器执行批量删除
-			const { deleteManager } = await import("@/utils/deleteManager");
-			const result = await deleteManager.deleteItems(selectedIds);
+			// 显示确认对话框
+			let confirmed = true;
 
-			if (result.success) {
-				// 清除多选状态
-				clipboardStore.multiSelect.isMultiSelecting = false;
-				clipboardStore.multiSelect.selectedIds.clear();
-				clipboardStore.multiSelect.lastSelectedId = null;
-				clipboardStore.multiSelect.shiftSelectDirection = null;
-				clipboardStore.multiSelect.selectedOrder = [];
-
-				// 立即刷新列表，确保数据库操作完成
-				if (forceRefreshList) {
-					forceRefreshList();
-				}
-
-				// 从本地状态中移除已删除的项目（在刷新后执行，确保状态同步）
-				// 创建新数组避免直接修改正在遍历的数组
-				const remainingItems = state.list.filter(
-					(item) => !selectedIds.includes(item.id),
-				);
-				state.list.splice(0, state.list.length, ...remainingItems);
-
-				// 设置新的激活项
-				if (remainingItems.length > 0) {
-					state.activeId = remainingItems[0]?.id;
-				} else {
-					state.activeId = undefined;
-				}
-
-				// 显示成功提示
-				const softDeletedCount = result.softDeletedIds?.length || 0;
-				const hardDeletedCount = result.hardDeletedIds?.length || 0;
-				let deleteMessage = `成功删除 ${result.deletedCount} 个项目`;
-
-				if (softDeletedCount > 0 && hardDeletedCount > 0) {
-					deleteMessage += `（其中 ${softDeletedCount} 个已同步项目将在下次同步时从云端删除）`;
-				} else if (softDeletedCount > 0) {
-					deleteMessage += "（这些项目将在下次同步时从云端删除）";
-				}
-
-				message.success(deleteMessage);
-			} else {
-				message.error(
-					`批量删除失败: ${result.errors?.join("; ") || "未知错误"}`,
-				);
+			if (clipboardStore.content.deleteConfirm) {
+				confirmed = await deleteModal.confirm({
+					centered: true,
+					content: `确定要删除选中的 ${selectedIds.length} 个项目吗？`,
+					afterClose() {
+						// 关闭确认框后焦点还在，需要手动取消焦点
+						(document.activeElement as HTMLElement)?.blur();
+					},
+				});
 			}
-		} catch (error) {
-			console.error("❌ 批量删除失败:", error);
-			message.error("批量删除操作失败");
+
+			if (!confirmed) return;
+
+			// 执行批量删除
+			try {
+				// 使用删除管理器执行批量删除
+				const { deleteManager } = await import("@/utils/deleteManager");
+				const result = await deleteManager.deleteItems(selectedIds);
+
+				if (result.success) {
+					// 清除多选状态
+					clipboardStore.multiSelect.isMultiSelecting = false;
+					clipboardStore.multiSelect.selectedIds.clear();
+					clipboardStore.multiSelect.lastSelectedId = null;
+					clipboardStore.multiSelect.shiftSelectDirection = null;
+					clipboardStore.multiSelect.selectedOrder = [];
+
+					// 使用强制刷新函数，确保缓存和lastQueryParams都被正确重置
+					// 先保存当前的激活项状态
+					const currentActiveId = state.activeId;
+					if (forceRefreshList) {
+						forceRefreshList();
+					}
+
+					// 从本地状态中移除
+					for (const selectedId of selectedIds) {
+						remove(state.list, { id: selectedId });
+					}
+
+					// 设置新的激活项，保持位置逻辑
+					if (state.list.length > 0) {
+						// 如果当前激活项被删除，智能选择下一个或上一个项目
+						if (selectedIds.includes(currentActiveId || "")) {
+							// 找到被删除项目在原列表中的索引
+							const deletedItemIndexes = selectedIds
+								.map((id) => state.list.findIndex((item) => item.id === id))
+								.filter((index) => index !== -1)
+								.sort((a, b) => a - b);
+
+							// 找到最小的被删除索引
+							const minDeletedIndex = deletedItemIndexes[0];
+
+							if (minDeletedIndex !== undefined) {
+								// 尝试选择下一个项目
+								if (minDeletedIndex < state.list.length) {
+									state.activeId = state.list[minDeletedIndex]?.id;
+								} else {
+									// 如果没有下一个，尝试选择上一个
+									if (minDeletedIndex > 0) {
+										state.activeId = state.list[minDeletedIndex - 1]?.id;
+									} else {
+										// 如果都没有，选择第一个剩余项目
+										state.activeId = state.list[0]?.id;
+									}
+								}
+							} else {
+								// 如果找不到被删除的索引，选择第一个剩余项目
+								state.activeId = state.list[0]?.id;
+							}
+						} else {
+							// 如果当前激活项未被删除，保持不变
+							state.activeId = currentActiveId;
+						}
+					} else {
+						state.activeId = undefined;
+					}
+
+					// 显示成功提示
+					const softDeletedCount = result.softDeletedIds?.length || 0;
+					const hardDeletedCount = result.hardDeletedIds?.length || 0;
+					let deleteMessage = `成功删除 ${result.deletedCount} 个项目`;
+
+					if (softDeletedCount > 0 && hardDeletedCount > 0) {
+						deleteMessage += `（其中 ${softDeletedCount} 个已同步项目将在下次同步时从云端删除）`;
+					} else if (softDeletedCount > 0) {
+						deleteMessage += "（这些项目将在下次同步时从云端删除）";
+					}
+
+					message.success(deleteMessage);
+				} else {
+					message.error(
+						`批量删除失败: ${result.errors?.join("; ") ?? "未知错误"}`,
+					);
+				}
+			} catch (error) {
+				console.error("❌ 批量删除失败:", error);
+				message.error("批量删除操作失败");
+			}
+		} finally {
+			// 清除批量操作进行中标志
+			clipboardStore.batchOperationInProgress = false;
 		}
 	};
 
 	// 批量收藏处理函数
 	const handleBatchFavorite = async () => {
-		// 只在第一个被选中的项目中处理，避免重复执行
-		const firstSelectedId = Array.from(
-			clipboardStore.multiSelect.selectedIds,
-		)[0];
-		if (id !== firstSelectedId) return;
-
 		// 获取所有选中的项目ID
 		const selectedIds = Array.from(clipboardStore.multiSelect.selectedIds);
 
-		// 检查是否都是收藏的或都不是收藏的，以确定操作类型
-		const selectedItems = state.list.filter((item) =>
-			selectedIds.includes(item.id),
-		);
-		const areAllFavorited =
-			selectedItems.length > 0 && selectedItems.every((item) => item.favorite);
-		const newFavoriteStatus = !areAllFavorited; // 如果全部收藏，则取消收藏；否则全部收藏
+		// 使用全局标志防止重复执行
+		if (clipboardStore.batchOperationInProgress) return;
 
-		// 提前定义action变量，避免作用域问题
-		const action = newFavoriteStatus ? "收藏" : "取消收藏";
+		// 设置批量操作进行中标志
+		clipboardStore.batchOperationInProgress = true;
 
 		try {
+			// 检查是否都是收藏的或都不是收藏的，以确定操作类型
+			const selectedItems = state.list.filter((item) =>
+				selectedIds.includes(item.id),
+			);
+			const areAllFavorited =
+				selectedItems.length > 0 &&
+				selectedItems.every((item) => item.favorite);
+			const newFavoriteStatus = !areAllFavorited; // 如果全部收藏，则取消收藏；否则全部收藏
+
+			// 提前定义action变量，避免作用域问题
+			const action = newFavoriteStatus ? "收藏" : "取消收藏";
+
 			// 执行批量收藏/取消收藏
-			const result = await batchUpdateFavorite(selectedIds, newFavoriteStatus);
+			try {
+				// 使用批量更新函数，但不改变同步状态，保持单个收藏的原有行为
+				const result = await batchUpdateFavorite(
+					selectedIds,
+					newFavoriteStatus,
+					false,
+				);
 
-			if (result.success) {
-				// 更新本地状态
-				for (const selectedId of selectedIds) {
-					const itemIndex = findIndex(state.list, { id: selectedId });
-					if (itemIndex !== -1) {
-						state.list[itemIndex] = {
-							...state.list[itemIndex],
-							favorite: newFavoriteStatus,
-							lastModified: Date.now(),
-						};
+				if (result.success) {
+					// 更新本地状态 - 只更新收藏状态，不更新时间戳和位置
+					for (const selectedId of selectedIds) {
+						const itemIndex = findIndex(state.list, { id: selectedId });
+						if (itemIndex !== -1) {
+							state.list[itemIndex] = {
+								...state.list[itemIndex],
+								favorite: newFavoriteStatus,
+							};
+						}
 					}
+
+					// 不调用刷新列表，避免跳转到顶部
+					// 直接操作本地状态已经足够保证状态同步
+
+					// 清除多选状态
+					clipboardStore.multiSelect.isMultiSelecting = false;
+					clipboardStore.multiSelect.selectedIds.clear();
+					clipboardStore.multiSelect.lastSelectedId = null;
+					clipboardStore.multiSelect.shiftSelectDirection = null;
+					clipboardStore.multiSelect.selectedOrder = [];
+
+					// 显示成功提示
+					message.success(`成功${action} ${result.updatedCount} 个项目`);
+				} else {
+					const errorMessage =
+						typeof result.error === "string"
+							? result.error
+							: result.error instanceof Error
+								? result.error.message
+								: "未知错误";
+					message.error(`批量${action}失败: ${errorMessage}`);
 				}
-
-				// 刷新列表，确保状态同步
-				if (forceRefreshList) {
-					forceRefreshList();
-				}
-
-				// 清除多选状态
-				clipboardStore.multiSelect.isMultiSelecting = false;
-				clipboardStore.multiSelect.selectedIds.clear();
-				clipboardStore.multiSelect.lastSelectedId = null;
-				clipboardStore.multiSelect.shiftSelectDirection = null;
-				clipboardStore.multiSelect.selectedOrder = [];
-
-				// 显示成功提示
-				message.success(`成功${action} ${result.updatedCount} 个项目`);
-			} else {
-				message.error(`批量${action}失败: ${result.error}`);
+			} catch (error) {
+				console.error("❌ 批量收藏失败:", error);
+				message.error("批量收藏操作失败");
 			}
-		} catch (error) {
-			console.error("❌ 批量收藏失败:", error);
-			message.error("批量收藏操作失败");
+		} finally {
+			// 清除批量操作进行中标志
+			clipboardStore.batchOperationInProgress = false;
 		}
 	};
 
@@ -520,16 +576,11 @@ const Item: FC<ItemProps> = (props) => {
 			const result = await deleteManager.deleteItem(id);
 
 			if (!result.success) {
-				message.error(`删除失败: ${result.errors?.join("; ") || "未知错误"}`);
+				message.error(`删除失败: ${result.errors?.join("; ") ?? "未知错误"}`);
 				return;
 			}
 
-			// 使用强制刷新函数，确保缓存和lastQueryParams都被正确重置
-			if (forceRefreshList) {
-				forceRefreshList();
-			}
-
-			// 从本地状态中移除
+			// 从本地状态中移除（直接操作本地状态，避免刷新导致跳转）
 			remove(state.list, { id });
 
 			// 显示成功提示
@@ -689,11 +740,17 @@ const Item: FC<ItemProps> = (props) => {
 				},
 				{
 					text: `批量删除选中的 ${selectedCount} 个项目`,
-					action: handleBatchDelete,
+					action: () => {
+						// 使用事件总线触发批量删除，与Header组件保持一致
+						state.$eventBus?.emit(LISTEN_KEY.CLIPBOARD_ITEM_BATCH_DELETE);
+					},
 				},
 				{
 					text: `批量收藏选中的 ${selectedCount} 个项目`,
-					action: handleBatchFavorite,
+					action: () => {
+						// 使用事件总线触发批量收藏，与Header组件保持一致
+						state.$eventBus?.emit(LISTEN_KEY.CLIPBOARD_ITEM_BATCH_FAVORITE);
+					},
 				},
 				{
 					text: "---", // 分隔符

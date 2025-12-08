@@ -27,6 +27,7 @@ export interface ItemDeleteInfo {
 	syncStatus: string;
 	type?: string;
 	value?: string;
+	isCloudData?: boolean; // 是否来自云端
 }
 
 /**
@@ -52,7 +53,7 @@ export class DeleteManager {
 		try {
 			const placeholders = itemIds.map(() => "?").join(",");
 			const items = (await executeSQL(
-				`SELECT id, syncStatus, type, value FROM history WHERE id IN (${placeholders})`,
+				`SELECT id, syncStatus, type, value, isCloudData FROM history WHERE id IN (${placeholders})`,
 				itemIds,
 			)) as any[];
 
@@ -61,6 +62,7 @@ export class DeleteManager {
 				syncStatus: item.syncStatus || "none",
 				type: item.type,
 				value: item.value,
+				isCloudData: !!item.isCloudData,
 			}));
 		} catch (error) {
 			console.error("获取项目删除信息失败:", error);
@@ -74,8 +76,9 @@ export class DeleteManager {
 	 * @returns 删除策略
 	 */
 	private determineDeleteStrategy(item: ItemDeleteInfo): DeleteStrategy {
-		// 已同步的项目使用软删除，未同步的项目使用硬删除
-		return item.syncStatus === "synced"
+		// 已同步的项目或来自云端的项目使用软删除，未同步且非云端的项目使用硬删除
+		// 这样确保曾经同步过的数据在删除时都会在云端标记为删除，避免云端数据残留
+		return item.syncStatus === "synced" || item.isCloudData
 			? DeleteStrategy.SOFT_DELETE
 			: DeleteStrategy.HARD_DELETE;
 	}

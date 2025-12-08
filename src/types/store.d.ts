@@ -171,4 +171,7 @@ export interface ClipboardStore {
 		items: HistoryTablePayload[];
 		isDragging: boolean;
 	};
+
+	// 批量操作进行中标志
+	batchOperationInProgress: boolean;
 }

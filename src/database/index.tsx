@@ -646,7 +646,7 @@ export const deleteSQL = async (_tableName: TableName, item: TablePayload) => {
 		const result = await deleteManager.deleteItem(id);
 
 		if (!result.success) {
-			throw new Error(result.errors?.join("; ") || "删除失败");
+			throw new Error(result.errors?.join("; ") ?? "删除失败");
 		}
 
 		// 只删除数据库记录和云端数据，保留本地文件系统中的原始文件
@@ -895,7 +895,7 @@ export const batchDeleteItems = async (ids: string[]) => {
 			return {
 				success: false,
 				deletedCount: result.deletedCount,
-				error: result.errors?.join("; ") || "删除失败",
+				error: result.errors?.join("; ") ?? "删除失败",
 			};
 		}
 
@@ -913,22 +913,27 @@ export const batchDeleteItems = async (ids: string[]) => {
  * 批量收藏/取消收藏剪贴板条目
  * @param ids 要操作的条目ID数组
  * @param favorite 是否收藏，true为收藏，false为取消收藏
+ * @param updateSyncStatus 是否更新同步状态，默认为true
  */
-export const batchUpdateFavorite = async (ids: string[], favorite: boolean) => {
+export const batchUpdateFavorite = async (
+	ids: string[],
+	favorite: boolean,
+	updateSyncStatus = true,
+) => {
 	if (!ids || ids.length === 0) return { success: true, updatedCount: 0 };
 
 	try {
 		const favoriteValue = favorite ? 1 : 0;
-		const currentTime = Date.now();
 
 		// 使用通用UPDATE函数进行批量更新
 		const placeholders = ids.map(() => "?").join(",");
 		const whereSQL = `WHERE id IN (${placeholders})`;
 
-		await executeSQL(
-			`UPDATE history SET favorite = ?, syncStatus = 'pending', lastModified = ? ${whereSQL}`,
-			[favoriteValue, currentTime, ...ids],
-		);
+		// 根据参数决定是否更新同步状态，但不更新时间戳
+		const syncStatusPart = updateSyncStatus ? ", syncStatus = 'pending'" : "";
+		const sql = `UPDATE history SET favorite = ?${syncStatusPart} ${whereSQL}`;
+
+		await executeSQL(sql, [favoriteValue, ...ids]);
 
 		// 验证更新是否成功
 		const verifyResult = await dbSelect("history", {
