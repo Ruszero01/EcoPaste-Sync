@@ -750,19 +750,40 @@ export const pasteClipboard = async (
 
 	const { type, value } = data;
 
-	if (plain) {
-		if (type === "files") {
-			const pasteValue = JSON.parse(value).join("\n");
+	// 设置内部复制标志，防止粘贴操作后触发重复处理
+	clipboardStore.internalCopy = {
+		isCopying: true,
+		itemId: data.id,
+	};
 
-			await writeText(pasteValue);
+	try {
+		if (plain) {
+			if (type === "files") {
+				const pasteValue = JSON.parse(value).join("\n");
+
+				await writeText(pasteValue);
+			} else {
+				await writeText(data.search);
+			}
 		} else {
-			await writeText(data.search);
+			await writeClipboard(data);
 		}
-	} else {
-		await writeClipboard(data);
-	}
 
-	return paste();
+		// 减少延迟确保剪贴板内容完全写入
+		await new Promise((resolve) => setTimeout(resolve, 30));
+
+		// 执行粘贴操作
+		await paste();
+
+		// 再减少一个短暂延迟，确保粘贴操作完成
+		await new Promise((resolve) => setTimeout(resolve, 20));
+	} finally {
+		// 清除内部复制标志
+		clipboardStore.internalCopy = {
+			isCopying: false,
+			itemId: null,
+		};
+	}
 };
 
 /**
@@ -802,8 +823,22 @@ export const smartPasteClipboard = async (
 ) => {
 	if (!data) return;
 
-	// 直接使用原有逻辑，同步阶段已确保所有文件都是本地可用的
-	return pasteClipboard(data, plain);
+	// 设置内部复制标志，防止粘贴操作后触发重复处理
+	clipboardStore.internalCopy = {
+		isCopying: true,
+		itemId: data.id,
+	};
+
+	try {
+		// 直接使用原有逻辑，同步阶段已确保所有文件都是本地可用的
+		return await pasteClipboard(data, plain);
+	} finally {
+		// 清除内部复制标志
+		clipboardStore.internalCopy = {
+			isCopying: false,
+			itemId: null,
+		};
+	}
 };
 
 /**
@@ -824,7 +859,7 @@ export const batchPasteClipboard = async (
 	};
 
 	try {
-		// 依次粘贴每个条目，完全使用单个条目粘贴的逻辑
+		// 依次粘贴每个条目，使用与拖拽粘贴相同的延迟逻辑
 		for (let i = 0; i < dataList.length; i++) {
 			const data = dataList[i];
 			if (!data) continue;
@@ -832,15 +867,30 @@ export const batchPasteClipboard = async (
 			// 使用与单个粘贴完全相同的逻辑
 			await pasteClipboard(data, plain);
 
-			// 添加短暂延迟，确保粘贴操作完成
-			await new Promise((resolve) => setTimeout(resolve, 50));
+			// 减少延迟，确保粘贴操作完成
+			await new Promise((resolve) => setTimeout(resolve, 20));
 
 			// 如果不是最后一个项目，执行换行粘贴
 			if (i < dataList.length - 1) {
-				await writeText("\n");
-				await paste();
-				// 添加短暂延迟，确保换行操作完成
-				await new Promise((resolve) => setTimeout(resolve, 50));
+				// 设置内部复制标志，避免换行操作触发剪贴板更新
+				clipboardStore.internalCopy = {
+					isCopying: true,
+					itemId: "batch-newline",
+				};
+
+				try {
+					await writeText("\n");
+					await new Promise((resolve) => setTimeout(resolve, 20));
+					await paste();
+					// 减少延迟，确保换行操作完成
+					await new Promise((resolve) => setTimeout(resolve, 20));
+				} finally {
+					// 恢复批量粘贴标志
+					clipboardStore.internalCopy = {
+						isCopying: true,
+						itemId: "batch-paste",
+					};
+				}
 			}
 		}
 	} finally {

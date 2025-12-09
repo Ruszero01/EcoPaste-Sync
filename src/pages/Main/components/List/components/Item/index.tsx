@@ -284,7 +284,8 @@ const Item: FC<ItemProps> = (props) => {
 				if (result.success) {
 					// 清除多选状态
 					clipboardStore.multiSelect.isMultiSelecting = false;
-					clipboardStore.multiSelect.selectedIds.clear();
+					// 重新分配一个新的 Set 来确保响应式更新
+					clipboardStore.multiSelect.selectedIds = new Set();
 					clipboardStore.multiSelect.lastSelectedId = null;
 					clipboardStore.multiSelect.shiftSelectDirection = null;
 					clipboardStore.multiSelect.selectedOrder = [];
@@ -416,7 +417,8 @@ const Item: FC<ItemProps> = (props) => {
 
 					// 清除多选状态
 					clipboardStore.multiSelect.isMultiSelecting = false;
-					clipboardStore.multiSelect.selectedIds.clear();
+					// 重新分配一个新的 Set 来确保响应式更新
+					clipboardStore.multiSelect.selectedIds = new Set();
 					clipboardStore.multiSelect.lastSelectedId = null;
 					clipboardStore.multiSelect.shiftSelectDirection = null;
 					clipboardStore.multiSelect.selectedOrder = [];
@@ -664,7 +666,8 @@ const Item: FC<ItemProps> = (props) => {
 
 				// 清除多选状态
 				clipboardStore.multiSelect.isMultiSelecting = false;
-				clipboardStore.multiSelect.selectedIds.clear();
+				// 重新分配一个新的 Set 来确保响应式更新
+				clipboardStore.multiSelect.selectedIds = new Set();
 				clipboardStore.multiSelect.lastSelectedId = null;
 				clipboardStore.multiSelect.shiftSelectDirection = null;
 				clipboardStore.multiSelect.selectedOrder = [];
@@ -760,7 +763,8 @@ const Item: FC<ItemProps> = (props) => {
 					text: "取消多选",
 					action: () => {
 						clipboardStore.multiSelect.isMultiSelecting = false;
-						clipboardStore.multiSelect.selectedIds.clear();
+						// 重新分配一个新的 Set 来确保响应式更新
+						clipboardStore.multiSelect.selectedIds = new Set();
 						clipboardStore.multiSelect.lastSelectedId = null;
 						clipboardStore.multiSelect.shiftSelectDirection = null;
 						clipboardStore.multiSelect.selectedOrder = [];
@@ -871,7 +875,8 @@ const Item: FC<ItemProps> = (props) => {
 				text: "全选所有可见项目",
 				action: () => {
 					clipboardStore.multiSelect.isMultiSelecting = true;
-					clipboardStore.multiSelect.selectedIds.clear();
+					// 重新分配一个新的 Set 来确保响应式更新
+					clipboardStore.multiSelect.selectedIds = new Set();
 					clipboardStore.multiSelect.selectedOrder = [];
 					for (const item of state.list) {
 						clipboardStore.multiSelect.selectedIds.add(item.id);
@@ -886,7 +891,8 @@ const Item: FC<ItemProps> = (props) => {
 				text: "选择所有可见项目",
 				action: () => {
 					clipboardStore.multiSelect.isMultiSelecting = true;
-					clipboardStore.multiSelect.selectedIds.clear();
+					// 重新分配一个新的 Set 来确保响应式更新
+					clipboardStore.multiSelect.selectedIds = new Set();
 					clipboardStore.multiSelect.selectedOrder = [];
 					for (const item of state.list) {
 						clipboardStore.multiSelect.selectedIds.add(item.id);
@@ -914,6 +920,18 @@ const Item: FC<ItemProps> = (props) => {
 	const handleMultiSelect = (event: MouseEvent) => {
 		const { multiSelect } = clipboardStore;
 
+		// 如果是双击事件，不处理多选逻辑，直接返回
+		// 但要确保当前项目被选中，以便双击粘贴能正常工作
+		if (event.detail === 2) {
+			// 如果当前项目没有被选中，确保它被选中
+			if (!multiSelect.selectedIds.has(id)) {
+				clipboardStore.multiSelect.selectedIds.add(id);
+				clipboardStore.multiSelect.selectedOrder.push(id);
+				clipboardStore.multiSelect.lastSelectedId = id;
+			}
+			return;
+		}
+
 		// 如果是shift+点击，进行连续多选操作
 		if (event.shiftKey) {
 			event.stopPropagation();
@@ -921,7 +939,8 @@ const Item: FC<ItemProps> = (props) => {
 			// 如果当前没有多选状态，开始多选
 			if (!multiSelect.isMultiSelecting) {
 				clipboardStore.multiSelect.isMultiSelecting = true;
-				clipboardStore.multiSelect.selectedIds.clear();
+				// 重新分配一个新的 Set 来确保响应式更新
+				clipboardStore.multiSelect.selectedIds = new Set();
 				clipboardStore.multiSelect.selectedOrder = [];
 			}
 
@@ -941,7 +960,8 @@ const Item: FC<ItemProps> = (props) => {
 					clipboardStore.multiSelect.shiftSelectDirection = direction;
 
 					// 清空之前的选择和顺序
-					clipboardStore.multiSelect.selectedIds.clear();
+					// 重新分配一个新的 Set 来确保响应式更新
+					clipboardStore.multiSelect.selectedIds = new Set();
 					clipboardStore.multiSelect.selectedOrder = [];
 
 					// 根据选择方向按顺序添加项目
@@ -964,7 +984,8 @@ const Item: FC<ItemProps> = (props) => {
 					}
 				} else {
 					// 如果找不到上次选中的项目，只选中当前项目
-					clipboardStore.multiSelect.selectedIds.clear();
+					// 重新分配一个新的 Set 来确保响应式更新
+					clipboardStore.multiSelect.selectedIds = new Set();
 					clipboardStore.multiSelect.selectedOrder = [];
 					clipboardStore.multiSelect.selectedIds.add(id);
 					clipboardStore.multiSelect.selectedOrder.push(id);
@@ -986,7 +1007,8 @@ const Item: FC<ItemProps> = (props) => {
 					clipboardStore.multiSelect.shiftSelectDirection = direction;
 
 					// 清空之前的选择和顺序
-					clipboardStore.multiSelect.selectedIds.clear();
+					// 重新分配一个新的 Set 来确保响应式更新
+					clipboardStore.multiSelect.selectedIds = new Set();
 					clipboardStore.multiSelect.selectedOrder = [];
 
 					// 根据选择方向按顺序添加项目
@@ -1009,7 +1031,8 @@ const Item: FC<ItemProps> = (props) => {
 					}
 				} else {
 					// 没有聚焦项目，只选中当前项目
-					clipboardStore.multiSelect.selectedIds.clear();
+					// 重新分配一个新的 Set 来确保响应式更新
+					clipboardStore.multiSelect.selectedIds = new Set();
 					clipboardStore.multiSelect.selectedOrder = [];
 					clipboardStore.multiSelect.selectedIds.add(id);
 					clipboardStore.multiSelect.selectedOrder.push(id);
@@ -1080,7 +1103,8 @@ const Item: FC<ItemProps> = (props) => {
 			!clipboardStore.multiSelect.selectedIds.has(id)
 		) {
 			clipboardStore.multiSelect.isMultiSelecting = false;
-			clipboardStore.multiSelect.selectedIds.clear();
+			// 重新分配一个新的 Set 来确保响应式更新
+			clipboardStore.multiSelect.selectedIds = new Set();
 			clipboardStore.multiSelect.lastSelectedId = null;
 			clipboardStore.multiSelect.shiftSelectDirection = null;
 			clipboardStore.multiSelect.selectedOrder = [];
@@ -1088,7 +1112,13 @@ const Item: FC<ItemProps> = (props) => {
 		}
 
 		// 对于正常点击（非shift+点击或ctrl+点击），设置lastSelectedId以便后续shift+点击使用
-		if (!event.shiftKey && !event.ctrlKey && !event.metaKey) {
+		// 但只有当项目当前没有被选中时才设置（避免影响已选中项目的状态）
+		if (
+			!event.shiftKey &&
+			!event.ctrlKey &&
+			!event.metaKey &&
+			!multiSelect.selectedIds.has(id)
+		) {
 			clipboardStore.multiSelect.lastSelectedId = id;
 			clipboardStore.multiSelect.shiftSelectDirection = null;
 			clipboardStore.multiSelect.selectedOrder = [];
@@ -1097,11 +1127,15 @@ const Item: FC<ItemProps> = (props) => {
 
 	// 点击事件
 	const handleClick = (type: typeof content.autoPaste, event: MouseEvent) => {
+		// 先处理多选逻辑
 		handleMultiSelect(event);
 
 		state.activeId = id;
 
-		if (content.autoPaste !== type) return;
+		// 检查是否匹配自动粘贴设置
+		if (content.autoPaste !== type) {
+			return;
+		}
 
 		// 检查是否在多选模式且有选中的项目
 		const isMultiSelectMode =
@@ -1110,6 +1144,7 @@ const Item: FC<ItemProps> = (props) => {
 
 		// 如果是多选模式且当前项目被选中，执行批量粘贴
 		if (isMultiSelectMode && clipboardStore.multiSelect.selectedIds.has(id)) {
+			// 执行批量粘贴
 			pasteValue(); // pasteValue函数内部已经包含了批量粘贴逻辑
 		} else {
 			// 单个粘贴逻辑
@@ -1432,7 +1467,8 @@ const Item: FC<ItemProps> = (props) => {
 
 				// 清除多选状态
 				clipboardStore.multiSelect.isMultiSelecting = false;
-				clipboardStore.multiSelect.selectedIds.clear();
+				// 重新分配一个新的 Set 来确保响应式更新
+				clipboardStore.multiSelect.selectedIds = new Set();
 				clipboardStore.multiSelect.lastSelectedId = null;
 				clipboardStore.multiSelect.shiftSelectDirection = null;
 				clipboardStore.multiSelect.selectedOrder = [];
@@ -1515,7 +1551,8 @@ const Item: FC<ItemProps> = (props) => {
 
 			// 清除多选状态
 			clipboardStore.multiSelect.isMultiSelecting = false;
-			clipboardStore.multiSelect.selectedIds.clear();
+			// 重新分配一个新的 Set 来确保响应式更新
+			clipboardStore.multiSelect.selectedIds = new Set();
 			clipboardStore.multiSelect.lastSelectedId = null;
 			clipboardStore.multiSelect.shiftSelectDirection = null;
 			clipboardStore.multiSelect.selectedOrder = [];
@@ -1562,8 +1599,13 @@ const Item: FC<ItemProps> = (props) => {
 				className,
 				"group antd-input! b-color-2 absolute inset-0 mx-0 h-full rounded-md p-1.5",
 				{
-					"antd-input-focus!": state.activeId === id,
-					"border-2 border-blue-500!": isSelected,
+					// 只在非多选状态下显示单选聚焦框
+					"antd-input-focus!":
+						state.activeId === id &&
+						!clipboardStore.multiSelect.isMultiSelecting,
+					// 多选状态下显示多选框，使用统一的样式系统
+					"border-2 border-primary! shadow-[0_0_0_2px_rgba(5,145,255,0.1)] dark:shadow-[0_0_0_2px_rgba(0,60,180,0.15)]":
+						isSelected,
 				},
 			)}
 			onContextMenu={handleContextMenu}
@@ -1623,7 +1665,11 @@ const Item: FC<ItemProps> = (props) => {
 					className={clsx(
 						"pointer-events-none absolute right-1 bottom-0 text-xs opacity-0 transition group-hover:opacity-100",
 						{
-							"opacity-100": state.activeId === id,
+							// 在多选状态下，如果被选中则显示；否则在单选聚焦时显示
+							"opacity-100":
+								(clipboardStore.multiSelect.isMultiSelecting && isSelected) ||
+								(!clipboardStore.multiSelect.isMultiSelecting &&
+									state.activeId === id),
 						},
 					)}
 					style={{ fontSize: "10px" }}

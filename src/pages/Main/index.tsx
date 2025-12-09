@@ -375,22 +375,40 @@ const Main = () => {
 		// 检查是否有剪贴板条目
 		if (state.list.length === 0) return;
 
-		// 进入多选模式
-		clipboardStore.multiSelect.isMultiSelecting = true;
-		clipboardStore.multiSelect.selectedIds.clear();
+		// 检查是否已经是全选状态
+		const isAllSelected =
+			clipboardStore.multiSelect.isMultiSelecting &&
+			clipboardStore.multiSelect.selectedIds.size === state.list.length;
 
-		// 选择所有条目
-		for (const item of state.list) {
-			clipboardStore.multiSelect.selectedIds.add(item.id);
-		}
+		if (isAllSelected) {
+			// 如果已经全选，则取消全选
+			clipboardStore.multiSelect.isMultiSelecting = false;
+			// 重新分配一个新的 Set 来确保响应式更新
+			clipboardStore.multiSelect.selectedIds = new Set();
+			clipboardStore.multiSelect.lastSelectedId = null;
+			clipboardStore.multiSelect.shiftSelectDirection = null;
+			clipboardStore.multiSelect.selectedOrder = [];
 
-		// 设置最后一个选中的ID
-		clipboardStore.multiSelect.lastSelectedId =
-			state.list[state.list.length - 1]?.id || null;
+			// 保持当前聚焦项不变
+		} else {
+			// 进入多选模式
+			clipboardStore.multiSelect.isMultiSelecting = true;
+			// 重新分配一个新的 Set 来确保响应式更新
+			clipboardStore.multiSelect.selectedIds = new Set();
 
-		// 聚焦到第一个条目
-		if (state.list.length > 0) {
-			state.activeId = state.list[0].id;
+			// 选择所有条目
+			for (const item of state.list) {
+				clipboardStore.multiSelect.selectedIds.add(item.id);
+			}
+
+			// 设置最后一个选中的ID
+			clipboardStore.multiSelect.lastSelectedId =
+				state.list[state.list.length - 1]?.id || null;
+
+			// 聚焦到第一个条目
+			if (state.list.length > 0) {
+				state.activeId = state.list[0].id;
+			}
 		}
 	});
 

@@ -48,12 +48,19 @@ unsafe extern "system" fn event_hook_callback(
     if event == EVENT_SYSTEM_FOREGROUND {
         let window_title = get_window_title(hwnd);
 
-        if window_title == MAIN_WINDOW_TITLE {
+        // 忽略 EcoPaste 自己的窗口
+        if window_title == MAIN_WINDOW_TITLE || window_title.contains("EcoPaste") {
+            return;
+        }
+
+        // 检查窗口是否有效（不是桌面等系统窗口）
+        if hwnd.is_null() {
             return;
         }
 
         let mut previous_window = PREVIOUS_WINDOW.lock().unwrap();
         let _ = previous_window.insert(hwnd as isize);
+        log::debug!("记录上一个窗口: {}", window_title);
     }
 }
 
@@ -88,14 +95,25 @@ fn focus_previous_window() {
     unsafe {
         let hwnd = match get_previous_window() {
             Some(hwnd) => hwnd as HWND,
-            None => return,
+            None => {
+                log::warn!("没有记录的上一个窗口");
+                return;
+            }
         };
 
         if hwnd.is_null() {
+            log::warn!("上一个窗口句柄为空");
             return;
         }
 
-        SetForegroundWindow(hwnd);
+        // 尝试聚焦到上一个窗口
+        let result = SetForegroundWindow(hwnd);
+        if result == 0 {
+            log::warn!("无法聚焦到上一个窗口");
+        } else {
+            let window_title = get_window_title(hwnd);
+            log::debug!("成功聚焦到上一个窗口: {}", window_title);
+        }
     }
 }
 
@@ -104,12 +122,23 @@ fn focus_previous_window() {
 pub async fn paste() {
     let mut enigo = Enigo::new(&Settings::default()).unwrap();
 
+    // 先尝试聚焦到上一个窗口
     focus_previous_window();
+    
+    // 减少等待时间，确保窗口切换完成
+    wait(50);
 
-    wait(100);
+    // 再次检查并确保焦点在正确的窗口
+    if get_previous_window().is_none() {
+        // 如果没有记录的上一个窗口，尝试使用当前活动窗口
+        log::warn!("没有记录的上一个窗口，尝试使用当前活动窗口");
+    }
 
-    enigo.key(Key::Shift, Press).unwrap();
-    // insert 的微软虚拟键码：https://learn.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes
-    enigo.key(Key::Other(0x2D), Click).unwrap();
-    enigo.key(Key::Shift, Release).unwrap();
+    // 执行粘贴操作 - 使用 Ctrl+V 而不是 Shift+Insert，因为更通用
+    enigo.key(Key::Control, Press).unwrap();
+    enigo.key(Key::Unicode('v'), Click).unwrap();
+    enigo.key(Key::Control, Release).unwrap();
+    
+    // 减少等待粘贴操作完成的时间
+    wait(20);
 }
