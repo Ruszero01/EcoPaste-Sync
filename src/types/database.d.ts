@@ -24,6 +24,8 @@ export interface HistoryTablePayload extends ClipboardPayload {
 	// 来源应用相关字段
 	sourceAppName?: string;
 	sourceAppIcon?: string;
+	// 位置字段，用于手动排序模式下保持项目位置
+	position?: number;
 }
 
 export type TablePayload = Partial<HistoryTablePayload>;

@@ -339,24 +339,26 @@ const Main = () => {
 			if (itemIndex !== -1) {
 				const createTime = formatDate();
 
-				// 快速粘贴条目，准备移动到顶部
+				// 获取当前的自动排序设置
+				const currentAutoSort = clipboardStore.content.autoSort;
 
-				// 从原位置移除
-				const [targetItem] = state.list.splice(itemIndex, 1);
-
-				// 移动到顶部并更新时间
-				state.list.unshift({ ...targetItem, createTime });
+				if (currentAutoSort) {
+					// 自动排序模式：更新时间，让系统重新排序
+					await updateSQL("history", { id: data.id, createTime });
+					// 刷新列表以获取新的排序
+					await getList();
+				} else {
+					// 手动排序模式：只更新时间，不改变位置
+					await updateSQL("history", { id: data.id, createTime });
+					// 更新本地列表中的时间，但保持位置不变
+					state.list[itemIndex] = { ...state.list[itemIndex], createTime };
+				}
 
 				// 自动聚焦到快速粘贴的条目
 				state.activeId = data.id;
 
-				// 更新数据库
-				await updateSQL("history", { id: data.id, createTime });
-
 				// 触发滚动事件（发送到 List 组件）
 				emit(LISTEN_KEY.ACTIVATE_BACK_TOP, "main");
-
-				// 快速粘贴条目已移动到顶部并更新时间
 			}
 		},
 		[state.quickPasteKeys],
@@ -460,8 +462,10 @@ const Main = () => {
 		}
 
 		// 根据自动排序设置决定排序方式
-		// 手动排序时也保持最新在前，只是不重新排列现有条目
-		const orderBy = "ORDER BY createTime DESC";
+		// 自动排序：按时间排序；手动排序：按位置倒序（新的在上面）
+		const orderBy = currentAutoSort
+			? "ORDER BY createTime DESC"
+			: "ORDER BY position DESC, createTime DESC";
 
 		let rawData: HistoryTablePayload[];
 
@@ -489,6 +493,8 @@ const Main = () => {
 				deleted: Boolean(item.deleted),
 				lazyDownload: Boolean(item.lazyDownload),
 				isCloudData: Boolean(item.isCloudData),
+				isCode: Boolean(item.isCode),
+				position: Number(item.position || 0),
 				syncStatus: item.syncStatus || "none",
 			})) as HistoryTablePayload[];
 		} else {

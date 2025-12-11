@@ -92,6 +92,46 @@ export const initDatabase = async () => {
 	} catch (_error) {
 		// 字段已存在，忽略错误
 	}
+
+	// 添加位置字段，用于手动排序模式下保持项目位置
+	try {
+		await executeSQL(
+			"ALTER TABLE history ADD COLUMN position INTEGER DEFAULT 0",
+		);
+	} catch (_error) {
+		// 字段已存在，忽略错误
+	}
+
+	// 为现有记录设置position值（如果position为NULL或0）
+	try {
+		// 获取没有position或position为0的记录数
+		const recordsWithoutPosition = (await executeSQL(
+			"SELECT COUNT(*) as count FROM history WHERE (position IS NULL OR position = 0) AND deleted = 0",
+		)) as any[];
+
+		if (
+			recordsWithoutPosition.length > 0 &&
+			recordsWithoutPosition[0].count > 0
+		) {
+			// 为现有记录按createTime倒序设置position值（新的在上面）
+			const existingRecords = (await executeSQL(
+				"SELECT id FROM history WHERE deleted = 0 ORDER BY createTime DESC",
+			)) as any[];
+
+			// 批量更新position值，最新的记录获得最大的position值
+			for (let i = 0; i < existingRecords.length; i++) {
+				const record = existingRecords[i];
+				await executeSQL("UPDATE history SET position = ? WHERE id = ?", [
+					i + 1,
+					record.id,
+				]);
+			}
+
+			// 为现有记录设置了position值
+		}
+	} catch (error) {
+		console.warn("⚠️ 为现有记录设置position值时出错:", error);
+	}
 };
 
 /**
@@ -192,6 +232,8 @@ export const dbSelect = async <T = any>(
 			lazyDownload: Boolean(item.lazyDownload),
 			isCloudData: Boolean(item.isCloudData),
 			isCode: Boolean(item.isCode),
+			// 确保position字段为数字类型
+			position: Number(item.position || 0),
 			// 确保同步状态的有效性，只允许有效的状态值
 			syncStatus:
 				item.syncStatus === "synced" ||
@@ -287,8 +329,9 @@ export const insertOrUpdate = async (
 				sourceAppIcon: existingRecords[0].sourceAppIcon,
 				// 更新其他字段
 				...payload,
-				// 确保不覆盖ID
+				// 确保不覆盖ID和position
 				id: existingRecords[0].id,
+				position: existingRecords[0].position, // 保持原始位置不变
 			};
 
 			await dbUpdate(tableName, { id }, updateData);
@@ -363,8 +406,9 @@ export const insertOrUpdate = async (
 				sourceAppIcon: existing.sourceAppIcon,
 				// 更新其他字段
 				...payload,
-				// 确保不覆盖ID
+				// 确保不覆盖ID和position
 				id: existing.id,
+				position: existing.position, // 保持原始位置不变
 			};
 
 			await dbUpdate(tableName, { id: existing.id }, updateData);
@@ -396,8 +440,9 @@ export const insertOrUpdate = async (
 				sourceAppIcon: existing.sourceAppIcon,
 				// 更新其他字段
 				...payload,
-				// 确保不覆盖ID
+				// 确保不覆盖ID和position
 				id: existing.id,
+				position: existing.position, // 保持原始位置不变
 			};
 
 			await dbUpdate(tableName, { id: existing.id }, updateData);
@@ -411,7 +456,22 @@ export const insertOrUpdate = async (
 	}
 
 	// 没有找到重复记录，插入新记录
-	const { keys, values } = handlePayload(payload);
+	// 获取当前最大position值，新记录的position为最大值+1
+	const maxPositionResult = await executeSQL(
+		"SELECT MAX(position) as maxPos FROM history WHERE deleted = 0",
+	);
+	const maxPosition =
+		Array.isArray(maxPositionResult) && maxPositionResult.length > 0
+			? (maxPositionResult[0] as any).maxPos || 0
+			: 0;
+
+	// 为新记录设置position
+	const payloadWithPosition = {
+		...payload,
+		position: maxPosition + 1,
+	};
+
+	const { keys, values } = handlePayload(payloadWithPosition);
 	const refs = map(values, () => "?");
 
 	await executeSQL(
@@ -491,6 +551,8 @@ export const selectSQL = async <List,>(
 		lazyDownload: Boolean(item.lazyDownload),
 		isCloudData: Boolean(item.isCloudData),
 		isCode: Boolean(item.isCode),
+		// 确保position字段为数字类型
+		position: Number(item.position || 0),
 		// 确保同步状态的有效性，只允许有效的状态值
 		syncStatus:
 			item.syncStatus === "synced" ||

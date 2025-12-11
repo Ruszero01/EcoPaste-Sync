@@ -164,11 +164,14 @@ const Item: FC<ItemProps> = (props) => {
 				`复制失败: ${error instanceof Error ? error.message : "未知错误"}`,
 			);
 		} finally {
-			// 清除内部复制标志
-			clipboardStore.internalCopy = {
-				isCopying: false,
-				itemId: null,
-			};
+			// 延迟清除内部复制标志，确保剪贴板更新事件处理完成
+			// 这样可以避免在剪贴板更新处理过程中尝试获取来源应用信息
+			setTimeout(() => {
+				clipboardStore.internalCopy = {
+					isCopying: false,
+					itemId: null,
+				};
+			}, 200); // 200ms延迟，确保剪贴板更新事件处理完成
 		}
 
 		if (hasError) {
@@ -687,11 +690,17 @@ const Item: FC<ItemProps> = (props) => {
 			if (index !== -1) {
 				const createTime = formatDate();
 
-				// 从原位置移除
-				const [targetItem] = state.list.splice(index, 1);
+				// 获取当前的自动排序设置
+				const currentAutoSort = clipboardStore.content.autoSort;
 
-				// 移动到顶部并更新时间
-				state.list.unshift({ ...targetItem, createTime });
+				if (currentAutoSort) {
+					// 自动排序开启：移动到顶部
+					const [targetItem] = state.list.splice(index, 1);
+					state.list.unshift({ ...targetItem, createTime });
+				} else {
+					// 自动排序关闭：保持原位置，只更新时间
+					state.list[index] = { ...state.list[index], createTime };
+				}
 
 				// 更新数据库
 				await updateSQL("history", { id, createTime });
