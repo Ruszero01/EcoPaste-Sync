@@ -104,6 +104,75 @@ const Item: FC<ItemProps> = (props) => {
 		return val; // 返回原始值
 	};
 
+	// 公共函数：清除多选状态
+	const clearMultiSelectState = () => {
+		clipboardStore.multiSelect.isMultiSelecting = false;
+		// 重新分配一个新的 Set 来确保响应式更新
+		clipboardStore.multiSelect.selectedIds = new Set();
+		clipboardStore.multiSelect.lastSelectedId = null;
+		clipboardStore.multiSelect.shiftSelectDirection = null;
+		clipboardStore.multiSelect.selectedOrder = [];
+	};
+
+	// 公共函数：更新项目位置和时间
+	const updateItemsPositionAndTime = (
+		items: HistoryTablePayload[],
+		autoSort?: boolean,
+	) => {
+		const currentAutoSort = autoSort ?? clipboardStore.content.autoSort;
+		const createTime = formatDate();
+		const updatedItems = items.map((item) => ({
+			...item,
+			createTime,
+		}));
+
+		if (currentAutoSort) {
+			// 自动排序开启：移动到顶部
+			// 从原位置移除所有项目
+			for (const item of items) {
+				const index = findIndex(state.list, { id: item.id });
+				if (index !== -1) {
+					state.list.splice(index, 1);
+				}
+			}
+
+			// 将更新后的项目添加到顶部（保持原有顺序）
+			for (let i = updatedItems.length - 1; i >= 0; i--) {
+				state.list.unshift(updatedItems[i]);
+			}
+		} else {
+			// 自动排序关闭：保持原位置，只更新时间
+			for (const item of items) {
+				const index = findIndex(state.list, { id: item.id });
+				if (index !== -1) {
+					state.list[index] = { ...state.list[index], createTime };
+				}
+			}
+		}
+
+		return { updatedItems, createTime };
+	};
+
+	// 公共函数：批量更新数据库
+	const batchUpdateDatabase = async (
+		items: HistoryTablePayload[],
+		updateData: Partial<HistoryTablePayload>,
+	) => {
+		for (const item of items) {
+			await updateSQL("history", { id: item.id, ...updateData });
+		}
+	};
+
+	// 公共函数：设置操作后的激活项
+	const setActiveItemAfterOperation = (
+		items: HistoryTablePayload[],
+		preserveOrder = true,
+	) => {
+		if (items.length > 0) {
+			state.activeId = preserveOrder ? items[0].id : items[items.length - 1].id;
+		}
+	};
+
 	state.$eventBus?.useSubscription((key) => {
 		// 处理批量操作：如果是批量操作，不检查id匹配
 		const isBatchOperation =
@@ -287,12 +356,7 @@ const Item: FC<ItemProps> = (props) => {
 
 				if (result.success) {
 					// 清除多选状态
-					clipboardStore.multiSelect.isMultiSelecting = false;
-					// 重新分配一个新的 Set 来确保响应式更新
-					clipboardStore.multiSelect.selectedIds = new Set();
-					clipboardStore.multiSelect.lastSelectedId = null;
-					clipboardStore.multiSelect.shiftSelectDirection = null;
-					clipboardStore.multiSelect.selectedOrder = [];
+					clearMultiSelectState();
 
 					// 使用强制刷新函数，确保缓存和lastQueryParams都被正确重置
 					// 先保存当前的激活项状态
@@ -416,16 +480,8 @@ const Item: FC<ItemProps> = (props) => {
 						}
 					}
 
-					// 不调用刷新列表，避免跳转到顶部
-					// 直接操作本地状态已经足够保证状态同步
-
 					// 清除多选状态
-					clipboardStore.multiSelect.isMultiSelecting = false;
-					// 重新分配一个新的 Set 来确保响应式更新
-					clipboardStore.multiSelect.selectedIds = new Set();
-					clipboardStore.multiSelect.lastSelectedId = null;
-					clipboardStore.multiSelect.shiftSelectDirection = null;
-					clipboardStore.multiSelect.selectedOrder = [];
+					clearMultiSelectState();
 
 					// 显示成功提示
 					message.success(`成功${action} ${result.updatedCount} 个项目`);
@@ -629,57 +685,18 @@ const Item: FC<ItemProps> = (props) => {
 
 				await batchPasteClipboard(sortedSelectedItems);
 
-				// 获取当前的自动排序设置
-				const currentAutoSort = clipboardStore.content.autoSort;
-
-				// 更新所有选中项目的时间
-				const createTime = formatDate();
-				const updatedItems = sortedSelectedItems.map((item) => ({
-					...item,
-					createTime,
-				}));
-
-				if (currentAutoSort) {
-					// 自动排序开启：移动到顶部
-					// 从原位置移除所有选中项目
-					for (const selectedItem of sortedSelectedItems) {
-						const index = findIndex(state.list, { id: selectedItem.id });
-						if (index !== -1) {
-							state.list.splice(index, 1);
-						}
-					}
-
-					// 将更新后的项目添加到顶部（保持原有顺序）
-					for (let i = updatedItems.length - 1; i >= 0; i--) {
-						state.list.unshift(updatedItems[i]);
-					}
-				} else {
-					// 自动排序关闭：保持原位置，只更新时间
-					for (const selectedItem of sortedSelectedItems) {
-						const index = findIndex(state.list, { id: selectedItem.id });
-						if (index !== -1) {
-							state.list[index] = { ...state.list[index], createTime };
-						}
-					}
-				}
+				// 更新项目位置和时间
+				const { updatedItems, createTime } =
+					updateItemsPositionAndTime(sortedSelectedItems);
 
 				// 批量更新数据库
-				for (const selectedItem of sortedSelectedItems) {
-					await updateSQL("history", { id: selectedItem.id, createTime });
-				}
+				await batchUpdateDatabase(sortedSelectedItems, { createTime });
 
 				// 清除多选状态
-				clipboardStore.multiSelect.isMultiSelecting = false;
-				// 重新分配一个新的 Set 来确保响应式更新
-				clipboardStore.multiSelect.selectedIds = new Set();
-				clipboardStore.multiSelect.lastSelectedId = null;
-				clipboardStore.multiSelect.shiftSelectDirection = null;
-				clipboardStore.multiSelect.selectedOrder = [];
+				clearMultiSelectState();
 
 				// 设置激活项为第一个粘贴的项目
-				if (updatedItems.length > 0) {
-					state.activeId = updatedItems[0].id;
-				}
+				setActiveItemAfterOperation(updatedItems);
 			}
 		} else {
 			// 单个粘贴逻辑
@@ -764,12 +781,7 @@ const Item: FC<ItemProps> = (props) => {
 				{
 					text: "取消多选",
 					action: () => {
-						clipboardStore.multiSelect.isMultiSelecting = false;
-						// 重新分配一个新的 Set 来确保响应式更新
-						clipboardStore.multiSelect.selectedIds = new Set();
-						clipboardStore.multiSelect.lastSelectedId = null;
-						clipboardStore.multiSelect.shiftSelectDirection = null;
-						clipboardStore.multiSelect.selectedOrder = [];
+						clearMultiSelectState();
 					},
 				},
 			];
@@ -1074,10 +1086,7 @@ const Item: FC<ItemProps> = (props) => {
 
 				// 如果没有选中的项目了，退出多选模式
 				if (multiSelect.selectedIds.size === 0) {
-					clipboardStore.multiSelect.isMultiSelecting = false;
-					clipboardStore.multiSelect.lastSelectedId = null;
-					clipboardStore.multiSelect.shiftSelectDirection = null;
-					clipboardStore.multiSelect.selectedOrder = [];
+					clearMultiSelectState();
 				} else {
 					// 更新lastSelectedId为最后一个选中的项目
 					const lastSelected =
@@ -1104,12 +1113,7 @@ const Item: FC<ItemProps> = (props) => {
 			multiSelect.isMultiSelecting &&
 			!clipboardStore.multiSelect.selectedIds.has(id)
 		) {
-			clipboardStore.multiSelect.isMultiSelecting = false;
-			// 重新分配一个新的 Set 来确保响应式更新
-			clipboardStore.multiSelect.selectedIds = new Set();
-			clipboardStore.multiSelect.lastSelectedId = null;
-			clipboardStore.multiSelect.shiftSelectDirection = null;
-			clipboardStore.multiSelect.selectedOrder = [];
+			clearMultiSelectState();
 			// 不return，继续处理正常点击逻辑
 		}
 
@@ -1352,59 +1356,19 @@ const Item: FC<ItemProps> = (props) => {
 			if (firstItem && firstItem.group === "files") {
 				// 文件类型拖拽完成后，只需要更新状态和清除多选
 
-				// 获取当前的自动排序设置
-				const currentAutoSort = clipboardStore.content.autoSort;
-
-				// 更新所有项目的时间
-				const createTime = formatDate();
-				const updatedItems = batchDragInfo.items.map(
-					(item: HistoryTablePayload) => ({
-						...item,
-						createTime,
-					}),
+				// 更新项目位置和时间
+				const { updatedItems, createTime } = updateItemsPositionAndTime(
+					batchDragInfo.items,
 				);
 
-				if (currentAutoSort) {
-					// 自动排序开启：移动到顶部
-					// 从原位置移除所有选中项目
-					for (const selectedItem of batchDragInfo.items) {
-						const index = findIndex(state.list, { id: selectedItem.id });
-						if (index !== -1) {
-							state.list.splice(index, 1);
-						}
-					}
-
-					// 将更新后的项目添加到顶部（保持原有顺序）
-					for (let i = updatedItems.length - 1; i >= 0; i--) {
-						state.list.unshift(updatedItems[i]);
-					}
-				} else {
-					// 自动排序关闭：保持原位置，只更新时间
-					for (const selectedItem of batchDragInfo.items) {
-						const index = findIndex(state.list, { id: selectedItem.id });
-						if (index !== -1) {
-							state.list[index] = { ...state.list[index], createTime };
-						}
-					}
-				}
-
 				// 批量更新数据库
-				for (const selectedItem of batchDragInfo.items) {
-					await updateSQL("history", { id: selectedItem.id, createTime });
-				}
+				await batchUpdateDatabase(batchDragInfo.items, { createTime });
 
 				// 清除多选状态
-				clipboardStore.multiSelect.isMultiSelecting = false;
-				// 重新分配一个新的 Set 来确保响应式更新
-				clipboardStore.multiSelect.selectedIds = new Set();
-				clipboardStore.multiSelect.lastSelectedId = null;
-				clipboardStore.multiSelect.shiftSelectDirection = null;
-				clipboardStore.multiSelect.selectedOrder = [];
+				clearMultiSelectState();
 
 				// 设置激活项为第一个项目
-				if (updatedItems.length > 0) {
-					state.activeId = updatedItems[0].id;
-				}
+				setActiveItemAfterOperation(updatedItems);
 			} else {
 				// 非文件类型：批量粘贴时跳过第一个项目，因为第一个项目已经通过拖拽粘贴了
 				const remainingItems = batchDragInfo.items.slice(1);
@@ -1436,59 +1400,19 @@ const Item: FC<ItemProps> = (props) => {
 				}
 			}
 
-			// 获取当前的自动排序设置
-			const currentAutoSort = clipboardStore.content.autoSort;
-
-			// 更新所有项目的时间
-			const createTime = formatDate();
-			const updatedItems = batchDragInfo.items.map(
-				(item: HistoryTablePayload) => ({
-					...item,
-					createTime,
-				}),
+			// 更新项目位置和时间
+			const { updatedItems, createTime } = updateItemsPositionAndTime(
+				batchDragInfo.items,
 			);
 
-			if (currentAutoSort) {
-				// 自动排序开启：移动到顶部
-				// 从原位置移除所有选中项目
-				for (const selectedItem of batchDragInfo.items) {
-					const index = findIndex(state.list, { id: selectedItem.id });
-					if (index !== -1) {
-						state.list.splice(index, 1);
-					}
-				}
-
-				// 将更新后的项目添加到顶部（保持原有顺序）
-				for (let i = updatedItems.length - 1; i >= 0; i--) {
-					state.list.unshift(updatedItems[i]);
-				}
-			} else {
-				// 自动排序关闭：保持原位置，只更新时间
-				for (const selectedItem of batchDragInfo.items) {
-					const index = findIndex(state.list, { id: selectedItem.id });
-					if (index !== -1) {
-						state.list[index] = { ...state.list[index], createTime };
-					}
-				}
-			}
-
 			// 批量更新数据库
-			for (const selectedItem of batchDragInfo.items) {
-				await updateSQL("history", { id: selectedItem.id, createTime });
-			}
+			await batchUpdateDatabase(batchDragInfo.items, { createTime });
 
 			// 清除多选状态
-			clipboardStore.multiSelect.isMultiSelecting = false;
-			// 重新分配一个新的 Set 来确保响应式更新
-			clipboardStore.multiSelect.selectedIds = new Set();
-			clipboardStore.multiSelect.lastSelectedId = null;
-			clipboardStore.multiSelect.shiftSelectDirection = null;
-			clipboardStore.multiSelect.selectedOrder = [];
+			clearMultiSelectState();
 
 			// 设置激活项为第一个粘贴的项目
-			if (updatedItems.length > 0) {
-				state.activeId = updatedItems[0].id;
-			}
+			setActiveItemAfterOperation(updatedItems);
 		} catch (error) {
 			console.error("❌ 批量拖拽粘贴失败:", error);
 		} finally {
