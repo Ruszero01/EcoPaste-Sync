@@ -32,6 +32,7 @@ interface State extends TablePayload {
 	};
 	linkTab?: boolean; // 新增：链接分组状态
 	isCode?: boolean; // 新增：代码分组状态
+	batchDeleteInProgress?: boolean; // 新增：批量删除进行中标志
 }
 
 const INITIAL_STATE: State = {

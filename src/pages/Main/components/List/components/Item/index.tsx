@@ -72,7 +72,7 @@ const Item: FC<ItemProps> = (props) => {
 		createTime,
 		lastModified,
 	} = data;
-	const { state, forceRefreshList } = useContext(MainContext);
+	const { state } = useContext(MainContext);
 	const { t, i18n: i18nInstance } = useTranslation();
 	const { env } = useSnapshot(globalStore);
 	const { content, multiSelect } = useSnapshot(clipboardStore);
@@ -163,7 +163,6 @@ const Item: FC<ItemProps> = (props) => {
 	// 公共函数：清除多选状态
 	const clearMultiSelectState = () => {
 		clipboardStore.multiSelect.isMultiSelecting = false;
-		// 重新分配一个新的 Set 来确保响应式更新
 		clipboardStore.multiSelect.selectedIds = new Set();
 		clipboardStore.multiSelect.lastSelectedId = null;
 		clipboardStore.multiSelect.shiftSelectDirection = null;
@@ -173,14 +172,12 @@ const Item: FC<ItemProps> = (props) => {
 	// 公共函数：初始化多选状态
 	const initializeMultiSelectState = () => {
 		clipboardStore.multiSelect.isMultiSelecting = true;
-		// 重新分配一个新的 Set 来确保响应式更新
 		clipboardStore.multiSelect.selectedIds = new Set();
 		clipboardStore.multiSelect.selectedOrder = [];
 	};
 
 	// 公共函数：重置多选状态
 	const resetMultiSelectState = () => {
-		// 重新分配一个新的 Set 来确保响应式更新
 		clipboardStore.multiSelect.selectedIds = new Set();
 		clipboardStore.multiSelect.selectedOrder = [];
 	};
@@ -420,6 +417,8 @@ const Item: FC<ItemProps> = (props) => {
 
 		// 设置批量操作进行中标志
 		clipboardStore.batchOperationInProgress = true;
+		// 设置批量删除进行中标志，防止List组件自动聚焦到第一个项目
+		state.batchDeleteInProgress = true;
 
 		try {
 			// 显示确认对话框
@@ -448,41 +447,68 @@ const Item: FC<ItemProps> = (props) => {
 					// 清除多选状态
 					clearMultiSelectState();
 
-					// 使用强制刷新函数，确保缓存和lastQueryParams都被正确重置
-					// 先保存当前的激活项状态
+					// 先保存当前的激活项状态和列表快照
 					const currentActiveId = state.activeId;
-					if (forceRefreshList) {
-						forceRefreshList();
-					}
+					const listBeforeDelete = [...state.list];
 
-					// 从本地状态中移除
+					// 获取被删除项目在原列表中的索引
+					const deletedItemIndexes = selectedIds
+						.map((id) => listBeforeDelete.findIndex((item) => item.id === id))
+						.filter((index) => index !== -1)
+						.sort((a, b) => a - b);
+
+					// 从本地状态中移除（直接操作本地状态，避免刷新导致跳转）
 					for (const selectedId of selectedIds) {
 						remove(state.list, { id: selectedId });
 					}
 
-					// 设置新的激活项，保持位置逻辑
+					// 改进的聚焦逻辑：保持位置在选中范围附近
 					if (state.list.length > 0) {
 						// 如果当前激活项被删除，智能选择下一个或上一个项目
 						if (selectedIds.includes(currentActiveId || "")) {
-							// 找到被删除项目在原列表中的索引
-							const deletedItemIndexes = selectedIds
-								.map((id) => state.list.findIndex((item) => item.id === id))
-								.filter((index) => index !== -1)
-								.sort((a, b) => a - b);
+							if (deletedItemIndexes.length > 0) {
+								// 计算被删除范围的中间位置
+								const minDeletedIndex = deletedItemIndexes[0];
+								const maxDeletedIndex =
+									deletedItemIndexes[deletedItemIndexes.length - 1];
+								const deletedRangeCenter =
+									(minDeletedIndex + maxDeletedIndex) / 2;
 
-							// 找到最小的被删除索引
-							const minDeletedIndex = deletedItemIndexes[0];
+								// 优先选择最接近删除范围中心的项目
+								let targetIndex = Math.floor(deletedRangeCenter);
 
-							if (minDeletedIndex !== undefined) {
-								// 尝试选择下一个项目
-								if (minDeletedIndex < state.list.length) {
-									state.activeId = state.list[minDeletedIndex]?.id;
-								} else {
-									// 如果没有下一个，尝试选择上一个
-									if (minDeletedIndex > 0) {
-										state.activeId = state.list[minDeletedIndex - 1]?.id;
-									} else {
-										// 如果都没有，选择第一个剩余项目
+								// 确保索引在有效范围内
+								if (targetIndex >= state.list.length) {
+									targetIndex = state.list.length - 1;
+								}
+
+								// 设置新的激活项
+								state.activeId = state.list[targetIndex]?.id;
+
+								// 如果计算的位置没有项目，尝试找到最近的项目
+								if (!state.activeId && state.list.length > 0) {
+									// 从删除范围的中间位置向两边搜索
+									let searchRadius = 1;
+									while (searchRadius < state.list.length && !state.activeId) {
+										const upIndex =
+											Math.floor(deletedRangeCenter) - searchRadius;
+										const downIndex =
+											Math.floor(deletedRangeCenter) + searchRadius;
+
+										if (upIndex >= 0 && state.list[upIndex]) {
+											state.activeId = state.list[upIndex].id;
+										} else if (
+											downIndex < state.list.length &&
+											state.list[downIndex]
+										) {
+											state.activeId = state.list[downIndex].id;
+										}
+
+										searchRadius++;
+									}
+
+									// 如果还是没找到，选择第一个剩余项目
+									if (!state.activeId) {
 										state.activeId = state.list[0]?.id;
 									}
 								}
@@ -522,6 +548,8 @@ const Item: FC<ItemProps> = (props) => {
 		} finally {
 			// 清除批量操作进行中标志
 			clipboardStore.batchOperationInProgress = false;
+			// 清除批量删除进行中标志，恢复正常的聚焦行为
+			state.batchDeleteInProgress = false;
 		}
 	};
 
