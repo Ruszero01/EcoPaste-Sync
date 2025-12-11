@@ -747,17 +747,6 @@ const Item: FC<ItemProps> = (props) => {
 					action: pasteValue,
 				},
 				{
-					text: "---", // 分隔符
-					action: () => {},
-				},
-				{
-					text: `批量删除选中的 ${selectedCount} 个项目`,
-					action: () => {
-						// 使用事件总线触发批量删除，与Header组件保持一致
-						state.$eventBus?.emit(LISTEN_KEY.CLIPBOARD_ITEM_BATCH_DELETE);
-					},
-				},
-				{
 					text: `批量收藏选中的 ${selectedCount} 个项目`,
 					action: () => {
 						// 使用事件总线触发批量收藏，与Header组件保持一致
@@ -765,8 +754,11 @@ const Item: FC<ItemProps> = (props) => {
 					},
 				},
 				{
-					text: "---", // 分隔符
-					action: () => {},
+					text: `批量删除选中的 ${selectedCount} 个项目`,
+					action: () => {
+						// 使用事件总线触发批量删除，与Header组件保持一致
+						state.$eventBus?.emit(LISTEN_KEY.CLIPBOARD_ITEM_BATCH_DELETE);
+					},
 				},
 				{
 					text: "取消多选",
