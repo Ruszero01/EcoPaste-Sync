@@ -1362,13 +1362,9 @@ export const deleteFromDatabase = async (
 			if (records.length > 0) {
 				const record = records[0];
 
-				// 注意：我们不再删除本地文件系统中的原始文件
-				// 因为剪切板是复制操作，删除源文件容易导致原本的数据丢失
-				// 我们只删除数据库记录和云端数据，保留本地文件系统中的原始文件
 				if (record.type === "image" && record.value) {
 					// 记录保留本地文件的信息，但不删除文件
-					// biome-ignore lint/suspicious/noConsoleLog: 允许在关键文件保留操作时使用日志
-					console.log(`📝 保留本地图片文件: ${record.value}`);
+					console.info(`📝 保留本地图片文件: ${record.value}`);
 				}
 
 				// 从数据库中彻底删除记录
