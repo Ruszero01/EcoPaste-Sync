@@ -545,7 +545,6 @@ export const readClipboard = async () => {
 		}
 
 		// 获取来源应用信息（仅在开启显示来源应用且非内部复制时）
-		// 内部复制时完全跳过来源应用获取，避免GetClipboardOwner错误
 		if (
 			clipboardStore.content.showSourceApp &&
 			!clipboardStore.internalCopy.isCopying
