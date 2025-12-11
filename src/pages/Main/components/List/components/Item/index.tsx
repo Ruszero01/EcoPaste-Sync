@@ -7,6 +7,7 @@ import type { HistoryTablePayload } from "@/types/database";
 import { formatDate } from "@/utils/dayjs";
 import { joinPath } from "@/utils/path";
 import { startDrag } from "@crabnebula/tauri-plugin-drag";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { Menu, MenuItem, type MenuItemOptions } from "@tauri-apps/api/menu";
 import { downloadDir, resolveResource } from "@tauri-apps/api/path";
 import { copyFile, writeTextFile } from "@tauri-apps/plugin-fs";
@@ -102,6 +103,61 @@ const Item: FC<ItemProps> = (props) => {
 		}
 
 		return val; // 返回原始值
+	};
+
+	// 创建图片缩略图函数
+	const createImageThumbnail = async (imagePath: string): Promise<string> => {
+		try {
+			// 创建一个canvas元素来生成缩略图
+			const canvas = document.createElement("canvas");
+			const ctx = canvas.getContext("2d");
+			if (!ctx) return imagePath;
+
+			// 设置缩略图的最大尺寸
+			const MAX_WIDTH = 200;
+			const MAX_HEIGHT = 200;
+
+			// 创建图片对象
+			const img = document.createElement("img");
+			img.crossOrigin = "anonymous";
+
+			// 使用Promise等待图片加载完成
+			await new Promise((resolve, reject) => {
+				img.onload = resolve;
+				img.onerror = reject;
+				img.src = convertFileSrc(imagePath);
+			});
+
+			// 计算缩略图尺寸，保持宽高比
+			let width = img.width;
+			let height = img.height;
+
+			if (width > height) {
+				if (width > MAX_WIDTH) {
+					height = Math.round((height * MAX_WIDTH) / width);
+					width = MAX_WIDTH;
+				}
+			} else {
+				if (height > MAX_HEIGHT) {
+					width = Math.round((width * MAX_HEIGHT) / height);
+					height = MAX_HEIGHT;
+				}
+			}
+
+			// 设置canvas尺寸
+			canvas.width = width;
+			canvas.height = height;
+
+			// 绘制缩略图
+			ctx.drawImage(img, 0, 0, width, height);
+
+			// 转换为data URL
+			return canvas.toDataURL("image/png", 0.8);
+		} catch (error) {
+			console.error("创建图片缩略图失败:", error);
+			// 如果创建缩略图失败，返回原始路径
+			return imagePath;
+		}
 	};
 
 	// 公共函数：清除多选状态
@@ -1273,7 +1329,11 @@ const Item: FC<ItemProps> = (props) => {
 			}
 
 			if (firstGroup === "image") {
-				return startDrag({ item: [firstValue], icon: firstValue });
+				// 为批量拖拽的第一个图片创建合适大小的预览
+				const thumbnail = await createImageThumbnail(
+					getActualValue(firstValue),
+				);
+				return startDrag({ item: [firstValue], icon: thumbnail });
 			}
 
 			startDrag({ icon, item: JSON.parse(firstValue) });
@@ -1333,7 +1393,9 @@ const Item: FC<ItemProps> = (props) => {
 			const icon = await resolveResource("assets/drag-icon.png");
 
 			if (group === "image") {
-				return startDrag({ item: [value], icon: value });
+				// 为图片拖拽创建合适大小的预览
+				const thumbnail = await createImageThumbnail(getActualValue(value));
+				return startDrag({ item: [value], icon: thumbnail });
 			}
 
 			startDrag({ icon, item: JSON.parse(value) });
