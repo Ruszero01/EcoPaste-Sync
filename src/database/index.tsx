@@ -321,14 +321,19 @@ export const insertOrUpdate = async (
 
 		if (existingRecords.length > 0) {
 			// 更新现有记录
+			const {
+				sourceAppName: newSourceAppName,
+				sourceAppIcon: newSourceAppIcon,
+				...payloadWithoutSource
+			} = payload;
 			const updateData: Partial<HistoryTablePayload> = {
 				createTime: currentTime,
 				lastModified: Date.now(),
 				// 保留原始来源应用信息
 				sourceAppName: existingRecords[0].sourceAppName,
 				sourceAppIcon: existingRecords[0].sourceAppIcon,
-				// 更新其他字段
-				...payload,
+				// 更新其他字段（排除来源应用信息）
+				...payloadWithoutSource,
 				// 确保不覆盖ID和position
 				id: existingRecords[0].id,
 				position: existingRecords[0].position, // 保持原始位置不变
@@ -398,14 +403,19 @@ export const insertOrUpdate = async (
 			const existing = existingRecords[0];
 
 			// 更新现有记录
+			const {
+				sourceAppName: newSourceAppName,
+				sourceAppIcon: newSourceAppIcon,
+				...payloadWithoutSource
+			} = payload;
 			const updateData: Partial<HistoryTablePayload> = {
 				createTime: currentTime,
 				lastModified: Date.now(),
 				// 保留原始来源应用信息
 				sourceAppName: existing.sourceAppName,
 				sourceAppIcon: existing.sourceAppIcon,
-				// 更新其他字段
-				...payload,
+				// 更新其他字段（排除来源应用信息）
+				...payloadWithoutSource,
 				// 确保不覆盖ID和position
 				id: existing.id,
 				position: existing.position, // 保持原始位置不变
@@ -432,14 +442,19 @@ export const insertOrUpdate = async (
 			const existing = existingRecords[0];
 
 			// 更新现有记录
+			const {
+				sourceAppName: newSourceAppName,
+				sourceAppIcon: newSourceAppIcon,
+				...payloadWithoutSource
+			} = payload;
 			const updateData: Partial<HistoryTablePayload> = {
 				createTime: currentTime,
 				lastModified: Date.now(),
 				// 保留原始来源应用信息
 				sourceAppName: existing.sourceAppName,
 				sourceAppIcon: existing.sourceAppIcon,
-				// 更新其他字段
-				...payload,
+				// 更新其他字段（排除来源应用信息）
+				...payloadWithoutSource,
 				// 确保不覆盖ID和position
 				id: existing.id,
 				position: existing.position, // 保持原始位置不变
