@@ -170,6 +170,40 @@ const Item: FC<ItemProps> = (props) => {
 		clipboardStore.multiSelect.selectedOrder = [];
 	};
 
+	// 公共函数：初始化多选状态
+	const initializeMultiSelectState = () => {
+		clipboardStore.multiSelect.isMultiSelecting = true;
+		// 重新分配一个新的 Set 来确保响应式更新
+		clipboardStore.multiSelect.selectedIds = new Set();
+		clipboardStore.multiSelect.selectedOrder = [];
+	};
+
+	// 公共函数：重置多选状态
+	const resetMultiSelectState = () => {
+		// 重新分配一个新的 Set 来确保响应式更新
+		clipboardStore.multiSelect.selectedIds = new Set();
+		clipboardStore.multiSelect.selectedOrder = [];
+	};
+
+	// 公共函数：选择所有可见项目
+	const selectAllVisibleItems = () => {
+		initializeMultiSelectState();
+		for (const item of state.list) {
+			clipboardStore.multiSelect.selectedIds.add(item.id);
+			clipboardStore.multiSelect.selectedOrder.push(item.id);
+		}
+		clipboardStore.multiSelect.lastSelectedId =
+			state.list[state.list.length - 1]?.id || null;
+		clipboardStore.multiSelect.shiftSelectDirection = "down"; // 从上到下选择
+	};
+
+	// 公共函数：选择单个项目
+	const selectSingleItem = (itemId: string) => {
+		clipboardStore.multiSelect.selectedIds.add(itemId);
+		clipboardStore.multiSelect.selectedOrder.push(itemId);
+		clipboardStore.multiSelect.lastSelectedId = itemId;
+	};
+
 	// 公共函数：更新项目位置和时间
 	const updateItemsPositionAndTime = (
 		items: HistoryTablePayload[],
@@ -944,33 +978,7 @@ const Item: FC<ItemProps> = (props) => {
 			items.unshift({
 				text: "全选所有可见项目",
 				action: () => {
-					clipboardStore.multiSelect.isMultiSelecting = true;
-					// 重新分配一个新的 Set 来确保响应式更新
-					clipboardStore.multiSelect.selectedIds = new Set();
-					clipboardStore.multiSelect.selectedOrder = [];
-					for (const item of state.list) {
-						clipboardStore.multiSelect.selectedIds.add(item.id);
-						clipboardStore.multiSelect.selectedOrder.push(item.id);
-					}
-					clipboardStore.multiSelect.lastSelectedId =
-						state.list[state.list.length - 1]?.id || null;
-					clipboardStore.multiSelect.shiftSelectDirection = "down"; // 从上到下选择
-				},
-			});
-			items.unshift({
-				text: "选择所有可见项目",
-				action: () => {
-					clipboardStore.multiSelect.isMultiSelecting = true;
-					// 重新分配一个新的 Set 来确保响应式更新
-					clipboardStore.multiSelect.selectedIds = new Set();
-					clipboardStore.multiSelect.selectedOrder = [];
-					for (const item of state.list) {
-						clipboardStore.multiSelect.selectedIds.add(item.id);
-						clipboardStore.multiSelect.selectedOrder.push(item.id);
-					}
-					clipboardStore.multiSelect.lastSelectedId =
-						state.list[state.list.length - 1]?.id || null;
-					clipboardStore.multiSelect.shiftSelectDirection = "down"; // 从上到下选择
+					selectAllVisibleItems();
 				},
 			});
 		}
@@ -995,9 +1003,7 @@ const Item: FC<ItemProps> = (props) => {
 		if (event.detail === 2) {
 			// 如果当前项目没有被选中，确保它被选中
 			if (!multiSelect.selectedIds.has(id)) {
-				clipboardStore.multiSelect.selectedIds.add(id);
-				clipboardStore.multiSelect.selectedOrder.push(id);
-				clipboardStore.multiSelect.lastSelectedId = id;
+				selectSingleItem(id);
 			}
 			return;
 		}
@@ -1008,10 +1014,7 @@ const Item: FC<ItemProps> = (props) => {
 
 			// 如果当前没有多选状态，开始多选
 			if (!multiSelect.isMultiSelecting) {
-				clipboardStore.multiSelect.isMultiSelecting = true;
-				// 重新分配一个新的 Set 来确保响应式更新
-				clipboardStore.multiSelect.selectedIds = new Set();
-				clipboardStore.multiSelect.selectedOrder = [];
+				initializeMultiSelectState();
 			}
 
 			// 如果有上次选中的项目，选择范围
@@ -1030,9 +1033,7 @@ const Item: FC<ItemProps> = (props) => {
 					clipboardStore.multiSelect.shiftSelectDirection = direction;
 
 					// 清空之前的选择和顺序
-					// 重新分配一个新的 Set 来确保响应式更新
-					clipboardStore.multiSelect.selectedIds = new Set();
-					clipboardStore.multiSelect.selectedOrder = [];
+					resetMultiSelectState();
 
 					// 根据选择方向按顺序添加项目
 					if (direction === "down") {
@@ -1054,11 +1055,8 @@ const Item: FC<ItemProps> = (props) => {
 					}
 				} else {
 					// 如果找不到上次选中的项目，只选中当前项目
-					// 重新分配一个新的 Set 来确保响应式更新
-					clipboardStore.multiSelect.selectedIds = new Set();
-					clipboardStore.multiSelect.selectedOrder = [];
-					clipboardStore.multiSelect.selectedIds.add(id);
-					clipboardStore.multiSelect.selectedOrder.push(id);
+					resetMultiSelectState();
+					selectSingleItem(id);
 					clipboardStore.multiSelect.shiftSelectDirection = null;
 				}
 			} else {
@@ -1077,9 +1075,7 @@ const Item: FC<ItemProps> = (props) => {
 					clipboardStore.multiSelect.shiftSelectDirection = direction;
 
 					// 清空之前的选择和顺序
-					// 重新分配一个新的 Set 来确保响应式更新
-					clipboardStore.multiSelect.selectedIds = new Set();
-					clipboardStore.multiSelect.selectedOrder = [];
+					resetMultiSelectState();
 
 					// 根据选择方向按顺序添加项目
 					if (direction === "down") {
@@ -1101,11 +1097,8 @@ const Item: FC<ItemProps> = (props) => {
 					}
 				} else {
 					// 没有聚焦项目，只选中当前项目
-					// 重新分配一个新的 Set 来确保响应式更新
-					clipboardStore.multiSelect.selectedIds = new Set();
-					clipboardStore.multiSelect.selectedOrder = [];
-					clipboardStore.multiSelect.selectedIds.add(id);
-					clipboardStore.multiSelect.selectedOrder.push(id);
+					resetMultiSelectState();
+					selectSingleItem(id);
 					clipboardStore.multiSelect.shiftSelectDirection = null;
 				}
 			}
@@ -1121,8 +1114,7 @@ const Item: FC<ItemProps> = (props) => {
 
 			// 开始多选模式
 			if (!multiSelect.isMultiSelecting) {
-				clipboardStore.multiSelect.isMultiSelecting = true;
-				clipboardStore.multiSelect.selectedOrder = [];
+				initializeMultiSelectState();
 
 				// 如果有当前聚焦的项目，先将其加入选中列表
 				if (state.activeId && state.activeId !== id) {
@@ -1153,9 +1145,7 @@ const Item: FC<ItemProps> = (props) => {
 				}
 			} else {
 				// 如果当前项目未被选中，则添加到选中列表
-				clipboardStore.multiSelect.selectedIds.add(id);
-				clipboardStore.multiSelect.selectedOrder.push(id);
-				clipboardStore.multiSelect.lastSelectedId = id;
+				selectSingleItem(id);
 				// Ctrl加选时重置Shift选择方向
 				clipboardStore.multiSelect.shiftSelectDirection = null;
 			}
