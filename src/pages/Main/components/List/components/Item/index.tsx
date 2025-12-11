@@ -1,3 +1,4 @@
+import { createDragPreview } from "@/components/DragPreview";
 import UnoIcon from "@/components/UnoIcon";
 import { updateSQL } from "@/database";
 import { MainContext } from "@/pages/Main";
@@ -1231,48 +1232,11 @@ const Item: FC<ItemProps> = (props) => {
 				dataTransfer.setData("application/x-ecopaste-clipboard", actualValue);
 
 				// 创建批量拖拽预览
-				const dragPreview = document.createElement("div");
-				const isDarkMode = document.documentElement.classList.contains("dark");
-
-				dragPreview.className = `pointer-events-none fixed z-50 select-none rounded-md border px-2.5 py-1.5 font-medium text-xs shadow-lg backdrop-blur-xl transition-all duration-200 ${
-					isDarkMode
-						? "border-neutral-700/50 bg-neutral-800/90 text-neutral-300"
-						: "border-neutral-300/50 bg-neutral-200/90 text-neutral-700"
-				}`;
-
-				const arrow = document.createElement("div");
-				arrow.className = `-translate-y-1/2 absolute top-1/2 h-0 w-0 border-transparent ${
-					isDarkMode
-						? "border-transparent border-t-8 border-r-8 border-r-neutral-800/90 border-b-8"
-						: "border-transparent border-t-8 border-r-8 border-r-neutral-200/90 border-b-8"
-				}`;
-				arrow.style.left = "-8px";
-
-				const contentSpan = document.createElement("span");
-				contentSpan.className = "relative z-10 max-w-40 truncate";
-				contentSpan.style.cssText = `
-					max-width: 200px;
-					display: -webkit-box;
-					-webkit-line-clamp: 3;
-					-webkit-box-orient: vertical;
-					overflow: hidden;
-					white-space: pre-wrap;
-				`;
-
-				// 显示批量拖拽提示
-				contentSpan.textContent = `拖拽 ${sortedSelectedItems.length} 个项目`;
-
-				dragPreview.appendChild(arrow);
-				dragPreview.appendChild(contentSpan);
-
-				dataTransfer.setDragImage(dragPreview, 0, 20);
-
-				document.body.appendChild(dragPreview);
-				setTimeout(() => {
-					if (document.body.contains(dragPreview)) {
-						document.body.removeChild(dragPreview);
-					}
-				}, 100);
+				createDragPreview(event, {
+					content: "",
+					isBatch: true,
+					batchCount: sortedSelectedItems.length,
+				});
 
 				return;
 			}
@@ -1343,34 +1307,6 @@ const Item: FC<ItemProps> = (props) => {
 				dataTransfer.setData("application/x-ecopaste-clipboard", actualValue);
 
 				// 创建拖拽预览
-				const dragPreview = document.createElement("div");
-				const isDarkMode = document.documentElement.classList.contains("dark");
-
-				dragPreview.className = `pointer-events-none fixed z-50 select-none rounded-md border px-2.5 py-1.5 font-medium text-xs shadow-lg backdrop-blur-xl transition-all duration-200 ${
-					isDarkMode
-						? "border-neutral-700/50 bg-neutral-800/90 text-neutral-300"
-						: "border-neutral-300/50 bg-neutral-200/90 text-neutral-700"
-				}`;
-
-				const arrow = document.createElement("div");
-				arrow.className = `-translate-y-1/2 absolute top-1/2 h-0 w-0 border-transparent ${
-					isDarkMode
-						? "border-transparent border-t-8 border-r-8 border-r-neutral-800/90 border-b-8"
-						: "border-transparent border-t-8 border-r-8 border-r-neutral-200/90 border-b-8"
-				}`;
-				arrow.style.left = "-8px";
-
-				const contentSpan = document.createElement("span");
-				contentSpan.className = "relative z-10 max-w-40 truncate";
-				contentSpan.style.cssText = `
-					max-width: 200px;
-					display: -webkit-box;
-					-webkit-line-clamp: 3;
-					-webkit-box-orient: vertical;
-					overflow: hidden;
-					white-space: pre-wrap;
-				`;
-
 				let previewContent = actualValue.trim();
 				if (type === "html") {
 					const tempDiv = document.createElement("div");
@@ -1379,19 +1315,10 @@ const Item: FC<ItemProps> = (props) => {
 						tempDiv.textContent || tempDiv.innerText || previewContent;
 				}
 
-				contentSpan.textContent = previewContent;
-
-				dragPreview.appendChild(arrow);
-				dragPreview.appendChild(contentSpan);
-
-				dataTransfer.setDragImage(dragPreview, 0, 20);
-
-				document.body.appendChild(dragPreview);
-				setTimeout(() => {
-					if (document.body.contains(dragPreview)) {
-						document.body.removeChild(dragPreview);
-					}
-				}, 100);
+				createDragPreview(event, {
+					content: previewContent,
+					isBatch: false,
+				});
 
 				return;
 			}
