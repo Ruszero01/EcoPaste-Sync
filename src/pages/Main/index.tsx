@@ -1,6 +1,7 @@
+import type { AudioRef } from "@/components/Audio";
+import Audio from "@/components/Audio";
 import { LISTEN_KEY } from "@/constants";
 import { executeSQL, insertWithDeduplication, updateSQL } from "@/database";
-import { useAudioEffect } from "@/hooks/useAudioEffect";
 import { initializeMicaEffect } from "@/plugins/window";
 import type { HistoryTablePayload, TablePayload } from "@/types/database";
 import type { Store } from "@/types/store";
@@ -31,6 +32,7 @@ interface State extends TablePayload {
 	};
 	linkTab?: boolean; // 新增：链接分组状态
 	isCode?: boolean; // 新增：代码分组状态
+	batchDeleteInProgress?: boolean; // 新增：批量删除进行中标志
 }
 
 const INITIAL_STATE: State = {
@@ -55,11 +57,9 @@ const Main = () => {
 	const { window } = useSnapshot(clipboardStore);
 
 	const state = useReactive<State>(INITIAL_STATE);
+	const audioRef = useRef<AudioRef>(null);
 	const $eventBus = useEventEmitter<string>();
 	const windowHideTimer = useRef<NodeJS.Timeout>();
-
-	// 使用优化的音效播放 Hook
-	const { playSound } = useAudioEffect();
 
 	useMount(() => {
 		state.$eventBus = $eventBus;
@@ -95,16 +95,8 @@ const Main = () => {
 				return;
 			}
 
-			// 使用优化的音效播放逻辑
 			if (clipboardStore.audio.copy) {
-				// 使用微任务延迟播放音效，确保不阻塞主要处理逻辑
-				setTimeout(async () => {
-					try {
-						await playSound("copy");
-					} catch (error) {
-						console.warn("音效播放失败:", error);
-					}
-				}, 0);
+				audioRef.current?.play();
 			}
 
 			const createTime = formatDate();
@@ -348,24 +340,26 @@ const Main = () => {
 			if (itemIndex !== -1) {
 				const createTime = formatDate();
 
-				// 快速粘贴条目，准备移动到顶部
+				// 获取当前的自动排序设置
+				const currentAutoSort = clipboardStore.content.autoSort;
 
-				// 从原位置移除
-				const [targetItem] = state.list.splice(itemIndex, 1);
-
-				// 移动到顶部并更新时间
-				state.list.unshift({ ...targetItem, createTime });
+				if (currentAutoSort) {
+					// 自动排序模式：更新时间，让系统重新排序
+					await updateSQL("history", { id: data.id, createTime });
+					// 刷新列表以获取新的排序
+					await getList();
+				} else {
+					// 手动排序模式：只更新时间，不改变位置
+					await updateSQL("history", { id: data.id, createTime });
+					// 更新本地列表中的时间，但保持位置不变
+					state.list[itemIndex] = { ...state.list[itemIndex], createTime };
+				}
 
 				// 自动聚焦到快速粘贴的条目
 				state.activeId = data.id;
 
-				// 更新数据库
-				await updateSQL("history", { id: data.id, createTime });
-
 				// 触发滚动事件（发送到 List 组件）
 				emit(LISTEN_KEY.ACTIVATE_BACK_TOP, "main");
-
-				// 快速粘贴条目已移动到顶部并更新时间
 			}
 		},
 		[state.quickPasteKeys],
@@ -384,22 +378,40 @@ const Main = () => {
 		// 检查是否有剪贴板条目
 		if (state.list.length === 0) return;
 
-		// 进入多选模式
-		clipboardStore.multiSelect.isMultiSelecting = true;
-		clipboardStore.multiSelect.selectedIds.clear();
+		// 检查是否已经是全选状态
+		const isAllSelected =
+			clipboardStore.multiSelect.isMultiSelecting &&
+			clipboardStore.multiSelect.selectedIds.size === state.list.length;
 
-		// 选择所有条目
-		for (const item of state.list) {
-			clipboardStore.multiSelect.selectedIds.add(item.id);
-		}
+		if (isAllSelected) {
+			// 如果已经全选，则取消全选
+			clipboardStore.multiSelect.isMultiSelecting = false;
+			// 重新分配一个新的 Set 来确保响应式更新
+			clipboardStore.multiSelect.selectedIds = new Set();
+			clipboardStore.multiSelect.lastSelectedId = null;
+			clipboardStore.multiSelect.shiftSelectDirection = null;
+			clipboardStore.multiSelect.selectedOrder = [];
 
-		// 设置最后一个选中的ID
-		clipboardStore.multiSelect.lastSelectedId =
-			state.list[state.list.length - 1]?.id || null;
+			// 保持当前聚焦项不变
+		} else {
+			// 进入多选模式
+			clipboardStore.multiSelect.isMultiSelecting = true;
+			// 重新分配一个新的 Set 来确保响应式更新
+			clipboardStore.multiSelect.selectedIds = new Set();
 
-		// 聚焦到第一个条目
-		if (state.list.length > 0) {
-			state.activeId = state.list[0].id;
+			// 选择所有条目
+			for (const item of state.list) {
+				clipboardStore.multiSelect.selectedIds.add(item.id);
+			}
+
+			// 设置最后一个选中的ID
+			clipboardStore.multiSelect.lastSelectedId =
+				state.list[state.list.length - 1]?.id || null;
+
+			// 聚焦到第一个条目
+			if (state.list.length > 0) {
+				state.activeId = state.list[0].id;
+			}
 		}
 	});
 
@@ -451,8 +463,10 @@ const Main = () => {
 		}
 
 		// 根据自动排序设置决定排序方式
-		// 手动排序时也保持最新在前，只是不重新排列现有条目
-		const orderBy = "ORDER BY createTime DESC";
+		// 自动排序：按时间排序；手动排序：按位置倒序（新的在上面）
+		const orderBy = currentAutoSort
+			? "ORDER BY createTime DESC"
+			: "ORDER BY position DESC, createTime DESC";
 
 		let rawData: HistoryTablePayload[];
 
@@ -480,6 +494,8 @@ const Main = () => {
 				deleted: Boolean(item.deleted),
 				lazyDownload: Boolean(item.lazyDownload),
 				isCloudData: Boolean(item.isCloudData),
+				isCode: Boolean(item.isCode),
+				position: Number(item.position || 0),
 				syncStatus: item.syncStatus || "none",
 			})) as HistoryTablePayload[];
 		} else {
@@ -593,6 +609,8 @@ const Main = () => {
 
 	return (
 		<>
+			<Audio ref={audioRef} />
+
 			<MainContext.Provider
 				value={{
 					state,

@@ -6,6 +6,7 @@ import { generateDeviceId } from "@/utils/shared";
 import { emit } from "@tauri-apps/api/event";
 import { bookmarkSync } from "./bookmarkSync";
 import { cloudDataManager } from "./cloudDataManager";
+import { deleteManager } from "./deleteManager";
 import { fileSyncManager } from "./fileSyncManager";
 import { localDataManager } from "./localDataManager";
 import {
@@ -318,7 +319,7 @@ export class SyncEngine {
 				console.info("📊 云端无数据");
 			}
 
-			// 6. 处理本地删除的项目：从云端删除对应记录和文件
+			// 6. 处理本地删除的项目：统一删除所有软删除标记的项目
 			if (localDeletedItems.length > 0) {
 				const deletedItemIds = localDeletedItems.map((item) => item.id);
 
@@ -338,7 +339,7 @@ export class SyncEngine {
 					result.deleted += cloudDeleteResult.success; // 统计实际删除成功的数量
 					console.info(`成功从云端删除 ${cloudDeleteResult.success} 个项目`);
 
-					// 只有云端删除成功时，才清理本地删除标记
+					// 云端删除成功时，清理本地删除标记
 					await this.cleanupDeletedItems(deletedItemIds);
 				} else {
 					// 删除失败时记录详细错误信息
@@ -850,17 +851,13 @@ export class SyncEngine {
 		return this.isOnline && !!this.webdavConfig && !this.syncInProgress;
 	}
 
+	/**
+	 * 标记项目为已删除（使用统一的删除管理器）
+	 * @param itemId 项目ID
+	 * @returns 操作是否成功
+	 */
 	async markItemAsDeleted(itemId: string): Promise<boolean> {
-		try {
-			await updateSQL("history", {
-				id: itemId,
-				deleted: true,
-			});
-
-			return true;
-		} catch {
-			return false;
-		}
+		return await deleteManager.markItemAsDeleted(itemId);
 	}
 
 	/**
@@ -1025,7 +1022,7 @@ export class SyncEngine {
 	}
 
 	/**
-	 * 清理本地数据库中已删除的项目
+	 * 清理本地数据库中已删除的项目（使用统一的删除管理器）
 	 * 只删除数据库记录，不影响用户的原始文件
 	 */
 	private async cleanupDeletedItems(deletedItemIds: string[]): Promise<void> {
@@ -1034,19 +1031,12 @@ export class SyncEngine {
 		}
 
 		try {
-			const { executeSQL } = await import("@/database");
-
-			// 批量删除数据库记录（彻底删除，不是软删除）
-			const deletePromises = deletedItemIds.map(async (itemId) => {
-				try {
-					await executeSQL("DELETE FROM history WHERE id = ?;", [itemId]);
-				} catch (error) {
-					console.error(`删除数据库记录失败 (${itemId}):`, error);
-				}
-			});
-
-			await Promise.allSettled(deletePromises);
-			console.info(`已清理 ${deletedItemIds.length} 个本地删除项目`);
+			const result = await deleteManager.cleanupDeletedItems(deletedItemIds);
+			if (result.success) {
+				console.info(`已清理 ${result.deletedCount} 个本地删除项目`);
+			} else {
+				console.error("清理本地删除项目失败:", result.errors);
+			}
 		} catch (error) {
 			console.error("清理本地删除项目失败:", error);
 		}

@@ -61,4 +61,7 @@ export const clipboardStore = proxy<ClipboardStore>({
 		items: [],
 		isDragging: false,
 	},
+
+	// 批量操作进行中标志
+	batchOperationInProgress: false,
 });

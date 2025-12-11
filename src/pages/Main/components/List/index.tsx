@@ -134,14 +134,18 @@ const List = () => {
 		}
 	}, [state.list.length]);
 
-	// 始终保持有一个选中
+	// 始终保持有一个选中（排除批量删除情况）
 	useUpdateEffect(() => {
 		if (state.list.length === 0) {
 			state.activeId = void 0;
 		}
 
-		state.activeId ??= state.list[0]?.id;
-	}, [state.list.length]);
+		// 如果不是批量删除进行中，才设置默认聚焦项
+		// 这样可以避免批量删除后自动聚焦到第一个项目
+		if (!state.batchDeleteInProgress) {
+			state.activeId ??= state.list[0]?.id;
+		}
+	}, [state.list.length, state.batchDeleteInProgress]);
 
 	useKeyPress(
 		[

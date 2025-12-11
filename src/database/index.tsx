@@ -3,6 +3,7 @@ import type {
 	TableName,
 	TablePayload,
 } from "@/types/database";
+import { dayjs } from "@/utils/dayjs";
 import {} from "@tauri-apps/plugin-fs";
 import Database from "@tauri-apps/plugin-sql";
 import { entries, isBoolean, isNil, map, omitBy, some } from "lodash-es";
@@ -91,6 +92,46 @@ export const initDatabase = async () => {
 	} catch (_error) {
 		// 字段已存在，忽略错误
 	}
+
+	// 添加位置字段，用于手动排序模式下保持项目位置
+	try {
+		await executeSQL(
+			"ALTER TABLE history ADD COLUMN position INTEGER DEFAULT 0",
+		);
+	} catch (_error) {
+		// 字段已存在，忽略错误
+	}
+
+	// 为现有记录设置position值（如果position为NULL或0）
+	try {
+		// 获取没有position或position为0的记录数
+		const recordsWithoutPosition = (await executeSQL(
+			"SELECT COUNT(*) as count FROM history WHERE (position IS NULL OR position = 0) AND deleted = 0",
+		)) as any[];
+
+		if (
+			recordsWithoutPosition.length > 0 &&
+			recordsWithoutPosition[0].count > 0
+		) {
+			// 为现有记录按createTime倒序设置position值（新的在上面）
+			const existingRecords = (await executeSQL(
+				"SELECT id FROM history WHERE deleted = 0 ORDER BY createTime DESC",
+			)) as any[];
+
+			// 批量更新position值，最新的记录获得最大的position值
+			for (let i = 0; i < existingRecords.length; i++) {
+				const record = existingRecords[i];
+				await executeSQL("UPDATE history SET position = ? WHERE id = ?", [
+					i + 1,
+					record.id,
+				]);
+			}
+
+			// 为现有记录设置了position值
+		}
+	} catch (error) {
+		console.warn("⚠️ 为现有记录设置position值时出错:", error);
+	}
 };
 
 /**
@@ -114,6 +155,348 @@ const handlePayload = (payload: TablePayload) => {
 	return {
 		keys,
 		values,
+	};
+};
+
+/**
+ * 通用 WHERE 条件构建器
+ * @param conditions 查询条件对象
+ * @returns 包含 WHERE 子句和参数值的对象
+ */
+export const buildWhere = (conditions: Record<string, any>) => {
+	const where: string[] = [];
+	const values: any[] = [];
+
+	for (const key in conditions) {
+		const value = conditions[key];
+		if (value === undefined || value === null) continue;
+
+		// 处理特殊字段名（如 group 需要转为 [group]）
+		const fieldName = key === "group" ? "[group]" : key;
+
+		if (typeof value === "string" && value.includes("%")) {
+			where.push(`${fieldName} LIKE ?`);
+			values.push(value);
+		} else if (typeof value === "object" && value !== null) {
+			// 处理复杂条件对象，如 { operator: "IN", values: [...] }
+			if (value.operator === "IN" && Array.isArray(value.values)) {
+				const placeholders = value.values.map(() => "?").join(",");
+				where.push(`${fieldName} IN (${placeholders})`);
+				values.push(...value.values);
+			} else if (
+				value.operator === "BETWEEN" &&
+				Array.isArray(value.values) &&
+				value.values.length === 2
+			) {
+				where.push(`${fieldName} BETWEEN ? AND ?`);
+				values.push(...value.values);
+			}
+		} else {
+			where.push(`${fieldName} = ?`);
+			values.push(value);
+		}
+	}
+
+	return {
+		whereSQL: where.length > 0 ? `WHERE ${where.join(" AND ")}` : "",
+		values,
+	};
+};
+
+/**
+ * 通用 SELECT 查询函数
+ * @param tableName 表名
+ * @param where 查询条件
+ * @param orderBy 排序方式
+ * @param limit 限制数量
+ * @returns 查询结果
+ */
+export const dbSelect = async <T = any>(
+	tableName: TableName,
+	where: Record<string, any> = {},
+	orderBy = "ORDER BY createTime DESC",
+	limit?: number,
+) => {
+	const { whereSQL, values } = buildWhere(where);
+	let sql = `SELECT * FROM ${tableName} ${whereSQL} ${orderBy}`;
+	if (limit) sql += ` LIMIT ${limit}`;
+
+	const result = await executeSQL(sql, values);
+
+	// 转换integer字段为boolean，确保UI组件能正确处理
+	const processedList = (Array.isArray(result) ? result : []).map(
+		(item: any) => ({
+			...item,
+			favorite: Boolean(item.favorite),
+			deleted: Boolean(item.deleted),
+			lazyDownload: Boolean(item.lazyDownload),
+			isCloudData: Boolean(item.isCloudData),
+			isCode: Boolean(item.isCode),
+			// 确保position字段为数字类型
+			position: Number(item.position || 0),
+			// 确保同步状态的有效性，只允许有效的状态值
+			syncStatus:
+				item.syncStatus === "synced" ||
+				item.syncStatus === "syncing" ||
+				item.syncStatus === "error"
+					? item.syncStatus
+					: "none",
+		}),
+	);
+
+	return processedList as T[];
+};
+
+/**
+ * 通用 UPDATE 更新函数
+ * @param tableName 表名
+ * @param where 查询条件
+ * @param update 更新数据
+ * @returns 更新结果
+ */
+export const dbUpdate = async (
+	tableName: TableName,
+	where: Record<string, any>,
+	update: Record<string, any>,
+) => {
+	const updateKeys = Object.keys(update).filter(
+		(key) => update[key] !== undefined,
+	);
+	if (updateKeys.length === 0) {
+		return { rowsAffected: 0 };
+	}
+
+	const setSQL = updateKeys
+		.map((key) => `${key === "group" ? "[group]" : key} = ?`)
+		.join(", ");
+
+	const setValues = updateKeys.map((key) => {
+		const value = update[key];
+		return isBoolean(value) ? Number(value) : value;
+	});
+
+	const { whereSQL, values: whereValues } = buildWhere(where);
+
+	const sql = `UPDATE ${tableName} SET ${setSQL} ${whereSQL}`;
+	const result = await executeSQL(sql, [...setValues, ...whereValues]);
+
+	return { rowsAffected: result as any };
+};
+
+/**
+ * 通用 DELETE 删除函数
+ * @param tableName 表名
+ * @param where 查询条件
+ * @returns 删除结果
+ */
+export const dbDelete = async (
+	tableName: TableName,
+	where: Record<string, any>,
+) => {
+	const { whereSQL, values } = buildWhere(where);
+	const sql = `DELETE FROM ${tableName} ${whereSQL}`;
+
+	const result = await executeSQL(sql, values);
+	return { rowsAffected: result as any };
+};
+
+/**
+ * 统一的插入或更新逻辑（基于去重检测）
+ * @param tableName 表名
+ * @param payload 插入的数据
+ * @param isSync 是否为同步操作
+ * @returns 操作结果
+ */
+export const insertOrUpdate = async (
+	tableName: TableName,
+	payload: TablePayload,
+	_isSync = false, // 保留参数以保持API兼容性，但暂时不使用
+): Promise<{ insertId?: string; rowsAffected: number; isUpdate?: boolean }> => {
+	const { id, type, value, group } = payload as HistoryTablePayload;
+	const currentTime = dayjs().format("YYYY-MM-DD HH:mm:ss");
+
+	// 如果提供了ID，优先使用ID进行去重
+	if (id) {
+		const existingRecords = await dbSelect(tableName, { id, deleted: 0 });
+
+		if (existingRecords.length > 0) {
+			// 更新现有记录
+			const {
+				sourceAppName: newSourceAppName,
+				sourceAppIcon: newSourceAppIcon,
+				...payloadWithoutSource
+			} = payload;
+			const updateData: Partial<HistoryTablePayload> = {
+				createTime: currentTime,
+				lastModified: Date.now(),
+				// 保留原始来源应用信息
+				sourceAppName: existingRecords[0].sourceAppName,
+				sourceAppIcon: existingRecords[0].sourceAppIcon,
+				// 更新其他字段（排除来源应用信息）
+				...payloadWithoutSource,
+				// 确保不覆盖ID和position
+				id: existingRecords[0].id,
+				position: existingRecords[0].position, // 保持原始位置不变
+			};
+
+			await dbUpdate(tableName, { id }, updateData);
+
+			return {
+				insertId: existingRecords[0].id,
+				rowsAffected: 1,
+				isUpdate: true,
+			};
+		}
+	}
+
+	// 基于内容进行去重检测
+	const whereConditions: Record<string, any> = { deleted: 0 };
+
+	if (type !== undefined) {
+		whereConditions.type = type;
+	}
+
+	// 对于HTML、RTF和Markdown类型，使用search字段进行比较
+	if (type === "html" || type === "rtf" || type === "markdown") {
+		const searchValue = (payload as HistoryTablePayload).search;
+		if (searchValue) {
+			whereConditions.search = searchValue;
+		}
+	} else if (value !== undefined) {
+		whereConditions.value = value;
+	}
+
+	if (group !== undefined) {
+		whereConditions.group = group;
+	}
+
+	// 对于文件和图片类型，进行特殊处理
+	if (type === "image" || (type === "files" && value !== undefined)) {
+		let filePath = value;
+
+		// 如果是files类型，尝试从JSON中提取文件路径
+		if (type === "files" && value.startsWith("[")) {
+			try {
+				const filePaths = JSON.parse(value);
+				filePath = filePaths[0];
+			} catch {
+				// 解析失败，使用原值
+			}
+		}
+
+		// 标准化路径格式
+		const normalizedPath = filePath.toLowerCase().replace(/\\/g, "/");
+
+		// 查找相同文件路径的记录（跨类型）
+		const existingRecords = await dbSelect(
+			tableName,
+			{
+				type: { operator: "IN", values: ["files", "image"] },
+				value: `%${normalizedPath}%`,
+				deleted: 0,
+			},
+			"ORDER BY createTime DESC",
+			1,
+		);
+
+		if (existingRecords.length > 0) {
+			const existing = existingRecords[0];
+
+			// 更新现有记录
+			const {
+				sourceAppName: newSourceAppName,
+				sourceAppIcon: newSourceAppIcon,
+				...payloadWithoutSource
+			} = payload;
+			const updateData: Partial<HistoryTablePayload> = {
+				createTime: currentTime,
+				lastModified: Date.now(),
+				// 保留原始来源应用信息
+				sourceAppName: existing.sourceAppName,
+				sourceAppIcon: existing.sourceAppIcon,
+				// 更新其他字段（排除来源应用信息）
+				...payloadWithoutSource,
+				// 确保不覆盖ID和position
+				id: existing.id,
+				position: existing.position, // 保持原始位置不变
+			};
+
+			await dbUpdate(tableName, { id: existing.id }, updateData);
+
+			return {
+				insertId: existing.id,
+				rowsAffected: 1,
+				isUpdate: true,
+			};
+		}
+	} else {
+		// 对于其他类型，使用常规去重逻辑
+		const existingRecords = await dbSelect(
+			tableName,
+			whereConditions,
+			"ORDER BY createTime DESC",
+			1,
+		);
+
+		if (existingRecords.length > 0) {
+			const existing = existingRecords[0];
+
+			// 更新现有记录
+			const {
+				sourceAppName: newSourceAppName,
+				sourceAppIcon: newSourceAppIcon,
+				...payloadWithoutSource
+			} = payload;
+			const updateData: Partial<HistoryTablePayload> = {
+				createTime: currentTime,
+				lastModified: Date.now(),
+				// 保留原始来源应用信息
+				sourceAppName: existing.sourceAppName,
+				sourceAppIcon: existing.sourceAppIcon,
+				// 更新其他字段（排除来源应用信息）
+				...payloadWithoutSource,
+				// 确保不覆盖ID和position
+				id: existing.id,
+				position: existing.position, // 保持原始位置不变
+			};
+
+			await dbUpdate(tableName, { id: existing.id }, updateData);
+
+			return {
+				insertId: existing.id,
+				rowsAffected: 1,
+				isUpdate: true,
+			};
+		}
+	}
+
+	// 没有找到重复记录，插入新记录
+	// 获取当前最大position值，新记录的position为最大值+1
+	const maxPositionResult = await executeSQL(
+		"SELECT MAX(position) as maxPos FROM history WHERE deleted = 0",
+	);
+	const maxPosition =
+		Array.isArray(maxPositionResult) && maxPositionResult.length > 0
+			? (maxPositionResult[0] as any).maxPos || 0
+			: 0;
+
+	// 为新记录设置position
+	const payloadWithPosition = {
+		...payload,
+		position: maxPosition + 1,
+	};
+
+	const { keys, values } = handlePayload(payloadWithPosition);
+	const refs = map(values, () => "?");
+
+	await executeSQL(
+		`INSERT INTO ${tableName} (${keys}) VALUES (${refs});`,
+		values,
+	);
+
+	return {
+		rowsAffected: 1,
+		isUpdate: false,
 	};
 };
 
@@ -183,6 +566,8 @@ export const selectSQL = async <List,>(
 		lazyDownload: Boolean(item.lazyDownload),
 		isCloudData: Boolean(item.isCloudData),
 		isCode: Boolean(item.isCode),
+		// 确保position字段为数字类型
+		position: Number(item.position || 0),
 		// 确保同步状态的有效性，只允许有效的状态值
 		syncStatus:
 			item.syncStatus === "synced" ||
@@ -212,7 +597,7 @@ export const insertSQL = (tableName: TableName, payload: TablePayload) => {
 };
 
 /**
- * 同步专用的去重插入函数（基于ID的智能去重）
+ * 同步专用的去重插入函数（重构为使用通用函数）
  * @param tableName 表名称
  * @param payload 插入的数据
  */
@@ -223,42 +608,46 @@ export const insertWithDeduplicationForSync = async (
 	const { id } = payload;
 
 	if (!id) {
-		// 如果没有ID，使用原有的去重逻辑
-		return await insertWithDeduplication(tableName, payload, "sync");
+		// 如果没有ID，使用统一的去重逻辑
+		return await insertOrUpdate(tableName, payload, true);
 	}
 
 	try {
 		// 检查是否已存在相同ID的记录
-		const existingRecords = (await executeSQL(
-			`SELECT id, deleted FROM ${tableName} WHERE id = ?;`,
-			[id],
-		)) as any[];
+		const existingRecords = await dbSelect(tableName, { id });
 
 		if (existingRecords.length > 0) {
 			const existing = existingRecords[0];
 
-			if (existing.deleted === 1) {
+			if (existing.deleted) {
 				return {
 					rowsAffected: 0,
 					isUpdate: false,
 				};
 			}
+
 			// 如果记录存在且未被删除，则更新它
-			// 但保留原始的来源应用信息
-			const { updateSQL } = await import("@/database");
+			// 保留原始的来源应用信息
+			let updatePayload = { ...payload };
 
 			// 如果是history表，保留原始来源应用信息
 			if (tableName === "history") {
-				const { sourceAppName, sourceAppIcon, ...updatePayload } = payload;
-				await updateSQL(tableName, updatePayload);
-			} else {
-				await updateSQL(tableName, payload);
+				const { sourceAppName, sourceAppIcon, ...rest } = payload;
+				updatePayload = {
+					...rest,
+					sourceAppName: existing.sourceAppName,
+					sourceAppIcon: existing.sourceAppIcon,
+				};
 			}
+
+			await dbUpdate(tableName, { id }, updatePayload);
 			return {
+				insertId: id,
 				rowsAffected: 1,
 				isUpdate: true,
 			};
 		}
+
 		// 如果记录不存在，则插入新记录
 		const { keys, values } = handlePayload(payload);
 		const refs = map(values, () => "?");
@@ -268,6 +657,7 @@ export const insertWithDeduplicationForSync = async (
 			values,
 		);
 		return {
+			insertId: id,
 			rowsAffected: 1,
 			isUpdate: false,
 		};
@@ -278,7 +668,7 @@ export const insertWithDeduplicationForSync = async (
 };
 
 /**
- * 去重插入的 sql 语句（检测重复内容，如果存在则更新现有记录，否则插入新记录）
+ * 去重插入的 sql 语句（重构为使用通用函数）
  * @param tableName 表名称
  * @param payload 插入的数据
  * @param identifier 去重标识（默认使用 type + value）
@@ -288,260 +678,61 @@ export const insertWithDeduplication = async (
 	payload: TablePayload,
 	_identifier = "default",
 ): Promise<{ insertId?: string; rowsAffected: number; isUpdate?: boolean }> => {
-	// 如果是 history 表，进行基于内容的去重检测和更新
-	if (tableName === "history") {
-		const {
-			type,
-			value,
-			group,
-			id: payloadId,
-		} = payload as HistoryTablePayload;
-		const currentTime = dayjs().format("YYYY-MM-DD HH:mm:ss");
-
-		// 如果提供了ID，优先使用ID进行去重
-		if (payloadId) {
-			const existingRecords = (await executeSQL(
-				`SELECT * FROM ${tableName} WHERE id = ? AND deleted = 0;`,
-				[payloadId],
-			)) as any[];
-
-			if (existingRecords.length > 0) {
-				// 更新现有记录的时间戳
-				await executeSQL(
-					`UPDATE ${tableName} SET createTime = ?, lastModified = ? WHERE id = ?`,
-					[currentTime, Date.now(), payloadId],
-				);
-
-				return {
-					insertId: payloadId,
-					rowsAffected: 1,
-					isUpdate: true,
-				};
-			}
-		}
-
-		// 查找重复的现有记录
-		let existingRecord: any = null;
-
-		// 对于图片和文件类型，基于文件路径进行智能去重（支持跨类型去重）
-		if (type === "image" || (type === "files" && value !== undefined)) {
-			let filePath = value;
-
-			// 如果是files类型，尝试从JSON中提取文件路径
-			if (type === "files" && value.startsWith("[")) {
-				try {
-					const filePaths = JSON.parse(value);
-					filePath = filePaths[0]; // 使用第一个文件路径
-				} catch {
-					// 解析失败，使用原值
-				}
-			}
-
-			// 标准化路径格式
-			const normalizedPath = filePath.toLowerCase().replace(/\\/g, "/");
-
-			// 对于files类型，使用更精确的匹配逻辑
-			if (type === "files") {
-				// 首先尝试精确匹配整个JSON数组
-				const exactRecords = (await executeSQL(
-					`SELECT * FROM ${tableName} WHERE type = "files" AND value = ? AND deleted = 0 ORDER BY createTime DESC LIMIT 1`,
-					[value],
-				)) as any[];
-
-				if (exactRecords.length > 0) {
-					existingRecord = exactRecords[0];
-				} else {
-					// 如果精确匹配失败，再尝试基于文件路径的模糊匹配
-					const records = (await executeSQL(
-						`SELECT * FROM ${tableName} WHERE
-						 (type = "files" OR type = "image")
-						 AND LOWER(REPLACE(value, '\\', '/')) LIKE ?
-						 AND deleted = 0
-						 ORDER BY createTime DESC LIMIT 1`,
-						[`%${normalizedPath}%`],
-					)) as any[];
-
-					existingRecord = records.length > 0 ? records[0] : null;
-				}
-			} else {
-				// 对于image类型，使用原有的模糊匹配逻辑
-				const records = (await executeSQL(
-					`SELECT * FROM ${tableName} WHERE
-					 (type = "files" OR type = "image")
-					 AND LOWER(REPLACE(value, '\\', '/')) LIKE ?
-					 AND deleted = 0
-					 ORDER BY createTime DESC LIMIT 1`,
-					[`%${normalizedPath}%`],
-				)) as any[];
-
-				// 也检查text类型是否有相同文件路径
-				const textRecords = (await executeSQL(
-					`SELECT * FROM ${tableName} WHERE type = "text"
-					 AND LOWER(REPLACE(value, '\\', '/')) LIKE ?
-					 AND deleted = 0
-					 ORDER BY createTime DESC LIMIT 1`,
-					[`%${normalizedPath}%`],
-				)) as any[];
-
-				existingRecord =
-					records.length > 0
-						? records[0]
-						: textRecords.length > 0
-							? textRecords[0]
-							: null;
-			}
-		} else {
-			// 对于其他类型，使用更智能的去重逻辑
-			const conditions = ["deleted = 0"];
-			const params: any[] = [];
-
-			if (type !== undefined) {
-				conditions.push("type = ?");
-				params.push(type);
-			}
-
-			// 对于HTML、RTF和Markdown类型，我们使用search字段进行比较，因为value可能包含格式信息
-			// 而search字段通常包含纯文本内容
-			if (type === "html" || type === "rtf" || type === "markdown") {
-				const searchValue = (payload as HistoryTablePayload).search;
-				if (searchValue) {
-					conditions.push("search = ?");
-					params.push(searchValue);
-				}
-			} else if (value !== undefined) {
-				// 对于其他类型，使用value字段比较
-				conditions.push("value = ?");
-				params.push(value);
-			}
-
-			if (group !== undefined) {
-				conditions.push("[group] = ?");
-				params.push(group);
-			}
-
-			if (params.length > 0) {
-				const records = (await executeSQL(
-					`SELECT * FROM ${tableName} WHERE ${conditions.join(" AND ")} ORDER BY createTime DESC LIMIT 1`,
-					params,
-				)) as any[];
-
-				existingRecord = records.length > 0 ? records[0] : null;
-			}
-		}
-
-		// 如果找到重复记录，则更新现有记录
-		if (existingRecord) {
-			const updateData: Partial<HistoryTablePayload> = {
-				// 更新时间戳为当前时间
-				createTime: currentTime,
-				lastModified: Date.now(),
-				// 保留原始来源应用信息，不更新
-				sourceAppName: existingRecord.sourceAppName,
-				sourceAppIcon: existingRecord.sourceAppIcon,
-				// 更新搜索字段
-				search: (payload as HistoryTablePayload).search,
-				// 更新内容（如果不同）
-				value: value !== existingRecord.value ? value : existingRecord.value,
-				// 保持现有的其他属性不变
-				id: existingRecord.id,
-				favorite: existingRecord.favorite,
-				note: existingRecord.note,
-				syncStatus: existingRecord.syncStatus,
-				isCloudData: existingRecord.isCloudData,
-			};
-
-			// 构建更新SQL
-			const updateKeys = Object.keys(updateData).filter(
-				(key) => updateData[key as keyof HistoryTablePayload] !== undefined,
-			);
-			const updateValues = updateKeys.map(
-				(key) => updateData[key as keyof HistoryTablePayload],
-			);
-			const setClause = updateKeys
-				.map((key) => `${key === "group" ? "[group]" : key} = ?`)
-				.join(", ");
-
-			if (updateKeys.length > 0) {
-				await executeSQL(`UPDATE ${tableName} SET ${setClause} WHERE id = ?`, [
-					...updateValues,
-					existingRecord.id,
-				]);
-			}
-
-			// 返回更新后的记录，并标记为更新操作
-			return {
-				insertId: existingRecord.id,
-				rowsAffected: 1,
-				isUpdate: true,
-			};
-		}
-	}
-
-	// 没有找到重复记录，插入新记录
-	const { keys, values } = handlePayload(payload);
-	const refs = map(values, () => "?");
-
-	await executeSQL(
-		`INSERT INTO ${tableName} (${keys}) VALUES (${refs});`,
-		values,
-	);
-
-	// 对于新插入的记录，返回一个特殊标识，让UI知道这是新记录
-	return {
-		rowsAffected: 1,
-		isUpdate: false,
-	};
+	// 直接使用新的统一插入或更新逻辑
+	return await insertOrUpdate(tableName, payload, false);
 };
 
 /**
- * 更新的 sql 语句
+ * 更新的 sql 语句（重构为使用通用函数）
  * @param tableName 表名称
  * @param payload 修改的数据
  */
-export const updateSQL = (tableName: TableName, payload: TablePayload) => {
+export const updateSQL = async (
+	tableName: TableName,
+	payload: TablePayload,
+) => {
 	const { id, ...rest } = payload;
 
-	const { keys, values } = handlePayload(rest);
+	if (!id) {
+		console.warn("更新操作缺少ID");
+		return;
+	}
 
-	if (keys.length === 0) return;
-
-	const setClause = map(keys, (item) => `${item} = ?`);
-
-	return executeSQL(
-		`UPDATE ${tableName} SET ${setClause} WHERE id = ?;`,
-		values.concat(id!),
-	);
+	// 使用通用UPDATE函数
+	const result = await dbUpdate(tableName, { id }, rest);
+	return result.rowsAffected;
 };
 
 /**
- * 删除的 sql 语句（软删除）
+ * 删除的 sql 语句（使用统一的删除管理器）
  * @param tableName 表名称
  * @param item 删除的数据项
  */
-export const deleteSQL = async (tableName: TableName, item: TablePayload) => {
+export const deleteSQL = async (_tableName: TableName, item: TablePayload) => {
 	const { id, type, value } = item;
 
-	// 使用软删除：更新 deleted 标记而不是真正删除
-	await executeSQL(`UPDATE ${tableName} SET deleted = 1 WHERE id = ?;`, [id]);
-
-	// 验证软删除是否成功
-	const verifyResult = (await executeSQL(
-		`SELECT COUNT(*) as count FROM ${tableName} WHERE id = ? AND deleted = 1;`,
-		[id],
-	)) as any[];
-
-	// 检查软删除是否真的成功
-	if (verifyResult.length > 0 && verifyResult[0].count === 0) {
-		console.error("❌ 软删除失败", { id, verifyResult });
-		throw new Error(`Failed to soft delete record with id: ${id}`);
+	if (!id) {
+		throw new Error("删除操作缺少ID");
 	}
 
-	// 注意：我们不再删除本地文件系统中的原始文件
-	// 因为剪切板是复制操作，删除源文件容易导致原本的数据丢失
-	// 我们只删除数据库记录和云端数据，保留本地文件系统中的原始文件
-	if (type === "image" && value) {
-		// biome-ignore lint/suspicious/noConsoleLog: 允许在关键文件保留操作时使用日志
-		console.log(`📝 保留本地图片文件: ${value}`);
+	try {
+		// 导入删除管理器
+		const { deleteManager } = await import("@/utils/deleteManager");
+
+		// 使用删除管理器执行删除
+		const result = await deleteManager.deleteItem(id);
+
+		if (!result.success) {
+			throw new Error(result.errors?.join("; ") ?? "删除失败");
+		}
+
+		// 只删除数据库记录和云端数据，保留本地文件系统中的原始文件
+		if (type === "image" && value) {
+			console.info(`📝 保留本地图片文件: ${value}`);
+		}
+	} catch (error) {
+		console.error(`❌ 删除项目失败: ${id}`, error);
+		throw error;
 	}
 };
 
@@ -668,17 +859,25 @@ export const batchUpdateSyncStatus = async (
 	isCloudData?: boolean,
 ) => {
 	try {
-		const placeholders = ids.map(() => "?").join(",");
-		const updates = [`syncStatus = '${syncStatus}'`];
+		const updateData: any = { syncStatus };
 
 		if (isCloudData !== undefined) {
-			updates.push(`isCloudData = ${Number(isCloudData)}`);
+			updateData.isCloudData = Number(isCloudData);
 		}
 
-		await executeSQL(
-			`UPDATE history SET ${updates.join(", ")} WHERE id IN (${placeholders})`,
-			ids,
-		);
+		// 使用通用UPDATE函数的IN操作
+		const placeholders = ids.map(() => "?").join(",");
+		const whereSQL = `WHERE id IN (${placeholders})`;
+
+		const updateKeys = Object.keys(updateData);
+		const setSQL = updateKeys.map((key) => `${key} = ?`).join(", ");
+
+		const setValues = updateKeys.map((key) => updateData[key]);
+
+		await executeSQL(`UPDATE history SET ${setSQL} ${whereSQL}`, [
+			...setValues,
+			...ids,
+		]);
 		return true;
 	} catch (error) {
 		console.error("❌ 批量更新同步状态失败:", error);
@@ -692,21 +891,15 @@ export const batchUpdateSyncStatus = async (
  */
 export const getPendingSyncRecords = async (limit?: number) => {
 	try {
-		const limitClause = limit ? `LIMIT ${limit}` : "";
+		// 使用通用SELECT函数
+		const records = await dbSelect(
+			"history",
+			{ syncStatus: "none" },
+			"ORDER BY createTime DESC",
+			limit,
+		);
 
-		const records = (await executeSQL(
-			`SELECT * FROM history WHERE syncStatus = 'none' ORDER BY createTime DESC ${limitClause}`,
-		)) as any[];
-
-		return records.map((item: any) => ({
-			...item,
-			favorite: Boolean(item.favorite),
-			deleted: Boolean(item.deleted),
-			lazyDownload: Boolean(item.lazyDownload),
-			isCloudData: Boolean(item.isCloudData),
-			isCode: Boolean(item.isCode),
-			syncStatus: item.syncStatus || "none",
-		}));
+		return records;
 	} catch (error) {
 		console.error("❌ 获取待同步记录失败:", error);
 		return [];
@@ -714,13 +907,16 @@ export const getPendingSyncRecords = async (limit?: number) => {
 };
 
 /**
- * 批量删除剪贴板条目（软删除）
+ * 批量删除剪贴板条目（使用统一的删除管理器）
  * @param ids 要删除的条目ID数组
  */
 export const batchDeleteItems = async (ids: string[]) => {
 	if (!ids || ids.length === 0) return { success: true, deletedCount: 0 };
 
 	try {
+		// 导入删除管理器
+		const { deleteManager } = await import("@/utils/deleteManager");
+
 		// 先获取要删除的条目信息，以便找出所有相关重复条目
 		const itemsToDelete = (await executeSQL(
 			`SELECT * FROM history WHERE id IN (${ids.map(() => "?").join(",")})`,
@@ -768,32 +964,22 @@ export const batchDeleteItems = async (ids: string[]) => {
 			}
 		}
 
-		// 执行批量软删除：标记为已删除，并设置同步状态为待同步
-		const allIdsArray = Array.from(allIdsToDelete);
-		const placeholders = allIdsArray.map(() => "?").join(",");
-		const currentTime = Date.now();
-		await executeSQL(
-			`UPDATE history SET deleted = 1, syncStatus = 'pending', lastModified = ? WHERE id IN (${placeholders})`,
-			[currentTime, ...allIdsArray],
-		);
+		// 使用删除管理器执行批量删除
+		const result = await deleteManager.deleteItems(Array.from(allIdsToDelete));
 
-		// 验证删除是否成功
-		const verifyResult = (await executeSQL(
-			`SELECT COUNT(*) as count FROM history WHERE id IN (${placeholders}) AND deleted = 1`,
-			allIdsArray,
-		)) as any[];
-
-		const deletedCount = verifyResult[0]?.count || 0;
-
-		if (deletedCount !== allIdsArray.length) {
-			console.error("❌ 批量删除部分失败", {
-				expected: allIdsArray.length,
-				actual: deletedCount,
-			});
-			return { success: false, deletedCount, error: "部分条目删除失败" };
+		// 转换结果格式以保持向后兼容
+		if (!result.success) {
+			return {
+				success: false,
+				deletedCount: result.deletedCount,
+				error: result.errors?.join("; ") ?? "删除失败",
+			};
 		}
 
-		return { success: true, deletedCount };
+		return {
+			success: true,
+			deletedCount: result.deletedCount,
+		};
 	} catch (error) {
 		console.error("❌ 批量删除失败:", error);
 		return { success: false, deletedCount: 0, error };
@@ -804,28 +990,35 @@ export const batchDeleteItems = async (ids: string[]) => {
  * 批量收藏/取消收藏剪贴板条目
  * @param ids 要操作的条目ID数组
  * @param favorite 是否收藏，true为收藏，false为取消收藏
+ * @param updateSyncStatus 是否更新同步状态，默认为true
  */
-export const batchUpdateFavorite = async (ids: string[], favorite: boolean) => {
+export const batchUpdateFavorite = async (
+	ids: string[],
+	favorite: boolean,
+	updateSyncStatus = true,
+) => {
 	if (!ids || ids.length === 0) return { success: true, updatedCount: 0 };
 
 	try {
-		const placeholders = ids.map(() => "?").join(",");
 		const favoriteValue = favorite ? 1 : 0;
 
-		// 批量更新收藏状态，并设置同步状态为待同步
-		const currentTime = Date.now();
-		await executeSQL(
-			`UPDATE history SET favorite = ?, syncStatus = 'pending', lastModified = ? WHERE id IN (${placeholders})`,
-			[favoriteValue, currentTime, ...ids],
-		);
+		// 使用通用UPDATE函数进行批量更新
+		const placeholders = ids.map(() => "?").join(",");
+		const whereSQL = `WHERE id IN (${placeholders})`;
+
+		// 根据参数决定是否更新同步状态，但不更新时间戳
+		const syncStatusPart = updateSyncStatus ? ", syncStatus = 'pending'" : "";
+		const sql = `UPDATE history SET favorite = ?${syncStatusPart} ${whereSQL}`;
+
+		await executeSQL(sql, [favoriteValue, ...ids]);
 
 		// 验证更新是否成功
-		const verifyResult = (await executeSQL(
-			`SELECT COUNT(*) as count FROM history WHERE id IN (${placeholders}) AND favorite = ?`,
-			[...ids, favoriteValue],
-		)) as any[];
+		const verifyResult = await dbSelect("history", {
+			id: { operator: "IN", values: ids },
+			favorite: favoriteValue,
+		});
 
-		const updatedCount = verifyResult[0]?.count || 0;
+		const updatedCount = verifyResult.length;
 
 		if (updatedCount !== ids.length) {
 			console.error("❌ 批量更新收藏状态部分失败", {
@@ -867,67 +1060,26 @@ const getFields = async (tableName: TableName) => {
  * 获取所有历史数据（过滤已删除项）
  */
 export const getHistoryData = async (includeDeleted = false) => {
-	// 根据参数决定是否包含已删除项
-	let result: any[];
-
-	if (includeDeleted) {
-		// 获取所有数据，包括已删除项
-		const rawData = (await executeSQL(
-			"SELECT * FROM history ORDER BY createTime DESC;",
-		)) as any[];
-
-		// 转换integer字段为boolean
-		result = rawData.map((item: any) => ({
-			...item,
-			favorite: Boolean(item.favorite),
-			deleted: Boolean(item.deleted),
-			lazyDownload: Boolean(item.lazyDownload),
-			isCloudData: Boolean(item.isCloudData),
-			isCode: Boolean(item.isCode),
-			// 确保同步状态的有效性，只允许有效的状态值
-			syncStatus:
-				item.syncStatus === "synced" ||
-				item.syncStatus === "syncing" ||
-				item.syncStatus === "error"
-					? item.syncStatus
-					: "none",
-		}));
-	} else {
-		// 只获取未删除项
-		const rawData = (await executeSQL(
-			"SELECT * FROM history WHERE deleted = 0 ORDER BY createTime DESC;",
-		)) as any[];
-
-		// 转换integer字段为boolean
-		result = rawData.map((item: any) => ({
-			...item,
-			favorite: Boolean(item.favorite),
-			deleted: Boolean(item.deleted),
-			lazyDownload: Boolean(item.lazyDownload),
-			isCloudData: Boolean(item.isCloudData),
-			isCode: Boolean(item.isCode),
-			// 确保同步状态的有效性，只允许有效的状态值
-			syncStatus:
-				item.syncStatus === "synced" ||
-				item.syncStatus === "syncing" ||
-				item.syncStatus === "error"
-					? item.syncStatus
-					: "none",
-		}));
-	}
+	// 使用通用SELECT函数
+	const whereConditions = includeDeleted ? {} : { deleted: 0 };
+	const result = await dbSelect(
+		"history",
+		whereConditions,
+		"ORDER BY createTime DESC",
+	);
 
 	// 同时检查数据库中的总数据状态
-	const totalResult = (await executeSQL(
-		`SELECT COUNT(*) as total FROM ${"history"};`,
+	const totalCount = (await executeSQL(
+		"SELECT COUNT(*) as total FROM history;",
 	)) as any[];
-	const activeResult = (await executeSQL(
-		`SELECT COUNT(*) as active FROM ${"history"} WHERE deleted = 0;`,
+	const activeCount = (await executeSQL(
+		"SELECT COUNT(*) as active FROM history WHERE deleted = 0;",
 	)) as any[];
 
 	// 如果数据量异常，进行详细检查
-	if (totalResult[0]?.total > 50 || result.length !== activeResult[0]?.active) {
+	if (totalCount[0]?.total > 50 || result.length !== activeCount[0]?.active) {
 		const duplicateCheck = (await executeSQL(
-			`SELECT id, COUNT(*) as count FROM ${"history"} GROUP BY id HAVING COUNT(*) > 1;`,
+			"SELECT id, COUNT(*) as count FROM history GROUP BY id HAVING COUNT(*) > 1;",
 		)) as any[];
 		if (duplicateCheck.length > 0) {
 			console.warn("⚠️ 发现重复记录", duplicateCheck);
@@ -1197,54 +1349,37 @@ export const deleteFromDatabase = async (
 
 	const results = { success: 0, failed: 0, errors: [] as string[] };
 
-	try {
-		// 使用事务确保删除操作的原子性
-		await executeSQL("BEGIN TRANSACTION;");
+	// 简化实现：不使用事务，直接逐个删除
+	// 这样可以避免事务嵌套和状态管理问题
+	for (const id of ids) {
+		try {
+			// 先获取记录信息，仅用于日志记录
+			const records = (await executeSQL(
+				`SELECT * FROM ${tableName} WHERE id = ?;`,
+				[id],
+			)) as any[];
 
-		for (const id of ids) {
-			try {
-				// 先获取记录信息，仅用于日志记录
-				const records = (await executeSQL(
-					`SELECT * FROM ${tableName} WHERE id = ?;`,
-					[id],
-				)) as any[];
+			if (records.length > 0) {
+				const record = records[0];
 
-				if (records.length > 0) {
-					const record = records[0];
-
-					// 注意：我们不再删除本地文件系统中的原始文件
-					// 因为剪切板是复制操作，删除源文件容易导致原本的数据丢失
-					// 我们只删除数据库记录和云端数据，保留本地文件系统中的原始文件
-					if (record.type === "image" && record.value) {
-						// 记录保留本地文件的信息，但不删除文件
-						// biome-ignore lint/suspicious/noConsoleLog: 允许在关键文件保留操作时使用日志
-						console.log(`📝 保留本地图片文件: ${record.value}`);
-					}
-
-					// 从数据库中彻底删除记录
-					await executeSQL(`DELETE FROM ${tableName} WHERE id = ?;`, [id]);
-					results.success++;
-				} else {
-					results.failed++;
-					results.errors.push(`记录不存在: ${id}`);
+				if (record.type === "image" && record.value) {
+					// 记录保留本地文件的信息，但不删除文件
+					console.info(`📝 保留本地图片文件: ${record.value}`);
 				}
-			} catch (error) {
-				results.failed++;
-				results.errors.push(
-					`删除记录失败 (ID: ${id}): ${error instanceof Error ? error.message : String(error)}`,
-				);
-			}
-		}
 
-		// 提交事务
-		await executeSQL("COMMIT;");
-	} catch (error) {
-		// 出错时回滚
-		await executeSQL("ROLLBACK;");
-		results.failed = ids.length;
-		results.errors = [
-			`事务执行失败: ${error instanceof Error ? error.message : String(error)}`,
-		];
+				// 从数据库中彻底删除记录
+				await executeSQL(`DELETE FROM ${tableName} WHERE id = ?;`, [id]);
+				results.success++;
+			} else {
+				results.failed++;
+				results.errors.push(`记录不存在: ${id}`);
+			}
+		} catch (error) {
+			results.failed++;
+			results.errors.push(
+				`删除记录失败 (ID: ${id}): ${error instanceof Error ? error.message : String(error)}`,
+			);
+		}
 	}
 
 	return results;
@@ -1255,29 +1390,19 @@ export const deleteFromDatabase = async (
  */
 export const getDatabaseInfo = async () => {
 	try {
-		// 获取总记录数
-		const totalCountResult = (await executeSQL(
+		// 使用通用SELECT函数获取统计信息
+		const totalCount = (await executeSQL(
 			"SELECT COUNT(*) as total FROM history;",
 		)) as any[];
-		const totalCount = totalCountResult[0]?.total || 0;
-
-		// 获取活跃记录数（未删除）
-		const activeCountResult = (await executeSQL(
+		const activeCount = (await executeSQL(
 			"SELECT COUNT(*) as active FROM history WHERE deleted = 0;",
 		)) as any[];
-		const activeCount = activeCountResult[0]?.active || 0;
-
-		// 获取已删除记录数
-		const deletedCountResult = (await executeSQL(
+		const deletedCount = (await executeSQL(
 			"SELECT COUNT(*) as deleted FROM history WHERE deleted = 1;",
 		)) as any[];
-		const deletedCount = deletedCountResult[0]?.deleted || 0;
-
-		// 获取收藏记录数
-		const favoriteCountResult = (await executeSQL(
+		const favoriteCount = (await executeSQL(
 			"SELECT COUNT(*) as favorite FROM history WHERE favorite = 1 AND deleted = 0;",
 		)) as any[];
-		const favoriteCount = favoriteCountResult[0]?.favorite || 0;
 
 		// 获取各类型记录数
 		const typeCountResult = (await executeSQL(
@@ -1297,27 +1422,13 @@ export const getDatabaseInfo = async () => {
 			return acc;
 		}, {});
 
-		// 获取最近10条记录的关键信息
-		const recentRecordsResult = (await executeSQL(
-			"SELECT id, type, [group], value, search, favorite, createTime, syncStatus, isCloudData, sourceAppName, sourceAppIcon FROM history WHERE deleted = 0 ORDER BY createTime DESC LIMIT 10;",
-		)) as any[];
-
-		const recentRecords = recentRecordsResult.map((record) => ({
-			id: record.id,
-			type: record.type,
-			group: record.group,
-			value:
-				record.value?.length > 50
-					? `${record.value.substring(0, 50)}...`
-					: record.value,
-			search: record.search,
-			favorite: Boolean(record.favorite),
-			createTime: record.createTime,
-			syncStatus: record.syncStatus || "none",
-			isCloudData: Boolean(record.isCloudData),
-			sourceAppName: record.sourceAppName,
-			sourceAppIcon: record.sourceAppIcon,
-		}));
+		// 使用通用SELECT函数获取最近10条记录
+		const recentRecords = await dbSelect(
+			"history",
+			{ deleted: 0 },
+			"ORDER BY createTime DESC",
+			10,
+		);
 
 		// 获取数据库文件大小（如果可能）
 		let dbSize = "未知";
@@ -1334,10 +1445,10 @@ export const getDatabaseInfo = async () => {
 		}
 
 		return {
-			totalCount,
-			activeCount,
-			deletedCount,
-			favoriteCount,
+			totalCount: totalCount[0]?.total || 0,
+			activeCount: activeCount[0]?.active || 0,
+			deletedCount: deletedCount[0]?.deleted || 0,
+			favoriteCount: favoriteCount[0]?.favorite || 0,
 			typeCounts,
 			syncStatusCounts,
 			recentRecords,

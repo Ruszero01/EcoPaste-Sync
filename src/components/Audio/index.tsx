@@ -1,29 +1,27 @@
-import UnoIcon from "@/components/UnoIcon";
-import { playSound } from "@/hooks/useAudioEffect";
-import type { FC } from "react";
+import copyAudio from "@/assets/audio/copy.mp3";
+import { forwardRef, useImperativeHandle, useRef } from "react";
 
-interface AudioPreviewProps {
-	iconProps?: {
-		size?: number;
-		className?: string;
-		hidden?: boolean;
-	};
+export interface AudioRef {
+	play: () => void;
 }
 
-const AudioPreview: FC<AudioPreviewProps> = ({ iconProps }) => {
-	const handlePlayAudio = async () => {
-		await playSound("copy");
+interface AudioProps {
+	src?: string;
+}
+
+const Audio = forwardRef<AudioRef, AudioProps>((props, ref) => {
+	const { src = copyAudio } = props;
+	const audioRef = useRef<HTMLAudioElement>(null);
+
+	useImperativeHandle(ref, () => ({
+		play: playAudio,
+	}));
+
+	const playAudio = () => {
+		audioRef.current?.play();
 	};
 
-	return (
-		<UnoIcon
-			{...iconProps}
-			hoverable
-			hidden={iconProps?.hidden}
-			name="i-iconamoon:volume-up-light"
-			onClick={handlePlayAudio}
-		/>
-	);
-};
+	return <audio ref={audioRef} src={src} />;
+});
 
-export default AudioPreview;
+export default Audio;
