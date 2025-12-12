@@ -1,4 +1,5 @@
 import CodeEditor from "@/components/CodeEditor";
+import ColorPicker from "@/components/ColorPicker";
 import { updateSQL } from "@/database";
 import { MainContext } from "@/pages/Main";
 import { clipboardStore } from "@/stores/clipboard";
@@ -26,6 +27,7 @@ const TEXT_TYPE_OPTIONS = [
 	{ value: "rtf", label: "富文本" },
 	{ value: "markdown", label: "Markdown" },
 	{ value: "code", label: "代码" },
+	{ value: "color", label: "颜色" },
 ];
 
 // 支持的代码语言选项
@@ -66,6 +68,10 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 	const [selectedType, setSelectedType] = useState<string>("text");
 	// 当前选择的代码语言（仅当类型为代码时使用）
 	const [selectedCodeLanguage, setSelectedCodeLanguage] = useState<string>("");
+	// 当前选择的颜色格式（仅当类型为颜色时使用）
+	const [selectedColorFormat, setSelectedColorFormat] = useState<
+		"hex" | "rgb" | "rgba"
+	>("hex");
 
 	// 获取剪贴板内容的可编辑形式
 	const getEditableContent = (item: HistoryTablePayload): string => {
@@ -82,6 +88,9 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 			case "rtf":
 				// 去除RTF标记获取纯文本进行编辑
 				return value.replace(/\\[a-zA-Z]+\d*/g, "").replace(/[{}]/g, "");
+			case "color":
+				// 颜色类型直接返回颜色值
+				return value;
 			default:
 				return value;
 		}
@@ -90,7 +99,19 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 	// 初始化类型选择状态
 	const initializeTypeSelection = (item: HistoryTablePayload) => {
 		// 优先检查数据库中保存的类型
-		if (item.type === "markdown") {
+		if (item.type === "color") {
+			// 如果是颜色类型
+			setSelectedType("color");
+			setSelectedCodeLanguage("");
+			// 根据值判断颜色格式
+			if (item.value.startsWith("rgba(")) {
+				setSelectedColorFormat("rgba");
+			} else if (item.value.startsWith("rgb(")) {
+				setSelectedColorFormat("rgb");
+			} else {
+				setSelectedColorFormat("hex");
+			}
+		} else if (item.type === "markdown") {
 			// 如果数据库中明确保存为markdown类型，直接使用Markdown编辑器
 			setSelectedType("markdown");
 			setSelectedCodeLanguage("");
@@ -123,6 +144,10 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 		if (type !== "code") {
 			setSelectedCodeLanguage("");
 		}
+		// 如果不是颜色类型，重置颜色格式
+		if (type !== "color") {
+			setSelectedColorFormat("hex");
+		}
 	};
 
 	// 处理代码语言变化
@@ -138,6 +163,11 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 	// 判断是否使用Markdown编辑器
 	const shouldUseMarkdownEditor = () => {
 		return selectedType === "markdown";
+	};
+
+	// 判断是否使用颜色选择器
+	const shouldUseColorPicker = () => {
+		return selectedType === "color";
 	};
 
 	// 获取当前代码语言
@@ -180,7 +210,7 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 			const currentTime = Date.now();
 
 			// 根据用户选择的类型更新项目属性
-			let updateType: "text" | "html" | "rtf" | "markdown";
+			let updateType: "text" | "html" | "rtf" | "markdown" | "color";
 			let updateIsCode: boolean;
 			let updateCodeLanguage: string;
 
@@ -190,6 +220,10 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 				updateCodeLanguage = selectedCodeLanguage;
 			} else if (selectedType === "markdown") {
 				updateType = "markdown"; // Markdown直接存储为markdown类型
+				updateIsCode = false;
+				updateCodeLanguage = "";
+			} else if (selectedType === "color") {
+				updateType = "color"; // 颜色存储为color类型
 				updateIsCode = false;
 				updateCodeLanguage = "";
 			} else {
@@ -299,6 +333,20 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 								}}
 								height={400}
 								preview="edit"
+							/>
+						</div>
+					) : shouldUseColorPicker() ? (
+						<div
+							className="overflow-hidden rounded border p-4"
+							style={{ borderColor: "#424242" }}
+						>
+							<ColorPicker
+								value={content}
+								format={selectedColorFormat}
+								onChange={(value) => {
+									setContent(value);
+									form.setFieldsValue({ content: value });
+								}}
 							/>
 						</div>
 					) : (

@@ -290,6 +290,8 @@
 				"download_image": "Download Image",
 				"show_in_finder": "Show in Finder",
 				"show_in_file_explorer": "Show in File Explorer",
+				"paste_as_rgb": "Paste as RGB",
+				"paste_as_hex": "Paste as HEX",
 				"delete": "Delete"
 			}
 		},
@@ -297,6 +299,7 @@
 			"tab": {
 				"all": "All",
 				"text": "Text",
+				"color": "Color",
 				"image": "Image",
 				"files": "File",
 				"favorite": "Favorite"

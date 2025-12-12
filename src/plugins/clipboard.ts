@@ -7,6 +7,7 @@ import { clipboardStore } from "@/stores/clipboard";
 import type { HistoryTablePayload } from "@/types/database";
 import type { ClipboardPayload, ReadImage, WindowsOCR } from "@/types/plugin";
 import { detectCode, detectMarkdown } from "@/utils/codeDetector";
+import { parseColorString } from "@/utils/color";
 import { isColor, isEmail, isURL } from "@/utils/is";
 import { resolveImagePath } from "@/utils/path";
 import { getSaveImagePath } from "@/utils/path";
@@ -510,7 +511,14 @@ export const readClipboard = async () => {
 			};
 
 			// 根据检测结果设置type和相关字段
-			if (isMarkdown) {
+			if (subtype === "color") {
+				payload = {
+					...basePayload,
+					type: "color",
+					isCode: false,
+					codeLanguage: "",
+				};
+			} else if (isMarkdown) {
 				payload = {
 					...basePayload,
 					type: "markdown",
@@ -719,6 +727,8 @@ export const writeClipboard = async (data?: HistoryTablePayload) => {
 			return writeRTF(search, value);
 		case "html":
 			return writeHTML(search, value);
+		case "color":
+			return writeText(value);
 		case "image":
 			return await writeImage(resolveImagePath(value));
 		case "files":
@@ -802,7 +812,15 @@ export const getClipboardSubtype = async (data: ClipboardPayload) => {
 			return "email";
 		}
 
+		// 增强的颜色检测，包括RGB和RGBA格式
 		if (isColor(value)) {
+			// 进一步解析颜色格式，以便前端可以正确显示
+			const colorInfo = parseColorString(value);
+			if (colorInfo) {
+				// 可以根据需要返回更具体的颜色子类型
+				// 但为了保持与现有前端显示逻辑的兼容性，仍然返回"color"
+				return "color";
+			}
 			return "color";
 		}
 

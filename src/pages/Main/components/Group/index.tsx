@@ -33,6 +33,13 @@ const Group = () => {
 			icon: "i-lucide:type",
 		},
 		{
+			key: "color",
+			label: t("clipboard.label.tab.color"),
+			group: "text",
+			subtype: "color",
+			icon: "i-lucide:palette",
+		},
+		{
 			key: "image",
 			label: t("clipboard.label.tab.image"),
 			group: "image",
@@ -103,6 +110,13 @@ const Group = () => {
 			// 不清除搜索，保留书签分组筛选
 		} else {
 			state.linkTab = false;
+		}
+
+		// 针对颜色分组，特殊处理
+		if (key === "color") {
+			state.colorTab = true;
+		} else {
+			state.colorTab = false;
 		}
 
 		// 强制触发列表刷新 - 清除缓存并重新加载

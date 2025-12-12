@@ -291,6 +291,8 @@
 				"download_image": "下载图片",
 				"show_in_finder": "在 Finder 中显示",
 				"show_in_file_explorer": "在资源管理器显示",
+				"paste_as_rgb": "粘贴为RGB",
+				"paste_as_hex": "粘贴为HEX",
 				"delete": "删除"
 			},
 			"create_group": "新建分组"
@@ -299,6 +301,7 @@
 			"tab": {
 				"all": "全部",
 				"text": "文本",
+				"color": "颜色",
 				"image": "图片",
 				"files": "文件",
 				"favorite": "收藏"

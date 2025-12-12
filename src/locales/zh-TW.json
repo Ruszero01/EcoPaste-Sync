@@ -290,6 +290,8 @@
 				"download_image": "下載圖片",
 				"show_in_finder": "在 Finder 中顯示",
 				"show_in_file_explorer": "在檔案總管中顯示",
+				"paste_as_rgb": "貼上為RGB",
+				"paste_as_hex": "貼上為HEX",
 				"delete": "刪除"
 			}
 		},
@@ -297,6 +299,7 @@
 			"tab": {
 				"all": "全部",
 				"text": "文字",
+				"color": "顏色",
 				"image": "圖片",
 				"files": "文件",
 				"favorite": "收藏"

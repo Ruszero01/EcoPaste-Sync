@@ -290,6 +290,8 @@
 				"download_image": "画像をダウンロード",
 				"show_in_finder": "Finder で表示",
 				"show_in_file_explorer": "ファイルエクスプローラで表示",
+				"paste_as_rgb": "RGBとして貼り付け",
+				"paste_as_hex": "HEXとして貼り付け",
 				"delete": "削除"
 			}
 		},
@@ -297,6 +299,7 @@
 			"tab": {
 				"all": "すべて",
 				"text": "テキスト",
+				"color": "カラー",
 				"image": "画像",
 				"files": "ファイル",
 				"favorite": "コレクション"
