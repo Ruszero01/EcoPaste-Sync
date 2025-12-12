@@ -328,14 +328,13 @@ const Item: FC<ItemProps> = (props) => {
 				`复制失败: ${error instanceof Error ? error.message : "未知错误"}`,
 			);
 		} finally {
-			// 延迟清除内部复制标志，确保剪贴板更新事件处理完成
-			// 这样可以避免在剪贴板更新处理过程中尝试获取来源应用信息
+			// 避免在剪贴板更新处理过程中尝试获取来源应用信息
 			setTimeout(() => {
 				clipboardStore.internalCopy = {
 					isCopying: false,
 					itemId: null,
 				};
-			}, 200); // 200ms延迟，确保剪贴板更新事件处理完成
+			}, 200);
 		}
 
 		if (hasError) {
@@ -364,6 +363,9 @@ const Item: FC<ItemProps> = (props) => {
 				// 聚焦到当前条目
 				state.activeId = id;
 			}
+
+			// 复制操作后也清除多选状态，确保聚焦框正常显示
+			clearMultiSelectState();
 
 			// 更新数据库
 			await updateSQL("history", { id, createTime });
@@ -847,6 +849,12 @@ const Item: FC<ItemProps> = (props) => {
 
 				// 更新数据库
 				await updateSQL("history", { id, createTime });
+
+				// 无论是否在多选状态，都清除多选状态，确保聚焦框正常显示
+				clearMultiSelectState();
+
+				// 确保activeId指向当前粘贴的项目
+				state.activeId = id;
 			}
 		}
 	};
