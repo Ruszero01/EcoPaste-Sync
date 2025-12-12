@@ -5,11 +5,12 @@ import { MainContext } from "@/pages/Main";
 import { batchPasteClipboard, smartPasteClipboard } from "@/plugins/clipboard";
 import type { HistoryTablePayload } from "@/types/database";
 import {
+	cmykToVector,
 	hexToRgb,
 	parseColorString,
+	rgbToCmyk,
 	rgbToHex,
 	rgbToVector,
-	rgbaToVector,
 } from "@/utils/color";
 import { formatDate } from "@/utils/dayjs";
 import { joinPath } from "@/utils/path";
@@ -894,17 +895,18 @@ const Item: FC<ItemProps> = (props) => {
 			if (parsedColor.format === "hex") {
 				const rgb = hexToRgb(actualValue);
 				if (rgb) {
-					// 使用新的向量格式，不带rgb()前缀
+					// 使用向量格式，不带rgb()前缀
 					rgbString = rgbToVector(rgb.r, rgb.g, rgb.b);
 				}
-			} else if (parsedColor.format === "rgba") {
-				const { r, g, b, a } = parsedColor.values;
-				// 使用新的向量格式，不带rgb()前缀
-				rgbString = rgbaToVector(r, g, b, a);
 			} else if (parsedColor.format === "rgb") {
 				// 如果已经是RGB格式，转换为向量格式
 				const { r, g, b } = parsedColor.values;
 				rgbString = rgbToVector(r, g, b);
+			} else if (parsedColor.format === "cmyk") {
+				// 如果是CMYK格式，先转换为RGB，再转换为向量格式
+				const { c, m, y, k } = parsedColor.values;
+				const rgb = cmykToRgb(c, m, y, k);
+				rgbString = rgbToVector(rgb.r, rgb.g, rgb.b);
 			}
 
 			if (rgbString) {
@@ -921,7 +923,7 @@ const Item: FC<ItemProps> = (props) => {
 				try {
 					await writeText(rgbString);
 					await paste();
-					message.success("已粘贴RGB格式颜色值");
+					message.success("已粘贴RGB向量格式颜色值");
 				} finally {
 					// 清除内部复制标志
 					clipboardStore.internalCopy = {
@@ -955,9 +957,6 @@ const Item: FC<ItemProps> = (props) => {
 			} else if (parsedColor.format === "rgb") {
 				const { r, g, b } = parsedColor.values;
 				hexString = rgbToHex(r, g, b);
-			} else if (parsedColor.format === "rgba") {
-				const { r, g, b } = parsedColor.values;
-				hexString = rgbToHex(r, g, b);
 			}
 
 			if (hexString) {
@@ -975,6 +974,64 @@ const Item: FC<ItemProps> = (props) => {
 					await writeText(hexString);
 					await paste();
 					message.success("已粘贴HEX格式颜色值");
+				} finally {
+					// 清除内部复制标志
+					clipboardStore.internalCopy = {
+						isCopying: false,
+						itemId: null,
+					};
+				}
+			} else {
+				message.error("颜色格式转换失败");
+			}
+		} catch (error) {
+			console.error("颜色格式转换失败:", error);
+			message.error("颜色格式转换失败");
+		}
+	};
+
+	const pasteColorAsCMYK = async () => {
+		try {
+			const actualValue = getActualValue(value);
+			const parsedColor = parseColorString(actualValue);
+
+			if (!parsedColor) {
+				message.error("无效的颜色格式");
+				return;
+			}
+
+			let cmykString = "";
+
+			if (parsedColor.format === "hex") {
+				const rgb = hexToRgb(actualValue);
+				if (rgb) {
+					const cmyk = rgbToCmyk(rgb.r, rgb.g, rgb.b);
+					cmykString = cmykToVector(cmyk.c, cmyk.m, cmyk.y, cmyk.k);
+				}
+			} else if (parsedColor.format === "rgb") {
+				const { r, g, b } = parsedColor.values;
+				const cmyk = rgbToCmyk(r, g, b);
+				cmykString = cmykToVector(cmyk.c, cmyk.m, cmyk.y, cmyk.k);
+			} else if (parsedColor.format === "cmyk") {
+				// 如果已经是CMYK格式，直接使用原始值
+				cmykString = actualValue;
+			}
+
+			if (cmykString) {
+				// 直接粘贴到目标窗口，而不是写入剪贴板
+				const { writeText } = await import("@/plugins/clipboard");
+				const { paste } = await import("@/plugins/paste");
+
+				// 设置内部复制标志，防止粘贴操作后触发重复处理
+				clipboardStore.internalCopy = {
+					isCopying: true,
+					itemId: "color-convert",
+				};
+
+				try {
+					await writeText(cmykString);
+					await paste();
+					message.success("已粘贴CMYK向量格式颜色值");
 				} finally {
 					// 清除内部复制标志
 					clipboardStore.internalCopy = {
@@ -1092,8 +1149,7 @@ const Item: FC<ItemProps> = (props) => {
 				text: t("clipboard.button.context_menu.paste_as_rgb"),
 				hide:
 					type !== "color" ||
-					parseColorString(getActualValue(value))?.format === "rgb" ||
-					parseColorString(getActualValue(value))?.format === "rgba",
+					parseColorString(getActualValue(value))?.format === "rgb",
 				action: pasteColorAsRGB,
 			},
 			{
@@ -1102,6 +1158,13 @@ const Item: FC<ItemProps> = (props) => {
 					type !== "color" ||
 					parseColorString(getActualValue(value))?.format === "hex",
 				action: pasteColorAsHEX,
+			},
+			{
+				text: t("clipboard.button.context_menu.paste_as_cmyk"),
+				hide:
+					type !== "color" ||
+					parseColorString(getActualValue(value))?.format === "cmyk",
+				action: pasteColorAsCMYK,
 			},
 			{
 				text: favorite

@@ -72,7 +72,7 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 	const [selectedCodeLanguage, setSelectedCodeLanguage] = useState<string>("");
 	// 当前选择的颜色格式（仅当类型为颜色时使用）
 	const [selectedColorFormat, setSelectedColorFormat] = useState<
-		"hex" | "rgb" | "rgba"
+		"hex" | "rgb" | "cmyk"
 	>("hex");
 
 	// 获取剪贴板内容的可编辑形式
@@ -107,11 +107,25 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 			setSelectedCodeLanguage("");
 			// 根据值判断颜色格式
 			if (item.value.startsWith("rgba(")) {
-				setSelectedColorFormat("rgba");
+				setSelectedColorFormat("rgb"); // 将rgba转换为rgb格式
 			} else if (item.value.startsWith("rgb(")) {
 				setSelectedColorFormat("rgb");
-			} else {
+			} else if (item.value.startsWith("#")) {
 				setSelectedColorFormat("hex");
+			} else {
+				// 检查是否为向量格式
+				const parsedColor = parseColorString(item.value);
+				if (parsedColor) {
+					if (parsedColor.format === "rgb") {
+						setSelectedColorFormat("rgb");
+					} else if (parsedColor.format === "cmyk") {
+						setSelectedColorFormat("cmyk");
+					} else {
+						setSelectedColorFormat("hex");
+					}
+				} else {
+					setSelectedColorFormat("hex");
+				}
 			}
 		} else if (item.type === "markdown") {
 			// 如果数据库中明确保存为markdown类型，直接使用Markdown编辑器

@@ -387,6 +387,7 @@
 				"show_in_file_explorer": "在资源管理器显示",
 				"paste_as_rgb": "粘贴为RGB",
 				"paste_as_hex": "粘贴为HEX",
+				"paste_as_cmyk": "粘贴为CMYK",
 				"delete": "删除"
 			},
 			"create_group": "新建分组"

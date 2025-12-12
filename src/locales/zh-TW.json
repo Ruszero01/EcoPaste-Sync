@@ -387,6 +387,7 @@
 				"show_in_file_explorer": "在檔案總管中顯示",
 				"paste_as_rgb": "貼上為RGB",
 				"paste_as_hex": "貼上為HEX",
+				"paste_as_cmyk": "貼上為CMYK",
 				"delete": "刪除"
 			},
 			"create_group": "新建分組"
