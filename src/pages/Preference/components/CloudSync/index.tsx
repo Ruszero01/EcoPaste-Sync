@@ -867,10 +867,11 @@ const CloudSync = () => {
 	// 开发环境专用：重置配置文件
 	const handleResetConfig = async () => {
 		modal.confirm({
-			title: t("preference.cloud_sync.reset_config_confirm_title"),
-			content: t("preference.cloud_sync.reset_config_confirm_content"),
-			okText: t("preference.cloud_sync.confirm"),
-			cancelText: t("preference.cloud_sync.cancel"),
+			title: "重置配置文件",
+			content:
+				"确定要重置所有配置吗？这将删除本地配置文件并恢复到初始设置，模拟软件重新安装。此操作无法撤销。",
+			okText: "确定",
+			cancelText: "取消",
 			okType: "danger",
 			onOk: async () => {
 				try {
@@ -885,10 +886,10 @@ const CloudSync = () => {
 					const { restoreStore } = await import("@/utils/store");
 					await restoreStore();
 
-					appMessage.success(t("preference.cloud_sync.config_reset_success"));
+					appMessage.success("配置已重置，建议重启应用");
 				} catch (error) {
 					console.error("重置配置失败:", error);
-					appMessage.error(t("preference.cloud_sync.operation_failed"));
+					appMessage.error("操作失败");
 				}
 			},
 		});
@@ -897,25 +898,24 @@ const CloudSync = () => {
 	// 开发环境专用：重置数据库
 	const handleResetDatabase = async () => {
 		modal.confirm({
-			title: t("preference.cloud_sync.reset_database_confirm_title"),
-			content: t("preference.cloud_sync.reset_database_confirm_content"),
-			okText: t("preference.cloud_sync.confirm"),
-			cancelText: t("preference.cloud_sync.cancel"),
+			title: "重置数据库",
+			content:
+				"确定要重置数据库吗？这将清空所有剪贴板历史数据并重新创建数据库。此操作无法撤销。",
+			okText: "确定",
+			cancelText: "取消",
 			okType: "danger",
 			onOk: async () => {
 				try {
 					const success = await resetDatabase();
 					if (success) {
-						appMessage.success(
-							t("preference.cloud_sync.database_reset_success"),
-						);
+						appMessage.success("数据库已重置");
 						emit(LISTEN_KEY.REFRESH_CLIPBOARD_LIST);
 					} else {
-						appMessage.error(t("preference.cloud_sync.reset_failed"));
+						appMessage.error("重置失败");
 					}
 				} catch (error) {
 					console.error("重置数据库失败:", error);
-					appMessage.error(t("preference.cloud_sync.operation_failed"));
+					appMessage.error("操作失败");
 				}
 			},
 		});
@@ -957,13 +957,13 @@ const CloudSync = () => {
 
 				console.groupEnd();
 
-				appMessage.success(t("preference.cloud_sync.database_info_printed"));
+				appMessage.success("数据库信息已打印到控制台");
 			} else {
-				appMessage.error(t("preference.cloud_sync.get_database_info_failed"));
+				appMessage.error("获取数据库信息失败");
 			}
 		} catch (error) {
 			console.error("显示数据库信息失败:", error);
-			appMessage.error(t("preference.cloud_sync.operation_failed"));
+			appMessage.error("操作失败");
 		}
 	};
 
@@ -1280,10 +1280,10 @@ const CloudSync = () => {
 
 			{/* 开发环境专用：数据库管理工具 */}
 			{isDev() && (
-				<ProList header={t("preference.cloud_sync.dev_tools")}>
+				<ProList header="开发工具（仅限开发环境）">
 					<ProListItem
-						title={t("preference.cloud_sync.reset_database")}
-						description={t("preference.cloud_sync.reset_database_desc")}
+						title="重置数据库"
+						description="清空所有剪贴板历史数据并重新创建数据库，强制删除避免锁定"
 					>
 						<Button
 							type="primary"
@@ -1292,13 +1292,13 @@ const CloudSync = () => {
 							icon={<DeleteOutlined />}
 							onClick={handleResetDatabase}
 						>
-							{t("preference.cloud_sync.reset_database")}
+							重置数据库
 						</Button>
 					</ProListItem>
 
 					<ProListItem
-						title={t("preference.cloud_sync.reset_config")}
-						description={t("preference.cloud_sync.reset_config_desc")}
+						title="重置配置文件"
+						description="删除本地配置文件并恢复初始设置，模拟软件重新安装"
 					>
 						<Button
 							type="primary"
@@ -1307,13 +1307,13 @@ const CloudSync = () => {
 							icon={<DeleteOutlined />}
 							onClick={handleResetConfig}
 						>
-							{t("preference.cloud_sync.reset_config")}
+							重置配置文件
 						</Button>
 					</ProListItem>
 
 					<ProListItem
-						title={t("preference.cloud_sync.show_database_info")}
-						description={t("preference.cloud_sync.show_database_info_desc")}
+						title="显示数据库信息"
+						description="在控制台打印数据库条目数量和每条数据的关键信息"
 					>
 						<Button
 							type="primary"
@@ -1321,7 +1321,7 @@ const CloudSync = () => {
 							icon={<InfoCircleOutlined />}
 							onClick={handleShowDatabaseInfo}
 						>
-							{t("preference.cloud_sync.show_database_info")}
+							显示数据库信息
 						</Button>
 					</ProListItem>
 				</ProList>
