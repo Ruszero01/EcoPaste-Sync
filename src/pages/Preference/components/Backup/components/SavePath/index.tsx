@@ -17,6 +17,7 @@ import { openPath } from "@tauri-apps/plugin-opener";
 import { Button, Modal, Space, Tooltip, message } from "antd";
 import { isEqual, isString } from "lodash-es";
 import type { FC } from "react";
+import { useTranslation } from "react-i18next";
 import { fullName, transfer } from "tauri-plugin-fs-pro-api";
 import type { State } from "../..";
 
@@ -57,11 +58,14 @@ const SavePath: FC<{ state: State }> = (props) => {
 	const showDataExistsDialog = (): Promise<boolean> => {
 		return new Promise((resolve) => {
 			Modal.confirm({
-				title: "发现已有数据",
-				content:
-					'目标路径中已存在数据文件，是否使用现有数据？选择"是"将使用现有数据，选择"否"将覆盖现有数据。',
-				okText: "使用现有数据",
-				cancelText: "覆盖现有数据",
+				title: t("preference.data_backup.storage_settings.existing_data_title"),
+				content: t(
+					"preference.data_backup.storage_settings.existing_data_content",
+				),
+				okText: t("preference.data_backup.storage_settings.use_existing_data"),
+				cancelText: t(
+					"preference.data_backup.storage_settings.overwrite_existing_data",
+				),
 				onOk: () => resolve(true), // 使用现有数据
 				onCancel: () => resolve(false), // 覆盖现有数据
 			});

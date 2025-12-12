@@ -185,6 +185,19 @@ const ClipboardSettings = () => {
 						clipboardStore.content.codeDetection = value;
 					}}
 				/>
+
+				<ProSwitch
+					title={t(
+						"preference.clipboard.content_settings.label.color_detection",
+					)}
+					description={t(
+						"preference.clipboard.content_settings.hints.color_detection",
+					)}
+					value={content.colorDetection}
+					onChange={(value) => {
+						clipboardStore.content.colorDetection = value;
+					}}
+				/>
 			</ProList>
 		</>
 	);

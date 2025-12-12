@@ -32,6 +32,7 @@ interface State extends TablePayload {
 	};
 	linkTab?: boolean; // 新增：链接分组状态
 	isCode?: boolean; // 新增：代码分组状态
+	colorTab?: boolean; // 新增：颜色分组状态
 	batchDeleteInProgress?: boolean; // 新增：批量删除进行中标志
 }
 
@@ -249,6 +250,7 @@ const Main = () => {
 		state.group,
 		state.favorite,
 		state.isCode,
+		state.colorTab,
 		clipboardStore.content.autoSort,
 	]);
 
@@ -259,6 +261,13 @@ const Main = () => {
 
 		// 如果代码检测设置发生变化，清除缓存并刷新列表
 		if (payload.clipboardStore?.content?.codeDetection !== undefined) {
+			getListCache.current.clear();
+			lastQueryParams = "";
+			getListDebounced(50);
+		}
+
+		// 如果颜色识别设置发生变化，清除缓存并刷新列表
+		if (payload.clipboardStore?.content?.colorDetection !== undefined) {
 			getListCache.current.clear();
 			lastQueryParams = "";
 			getListDebounced(50);
@@ -278,9 +287,6 @@ const Main = () => {
 				clearTimeout(windowHideTimer.current);
 				windowHideTimer.current = undefined;
 			}
-
-			// 检查云端数据更新（如果启用了实时同步）
-			checkCloudDataOnFocus();
 		},
 		onBlur() {
 			if (state.pin) return;
@@ -437,7 +443,7 @@ const Main = () => {
 
 	// 获取剪切板内容（优化版本，带缓存）
 	const getList = async () => {
-		const { group, search, favorite, linkTab, isCode } = state;
+		const { group, search, favorite, linkTab, isCode, colorTab } = state;
 
 		// 获取当前的自动排序设置
 		const currentAutoSort = clipboardStore.content.autoSort;
@@ -449,6 +455,7 @@ const Main = () => {
 			favorite,
 			linkTab,
 			isCode,
+			colorTab,
 			autoSort: currentAutoSort,
 		});
 
@@ -498,29 +505,79 @@ const Main = () => {
 				position: Number(item.position || 0),
 				syncStatus: item.syncStatus || "none",
 			})) as HistoryTablePayload[];
+		} else if (colorTab) {
+			// 颜色分组查询：查询 type 为 'color' 的数据
+			let whereClause = "WHERE type = 'color' AND deleted = 0";
+			const values: any[] = [];
+
+			// 如果有搜索条件，添加到查询中
+			if (search) {
+				whereClause += " AND (search LIKE ? OR note LIKE ?)";
+				const searchValue = `%${search}%`;
+				values.push(searchValue, searchValue);
+			}
+
+			const list = await executeSQL(
+				`SELECT * FROM history ${whereClause} ${orderBy};`,
+				values,
+			);
+			// 转换数据类型，与 selectSQL 保持一致
+			rawData = (Array.isArray(list) ? list : []).map((item: any) => ({
+				...item,
+				favorite: Boolean(item.favorite),
+				deleted: Boolean(item.deleted),
+				lazyDownload: Boolean(item.lazyDownload),
+				isCloudData: Boolean(item.isCloudData),
+				isCode: Boolean(item.isCode),
+				position: Number(item.position || 0),
+				syncStatus: item.syncStatus || "none",
+			})) as HistoryTablePayload[];
 		} else {
 			// 特殊处理纯文本和代码分组的查询
-			const queryPayload: any = {
-				group,
-				search,
-				favorite,
-				deleted: false, // 过滤已删除项
-			};
+			let whereClause = "WHERE deleted = 0";
+			const values: any[] = [];
+
+			// 添加基本条件
+			if (group) {
+				whereClause += " AND [group] = ?";
+				values.push(group);
+			}
+
+			if (search) {
+				whereClause += " AND (search LIKE ? OR note LIKE ?)";
+				const searchValue = `%${search}%`;
+				values.push(searchValue, searchValue);
+			}
+
+			if (favorite !== undefined) {
+				whereClause += " AND favorite = ?";
+				values.push(favorite ? 1 : 0);
+			}
 
 			// 如果是代码分组，添加 isCode = true 条件
 			if (isCode) {
-				queryPayload.isCode = true;
+				whereClause += " AND isCode = 1";
 			}
 			// 如果是纯文本分组且不是"全部"，添加 isCode = false 条件
 			else if (group === "text") {
-				queryPayload.isCode = false;
+				whereClause += " AND (isCode = 0 OR isCode IS NULL)";
 			}
 
-			rawData = await selectSQL<HistoryTablePayload[]>(
-				"history",
-				queryPayload,
-				orderBy,
+			const list = await executeSQL(
+				`SELECT * FROM history ${whereClause} ${orderBy};`,
+				values,
 			);
+			// 转换数据类型，与 selectSQL 保持一致
+			rawData = (Array.isArray(list) ? list : []).map((item: any) => ({
+				...item,
+				favorite: Boolean(item.favorite),
+				deleted: Boolean(item.deleted),
+				lazyDownload: Boolean(item.lazyDownload),
+				isCloudData: Boolean(item.isCloudData),
+				isCode: Boolean(item.isCode),
+				position: Number(item.position || 0),
+				syncStatus: item.syncStatus || "none",
+			})) as HistoryTablePayload[];
 		}
 
 		// 数据库层面已经进行了去重处理，这里直接使用原始数据
@@ -539,14 +596,6 @@ const Main = () => {
 		getListDebounceTimer.current = setTimeout(() => {
 			getList();
 		}, delay);
-	};
-
-	// 同步事件监听器已在上面早期设置
-
-	// 检查云端数据更新（在窗口激活时）
-	const checkCloudDataOnFocus = async () => {
-		// 实时同步功能已移除，现在只使用间隔自动同步
-		// 如需手动检查更新，用户可以点击同步按钮
 	};
 
 	// 监听滚动到顶部事件

@@ -23,6 +23,7 @@ import { listen } from "@tauri-apps/api/event";
 import { Input, Modal } from "antd";
 import clsx from "clsx";
 import { useCallback, useContext, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { MainContext } from "../..";
 
 interface CustomGroup {
@@ -118,6 +119,7 @@ const SortableBookmarkItem: React.FC<{
 
 const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 	const { state, getListCache, getListDebounced } = useContext(MainContext);
+	const { t } = useTranslation();
 	const [checked, setChecked] = useState<string>();
 	const [customGroups, setCustomGroups] = useState<CustomGroup[]>([]);
 
@@ -163,7 +165,7 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 
 					onHasGroupsChange?.(newGroups.length > 0);
 				} catch (error) {
-					console.error("更新书签顺序失败:", error);
+					console.error("更新書籤順序失敗:", error);
 					// 恢复原顺序
 					setCustomGroups(customGroups);
 				}
@@ -183,18 +185,62 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 	const [editGroupColor, setEditGroupColor] = useState("");
 
 	const colorOptions = [
-		{ value: "#ff6b6b", label: "红色", display: "bg-red-400" },
-		{ value: "#4ecdc4", label: "青色", display: "bg-teal-400" },
-		{ value: "#45b7d1", label: "蓝色", display: "bg-blue-400" },
-		{ value: "#96ceb4", label: "绿色", display: "bg-green-400" },
-		{ value: "#feca57", label: "黄色", display: "bg-yellow-400" },
-		{ value: "#ff9ff3", label: "粉色", display: "bg-pink-400" },
-		{ value: "#54a0ff", label: "深蓝色", display: "bg-blue-500" },
-		{ value: "#48dbfb", label: "天蓝色", display: "bg-sky-400" },
-		{ value: "#ff6348", label: "橙红色", display: "bg-orange-500" },
-		{ value: "#1dd1a1", label: "翠绿色", display: "bg-emerald-400" },
-		{ value: "#ffeaa7", label: "浅黄色", display: "bg-amber-200" },
-		{ value: "#dfe6e9", label: "灰色", display: "bg-gray-300" },
+		{ value: "#ff6b6b", label: t("sidebar_group.red"), display: "bg-red-400" },
+		{
+			value: "#4ecdc4",
+			label: t("sidebar_group.cyan"),
+			display: "bg-teal-400",
+		},
+		{
+			value: "#45b7d1",
+			label: t("sidebar_group.blue"),
+			display: "bg-blue-400",
+		},
+		{
+			value: "#96ceb4",
+			label: t("sidebar_group.green"),
+			display: "bg-green-400",
+		},
+		{
+			value: "#feca57",
+			label: t("sidebar_group.yellow"),
+			display: "bg-yellow-400",
+		},
+		{
+			value: "#ff9ff3",
+			label: t("sidebar_group.pink"),
+			display: "bg-pink-400",
+		},
+		{
+			value: "#54a0ff",
+			label: t("sidebar_group.dark_blue"),
+			display: "bg-blue-500",
+		},
+		{
+			value: "#48dbfb",
+			label: t("sidebar_group.sky_blue"),
+			display: "bg-sky-400",
+		},
+		{
+			value: "#ff6348",
+			label: t("sidebar_group.orange_red"),
+			display: "bg-orange-500",
+		},
+		{
+			value: "#1dd1a1",
+			label: t("sidebar_group.emerald_green"),
+			display: "bg-emerald-400",
+		},
+		{
+			value: "#ffeaa7",
+			label: t("sidebar_group.light_yellow"),
+			display: "bg-amber-200",
+		},
+		{
+			value: "#dfe6e9",
+			label: t("sidebar_group.gray"),
+			display: "bg-gray-300",
+		},
 	];
 
 	// 移除了Tab键切换书签功能，避免与顶部分组Tab键冲突
@@ -422,7 +468,7 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 				// 不再手动更新本地状态，让BOOKMARK_DATA_CHANGED事件处理UI更新
 				// 这样可以避免重复添加的问题
 				console.info(
-					`➕ 书签分组创建成功: ${newGroup.name}, 等待事件触发UI更新`,
+					`➕ 書籤分組創建成功: ${newGroup.name}, 等待事件觸發UI更新`,
 				);
 
 				// 自动激活新创建的书签（延迟执行，等待UI更新）
@@ -512,7 +558,7 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 			{/* 开发模式：清空书签按钮 */}
 			{import.meta.env.DEV && (
 				<div className="flex flex-col items-center gap-0.5 py-1">
-					<BookmarkTooltip title="开发模式：清空书签(模拟新设备)">
+					<BookmarkTooltip title={t("sidebar_group.dev_clear_bookmarks")}>
 						<div
 							className="group relative flex h-6 w-10 shrink-0 cursor-pointer items-center justify-center rounded-md bg-orange-500/20 transition-all duration-200 hover:bg-orange-500/30"
 							onClick={async () => {
@@ -543,25 +589,25 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 						className="cursor-pointer px-3 py-2 text-color-1 text-sm hover:bg-color-2"
 						onClick={handleEditGroup}
 					>
-						编辑
+						{t("sidebar_group.edit")}
 					</div>
 					<div
 						className="cursor-pointer px-3 py-2 text-red-500 text-sm hover:bg-color-2"
 						onClick={handleDeleteGroup}
 					>
-						删除
+						{t("sidebar_group.delete")}
 					</div>
 				</div>
 			)}
 
 			{/* 编辑模态框 */}
 			<Modal
-				title="编辑书签"
+				title={t("sidebar_group.edit_bookmark")}
 				open={editModalVisible}
 				onOk={handleSaveEdit}
 				onCancel={() => setEditModalVisible(false)}
-				okText="保存"
-				cancelText="取消"
+				okText={t("component.note_modal.label.note")}
+				cancelText={t("preference.data_backup.import_export.button.cancel")}
 			>
 				<div className="space-y-4">
 					<div>
@@ -569,19 +615,19 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 							htmlFor="bookmark-name"
 							className="mb-1 block font-medium text-color-1 text-sm"
 						>
-							书签名称
+							{t("sidebar_group.bookmark_name")}
 						</label>
 						<Input
 							id="bookmark-name"
 							value={editGroupName}
 							onChange={(e) => setEditGroupName(e.target.value)}
-							placeholder="请输入书签名称"
+							placeholder={t("sidebar_group.enter_bookmark_name")}
 							maxLength={10}
 						/>
 					</div>
 					<div>
 						<span className="mb-2 block font-medium text-color-1 text-sm">
-							选择颜色
+							{t("sidebar_group.select_color")}
 						</span>
 						<div className="grid grid-cols-6 gap-2">
 							{colorOptions.map((color) => (

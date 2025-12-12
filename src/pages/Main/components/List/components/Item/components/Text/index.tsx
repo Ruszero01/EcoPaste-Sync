@@ -1,17 +1,35 @@
 import SyntaxHighlighter from "@/components/SyntaxHighlighter";
 import type { HistoryTablePayload } from "@/types/database";
+import { parseColorString } from "@/utils/color";
 import { Flex } from "antd";
 import clsx from "clsx";
 import type { CSSProperties, FC } from "react";
 import { memo } from "react";
 
 const Text: FC<HistoryTablePayload> = (props) => {
-	const { value, subtype, isCode, codeLanguage } = props;
+	const { value, type, isCode, codeLanguage } = props;
 
 	const renderColor = () => {
 		const className = "absolute rounded-full";
+
+		// 解析颜色值，确保能够正确处理各种格式，包括纯向量值
+		const parsedColor = parseColorString(value);
+		let backgroundStyle = value; // 默认使用原始值
+
+		// 如果是向量格式，转换为CSS可识别的rgb或rgba格式
+		if (parsedColor) {
+			if (parsedColor.format === "rgb") {
+				const { r, g, b } = parsedColor.values;
+				backgroundStyle = `rgb(${r}, ${g}, ${b})`;
+			} else if (parsedColor.format === "rgba") {
+				const { r, g, b, a } = parsedColor.values;
+				backgroundStyle = `rgba(${r}, ${g}, ${b}, ${a})`;
+			}
+			// 如果是hex格式，直接使用原始值
+		}
+
 		const style: CSSProperties = {
-			background: value,
+			background: backgroundStyle,
 		};
 
 		return (
@@ -31,7 +49,8 @@ const Text: FC<HistoryTablePayload> = (props) => {
 	};
 
 	const renderContent = () => {
-		if (subtype === "color") {
+		// 检查是否为颜色类型（只检查type字段）
+		if (type === "color") {
 			return renderColor();
 		}
 

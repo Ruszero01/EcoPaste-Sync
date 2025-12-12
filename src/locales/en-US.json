@@ -8,6 +8,7 @@
 				"general": "General",
 				"shortcut": "Shortcuts",
 				"backup": "Data Backup",
+				"cloud_sync": "Sync",
 				"about": "About"
 			}
 		},
@@ -17,13 +18,13 @@
 				"label": {
 					"window_position": "Window Position",
 					"window_position_remember": "Remember Position",
-					"window_position_follow": "Follow Mouse Cursor",
-					"window_position_center": "Center on Screen",
-					"back_top": "Back to top when activated",
-					"show_all": "Switch to all group when activated"
+					"window_position_follow": "Follow Mouse",
+					"window_position_center": "Screen Center",
+					"back_top": "Back to Top on Activation",
+					"show_all": "Switch to All Groups on Activation"
 				},
 				"hints": {
-					"back_top": "When the window is activated, scroll to the top and check the first item"
+					"back_top": "When window is activated, scroll to top and select first item"
 				}
 			},
 			"audio_settings": {
@@ -42,14 +43,14 @@
 					"position_bottom": "Bottom"
 				},
 				"hints": {
-					"default_focus": "Focuses the search box by default when the window is activated",
-					"auto_clear": "Clear search box contents when window is activated"
+					"default_focus": "When window is activated, focus search box by default",
+					"auto_clear": "When window is activated, clear search box content"
 				}
 			},
 			"content_settings": {
 				"title": "Content Settings",
 				"button": {
-					"custom_operation_button": "Custom"
+					"custom_operation_button": "Customize"
 				},
 				"label": {
 					"auto_paste": "Auto Paste",
@@ -58,8 +59,8 @@
 					"image_ocr": "Image OCR",
 					"copy_as_plain": "Copy as Plain Text",
 					"paste_as_plain": "Paste as Plain Text",
-					"operation_button": "Action Button",
-					"custom_operation_button_title": "Custom Action Button",
+					"operation_button": "Operation Button",
+					"custom_operation_button_title": "Custom Operation Button",
 					"operation_button_option": {
 						"copy": "Copy",
 						"paste_plain": "Paste as Plain Text",
@@ -76,20 +77,22 @@
 					"auto_sort": "Auto Sort",
 					"show_original_content": "Show Original Content",
 					"show_source_app": "Show Source App",
-					"code_detection": "Code Detection"
+					"code_detection": "Code Detection",
+					"color_detection": "Color Detection"
 				},
 				"hints": {
-					"auto_paste": "Quickly paste content to the input field when using the left mouse button",
-					"image_ocr": "Note: Please be sure to download the",
-					"copy_as_plain": "Rich text and HTML formats retain only plain text content when copied",
-					"paste_as_plain": "Rich text and HTML formatting retains only plain text content when pasting",
-					"operation_button": "Customize icon buttons to operate on clipboard content",
-					"auto_favorite": "Auto-favorite after adding or editing a note",
-					"delete_confirm": "Pop-up confirmation dialog when deleting clipboard contents",
-					"auto_sort": "Alignment to the top when copying existing content",
-					"show_original_content": "Whether to display the original content on mouse hover after adding a note",
-					"show_source_app": "Display the source app icon and name in clipboard history",
-					"code_detection": "Automatically detect code content in clipboard and enable syntax highlighting"
+					"auto_paste": "Quickly paste content to input position when left mouse button is used",
+					"image_ocr": "Note: Please download before using",
+					"copy_as_plain": "Only keep plain text content when copying rich text and HTML formats",
+					"paste_as_plain": "Only keep plain text content when pasting rich text and HTML formats",
+					"operation_button": "Customize icon buttons for operating clipboard content",
+					"auto_favorite": "Automatically favorite after adding or editing notes",
+					"delete_confirm": "Show confirmation dialog when deleting clipboard content",
+					"auto_sort": "Move to front when copying existing content",
+					"show_original_content": "Whether to show original content when hovering after adding notes",
+					"show_source_app": "Show source app icon and name in clipboard history",
+					"code_detection": "Automatically detect code content in clipboard and enable syntax highlighting",
+					"color_detection": "Automatically detect RGB and RGBA color values in clipboard and display them in color group"
 				}
 			}
 		},
@@ -175,7 +178,7 @@
 				"title": "Update Settings",
 				"label": {
 					"auto_update": "Auto check for updates",
-					"update_beta": "Participate in the beta experience"
+					"update_beta": "Participate in beta experience"
 				},
 				"hints": {
 					"update_beta": "Will receive beta updates, even if they may be unstable"
@@ -192,7 +195,7 @@
 					"paste_as_plain": "Paste as Plain Text"
 				},
 				"hints": {
-					"quick_paste": "Use number key combos to quickly paste top 9 items when window is hidden",
+					"quick_paste": "Use number key combos to quickly paste top 9 items when the window is hidden",
 					"paste_as_plain": "Paste selections as plain text, OCR text and paths when the window is activated"
 				}
 			},
@@ -221,7 +224,11 @@
 					"custom_path": "Custom",
 					"default_path": "Restore Default",
 					"change_success": "Changed successfully"
-				}
+				},
+				"existing_data_title": "Existing Data Found",
+				"existing_data_content": "Data files already exist in the target path. Do you want to use existing data? Selecting \"Yes\" will use existing data, selecting \"No\" will overwrite existing data.",
+				"use_existing_data": "Use Existing Data",
+				"overwrite_existing_data": "Overwrite Existing Data"
 			},
 			"import_export": {
 				"title": "Import / Export",
@@ -239,7 +246,7 @@
 				"hints": {
 					"import_success": "Import Successful",
 					"export_success": "Export Successful",
-					"confirm_import": "Imported clipboard data will overwrite existing data, sure you want to proceed?",
+					"confirm_import": "Imported clipboard data will overwrite existing data, are you sure you want to proceed?",
 					"confirm_export": "The exported data contains all preferences and clipboard contents and is saved in plaintext, so please keep it safe."
 				}
 			}
@@ -270,7 +277,99 @@
 					"thank_all": "Thanks to all listed and unlisted open source dependencies, as well as to the users who suggested {{0}} and the developers who contributed."
 				}
 			}
+		},
+		"cloud_sync": {
+			"server_config": "Server Configuration",
+			"server_address": "Server Address",
+			"username": "Username",
+			"password": "Password",
+			"sync_path": "Sync Path",
+			"testing_connection": "Testing connection...",
+			"connection_success": "OK",
+			"connection_failed": "Error",
+			"test_connection": "Test Connection",
+			"save_config": "Save Configuration",
+			"data_sync": "Data Synchronization",
+			"favorite_mode": "Favorites Mode",
+			"favorite_mode_desc": "Only sync favorite clipboard items",
+			"file_mode": "File Mode",
+			"file_mode_desc": "Enable to sync images and files",
+			"file_limit": "File limit:",
+			"auto_sync": "Auto Sync",
+			"auto_sync_desc": "Automatically sync data at set intervals",
+			"1_hour": "1 hour",
+			"2_hours": "2 hours",
+			"6_hours": "6 hours",
+			"12_hours": "12 hours",
+			"1_day": "Daily",
+			"last_sync": "Last sync: ",
+			"just_now": "Just now",
+			"minutes_ago": " minutes ago",
+			"hours_ago": " hours ago",
+			"days_ago": " days ago",
+			"sync_now": "Sync Now",
+			"config_sync": "Configuration Sync",
+			"upload_config": "Upload Local Config",
+			"upload_config_desc": "Upload current configuration to cloud",
+			"apply_remote_config": "Apply Remote Config",
+			"apply_remote_config_desc": "Download and apply cloud configuration (will overwrite local config)",
+			"connection_success_ready": "Connection successful, cloud sync is ready",
+			"connection_failed_check": "Connection failed, please check configuration",
+			"connection_validation_failed": "Connection validation failed",
+			"load_config_failed": "Failed to load configuration",
+			"favorite_mode_enabled": "Favorites mode enabled",
+			"favorite_mode_disabled": "Favorites mode disabled",
+			"update_config_failed": "Failed to update configuration",
+			"file_mode_enabled": "File mode enabled",
+			"file_mode_disabled": "File mode disabled",
+			"file_limit_updated": "File limit updated to {{0}}MB",
+			"webdav_config_empty": "WebDAV configuration is empty",
+			"connection_test_failed": "Connection test failed",
+			"save_failed": "Save failed",
+			"check_network_first": "Please check network connection first",
+			"config_incomplete": "Configuration incomplete, please complete settings first",
+			"already_up_to_date": "Already up to date",
+			"updated_items": "Updated {{0}} items",
+			"sync_failed": "Sync failed",
+			"auto_sync_enabled": "Auto sync enabled",
+			"auto_sync_disabled": "Auto sync disabled",
+			"auto_sync_operation_failed": "Auto sync operation failed",
+			"upload_config_failed": "Failed to upload configuration",
+			"apply_cloud_config_confirm_title": "Apply Cloud Configuration",
+			"apply_cloud_config_confirm_content": "This will overwrite the current local configuration, are you sure you want to continue?",
+			"confirm": "Confirm",
+			"cancel": "Cancel",
+			"apply_config_failed": "Failed to apply configuration",
+			"restart_app_suggestion": "It is recommended to restart the application to ensure the configuration takes full effect",
+			"config_reset_success": "Configuration has been reset, it is recommended to restart the application",
+			"operation_failed": "Operation failed",
+			"reset_database_confirm_title": "Reset Database",
+			"reset_database_confirm_content": "Are you sure you want to reset the database? This will clear all clipboard history data and recreate the database. This operation cannot be undone.",
+			"database_reset_success": "Database has been reset",
+			"reset_failed": "Reset failed",
+			"sync_interval_updated": "Sync interval updated (effective in background)",
+			"update_interval_failed": "Failed to update interval"
 		}
+	},
+	"sidebar_group": {
+		"edit_bookmark": "Edit Bookmark",
+		"bookmark_name": "Bookmark Name",
+		"enter_bookmark_name": "Please enter bookmark name",
+		"select_color": "Select Color",
+		"edit": "Edit",
+		"delete": "Delete",
+		"red": "Red",
+		"cyan": "Cyan",
+		"blue": "Blue",
+		"green": "Green",
+		"yellow": "Yellow",
+		"pink": "Pink",
+		"dark_blue": "Dark Blue",
+		"sky_blue": "Sky Blue",
+		"orange_red": "Orange Red",
+		"emerald_green": "Emerald Green",
+		"light_yellow": "Light Yellow",
+		"gray": "Gray"
 	},
 	"clipboard": {
 		"button": {
@@ -290,18 +389,29 @@
 				"download_image": "Download Image",
 				"show_in_finder": "Show in Finder",
 				"show_in_file_explorer": "Show in File Explorer",
+				"paste_as_rgb": "Paste as RGB",
+				"paste_as_hex": "Paste as HEX",
 				"delete": "Delete"
-			}
+			},
+			"create_group": "Create Group"
 		},
 		"label": {
 			"tab": {
 				"all": "All",
 				"text": "Text",
+				"color": "Color",
 				"image": "Image",
-				"files": "File",
+				"files": "Files",
 				"favorite": "Favorite"
 			},
+			"groups": "Groups",
+			"fixed_groups": "Fixed Groups",
+			"custom_groups": "Custom Groups",
+			"create_group": "Create Group",
+			"create_group_with_search": "Create Group",
+			"choose_color": "Choose Color",
 			"link": "Link",
+			"code": "Code",
 			"email": "Email",
 			"color": "Color",
 			"path": "Path",
@@ -314,7 +424,10 @@
 		},
 		"hints": {
 			"search_placeholder": "Search...",
-			"delete_modal_content": "Are you sure you want to delete this?"
+			"delete_modal_content": "Are you sure you want to delete this?",
+			"create_group_description": "Create a custom group from the current search keyword",
+			"no_custom_groups": "No custom groups yet",
+			"new_group_placeholder": "Enter group name"
 		}
 	},
 	"component": {

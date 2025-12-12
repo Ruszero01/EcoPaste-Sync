@@ -7,7 +7,7 @@ export interface ReadImage {
 }
 
 export interface ClipboardPayload {
-	type?: "text" | "rtf" | "html" | "markdown" | "image" | "files";
+	type?: "text" | "rtf" | "html" | "markdown" | "image" | "files" | "color";
 	group: "text" | "image" | "files";
 	subtype?: "url" | "email" | "color" | "path" | "image";
 	count: number;

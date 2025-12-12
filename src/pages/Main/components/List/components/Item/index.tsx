@@ -4,6 +4,13 @@ import { updateSQL } from "@/database";
 import { MainContext } from "@/pages/Main";
 import { batchPasteClipboard, smartPasteClipboard } from "@/plugins/clipboard";
 import type { HistoryTablePayload } from "@/types/database";
+import {
+	hexToRgb,
+	parseColorString,
+	rgbToHex,
+	rgbToVector,
+	rgbaToVector,
+} from "@/utils/color";
 import { formatDate } from "@/utils/dayjs";
 import { joinPath } from "@/utils/path";
 import { startDrag } from "@crabnebula/tauri-plugin-drag";
@@ -321,14 +328,13 @@ const Item: FC<ItemProps> = (props) => {
 				`复制失败: ${error instanceof Error ? error.message : "未知错误"}`,
 			);
 		} finally {
-			// 延迟清除内部复制标志，确保剪贴板更新事件处理完成
-			// 这样可以避免在剪贴板更新处理过程中尝试获取来源应用信息
+			// 避免在剪贴板更新处理过程中尝试获取来源应用信息
 			setTimeout(() => {
 				clipboardStore.internalCopy = {
 					isCopying: false,
 					itemId: null,
 				};
-			}, 200); // 200ms延迟，确保剪贴板更新事件处理完成
+			}, 200);
 		}
 
 		if (hasError) {
@@ -357,6 +363,9 @@ const Item: FC<ItemProps> = (props) => {
 				// 聚焦到当前条目
 				state.activeId = id;
 			}
+
+			// 复制操作后也清除多选状态，确保聚焦框正常显示
+			clearMultiSelectState();
 
 			// 更新数据库
 			await updateSQL("history", { id, createTime });
@@ -840,6 +849,12 @@ const Item: FC<ItemProps> = (props) => {
 
 				// 更新数据库
 				await updateSQL("history", { id, createTime });
+
+				// 无论是否在多选状态，都清除多选状态，确保聚焦框正常显示
+				clearMultiSelectState();
+
+				// 确保activeId指向当前粘贴的项目
+				state.activeId = id;
 			}
 		}
 	};
@@ -861,6 +876,119 @@ const Item: FC<ItemProps> = (props) => {
 		state.activeId = state.list[nextIndex]?.id;
 
 		return nextIndex;
+	};
+
+	// 颜色格式转换函数
+	const pasteColorAsRGB = async () => {
+		try {
+			const actualValue = getActualValue(value);
+			const parsedColor = parseColorString(actualValue);
+
+			if (!parsedColor) {
+				message.error("无效的颜色格式");
+				return;
+			}
+
+			let rgbString = "";
+
+			if (parsedColor.format === "hex") {
+				const rgb = hexToRgb(actualValue);
+				if (rgb) {
+					// 使用新的向量格式，不带rgb()前缀
+					rgbString = rgbToVector(rgb.r, rgb.g, rgb.b);
+				}
+			} else if (parsedColor.format === "rgba") {
+				const { r, g, b, a } = parsedColor.values;
+				// 使用新的向量格式，不带rgb()前缀
+				rgbString = rgbaToVector(r, g, b, a);
+			} else if (parsedColor.format === "rgb") {
+				// 如果已经是RGB格式，转换为向量格式
+				const { r, g, b } = parsedColor.values;
+				rgbString = rgbToVector(r, g, b);
+			}
+
+			if (rgbString) {
+				// 直接粘贴到目标窗口，而不是写入剪贴板
+				const { writeText } = await import("@/plugins/clipboard");
+				const { paste } = await import("@/plugins/paste");
+
+				// 设置内部复制标志，防止粘贴操作后触发重复处理
+				clipboardStore.internalCopy = {
+					isCopying: true,
+					itemId: "color-convert",
+				};
+
+				try {
+					await writeText(rgbString);
+					await paste();
+					message.success("已粘贴RGB格式颜色值");
+				} finally {
+					// 清除内部复制标志
+					clipboardStore.internalCopy = {
+						isCopying: false,
+						itemId: null,
+					};
+				}
+			} else {
+				message.error("颜色格式转换失败");
+			}
+		} catch (error) {
+			console.error("颜色格式转换失败:", error);
+			message.error("颜色格式转换失败");
+		}
+	};
+
+	const pasteColorAsHEX = async () => {
+		try {
+			const actualValue = getActualValue(value);
+			const parsedColor = parseColorString(actualValue);
+
+			if (!parsedColor) {
+				message.error("无效的颜色格式");
+				return;
+			}
+
+			let hexString = "";
+
+			if (parsedColor.format === "hex") {
+				hexString = actualValue;
+			} else if (parsedColor.format === "rgb") {
+				const { r, g, b } = parsedColor.values;
+				hexString = rgbToHex(r, g, b);
+			} else if (parsedColor.format === "rgba") {
+				const { r, g, b } = parsedColor.values;
+				hexString = rgbToHex(r, g, b);
+			}
+
+			if (hexString) {
+				// 直接粘贴到目标窗口，而不是写入剪贴板
+				const { writeText } = await import("@/plugins/clipboard");
+				const { paste } = await import("@/plugins/paste");
+
+				// 设置内部复制标志，防止粘贴操作后触发重复处理
+				clipboardStore.internalCopy = {
+					isCopying: true,
+					itemId: "color-convert",
+				};
+
+				try {
+					await writeText(hexString);
+					await paste();
+					message.success("已粘贴HEX格式颜色值");
+				} finally {
+					// 清除内部复制标志
+					clipboardStore.internalCopy = {
+						isCopying: false,
+						itemId: null,
+					};
+				}
+			} else {
+				message.error("颜色格式转换失败");
+			}
+		} catch (error) {
+			console.error("颜色格式转换失败:", error);
+			message.error("颜色格式转换失败");
+		}
 	};
 
 	// 右键菜单
@@ -935,7 +1063,8 @@ const Item: FC<ItemProps> = (props) => {
 					type !== "text" &&
 					type !== "html" &&
 					type !== "rtf" &&
-					type !== "markdown",
+					type !== "markdown" &&
+					type !== "color",
 				action: () => openEditModal?.(),
 			},
 			{
@@ -956,6 +1085,23 @@ const Item: FC<ItemProps> = (props) => {
 				text: t("clipboard.button.context_menu.paste_as_path"),
 				hide: type !== "files",
 				action: pastePlain,
+			},
+			// 颜色类型专用的转换选项
+			// 根据当前颜色格式显示对应的转换选项
+			{
+				text: t("clipboard.button.context_menu.paste_as_rgb"),
+				hide:
+					type !== "color" ||
+					parseColorString(getActualValue(value))?.format === "rgb" ||
+					parseColorString(getActualValue(value))?.format === "rgba",
+				action: pasteColorAsRGB,
+			},
+			{
+				text: t("clipboard.button.context_menu.paste_as_hex"),
+				hide:
+					type !== "color" ||
+					parseColorString(getActualValue(value))?.format === "hex",
+				action: pasteColorAsHEX,
 			},
 			{
 				text: favorite
@@ -1515,6 +1661,8 @@ const Item: FC<ItemProps> = (props) => {
 				return <Image {...data} />;
 			case "files":
 				return <Files {...data} />;
+			case "color":
+				return <Text {...data} />;
 			default:
 				return <Text {...data} />;
 		}

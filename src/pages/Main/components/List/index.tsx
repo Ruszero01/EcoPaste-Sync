@@ -234,9 +234,9 @@ const List = () => {
 					style={{ height: rowVirtualizer.getTotalSize() + 60 }}
 				>
 					{rowVirtualizer.getVirtualItems().map((virtualItem) => {
-						const { key, size, start, index } = virtualItem;
+						const { size, start, index } = virtualItem;
 						const data = state.list[index];
-						let { type, value } = data;
+						let { type, value, id } = data;
 
 						// 确保 value 不为 null 或 undefined
 						if (!value) {
@@ -255,7 +255,7 @@ const List = () => {
 
 						return (
 							<Item
-								key={key}
+								key={id} // 使用数据ID作为key，确保数据变化时组件重新渲染
 								index={index}
 								data={{ ...data, value }}
 								deleteModal={deleteModal}

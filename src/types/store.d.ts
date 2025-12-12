@@ -140,6 +140,7 @@ export interface ClipboardStore {
 		showOriginalContent: boolean;
 		codeDetection: boolean; // 新增：代码检测开关
 		showSourceApp: boolean; // 新增：显示来源应用开关
+		colorDetection: boolean; // 新增：颜色识别开关
 	};
 
 	// 历史记录

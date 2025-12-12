@@ -51,11 +51,13 @@ import {
 	message,
 } from "antd";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useSnapshot } from "valtio";
 
 const { Text } = Typography;
 
 const CloudSync = () => {
+	const { t } = useTranslation();
 	// 安全获取消息 API 实例
 	let appMessage: any;
 	let modal: any;
@@ -151,14 +153,18 @@ const CloudSync = () => {
 					}
 
 					if (showMessage) {
-						appMessage.success("连接成功，云同步已就绪");
+						appMessage.success(
+							t("preference.cloud_sync.connection_success_ready"),
+						);
 					}
 				} else {
 					setConnectionStatus("failed");
 					await saveConnectionState("failed", config);
 
 					if (showMessage) {
-						appMessage.warning("连接失败，请检查配置");
+						appMessage.warning(
+							t("preference.cloud_sync.connection_failed_check"),
+						);
 					}
 				}
 			} catch (testError) {
@@ -170,7 +176,9 @@ const CloudSync = () => {
 				});
 
 				if (showMessage) {
-					appMessage.error("连接验证失败");
+					appMessage.error(
+						t("preference.cloud_sync.connection_validation_failed"),
+					);
 				}
 			}
 		},
@@ -181,6 +189,7 @@ const CloudSync = () => {
 			appMessage.success,
 			appMessage.warning,
 			appMessage.error,
+			t,
 		], // 移除 syncModeConfig 依赖，使用 ref 代替
 	);
 
@@ -288,11 +297,11 @@ const CloudSync = () => {
 			});
 			setWebdavConfig(null);
 			setConnectionStatus("failed");
-			appMessage.error("加载配置失败");
+			appMessage.error(t("preference.cloud_sync.load_config_failed"));
 		} finally {
 			setIsConfigLoading(false);
 		}
-	}, [form, validateConnectionStatus, appMessage.error]);
+	}, [form, validateConnectionStatus, appMessage.error, t]);
 
 	// 处理收藏模式开关变更（使用防抖优化）
 	const handleFavoritesModeChange = useCallback(
@@ -328,13 +337,17 @@ const CloudSync = () => {
 				// 更新组件状态
 				setSyncModeConfig(newConfig);
 
-				appMessage.success(enabled ? "收藏模式已启用" : "收藏模式已关闭");
+				appMessage.success(
+					enabled
+						? t("preference.cloud_sync.favorite_mode_enabled")
+						: t("preference.cloud_sync.favorite_mode_disabled"),
+				);
 			} catch (error) {
 				console.error("处理收藏模式变更失败:", error);
-				appMessage.error("更新配置失败");
+				appMessage.error(t("preference.cloud_sync.update_config_failed"));
 			}
 		},
-		[syncModeConfig, appMessage],
+		[syncModeConfig, appMessage, t],
 	);
 
 	// 处理文件模式开关变更（新版本：文件模式 = 包含图片和文件）
@@ -375,13 +388,17 @@ const CloudSync = () => {
 				// 更新组件状态
 				setSyncModeConfig(newConfig);
 
-				appMessage.success(enabled ? "文件模式已启用" : "文件模式已关闭");
+				appMessage.success(
+					enabled
+						? t("preference.cloud_sync.file_mode_enabled")
+						: t("preference.cloud_sync.file_mode_disabled"),
+				);
 			} catch (error) {
 				console.error("处理文件模式变更失败", error);
 				appMessage.error("更新配置失败");
 			}
 		},
-		[syncModeConfig, appMessage],
+		[syncModeConfig, appMessage, t],
 	);
 
 	// 处理文件大小限制变更
@@ -391,13 +408,15 @@ const CloudSync = () => {
 
 			try {
 				globalStore.cloudSync.fileSync.maxFileSize = value;
-				appMessage.success(`文件限制已更新为 ${value}MB`);
+				appMessage.success(
+					t("preference.cloud_sync.file_limit_updated", { 0: value }),
+				);
 			} catch (error) {
 				console.error("处理文件限制变更失败", error);
-				appMessage.error("更新配置失败");
+				appMessage.error(t("preference.cloud_sync.update_config_failed"));
 			}
 		},
-		[appMessage],
+		[appMessage, t],
 	);
 
 	// 使用 ref 存储函数，避免依赖变化
@@ -594,21 +613,21 @@ const CloudSync = () => {
 			const backendConfig = await getServerConfig();
 
 			if (!backendConfig) {
-				appMessage.error("WebDAV配置为空");
+				appMessage.error(t("preference.cloud_sync.webdav_config_empty"));
 				setConnectionStatus("failed");
 				return;
 			}
 			const result = await testConnection(backendConfig);
 			if (result.success) {
 				setConnectionStatus("success");
-				appMessage.success("连接成功");
+				appMessage.success(t("preference.cloud_sync.connection_success"));
 			} else {
 				setConnectionStatus("failed");
-				appMessage.error("连接失败");
+				appMessage.error(t("preference.cloud_sync.connection_failed"));
 			}
 		} catch (_error) {
 			setConnectionStatus("failed");
-			appMessage.error("连接测试失败");
+			appMessage.error(t("preference.cloud_sync.connection_test_failed"));
 		}
 	};
 
@@ -625,7 +644,7 @@ const CloudSync = () => {
 			// 保存配置到本地
 			const saved = await saveServerConfig(config);
 			if (!saved) {
-				appMessage.error("保存失败");
+				appMessage.error(t("preference.cloud_sync.save_failed"));
 				return;
 			}
 
@@ -633,7 +652,7 @@ const CloudSync = () => {
 			await validateConnectionStatus(config);
 		} catch (error) {
 			setConnectionStatus("failed");
-			appMessage.error("保存失败");
+			appMessage.error(t("preference.cloud_sync.save_failed"));
 			console.error("❌ 配置处理失败", {
 				error: error instanceof Error ? error.message : String(error),
 			});
@@ -649,7 +668,7 @@ const CloudSync = () => {
 		}
 
 		if (connectionStatus !== "success") {
-			appMessage.error("请先检查网络连接");
+			appMessage.error(t("preference.cloud_sync.check_network_first"));
 			return;
 		}
 
@@ -658,7 +677,7 @@ const CloudSync = () => {
 		const config = await getServerConfig();
 
 		if (!config || !config.url || !config.username || !config.password) {
-			appMessage.error("配置不完整，请先完成设置");
+			appMessage.error(t("preference.cloud_sync.config_incomplete"));
 			return;
 		}
 
@@ -697,9 +716,11 @@ const CloudSync = () => {
 
 				let successMessage: string;
 				if (totalChanges === 0) {
-					successMessage = "已是最新";
+					successMessage = t("preference.cloud_sync.already_up_to_date");
 				} else {
-					successMessage = `已更新 ${totalChanges} 项`;
+					successMessage = t("preference.cloud_sync.updated_items", {
+						0: totalChanges,
+					});
 				}
 
 				appMessage.success(successMessage);
@@ -717,7 +738,7 @@ const CloudSync = () => {
 			console.error("❌ 同步失败", {
 				error: error instanceof Error ? error.message : String(error),
 			});
-			appMessage.error("同步失败");
+			appMessage.error(t("preference.cloud_sync.sync_failed"));
 		} finally {
 			setIsSyncing(false);
 		}
@@ -736,11 +757,11 @@ const CloudSync = () => {
 					enabled: true,
 					intervalHours: syncInterval,
 				});
-				appMessage.success("自动同步已启用");
+				appMessage.success(t("preference.cloud_sync.auto_sync_enabled"));
 			} else {
 				// 停止后端定时器
 				await autoSync.setEnabled(false);
-				appMessage.info("自动同步已禁用");
+				appMessage.info(t("preference.cloud_sync.auto_sync_disabled"));
 			}
 		} catch (error) {
 			console.error("自动同步操作失败", {
@@ -749,7 +770,7 @@ const CloudSync = () => {
 			// 回滚UI状态
 			setAutoSyncEnabled(!enabled);
 			globalStore.cloudSync.autoSyncSettings.enabled = !enabled;
-			appMessage.error("自动同步操作失败");
+			appMessage.error(t("preference.cloud_sync.auto_sync_operation_failed"));
 		}
 	};
 
@@ -758,7 +779,7 @@ const CloudSync = () => {
 		if (isConfigSyncing) return;
 
 		if (connectionStatus !== "success") {
-			appMessage.error("请先检查网络连接");
+			appMessage.error(t("preference.cloud_sync.check_network_first"));
 			return;
 		}
 
@@ -772,7 +793,7 @@ const CloudSync = () => {
 			}
 		} catch (error) {
 			console.error("上传配置失败", error);
-			appMessage.error("上传配置失败");
+			appMessage.error(t("preference.cloud_sync.upload_config_failed"));
 		} finally {
 			setIsConfigSyncing(false);
 		}
@@ -783,16 +804,16 @@ const CloudSync = () => {
 		if (isConfigSyncing) return;
 
 		if (connectionStatus !== "success") {
-			appMessage.error("请先检查网络连接");
+			appMessage.error(t("preference.cloud_sync.check_network_first"));
 			return;
 		}
 
 		// 确认对话框
 		modal.confirm({
-			title: "应用云端配置",
-			content: "这将覆盖当前的本地配置，确定要继续吗？",
-			okText: "确定",
-			cancelText: "取消",
+			title: t("preference.cloud_sync.apply_cloud_config_confirm_title"),
+			content: t("preference.cloud_sync.apply_cloud_config_confirm_content"),
+			okText: t("preference.cloud_sync.confirm"),
+			cancelText: t("preference.cloud_sync.cancel"),
 			onOk: async () => {
 				setIsConfigSyncing(true);
 				try {
@@ -801,14 +822,16 @@ const CloudSync = () => {
 						appMessage.success(result.message);
 						// 提示用户重启应用以完全应用配置
 						setTimeout(() => {
-							appMessage.info("建议重启应用以确保配置完全生效");
+							appMessage.info(
+								t("preference.cloud_sync.restart_app_suggestion"),
+							);
 						}, 1000);
 					} else {
 						appMessage.error(result.message);
 					}
 				} catch (error) {
 					console.error("应用配置失败", error);
-					appMessage.error("应用配置失败");
+					appMessage.error(t("preference.cloud_sync.apply_config_failed"));
 				} finally {
 					setIsConfigSyncing(false);
 				}
@@ -828,7 +851,7 @@ const CloudSync = () => {
 			try {
 				// 使用新的后端API更新间隔
 				await autoSync.setIntervalHours(hours);
-				appMessage.success("同步间隔已更新（后台生效）");
+				appMessage.success(t("preference.cloud_sync.sync_interval_updated"));
 			} catch (error) {
 				console.error("更新同步间隔失败", {
 					error: error instanceof Error ? error.message : String(error),
@@ -836,7 +859,7 @@ const CloudSync = () => {
 				// 回滚状态
 				setSyncInterval(oldInterval);
 				globalStore.cloudSync.autoSyncSettings.intervalHours = oldInterval;
-				appMessage.error("更新间隔失败");
+				appMessage.error(t("preference.cloud_sync.update_interval_failed"));
 			}
 		}
 	};
@@ -948,7 +971,7 @@ const CloudSync = () => {
 		<>
 			{modalContextHolder}
 			{/* 服务器配置 */}
-			<ProList header="服务器配置">
+			<ProList header={t("preference.cloud_sync.server_config")}>
 				<Form
 					form={form}
 					layout="vertical"
@@ -956,7 +979,7 @@ const CloudSync = () => {
 					initialValues={{ path: "/EcoPaste-Sync", ...webdavConfig }}
 				>
 					{/* 服务器地址 */}
-					<ProListItem title="服务器地址">
+					<ProListItem title={t("preference.cloud_sync.server_address")}>
 						<Form.Item
 							name="url"
 							style={{ margin: 0, minWidth: 300, maxWidth: 400 }}
@@ -966,7 +989,7 @@ const CloudSync = () => {
 					</ProListItem>
 
 					{/* 用户名 */}
-					<ProListItem title="用户名">
+					<ProListItem title={t("preference.cloud_sync.username")}>
 						<Form.Item
 							name="username"
 							style={{ margin: 0, minWidth: 300, maxWidth: 400 }}
@@ -976,7 +999,7 @@ const CloudSync = () => {
 					</ProListItem>
 
 					{/* 密码 */}
-					<ProListItem title="密码">
+					<ProListItem title={t("preference.cloud_sync.password")}>
 						<Form.Item
 							name="password"
 							style={{ margin: 0, minWidth: 300, maxWidth: 400 }}
@@ -986,7 +1009,7 @@ const CloudSync = () => {
 					</ProListItem>
 
 					{/* 同步路径 */}
-					<ProListItem title="同步路径">
+					<ProListItem title={t("preference.cloud_sync.sync_path")}>
 						<Form.Item
 							name="path"
 							style={{ margin: 0, minWidth: 300, maxWidth: 400 }}
@@ -1002,10 +1025,10 @@ const CloudSync = () => {
 								<Alert
 									message={
 										connectionStatus === "testing"
-											? "正在测试连接..."
+											? t("preference.cloud_sync.testing_connection")
 											: connectionStatus === "success"
-												? "连接成功"
-												: "连接失败"
+												? t("preference.cloud_sync.connection_success")
+												: t("preference.cloud_sync.connection_failed")
 									}
 									type={
 										connectionStatus === "testing"
@@ -1034,7 +1057,7 @@ const CloudSync = () => {
 								loading={connectionStatus === "testing"}
 								onClick={testWebDAVConnection}
 							>
-								测试连接
+								{t("preference.cloud_sync.test_connection")}
 							</Button>
 							<Button
 								type="primary"
@@ -1046,7 +1069,7 @@ const CloudSync = () => {
 									) : undefined
 								}
 							>
-								保存配置
+								{t("preference.cloud_sync.save_config")}
 							</Button>
 						</Flex>
 					</ProListItem>
@@ -1054,9 +1077,12 @@ const CloudSync = () => {
 			</ProList>
 
 			{/* 数据同步 */}
-			<ProList header="数据同步">
+			<ProList header={t("preference.cloud_sync.data_sync")}>
 				{/* 收藏模式 */}
-				<ProListItem title="收藏模式" description="只同步收藏的剪贴板内容">
+				<ProListItem
+					title={t("preference.cloud_sync.favorite_mode")}
+					description={t("preference.cloud_sync.favorite_mode_desc")}
+				>
 					<Switch
 						checked={syncModeConfig.settings.onlyFavorites}
 						onChange={handleFavoritesModeChange}
@@ -1064,7 +1090,10 @@ const CloudSync = () => {
 				</ProListItem>
 
 				{/* 文件模式 */}
-				<ProListItem title="文件模式" description="启用后同步图片和文件内容">
+				<ProListItem
+					title={t("preference.cloud_sync.file_mode")}
+					description={t("preference.cloud_sync.file_mode_desc")}
+				>
 					<Flex vertical gap={8} align="flex-end">
 						<Switch
 							checked={
@@ -1077,7 +1106,7 @@ const CloudSync = () => {
 							syncModeConfig.settings.includeFiles && (
 								<Flex align="center" gap={8} style={{ width: "auto" }}>
 									<Text type="secondary" style={{ fontSize: "12px" }}>
-										文件限制：
+										{t("preference.cloud_sync.file_limit")}
 									</Text>
 									<InputNumber
 										size="small"
@@ -1094,7 +1123,10 @@ const CloudSync = () => {
 				</ProListItem>
 
 				{/* 间隔同步 */}
-				<ProListItem title="自动同步" description="按设定间隔自动同步数据">
+				<ProListItem
+					title={t("preference.cloud_sync.auto_sync")}
+					description={t("preference.cloud_sync.auto_sync_desc")}
+				>
 					<Flex vertical gap={8} align="flex-end">
 						<Switch checked={autoSyncEnabled} onChange={handleAutoSyncToggle} />
 						{autoSyncEnabled && (
@@ -1103,11 +1135,21 @@ const CloudSync = () => {
 								onChange={handleSyncIntervalChange}
 								style={{ width: 120 }}
 							>
-								<Select.Option value={1}>1小时</Select.Option>
-								<Select.Option value={2}>2小时</Select.Option>
-								<Select.Option value={6}>6小时</Select.Option>
-								<Select.Option value={12}>12小时</Select.Option>
-								<Select.Option value={24}>每天</Select.Option>
+								<Select.Option value={1}>
+									{t("preference.cloud_sync.1_hour")}
+								</Select.Option>
+								<Select.Option value={2}>
+									{t("preference.cloud_sync.2_hours")}
+								</Select.Option>
+								<Select.Option value={6}>
+									{t("preference.cloud_sync.6_hours")}
+								</Select.Option>
+								<Select.Option value={12}>
+									{t("preference.cloud_sync.12_hours")}
+								</Select.Option>
+								<Select.Option value={24}>
+									{t("preference.cloud_sync.1_day")}
+								</Select.Option>
 							</Select>
 						)}
 					</Flex>
@@ -1138,7 +1180,8 @@ const CloudSync = () => {
 									style={{ fontSize: "12px" }}
 									key={renderKey}
 								>
-									上次同步：{(() => {
+									{t("preference.cloud_sync.last_sync")}
+									{(() => {
 										if (!lastSyncTime || lastSyncTime === 0) return "";
 
 										const date = new Date(lastSyncTime);
@@ -1149,16 +1192,16 @@ const CloudSync = () => {
 										const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
 										if (diffMins < 1) {
-											return "刚刚";
+											return t("preference.cloud_sync.just_now");
 										}
 										if (diffMins < 60) {
-											return `${diffMins}分钟前`;
+											return `${diffMins}${t("preference.cloud_sync.minutes_ago")}`;
 										}
 										if (diffHours < 24) {
-											return `${diffHours}小时前`;
+											return `${diffHours}${t("preference.cloud_sync.hours_ago")}`;
 										}
 										if (diffDays < 7) {
-											return `${diffDays}天前`;
+											return `${diffDays}${t("preference.cloud_sync.days_ago")}`;
 										}
 										return date.toLocaleDateString();
 									})()}
@@ -1175,7 +1218,7 @@ const CloudSync = () => {
 							disabled={connectionStatus !== "success"}
 							style={{ minWidth: 120 }}
 						>
-							立即同步
+							{t("preference.cloud_sync.sync_now")}
 						</Button>
 					</ProListItem>
 				) : (
@@ -1196,15 +1239,18 @@ const CloudSync = () => {
 							disabled={connectionStatus !== "success"}
 							style={{ minWidth: 120 }}
 						>
-							立即同步
+							{t("preference.cloud_sync.sync_now")}
 						</Button>
 					</div>
 				)}
 			</ProList>
 
 			{/* 配置同步 */}
-			<ProList header="配置同步">
-				<ProListItem title="上传本地配置" description="将当前配置上传到云端">
+			<ProList header={t("preference.cloud_sync.config_sync")}>
+				<ProListItem
+					title={t("preference.cloud_sync.upload_config")}
+					description={t("preference.cloud_sync.upload_config_desc")}
+				>
 					<Button
 						type="default"
 						icon={<UploadOutlined />}
@@ -1212,13 +1258,13 @@ const CloudSync = () => {
 						onClick={handleUploadConfig}
 						disabled={connectionStatus !== "success"}
 					>
-						上传配置
+						{t("preference.cloud_sync.upload_config")}
 					</Button>
 				</ProListItem>
 
 				<ProListItem
-					title="应用云端配置"
-					description="下载并应用云端配置（将覆盖本地配置）"
+					title={t("preference.cloud_sync.apply_remote_config")}
+					description={t("preference.cloud_sync.apply_remote_config_desc")}
 				>
 					<Button
 						type="default"
@@ -1227,7 +1273,7 @@ const CloudSync = () => {
 						onClick={handleApplyRemoteConfig}
 						disabled={connectionStatus !== "success"}
 					>
-						应用配置
+						{t("preference.cloud_sync.apply_remote_config")}
 					</Button>
 				</ProListItem>
 			</ProList>
@@ -1261,7 +1307,7 @@ const CloudSync = () => {
 							icon={<DeleteOutlined />}
 							onClick={handleResetConfig}
 						>
-							重置配置
+							重置配置文件
 						</Button>
 					</ProListItem>
 

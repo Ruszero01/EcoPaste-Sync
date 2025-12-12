@@ -7,18 +7,21 @@ import { Flex } from "antd";
 import clsx from "clsx";
 import { useContext, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useSnapshot } from "valtio";
 import { MainContext } from "../..";
 
 interface GroupItem extends Partial<HistoryTablePayload> {
 	key: string;
 	label: string;
 	icon: string;
+	type?: "text" | "image" | "files" | "color" | "rtf" | "html" | "markdown"; // 添加type属性，使用正确的类型
 }
 
 const Group = () => {
 	const { state, getListCache, getListDebounced } = useContext(MainContext);
 	const { t } = useTranslation();
 	const [checked, setChecked] = useState("all");
+	const { content } = useSnapshot(clipboardStore);
 
 	const groupList: GroupItem[] = [
 		{
@@ -46,12 +49,18 @@ const Group = () => {
 		},
 		{
 			key: "link",
-			label: "链接",
+			label: t("clipboard.label.link"),
 			icon: "i-lucide:link",
 		},
 		{
+			key: "color",
+			label: t("clipboard.label.tab.color"),
+			type: "color",
+			icon: "i-lucide:palette",
+		},
+		{
 			key: "code",
-			label: "代码",
+			label: t("clipboard.label.code"),
 			group: "text",
 			isCode: true,
 			icon: "i-lucide:code-2",
@@ -88,7 +97,7 @@ const Group = () => {
 	});
 
 	const handleChange = (item: GroupItem) => {
-		const { key, group, favorite, isCode } = item;
+		const { key, group, favorite, isCode, type } = item;
 
 		setChecked(key);
 
@@ -96,6 +105,7 @@ const Group = () => {
 		state.group = group;
 		state.favorite = favorite;
 		state.isCode = isCode;
+		state.type = type;
 
 		// 针对链接分组，特殊处理
 		if (key === "link") {
@@ -103,6 +113,13 @@ const Group = () => {
 			// 不清除搜索，保留书签分组筛选
 		} else {
 			state.linkTab = false;
+		}
+
+		// 针对颜色分组，特殊处理
+		if (key === "color") {
+			state.colorTab = true;
+		} else {
+			state.colorTab = false;
 		}
 
 		// 强制触发列表刷新 - 清除缓存并重新加载
@@ -121,7 +138,11 @@ const Group = () => {
 					.filter((item) => {
 						// 代码分组只在代码检测启用时显示
 						if (item.key === "code") {
-							return clipboardStore.content.codeDetection;
+							return content.codeDetection;
+						}
+						// 颜色分组只在颜色识别启用时显示
+						if (item.key === "color") {
+							return content.colorDetection;
 						}
 						return true;
 					})

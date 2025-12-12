@@ -8,6 +8,7 @@
 				"general": "通用設定",
 				"shortcut": "快捷鍵",
 				"backup": "資料備份",
+				"cloud_sync": "雲端同步",
 				"about": "關於"
 			}
 		},
@@ -76,7 +77,8 @@
 					"auto_sort": "自動排序",
 					"show_original_content": "顯示原內容",
 					"show_source_app": "顯示來源應用",
-					"code_detection": "代碼識別"
+					"code_detection": "代碼識別",
+					"color_detection": "顏色識別"
 				},
 				"hints": {
 					"auto_paste": "當使用滑鼠左鍵時，快速將內容貼上到輸入位置",
@@ -89,7 +91,8 @@
 					"auto_sort": "複製已存在的內容時排列到最前面",
 					"show_original_content": "添加備註後，滑鼠懸停時是否顯示原內容",
 					"show_source_app": "在剪貼簿歷史中顯示來源應用的圖示和名稱",
-					"code_detection": "自動識別剪貼簿中的代碼內容並啟用語法高亮"
+					"code_detection": "自動識別剪貼簿中的代碼內容並啟用語法高亮",
+					"color_detection": "自動識別剪貼簿中的RGB和RGBA顏色值，並在顏色分組中顯示"
 				}
 			}
 		},
@@ -218,10 +221,14 @@
 					"log_storage_path": "日誌存儲路徑"
 				},
 				"hints": {
-					"custom_path": "自訂",
+					"custom_path": "自訂義",
 					"default_path": "恢復預設",
 					"change_success": "更改成功"
-				}
+				},
+				"existing_data_title": "發現已有資料",
+				"existing_data_content": "目標路徑中已存在資料檔案，是否使用現有資料？選擇\"是\"將使用現有資料，選擇\"否\"將覆蓋現有資料。",
+				"use_existing_data": "使用現有資料",
+				"overwrite_existing_data": "覆蓋現有資料"
 			},
 			"import_export": {
 				"title": "導入和匯出",
@@ -270,7 +277,95 @@
 					"thank_all": "感謝所有列出的和未能列出的開源依賴，以及為{{0}}提出建議的用戶和做出貢獻的開發者。"
 				}
 			}
+		},
+		"cloud_sync": {
+			"server_config": "伺服器配置",
+			"server_address": "伺服器地址",
+			"username": "使用者名稱",
+			"password": "密碼",
+			"sync_path": "同步路徑",
+			"testing_connection": "正在測試連接...",
+			"connection_success": "連接成功",
+			"connection_failed": "連接失敗",
+			"test_connection": "測試連接",
+			"save_config": "儲存配置",
+			"data_sync": "資料同步",
+			"favorite_mode": "收藏模式",
+			"favorite_mode_desc": "只同步收藏的剪貼簿內容",
+			"file_mode": "檔案模式",
+			"file_mode_desc": "啟用後同步圖片和檔案內容",
+			"file_limit": "檔案限制：",
+			"auto_sync": "自動同步",
+			"auto_sync_desc": "按設定間隔自動同步資料",
+			"1_hour": "1小時",
+			"2_hours": "2小時",
+			"6_hours": "6小時",
+			"12_hours": "12小時",
+			"1_day": "每天",
+			"last_sync": "上次同步：",
+			"just_now": "剛剛",
+			"minutes_ago": "分鐘前",
+			"hours_ago": "小時前",
+			"days_ago": "天前",
+			"sync_now": "立即同步",
+			"config_sync": "配置同步",
+			"upload_config": "上傳本地配置",
+			"upload_config_desc": "將當前配置上傳到雲端",
+			"apply_remote_config": "應用雲端配置",
+			"apply_remote_config_desc": "下載並應用雲端配置（將覆蓋本地配置）",
+			"connection_success_ready": "連接成功，雲同步已就緒",
+			"connection_failed_check": "連接失敗，請檢查配置",
+			"connection_validation_failed": "連接驗證失敗",
+			"load_config_failed": "加載配置失敗",
+			"favorite_mode_enabled": "收藏模式已啟用",
+			"favorite_mode_disabled": "收藏模式已關閉",
+			"update_config_failed": "更新配置失敗",
+			"file_mode_enabled": "檔案模式已啟用",
+			"file_mode_disabled": "檔案模式已關閉",
+			"file_limit_updated": "檔案限制已更新為 {{0}}MB",
+			"webdav_config_empty": "WebDAV配置為空",
+			"connection_test_failed": "連接測試失敗",
+			"save_failed": "儲存失敗",
+			"check_network_first": "請先檢查網路連接",
+			"config_incomplete": "配置不完整，請先完成設定",
+			"already_up_to_date": "已是最新的",
+			"updated_items": "已更新 {{0}} 項",
+			"sync_failed": "同步失敗",
+			"auto_sync_enabled": "自動同步已啟用",
+			"auto_sync_disabled": "自動同步已禁用",
+			"auto_sync_operation_failed": "自動同步操作失敗",
+			"upload_config_failed": "上傳配置失敗",
+			"apply_cloud_config_confirm_title": "應用雲端配置",
+			"apply_cloud_config_confirm_content": "這將覆蓋當前的本地配置，確定要繼續嗎？",
+			"confirm": "確定",
+			"cancel": "取消",
+			"apply_config_failed": "應用配置失敗",
+			"restart_app_suggestion": "建議重新啟動應用以確保配置完全生效",
+			"config_reset_success": "配置已重置，建議重新啟動應用",
+			"operation_failed": "操作失敗",
+			"sync_interval_updated": "同步間隔已更新（後台生效）",
+			"update_interval_failed": "更新間隔失敗"
 		}
+	},
+	"sidebar_group": {
+		"edit_bookmark": "編輯書籤",
+		"bookmark_name": "書籤名稱",
+		"enter_bookmark_name": "請輸入書籤名稱",
+		"select_color": "選擇顏色",
+		"edit": "編輯",
+		"delete": "刪除",
+		"red": "紅色",
+		"cyan": "青色",
+		"blue": "藍色",
+		"green": "綠色",
+		"yellow": "黃色",
+		"pink": "粉色",
+		"dark_blue": "深藍色",
+		"sky_blue": "天藍色",
+		"orange_red": "橙紅色",
+		"emerald_green": "翠綠色",
+		"light_yellow": "淺黃色",
+		"gray": "灰色"
 	},
 	"clipboard": {
 		"button": {
@@ -290,18 +385,29 @@
 				"download_image": "下載圖片",
 				"show_in_finder": "在 Finder 中顯示",
 				"show_in_file_explorer": "在檔案總管中顯示",
+				"paste_as_rgb": "貼上為RGB",
+				"paste_as_hex": "貼上為HEX",
 				"delete": "刪除"
-			}
+			},
+			"create_group": "新建分組"
 		},
 		"label": {
 			"tab": {
 				"all": "全部",
 				"text": "文字",
+				"color": "顏色",
 				"image": "圖片",
 				"files": "文件",
 				"favorite": "收藏"
 			},
+			"groups": "分組",
+			"fixed_groups": "固定分組",
+			"custom_groups": "自定義分組",
+			"create_group": "創建分組",
+			"create_group_with_search": "創建分組",
+			"choose_color": "選擇顏色",
 			"link": "連結",
+			"code": "代碼",
 			"email": "信箱",
 			"color": "顏色",
 			"path": "路徑",
@@ -314,7 +420,10 @@
 		},
 		"hints": {
 			"search_placeholder": "搜尋",
-			"delete_modal_content": "確定要删除此項嗎？"
+			"delete_modal_content": "確定要删除此項嗎？",
+			"create_group_description": "將當前搜索關鍵詞創建為自定義分組",
+			"no_custom_groups": "暫無自定義分組",
+			"new_group_placeholder": "輸入分組名稱"
 		}
 	},
 	"component": {
@@ -363,13 +472,7 @@
 		"edit_modal": {
 			"label": {
 				"edit": "編輯",
-				"edit_mode": "編輯模式",
 				"content": "內容"
-			},
-			"mode": {
-				"text": "純文字",
-				"html": "HTML",
-				"rtf": "富文字"
 			},
 			"hints": {
 				"input_content": "請輸入內容"
