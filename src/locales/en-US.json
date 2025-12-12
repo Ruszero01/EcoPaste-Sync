@@ -286,6 +286,88 @@
 			"gray": "Gray"
 		},
 		"clipboard": {
+			"window_settings": {
+				"title": "Window Settings",
+				"label": {
+					"window_position": "Window Position",
+					"window_position_remember": "Remember Position",
+					"window_position_follow": "Follow Mouse",
+					"window_position_center": "Screen Center",
+					"back_top": "Back to Top on Activation",
+					"show_all": "Switch to All Groups on Activation"
+				},
+				"hints": {
+					"back_top": "When window is activated, scroll to top and select first item"
+				}
+			},
+			"audio_settings": {
+				"title": "Audio Settings",
+				"label": {
+					"copy_audio": "Copy Sound"
+				}
+			},
+			"search_box_settings": {
+				"title": "Search Settings",
+				"label": {
+					"default_focus": "Default Focus",
+					"auto_clear": "Auto Clear",
+					"position": "Search Box Position",
+					"position_top": "Top",
+					"position_bottom": "Bottom"
+				},
+				"hints": {
+					"default_focus": "When window is activated, focus search box by default",
+					"auto_clear": "When window is activated, clear search box content"
+				}
+			},
+			"content_settings": {
+				"title": "Content Settings",
+				"button": {
+					"custom_operation_button": "Customize"
+				},
+				"label": {
+					"auto_paste": "Auto Paste",
+					"auto_paste_single": "Single Click",
+					"auto_paste_double": "Double Click",
+					"image_ocr": "Image OCR",
+					"copy_as_plain": "Copy as Plain Text",
+					"paste_as_plain": "Paste as Plain Text",
+					"operation_button": "Operation Button",
+					"custom_operation_button_title": "Custom Operation Button",
+					"operation_button_option": {
+						"copy": "Copy",
+						"paste_plain": "Paste as Plain Text",
+						"edit": "Edit",
+						"notes": "Notes",
+						"favorite": "Favorite",
+						"show_in_explorer": "Show in Explorer",
+						"preview_image": "Preview Image",
+						"open_in_browser": "Open in Browser",
+						"delete": "Delete"
+					},
+					"auto_favorite": "Auto Favorite",
+					"delete_confirm": "Delete Confirmation",
+					"auto_sort": "Auto Sort",
+					"show_original_content": "Show Original Content",
+					"show_source_app": "Show Source App",
+					"code_detection": "Code Detection",
+					"color_detection": "Color Detection"
+				},
+				"hints": {
+					"auto_paste": "Quickly paste content to input position when left mouse button is used",
+					"image_ocr": "Note: Please download before using",
+					"copy_as_plain": "Only keep plain text content when copying rich text and HTML formats",
+					"paste_as_plain": "Only keep plain text content when pasting rich text and HTML formats",
+					"operation_button": "Customize icon buttons for operating clipboard content",
+					"auto_favorite": "Automatically favorite after adding or editing notes",
+					"delete_confirm": "Show confirmation dialog when deleting clipboard content",
+					"auto_sort": "Move to front when copying existing content",
+					"show_original_content": "Whether to show original content when hovering after adding notes",
+					"show_source_app": "Show source app icon and name in clipboard history",
+					"code_detection": "Automatically detect code content in clipboard and enable syntax highlighting",
+					"color_detection": "Automatically detect RGB and RGBA color values in clipboard and display them in color group"
+				}
+			},
 			"button": {
 				"context_menu": {
 					"copy": "Copy",
