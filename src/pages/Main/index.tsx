@@ -558,9 +558,10 @@ const Main = () => {
 			if (isCode) {
 				whereClause += " AND isCode = 1";
 			}
-			// 如果是纯文本分组且不是"全部"，添加 isCode = false 条件
+			// 如果是纯文本分组且不是"全部"，添加 isCode = false 条件，同时排除颜色类型
 			else if (group === "text") {
-				whereClause += " AND (isCode = 0 OR isCode IS NULL)";
+				whereClause +=
+					" AND (isCode = 0 OR isCode IS NULL) AND type != 'color'";
 			}
 
 			const list = await executeSQL(

@@ -530,7 +530,7 @@ export const readClipboard = async (skipTypeDetection = false) => {
 					payload = {
 						...basePayload,
 						type: "color",
-						group: "text", // 保持group为text，但type为color
+						group: "text", // 颜色类型保持group为text，但type为color，通过colorTab状态控制显示
 						isCode: false,
 						codeLanguage: "",
 					};
