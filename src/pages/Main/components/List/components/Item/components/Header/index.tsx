@@ -72,12 +72,13 @@ const Header: FC<HeaderProps> = (props) => {
 						!/^[\s]*$/.test(search))
 				);
 			case "edit":
-				// 只在文本类条目上显示
+				// 在文本类条目和颜色类型上显示
 				return (
 					type === "text" ||
 					type === "html" ||
 					type === "rtf" ||
-					type === "markdown"
+					type === "markdown" ||
+					type === "color"
 				);
 			case "copy":
 			case "note":
@@ -93,24 +94,27 @@ const Header: FC<HeaderProps> = (props) => {
 	const renderType = () => {
 		const { value } = data;
 
-		switch (subtype) {
-			case "url":
-				return t("clipboard.label.link");
-			case "email":
-				return t("clipboard.label.email");
+		// 优先检查type字段，而不是subtype字段
+		// 这样可以确保当用户修改类型后，标题能正确更新
+		switch (type) {
 			case "color":
 				return t("clipboard.label.color");
-			case "path":
-				return t("clipboard.label.path");
-		}
-
-		switch (type) {
 			case "text":
 				// 如果是代码，显示编程语言名称
 				if (isCode && codeLanguage) {
 					return getLanguageDisplayName(codeLanguage);
 				}
-				return t("clipboard.label.plain_text");
+				// 对于文本类型，再检查subtype以显示更具体的信息
+				switch (subtype) {
+					case "url":
+						return t("clipboard.label.link");
+					case "email":
+						return t("clipboard.label.email");
+					case "path":
+						return t("clipboard.label.path");
+					default:
+						return t("clipboard.label.plain_text");
+				}
 			case "rtf":
 				return t("clipboard.label.rtf");
 			case "html":
@@ -144,6 +148,20 @@ const Header: FC<HeaderProps> = (props) => {
 					replace: [fileCount],
 				});
 			}
+			default:
+				// 对于未知类型，检查subtype作为后备
+				switch (subtype) {
+					case "url":
+						return t("clipboard.label.link");
+					case "email":
+						return t("clipboard.label.email");
+					case "color":
+						return t("clipboard.label.color");
+					case "path":
+						return t("clipboard.label.path");
+					default:
+						return t("clipboard.label.plain_text");
+				}
 		}
 	};
 

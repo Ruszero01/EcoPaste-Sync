@@ -7,18 +7,21 @@ import { Flex } from "antd";
 import clsx from "clsx";
 import { useContext, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useSnapshot } from "valtio";
 import { MainContext } from "../..";
 
 interface GroupItem extends Partial<HistoryTablePayload> {
 	key: string;
 	label: string;
 	icon: string;
+	type?: "text" | "image" | "files" | "color" | "rtf" | "html" | "markdown"; // 添加type属性，使用正确的类型
 }
 
 const Group = () => {
 	const { state, getListCache, getListDebounced } = useContext(MainContext);
 	const { t } = useTranslation();
 	const [checked, setChecked] = useState("all");
+	const { content } = useSnapshot(clipboardStore);
 
 	const groupList: GroupItem[] = [
 		{
@@ -35,8 +38,7 @@ const Group = () => {
 		{
 			key: "color",
 			label: t("clipboard.label.tab.color"),
-			group: "text",
-			subtype: "color",
+			type: "color",
 			icon: "i-lucide:palette",
 		},
 		{
@@ -95,7 +97,7 @@ const Group = () => {
 	});
 
 	const handleChange = (item: GroupItem) => {
-		const { key, group, favorite, isCode } = item;
+		const { key, group, favorite, isCode, type } = item;
 
 		setChecked(key);
 
@@ -103,6 +105,7 @@ const Group = () => {
 		state.group = group;
 		state.favorite = favorite;
 		state.isCode = isCode;
+		state.type = type;
 
 		// 针对链接分组，特殊处理
 		if (key === "link") {
@@ -135,7 +138,11 @@ const Group = () => {
 					.filter((item) => {
 						// 代码分组只在代码检测启用时显示
 						if (item.key === "code") {
-							return clipboardStore.content.codeDetection;
+							return content.codeDetection;
+						}
+						// 颜色分组只在颜色识别启用时显示
+						if (item.key === "color") {
+							return content.colorDetection;
 						}
 						return true;
 					})

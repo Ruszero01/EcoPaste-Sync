@@ -42,7 +42,7 @@ export const isEmail = (value: string) => {
 /**
  * 是否为颜色
  */
-export const isColor = (value: string) => {
+export const isColor = (value: string, checkVectorValues = true) => {
 	const excludes = [
 		"none",
 		"currentColor",
@@ -84,9 +84,10 @@ export const isColor = (value: string) => {
 
 	if (excludes.includes(value) || value.includes("url")) return false;
 
-	// 检查RGB格式：rgb(255, 0, 0) 或 255, 0, 0
-	const rgbRegex =
-		/^rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)$|^(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})$/;
+	// 检查RGB格式：rgb(255, 0, 0) 或 255, 0, 0（仅在启用颜色识别时检查向量格式）
+	const rgbRegex = checkVectorValues
+		? /^rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)$|^(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})$/
+		: /^rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)$/;
 	if (rgbRegex.test(value.trim())) {
 		const match = value.trim().match(rgbRegex);
 		if (match) {
@@ -115,9 +116,10 @@ export const isColor = (value: string) => {
 		}
 	}
 
-	// 检查RGBA格式：rgba(255, 0, 0, 0.5) 或 255, 0, 0, 0.5
-	const rgbaRegex =
-		/^rgba\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*([01]?\.?\d*)\s*\)$|^(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*([01]?\.?\d*)$/;
+	// 检查RGBA格式：rgba(255, 0, 0, 0.5) 或 255, 0, 0, 0.5（仅在启用颜色识别时检查向量格式）
+	const rgbaRegex = checkVectorValues
+		? /^rgba\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*([01]?\.?\d*)\s*\)$|^(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*([01]?\.?\d*)$/
+		: /^rgba\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*([01]?\.?\d*)\s*\)$/;
 	if (rgbaRegex.test(value.trim())) {
 		const match = value.trim().match(rgbaRegex);
 		if (match) {
@@ -151,28 +153,31 @@ export const isColor = (value: string) => {
 	}
 
 	// 检查是否为3维或4维向量（优先识别为颜色）
-	const vectorRegex =
-		/^(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(\s*,\s*([01]?\.?\d*))?$/;
-	if (vectorRegex.test(value.trim())) {
-		const match = value.trim().match(vectorRegex);
-		if (match) {
-			const r = Number.parseInt(match[1], 10);
-			const g = Number.parseInt(match[2], 10);
-			const b = Number.parseInt(match[3], 10);
-			const hasAlpha = match[4] !== undefined;
-			const a = hasAlpha ? Number.parseFloat(match[5]) : 1;
+	// 只有在启用颜色识别时才检查向量值
+	if (checkVectorValues) {
+		const vectorRegex =
+			/^(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(\s*,\s*([01]?\.?\d*))?$/;
+		if (vectorRegex.test(value.trim())) {
+			const match = value.trim().match(vectorRegex);
+			if (match) {
+				const r = Number.parseInt(match[1], 10);
+				const g = Number.parseInt(match[2], 10);
+				const b = Number.parseInt(match[3], 10);
+				const hasAlpha = match[4] !== undefined;
+				const a = hasAlpha ? Number.parseFloat(match[5]) : 1;
 
-			// 验证向量值是否在有效范围内
-			if (
-				r >= 0 &&
-				r <= 255 &&
-				g >= 0 &&
-				g <= 255 &&
-				b >= 0 &&
-				b <= 255 &&
-				(!hasAlpha || (a >= 0 && a <= 1))
-			) {
-				return true;
+				// 验证向量值是否在有效范围内
+				if (
+					r >= 0 &&
+					r <= 255 &&
+					g >= 0 &&
+					g <= 255 &&
+					b >= 0 &&
+					b <= 255 &&
+					(!hasAlpha || (a >= 0 && a <= 1))
+				) {
+					return true;
+				}
 			}
 		}
 	}

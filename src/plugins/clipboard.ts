@@ -285,7 +285,7 @@ export const readImage = async (): Promise<ClipboardPayload> => {
 export const readHTML = async (): Promise<ClipboardPayload> => {
 	const html = await invoke<string>(COMMAND.READ_HTML);
 
-	const { value, count } = await readText();
+	const { value, count } = await readText(true); // 跳过类型检测，保持原有类型
 
 	return {
 		count,
@@ -301,7 +301,7 @@ export const readHTML = async (): Promise<ClipboardPayload> => {
 export const readRTF = async (): Promise<ClipboardPayload> => {
 	const rtf = await invoke<string>(COMMAND.READ_RTF);
 
-	const { value, count } = await readText();
+	const { value, count } = await readText(true); // 跳过类型检测，保持原有类型
 
 	return {
 		count,
@@ -314,7 +314,9 @@ export const readRTF = async (): Promise<ClipboardPayload> => {
 /**
  * 读取纯文本
  */
-export const readText = async (): Promise<ClipboardPayload> => {
+export const readText = async (
+	skipTypeDetection = false,
+): Promise<ClipboardPayload> => {
 	const text = await invoke<string>(COMMAND.READ_TEXT);
 
 	const data: ClipboardPayload = {
@@ -324,7 +326,18 @@ export const readText = async (): Promise<ClipboardPayload> => {
 		group: "text",
 	};
 
-	data.subtype = await getClipboardSubtype(data);
+	// 只有在不跳过类型检测时才进行自动类型检测
+	// 这样可以避免覆盖用户手动设置的类型
+	if (!skipTypeDetection) {
+		const subtype = await getClipboardSubtype(data);
+
+		// 如果是颜色，直接设置type为color，而不是subtype
+		if (subtype === "color") {
+			data.type = "color";
+		} else {
+			data.subtype = subtype;
+		}
+	}
 
 	return data;
 };
@@ -333,7 +346,7 @@ export const readText = async (): Promise<ClipboardPayload> => {
  * 读取 Markdown 内容
  */
 export const readMarkdown = async (): Promise<ClipboardPayload> => {
-	const { value, count, subtype, isCode, codeLanguage } = await readText();
+	const { value, count, subtype, isCode, codeLanguage } = await readText(true); // 跳过类型检测，保持原有类型
 
 	return {
 		value,
@@ -426,7 +439,7 @@ export const writeText = (value: string) => {
 /**
  * 读取剪贴板内容
  */
-export const readClipboard = async () => {
+export const readClipboard = async (skipTypeDetection = false) => {
 	let payload!: ClipboardPayload;
 
 	const { copyPlain } = clipboardStore.content;
@@ -469,72 +482,87 @@ export const readClipboard = async () => {
 		else if (has.text) {
 			const text = await invoke<string>(COMMAND.READ_TEXT);
 
-			// 统一检测逻辑：先检测markdown，再检测代码
-			let isMarkdown = false;
-			let isCodeContent = false;
-			let codeLanguage = "";
+			// 只有在不跳过类型检测时才进行自动类型检测
+			if (!skipTypeDetection) {
+				// 统一检测逻辑：先检测markdown，再检测代码
+				let isMarkdown = false;
+				let isCodeContent = false;
+				let codeLanguage = "";
 
-			// 首先检测是否为Markdown内容
-			if (detectMarkdown(text)) {
-				isMarkdown = true;
-			}
-			// 如果不是markdown，再进行代码检测
-			else if (clipboardStore.content.codeDetection) {
-				const codeDetection = detectCode(text);
-				if (codeDetection.isCode) {
-					if (codeDetection.language === "markdown") {
-						// 代码检测返回markdown语言，将其作为markdown类型处理
-						isMarkdown = true;
-					} else {
-						// 普通代码
-						isCodeContent = true;
-						codeLanguage = codeDetection.language;
+				// 首先检测是否为Markdown内容
+				if (detectMarkdown(text)) {
+					isMarkdown = true;
+				}
+				// 如果不是markdown，再进行代码检测
+				else if (clipboardStore.content.codeDetection) {
+					const codeDetection = detectCode(text);
+					if (codeDetection.isCode) {
+						if (codeDetection.language === "markdown") {
+							// 代码检测返回markdown语言，将其作为markdown类型处理
+							isMarkdown = true;
+						} else {
+							// 普通代码
+							isCodeContent = true;
+							codeLanguage = codeDetection.language;
+						}
 					}
 				}
-			}
 
-			// 获取子类型
-			const subtype = await getClipboardSubtype({
-				value: text,
-				search: text,
-				count: text.length,
-				group: "text",
-			});
+				// 获取子类型
+				const subtype = await getClipboardSubtype({
+					value: text,
+					search: text,
+					count: text.length,
+					group: "text",
+				});
 
-			// 构建基础payload
-			const basePayload: ClipboardPayload = {
-				value: text,
-				search: text,
-				count: text.length,
-				group: "text",
-				subtype,
-			};
+				// 构建基础payload
+				const basePayload: ClipboardPayload = {
+					value: text,
+					search: text,
+					count: text.length,
+					group: "text",
+					subtype,
+				};
 
-			// 根据检测结果设置type和相关字段
-			if (subtype === "color") {
-				payload = {
-					...basePayload,
-					type: "color",
-					isCode: false,
-					codeLanguage: "",
-				};
-			} else if (isMarkdown) {
-				payload = {
-					...basePayload,
-					type: "markdown",
-					isCode: false,
-					codeLanguage: "",
-				};
-			} else if (isCodeContent) {
-				payload = {
-					...basePayload,
-					type: "text",
-					isCode: true,
-					codeLanguage,
-				};
+				// 根据检测结果设置type和相关字段
+				if (subtype === "color") {
+					payload = {
+						...basePayload,
+						type: "color",
+						group: "text", // 保持group为text，但type为color
+						isCode: false,
+						codeLanguage: "",
+					};
+				} else if (isMarkdown) {
+					payload = {
+						...basePayload,
+						type: "markdown",
+						isCode: false,
+						codeLanguage: "",
+					};
+				} else if (isCodeContent) {
+					payload = {
+						...basePayload,
+						type: "text",
+						isCode: true,
+						codeLanguage,
+					};
+				} else {
+					payload = {
+						...basePayload,
+						type: "text",
+						isCode: false,
+						codeLanguage: "",
+					};
+				}
 			} else {
+				// 跳过类型检测时，使用默认的文本类型
 				payload = {
-					...basePayload,
+					value: text,
+					search: text,
+					count: text.length,
+					group: "text",
 					type: "text",
 					isCode: false,
 					codeLanguage: "",
@@ -813,12 +841,12 @@ export const getClipboardSubtype = async (data: ClipboardPayload) => {
 		}
 
 		// 增强的颜色检测，包括RGB和RGBA格式
-		if (isColor(value)) {
+		// 根据颜色识别开关决定是否检测向量值
+		if (isColor(value, clipboardStore.content.colorDetection)) {
 			// 进一步解析颜色格式，以便前端可以正确显示
 			const colorInfo = parseColorString(value);
 			if (colorInfo) {
-				// 可以根据需要返回更具体的颜色子类型
-				// 但为了保持与现有前端显示逻辑的兼容性，仍然返回"color"
+				// 返回"color"，但在调用方会将其设置为type而不是subtype
 				return "color";
 			}
 			return "color";

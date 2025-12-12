@@ -76,7 +76,8 @@
 					"auto_sort": "自動整列",
 					"show_original_content": "元の内容を表示します",
 					"show_source_app": "ソースアプリを表示",
-					"code_detection": "コード認識"
+					"code_detection": "コード認識",
+					"color_detection": "カラー認識"
 				},
 				"hints": {
 					"auto_paste": "左クリック時に、内容を素早く入力フィールドに貼り付けます",
@@ -89,7 +90,8 @@
 					"auto_sort": "既存の内容をコピーして最前面に配置する",
 					"show_original_content": "メモを追加した後、マウスをホバーしたときに元のコンテンツを表示するかどうか",
 					"show_source_app": "クリップボードの履歴にソースアプリのアイコンと名前を表示する",
-					"code_detection": "クリップボード内のコードコンテンツを自動的に検出し、構文ハイライトを有効にする"
+					"code_detection": "クリップボード内のコードコンテンツを自動的に検出し、構文ハイライトを有効にする",
+					"color_detection": "クリップボード内のRGBとRGBAカラー値を自動的に検出し、カラーグループに表示する"
 				}
 			}
 		},

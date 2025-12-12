@@ -76,7 +76,8 @@
 					"auto_sort": "Auto Sort",
 					"show_original_content": "Show Original Content",
 					"show_source_app": "Show Source App",
-					"code_detection": "Code Detection"
+					"code_detection": "Code Detection",
+					"color_detection": "Color Detection"
 				},
 				"hints": {
 					"auto_paste": "Quickly paste content to the input field when using the left mouse button",
@@ -89,7 +90,8 @@
 					"auto_sort": "Alignment to the top when copying existing content",
 					"show_original_content": "Whether to display the original content on mouse hover after adding a note",
 					"show_source_app": "Display the source app icon and name in clipboard history",
-					"code_detection": "Automatically detect code content in clipboard and enable syntax highlighting"
+					"code_detection": "Automatically detect code content in clipboard and enable syntax highlighting",
+					"color_detection": "Automatically detect RGB and RGBA color values in clipboard and display them in the color group"
 				}
 			}
 		},

@@ -31,6 +31,7 @@ export const clipboardStore = proxy<ClipboardStore>({
 		showOriginalContent: false,
 		codeDetection: true, // 新增：代码检测开关
 		showSourceApp: true, // 新增：显示来源应用开关
+		colorDetection: true, // 新增：颜色识别开关
 	},
 
 	history: {

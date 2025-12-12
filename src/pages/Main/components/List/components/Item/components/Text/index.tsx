@@ -7,7 +7,7 @@ import type { CSSProperties, FC } from "react";
 import { memo } from "react";
 
 const Text: FC<HistoryTablePayload> = (props) => {
-	const { value, subtype, isCode, codeLanguage } = props;
+	const { value, type, isCode, codeLanguage } = props;
 
 	const renderColor = () => {
 		const className = "absolute rounded-full";
@@ -49,7 +49,8 @@ const Text: FC<HistoryTablePayload> = (props) => {
 	};
 
 	const renderContent = () => {
-		if (subtype === "color") {
+		// 检查是否为颜色类型（只检查type字段）
+		if (type === "color") {
 			return renderColor();
 		}
 

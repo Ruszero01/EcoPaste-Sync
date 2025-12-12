@@ -265,6 +265,13 @@ const Main = () => {
 			lastQueryParams = "";
 			getListDebounced(50);
 		}
+
+		// 如果颜色识别设置发生变化，清除缓存并刷新列表
+		if (payload.clipboardStore?.content?.colorDetection !== undefined) {
+			getListCache.current.clear();
+			lastQueryParams = "";
+			getListDebounced(50);
+		}
 	});
 
 	// 切换剪贴板监听状态
@@ -502,8 +509,8 @@ const Main = () => {
 				syncStatus: item.syncStatus || "none",
 			})) as HistoryTablePayload[];
 		} else if (colorTab) {
-			// 颜色分组查询：查询 subtype 为 'color' 的文本类型数据
-			let whereClause = "WHERE subtype = 'color' AND deleted = 0";
+			// 颜色分组查询：查询 type 为 'color' 的数据
+			let whereClause = "WHERE type = 'color' AND deleted = 0";
 			const values: any[] = [];
 
 			// 如果有搜索条件，添加到查询中
@@ -554,10 +561,9 @@ const Main = () => {
 			if (isCode) {
 				whereClause += " AND isCode = 1";
 			}
-			// 如果是纯文本分组且不是"全部"，添加 isCode = false 条件，并排除颜色类型
+			// 如果是纯文本分组且不是"全部"，添加 isCode = false 条件
 			else if (group === "text") {
-				whereClause +=
-					" AND (isCode = 0 OR isCode IS NULL) AND (subtype IS NULL OR subtype != 'color')";
+				whereClause += " AND (isCode = 0 OR isCode IS NULL)";
 			}
 
 			const list = await executeSQL(
