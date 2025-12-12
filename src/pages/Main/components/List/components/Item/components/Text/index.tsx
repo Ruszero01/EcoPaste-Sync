@@ -16,14 +16,11 @@ const Text: FC<HistoryTablePayload> = (props) => {
 		const parsedColor = parseColorString(value);
 		let backgroundStyle = value; // 默认使用原始值
 
-		// 如果是向量格式，转换为CSS可识别的rgb或rgba格式
+		// 如果是向量格式，转换为CSS可识别的rgb格式
 		if (parsedColor) {
 			if (parsedColor.format === "rgb") {
 				const { r, g, b } = parsedColor.values;
 				backgroundStyle = `rgb(${r}, ${g}, ${b})`;
-			} else if (parsedColor.format === "rgba") {
-				const { r, g, b, a } = parsedColor.values;
-				backgroundStyle = `rgba(${r}, ${g}, ${b}, ${a})`;
 			}
 			// 如果是hex格式，直接使用原始值
 		}

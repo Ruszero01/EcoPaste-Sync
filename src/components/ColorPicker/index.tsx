@@ -1,15 +1,11 @@
-import { hexToRgb, parseColorString, rgbToHex, rgbaToHex } from "@/utils/color";
+import { hexToRgb, parseColorString, rgbToHex } from "@/utils/color";
 import { type FC, useEffect, useState } from "react";
-import {
-	HexAlphaColorPicker,
-	HexColorPicker,
-	RgbColorPicker,
-} from "react-colorful";
+import { HexColorPicker, RgbColorPicker } from "react-colorful";
 
 interface ColorPickerProps {
 	value?: string;
 	onChange?: (color: string) => void;
-	format?: "hex" | "rgb" | "rgba";
+	format?: "hex" | "rgb";
 }
 
 const ColorPicker: FC<ColorPickerProps> = ({
@@ -17,12 +13,9 @@ const ColorPicker: FC<ColorPickerProps> = ({
 	onChange,
 	format = "hex",
 }) => {
-	const [colorFormat, setColorFormat] = useState<"hex" | "rgb" | "rgba">(
-		format,
-	);
+	const [colorFormat, setColorFormat] = useState<"hex" | "rgb">(format);
 	const [hexColor, setHexColor] = useState(value);
 	const [rgbColor, setRgbColor] = useState({ r: 0, g: 0, b: 0 });
-	const [rgbaColor, setRgbaColor] = useState({ r: 0, g: 0, b: 0, a: 1 });
 	const [inputValue, setInputValue] = useState(value);
 
 	// 初始化颜色值
@@ -37,15 +30,7 @@ const ColorPicker: FC<ColorPickerProps> = ({
 						g: parsedColor.values.g,
 						b: parsedColor.values.b,
 					});
-					setRgbaColor({
-						r: parsedColor.values.r,
-						g: parsedColor.values.g,
-						b: parsedColor.values.b,
-						a: parsedColor.values.a || 1,
-					});
-					setColorFormat(
-						parsedColor.format === "hex" ? "hex" : parsedColor.format,
-					);
+					setColorFormat("hex");
 				} else if (parsedColor.format === "rgb") {
 					setHexColor(parsedColor.values.hex);
 					setRgbColor({
@@ -53,27 +38,7 @@ const ColorPicker: FC<ColorPickerProps> = ({
 						g: parsedColor.values.g,
 						b: parsedColor.values.b,
 					});
-					setRgbaColor({
-						r: parsedColor.values.r,
-						g: parsedColor.values.g,
-						b: parsedColor.values.b,
-						a: 1,
-					});
 					setColorFormat("rgb");
-				} else if (parsedColor.format === "rgba") {
-					setHexColor(parsedColor.values.hex);
-					setRgbColor({
-						r: parsedColor.values.r,
-						g: parsedColor.values.g,
-						b: parsedColor.values.b,
-					});
-					setRgbaColor({
-						r: parsedColor.values.r,
-						g: parsedColor.values.g,
-						b: parsedColor.values.b,
-						a: parsedColor.values.a,
-					});
-					setColorFormat("rgba");
 				}
 			} else {
 				// 如果无法解析，尝试作为十六进制处理
@@ -81,7 +46,6 @@ const ColorPicker: FC<ColorPickerProps> = ({
 				if (rgb) {
 					setHexColor(value);
 					setRgbColor(rgb);
-					setRgbaColor({ ...rgb, a: 1 });
 					setColorFormat("hex");
 				}
 			}
@@ -95,7 +59,6 @@ const ColorPicker: FC<ColorPickerProps> = ({
 		const rgb = hexToRgb(newHex);
 		if (rgb) {
 			setRgbColor(rgb);
-			setRgbaColor({ ...rgb, a: rgbaColor.a });
 			setInputValue(newHex);
 			onChange?.(newHex);
 		}
@@ -105,25 +68,9 @@ const ColorPicker: FC<ColorPickerProps> = ({
 		setRgbColor(newRgb);
 		const hex = rgbToHex(newRgb.r, newRgb.g, newRgb.b);
 		setHexColor(hex);
-		setRgbaColor({ ...newRgb, a: rgbaColor.a });
 		const rgbString = `rgb(${newRgb.r}, ${newRgb.g}, ${newRgb.b})`;
 		setInputValue(rgbString);
 		onChange?.(rgbString);
-	};
-
-	const handleRgbaChange = (newRgba: {
-		r: number;
-		g: number;
-		b: number;
-		a: number;
-	}) => {
-		setRgbaColor(newRgba);
-		const hex = rgbaToHex(newRgba.r, newRgba.g, newRgba.b, newRgba.a);
-		setHexColor(hex);
-		setRgbColor({ r: newRgba.r, g: newRgba.g, b: newRgba.b });
-		const rgbaString = `rgba(${newRgba.r}, ${newRgba.g}, ${newRgba.b}, ${newRgba.a})`;
-		setInputValue(rgbaString);
-		onChange?.(rgbaString);
 	};
 
 	// 处理输入框变化
@@ -141,19 +88,12 @@ const ColorPicker: FC<ColorPickerProps> = ({
 					g: parsedColor.values.g,
 					b: parsedColor.values.b,
 				});
-			} else if (parsedColor.format === "rgba") {
-				handleRgbaChange({
-					r: parsedColor.values.r,
-					g: parsedColor.values.g,
-					b: parsedColor.values.b,
-					a: parsedColor.values.a,
-				});
 			}
 		}
 	};
 
 	// 处理格式切换
-	const handleFormatChange = (newFormat: "hex" | "rgb" | "rgba") => {
+	const handleFormatChange = (newFormat: "hex" | "rgb") => {
 		setColorFormat(newFormat);
 
 		if (newFormat === "hex") {
@@ -163,10 +103,6 @@ const ColorPicker: FC<ColorPickerProps> = ({
 			const rgbString = `rgb(${rgbColor.r}, ${rgbColor.g}, ${rgbColor.b})`;
 			setInputValue(rgbString);
 			onChange?.(rgbString);
-		} else if (newFormat === "rgba") {
-			const rgbaString = `rgba(${rgbaColor.r}, ${rgbaColor.g}, ${rgbaColor.b}, ${rgbaColor.a})`;
-			setInputValue(rgbaString);
-			onChange?.(rgbaString);
 		}
 	};
 
@@ -196,17 +132,6 @@ const ColorPicker: FC<ColorPickerProps> = ({
 				>
 					RGB
 				</button>
-				<button
-					type="button"
-					className={`rounded px-3 py-1 text-sm ${
-						colorFormat === "rgba"
-							? "bg-blue-500 text-white"
-							: "bg-gray-200 text-gray-700 hover:bg-gray-300"
-					}`}
-					onClick={() => handleFormatChange("rgba")}
-				>
-					RGBA
-				</button>
 			</div>
 
 			{/* 颜色选择器 */}
@@ -216,9 +141,6 @@ const ColorPicker: FC<ColorPickerProps> = ({
 				)}
 				{colorFormat === "rgb" && (
 					<RgbColorPicker color={rgbColor} onChange={handleRgbChange} />
-				)}
-				{colorFormat === "rgba" && (
-					<HexAlphaColorPicker color={hexColor} onChange={handleHexChange} />
 				)}
 			</div>
 
@@ -233,7 +155,7 @@ const ColorPicker: FC<ColorPickerProps> = ({
 					value={inputValue}
 					onChange={handleInputChange}
 					className="flex-1 rounded border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-					placeholder="输入颜色值 (HEX/RGB/RGBA)"
+					placeholder="输入颜色值 (HEX/RGB)"
 				/>
 			</div>
 		</div>

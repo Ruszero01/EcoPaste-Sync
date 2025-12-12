@@ -91,47 +91,6 @@ export const rgbToHex = (r: number, g: number, b: number): string => {
 };
 
 /**
- * 将RGBA值转换为十六进制颜色
- * @param r 红色分量 (0-255)
- * @param g 绿色分量 (0-255)
- * @param b 蓝色分量 (0-255)
- * @param a 透明度 (0-1)
- * @returns 十六进制颜色字符串（包含透明度）
- */
-export const rgbaToHex = (
-	r: number,
-	g: number,
-	b: number,
-	a: number,
-): string => {
-	// 验证输入范围
-	if (
-		r < 0 ||
-		r > 255 ||
-		g < 0 ||
-		g > 255 ||
-		b < 0 ||
-		b > 255 ||
-		a < 0 ||
-		a > 1
-	) {
-		throw new Error("RGB值必须在0-255范围内，透明度必须在0-1范围内");
-	}
-
-	// 转换为十六进制并补零
-	const toHex = (value: number) => {
-		const hex = Math.round(value).toString(16);
-		return hex.length === 1 ? `0${hex}` : hex;
-	};
-
-	// 转换透明度为十六进制
-	const alphaHex = Math.round(a * 255).toString(16);
-	const alphaPadded = alphaHex.length === 1 ? `0${alphaHex}` : alphaHex;
-
-	return `#${toHex(r)}${toHex(g)}${toHex(b)}${alphaPadded}`;
-};
-
-/**
  * 解析各种颜色格式
  * @param color 颜色字符串
  * @returns 包含格式和值的对象或null
@@ -168,59 +127,20 @@ export const parseColorString = (
 		}
 	}
 
-	// 检查RGBA格式：rgba(255, 0, 0, 0.5)
-	const rgbaRegex =
-		/^rgba\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*([01]?\.?\d*)\s*\)$/;
-	const rgbaMatch = trimmedColor.match(rgbaRegex);
-	if (rgbaMatch) {
-		const r = Number.parseInt(rgbaMatch[1], 10);
-		const g = Number.parseInt(rgbaMatch[2], 10);
-		const b = Number.parseInt(rgbaMatch[3], 10);
-		const a = Number.parseFloat(rgbaMatch[4]);
-
-		if (
-			r >= 0 &&
-			r <= 255 &&
-			g >= 0 &&
-			g <= 255 &&
-			b >= 0 &&
-			b <= 255 &&
-			a >= 0 &&
-			a <= 1
-		) {
-			return {
-				format: "rgba",
-				values: { r, g, b, a, hex: rgbaToHex(r, g, b, a) },
-			};
-		}
-	}
-
-	// 检查向量格式：255, 0, 0 或 255, 0, 0, 0.5
-	const vectorRegex =
-		/^(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(\s*,\s*([01]?\.?\d*))?$/;
+	// 检查向量格式：255, 0, 0 (只支持RGB格式)
+	const vectorRegex = /^(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})$/;
 	const vectorMatch = trimmedColor.match(vectorRegex);
 	if (vectorMatch) {
 		const r = Number.parseInt(vectorMatch[1], 10);
 		const g = Number.parseInt(vectorMatch[2], 10);
 		const b = Number.parseInt(vectorMatch[3], 10);
-		const hasAlpha = vectorMatch[4] !== undefined;
-		const a = hasAlpha ? Number.parseFloat(vectorMatch[5]) : 1;
 
-		if (
-			r >= 0 &&
-			r <= 255 &&
-			g >= 0 &&
-			g <= 255 &&
-			b >= 0 &&
-			b <= 255 &&
-			(!hasAlpha || (a >= 0 && a <= 1))
-		) {
-			const format = hasAlpha ? "rgba" : "rgb";
-			const hex = hasAlpha ? rgbaToHex(r, g, b, a) : rgbToHex(r, g, b);
+		if (r >= 0 && r <= 255 && g >= 0 && g <= 255 && b >= 0 && b <= 255) {
+			const hex = rgbToHex(r, g, b);
 
 			return {
-				format,
-				values: hasAlpha ? { r, g, b, a, hex } : { r, g, b, hex },
+				format: "rgb",
+				values: { r, g, b, hex },
 			};
 		}
 	}
@@ -242,35 +162,4 @@ export const rgbToVector = (r: number, g: number, b: number): string => {
 	}
 
 	return `${r}, ${g}, ${b}`;
-};
-
-/**
- * 将RGBA值转换为向量格式字符串
- * @param r 红色分量 (0-255)
- * @param g 绿色分量 (0-255)
- * @param b 蓝色分量 (0-255)
- * @param a 透明度 (0-1)
- * @returns 向量格式字符串 "r, g, b, a"
- */
-export const rgbaToVector = (
-	r: number,
-	g: number,
-	b: number,
-	a: number,
-): string => {
-	// 验证输入范围
-	if (
-		r < 0 ||
-		r > 255 ||
-		g < 0 ||
-		g > 255 ||
-		b < 0 ||
-		b > 255 ||
-		a < 0 ||
-		a > 1
-	) {
-		throw new Error("RGB值必须在0-255范围内，透明度必须在0-1范围内");
-	}
-
-	return `${r}, ${g}, ${b}, ${a}`;
 };

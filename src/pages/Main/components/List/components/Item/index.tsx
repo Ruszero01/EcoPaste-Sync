@@ -9,7 +9,6 @@ import {
 	parseColorString,
 	rgbToHex,
 	rgbToVector,
-	rgbaToVector,
 } from "@/utils/color";
 import { formatDate } from "@/utils/dayjs";
 import { joinPath } from "@/utils/path";
@@ -897,10 +896,6 @@ const Item: FC<ItemProps> = (props) => {
 					// 使用新的向量格式，不带rgb()前缀
 					rgbString = rgbToVector(rgb.r, rgb.g, rgb.b);
 				}
-			} else if (parsedColor.format === "rgba") {
-				const { r, g, b, a } = parsedColor.values;
-				// 使用新的向量格式，不带rgb()前缀
-				rgbString = rgbaToVector(r, g, b, a);
 			} else if (parsedColor.format === "rgb") {
 				// 如果已经是RGB格式，转换为向量格式
 				const { r, g, b } = parsedColor.values;
@@ -953,9 +948,6 @@ const Item: FC<ItemProps> = (props) => {
 			if (parsedColor.format === "hex") {
 				hexString = actualValue;
 			} else if (parsedColor.format === "rgb") {
-				const { r, g, b } = parsedColor.values;
-				hexString = rgbToHex(r, g, b);
-			} else if (parsedColor.format === "rgba") {
 				const { r, g, b } = parsedColor.values;
 				hexString = rgbToHex(r, g, b);
 			}
@@ -1092,8 +1084,7 @@ const Item: FC<ItemProps> = (props) => {
 				text: t("clipboard.button.context_menu.paste_as_rgb"),
 				hide:
 					type !== "color" ||
-					parseColorString(getActualValue(value))?.format === "rgb" ||
-					parseColorString(getActualValue(value))?.format === "rgba",
+					parseColorString(getActualValue(value))?.format === "rgb",
 				action: pasteColorAsRGB,
 			},
 			{

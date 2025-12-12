@@ -840,7 +840,7 @@ export const getClipboardSubtype = async (data: ClipboardPayload) => {
 			return "email";
 		}
 
-		// 增强的颜色检测，包括RGB和RGBA格式
+		// 颜色检测，只支持RGB格式
 		// 根据颜色识别开关决定是否检测向量值
 		if (isColor(value, clipboardStore.content.colorDetection)) {
 			// 进一步解析颜色格式，以便前端可以正确显示
