@@ -36,12 +36,6 @@ const Group = () => {
 			icon: "i-lucide:type",
 		},
 		{
-			key: "color",
-			label: t("clipboard.label.tab.color"),
-			type: "color",
-			icon: "i-lucide:palette",
-		},
-		{
 			key: "image",
 			label: t("clipboard.label.tab.image"),
 			group: "image",
@@ -55,12 +49,18 @@ const Group = () => {
 		},
 		{
 			key: "link",
-			label: "链接",
+			label: t("clipboard.label.link"),
 			icon: "i-lucide:link",
 		},
 		{
+			key: "color",
+			label: t("clipboard.label.tab.color"),
+			type: "color",
+			icon: "i-lucide:palette",
+		},
+		{
 			key: "code",
-			label: "代码",
+			label: t("clipboard.label.code"),
 			group: "text",
 			isCode: true,
 			icon: "i-lucide:code-2",

@@ -287,9 +287,6 @@ const Main = () => {
 				clearTimeout(windowHideTimer.current);
 				windowHideTimer.current = undefined;
 			}
-
-			// 检查云端数据更新（如果启用了实时同步）
-			checkCloudDataOnFocus();
 		},
 		onBlur() {
 			if (state.pin) return;
@@ -599,14 +596,6 @@ const Main = () => {
 		getListDebounceTimer.current = setTimeout(() => {
 			getList();
 		}, delay);
-	};
-
-	// 同步事件监听器已在上面早期设置
-
-	// 检查云端数据更新（在窗口激活时）
-	const checkCloudDataOnFocus = async () => {
-		// 实时同步功能已移除，现在只使用间隔自动同步
-		// 如需手动检查更新，用户可以点击同步按钮
 	};
 
 	// 监听滚动到顶部事件
