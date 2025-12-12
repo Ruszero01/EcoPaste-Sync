@@ -84,98 +84,87 @@ export const isColor = (value: string, checkVectorValues = true) => {
 
 	if (excludes.includes(value) || value.includes("url")) return false;
 
-	// 检查RGB格式：rgb(255, 0, 0) 或 255, 0, 0（仅在启用颜色识别时检查向量格式）
-	const rgbRegex = checkVectorValues
-		? /^rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)$|^(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})$/
-		: /^rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)$/;
+	// 检查RGB格式：rgb(255, 0, 0)
+	const rgbRegex = /^rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)$/;
 	if (rgbRegex.test(value.trim())) {
 		const match = value.trim().match(rgbRegex);
 		if (match) {
-			// 提取RGB值（两种格式都可能匹配）
-			const r = match[1] || match[4];
-			const g = match[2] || match[5];
-			const b = match[3] || match[6];
+			const r = Number.parseInt(match[1], 10);
+			const g = Number.parseInt(match[2], 10);
+			const b = Number.parseInt(match[3], 10);
 
-			// 验证RGB值是否在有效范围内
-			if (r && g && b) {
-				const rNum = Number.parseInt(r, 10);
-				const gNum = Number.parseInt(g, 10);
-				const bNum = Number.parseInt(b, 10);
-
-				if (
-					rNum >= 0 &&
-					rNum <= 255 &&
-					gNum >= 0 &&
-					gNum <= 255 &&
-					bNum >= 0 &&
-					bNum <= 255
-				) {
-					return true;
-				}
+			if (r >= 0 && r <= 255 && g >= 0 && g <= 255 && b >= 0 && b <= 255) {
+				return true;
 			}
 		}
 	}
 
-	// 检查RGBA格式：rgba(255, 0, 0, 0.5) 或 255, 0, 0, 0.5（仅在启用颜色识别时检查向量格式）
-	const rgbaRegex = checkVectorValues
-		? /^rgba\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*([01]?\.?\d*)\s*\)$|^(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*([01]?\.?\d*)$/
-		: /^rgba\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*([01]?\.?\d*)\s*\)$/;
-	if (rgbaRegex.test(value.trim())) {
-		const match = value.trim().match(rgbaRegex);
+	// 检查CMYK格式：cmyk(100, 0, 0, 0)
+	const cmykRegex =
+		/^cmyk\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)$/;
+	if (cmykRegex.test(value.trim())) {
+		const match = value.trim().match(cmykRegex);
 		if (match) {
-			// 提取RGBA值（两种格式都可能匹配）
-			const r = match[1] || match[5];
-			const g = match[2] || match[6];
-			const b = match[3] || match[7];
-			const a = match[4] || match[8];
+			const c = Number.parseInt(match[1], 10);
+			const m = Number.parseInt(match[2], 10);
+			const y = Number.parseInt(match[3], 10);
+			const k = Number.parseInt(match[4], 10);
 
-			// 验证RGBA值是否在有效范围内
-			if (r && g && b && a !== undefined) {
-				const rNum = Number.parseInt(r, 10);
-				const gNum = Number.parseInt(g, 10);
-				const bNum = Number.parseInt(b, 10);
-				const aNum = Number.parseFloat(a);
-
-				if (
-					rNum >= 0 &&
-					rNum <= 255 &&
-					gNum >= 0 &&
-					gNum <= 255 &&
-					bNum >= 0 &&
-					bNum <= 255 &&
-					aNum >= 0 &&
-					aNum <= 1
-				) {
-					return true;
-				}
+			if (
+				c >= 0 &&
+				c <= 100 &&
+				m >= 0 &&
+				m <= 100 &&
+				y >= 0 &&
+				y <= 100 &&
+				k >= 0 &&
+				k <= 100
+			) {
+				return true;
 			}
 		}
 	}
 
-	// 检查是否为3维或4维向量（优先识别为颜色）
+	// 检查是否为3维或4维向量（优先识别为CMYK）
 	// 只有在启用颜色识别时才检查向量值
 	if (checkVectorValues) {
-		const vectorRegex =
-			/^(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(\s*,\s*([01]?\.?\d*))?$/;
-		if (vectorRegex.test(value.trim())) {
-			const match = value.trim().match(vectorRegex);
+		// 优先检查4维向量（CMYK格式）
+		const cmykVectorRegex =
+			/^(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})$/;
+		if (cmykVectorRegex.test(value.trim())) {
+			const match = value.trim().match(cmykVectorRegex);
+			if (match) {
+				const c = Number.parseInt(match[1], 10);
+				const m = Number.parseInt(match[2], 10);
+				const y = Number.parseInt(match[3], 10);
+				const k = Number.parseInt(match[4], 10);
+
+				// 如果所有值都在0-100范围内，优先识别为CMYK
+				if (
+					c >= 0 &&
+					c <= 100 &&
+					m >= 0 &&
+					m <= 100 &&
+					y >= 0 &&
+					y <= 100 &&
+					k >= 0 &&
+					k <= 100
+				) {
+					return true;
+				}
+			}
+		}
+
+		// 检查3维向量（RGB格式）
+		const rgbVectorRegex = /^(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})$/;
+		if (rgbVectorRegex.test(value.trim())) {
+			const match = value.trim().match(rgbVectorRegex);
 			if (match) {
 				const r = Number.parseInt(match[1], 10);
 				const g = Number.parseInt(match[2], 10);
 				const b = Number.parseInt(match[3], 10);
-				const hasAlpha = match[4] !== undefined;
-				const a = hasAlpha ? Number.parseFloat(match[5]) : 1;
 
-				// 验证向量值是否在有效范围内
-				if (
-					r >= 0 &&
-					r <= 255 &&
-					g >= 0 &&
-					g <= 255 &&
-					b >= 0 &&
-					b <= 255 &&
-					(!hasAlpha || (a >= 0 && a <= 1))
-				) {
+				if (r >= 0 && r <= 255 && g >= 0 && g <= 255 && b >= 0 && b <= 255) {
 					return true;
 				}
 			}

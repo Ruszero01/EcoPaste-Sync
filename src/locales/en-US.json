@@ -391,6 +391,7 @@
 				"show_in_file_explorer": "Show in File Explorer",
 				"paste_as_rgb": "Paste as RGB",
 				"paste_as_hex": "Paste as HEX",
+				"paste_as_cmyk": "Paste as CMYK",
 				"delete": "Delete"
 			},
 			"create_group": "Create Group"

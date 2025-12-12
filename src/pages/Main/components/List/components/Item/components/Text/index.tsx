@@ -21,6 +21,10 @@ const Text: FC<HistoryTablePayload> = (props) => {
 			if (parsedColor.format === "rgb") {
 				const { r, g, b } = parsedColor.values;
 				backgroundStyle = `rgb(${r}, ${g}, ${b})`;
+			} else if (parsedColor.format === "cmyk") {
+				// 如果是CMYK格式，转换为RGB
+				const { rgb } = parsedColor.values;
+				backgroundStyle = `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
 			}
 			// 如果是hex格式，直接使用原始值
 		}
