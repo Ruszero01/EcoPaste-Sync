@@ -185,7 +185,7 @@ const ColorPicker: FC<ColorPickerProps> = ({
 					className={`rounded px-3 py-1 text-sm ${
 						colorFormat === "hex"
 							? "bg-blue-500 text-white"
-							: "bg-gray-200 text-gray-700 hover:bg-gray-300"
+							: "bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
 					}`}
 					onClick={() => handleFormatChange("hex")}
 				>
@@ -196,7 +196,7 @@ const ColorPicker: FC<ColorPickerProps> = ({
 					className={`rounded px-3 py-1 text-sm ${
 						colorFormat === "rgb"
 							? "bg-blue-500 text-white"
-							: "bg-gray-200 text-gray-700 hover:bg-gray-300"
+							: "bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
 					}`}
 					onClick={() => handleFormatChange("rgb")}
 				>
@@ -207,7 +207,7 @@ const ColorPicker: FC<ColorPickerProps> = ({
 					className={`rounded px-3 py-1 text-sm ${
 						colorFormat === "cmyk"
 							? "bg-blue-500 text-white"
-							: "bg-gray-200 text-gray-700 hover:bg-gray-300"
+							: "bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
 					}`}
 					onClick={() => handleFormatChange("cmyk")}
 				>
@@ -224,107 +224,141 @@ const ColorPicker: FC<ColorPickerProps> = ({
 					<RgbColorPicker color={rgbColor} onChange={handleRgbChange} />
 				)}
 				{colorFormat === "cmyk" && (
-					<div className="flex w-full flex-col gap-4">
-						{/* 颜色预览 */}
-						<div className="mb-2 flex justify-center">
-							<div
-								className="h-16 w-16 rounded border border-gray-300"
-								style={{
-									backgroundColor: rgbToHex(rgbColor.r, rgbColor.g, rgbColor.b),
-								}}
-							/>
-						</div>
-
+					<div className="flex w-full flex-col gap-2">
 						{/* C滑块 */}
-						<div className="flex flex-col gap-2">
+						<div className="flex flex-col gap-1">
 							<div className="flex items-center justify-between">
-								<label htmlFor="c-slider" className="font-medium text-sm">
+								<label
+									htmlFor="c-slider"
+									className="font-medium text-gray-700 text-sm dark:text-gray-300"
+								>
 									青色 (C)
 								</label>
-								<span className="rounded bg-gray-100 px-2 py-1 font-mono text-sm">
+								<span className="rounded bg-gray-100 px-2 py-1 font-mono text-gray-800 text-sm dark:bg-gray-700 dark:text-gray-200">
 									{cmykColor.c}%
 								</span>
 							</div>
-							<input
-								id="c-slider"
-								type="range"
-								min="0"
-								max="100"
-								value={cmykColor.c}
-								onChange={(e) =>
-									handleCmykChange({ ...cmykColor, c: Number(e.target.value) })
-								}
-								className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-200"
-							/>
+							<div className="relative">
+								<input
+									id="c-slider"
+									type="range"
+									min="0"
+									max="100"
+									value={cmykColor.c}
+									onChange={(e) =>
+										handleCmykChange({
+											...cmykColor,
+											c: Number(e.target.value),
+										})
+									}
+									className="h-3 w-full cursor-pointer appearance-none rounded-lg bg-gradient-to-r from-gray-100 to-cyan-500 dark:from-gray-700 dark:to-cyan-600"
+									style={{
+										background: `linear-gradient(to right, rgb(255, 255, 255) 0%, rgb(0, ${255 - cmykColor.c * 2.55}, ${255 - cmykColor.c * 2.55}) 100%)`,
+									}}
+								/>
+							</div>
 						</div>
 
 						{/* M滑块 */}
-						<div className="flex flex-col gap-2">
+						<div className="flex flex-col gap-1">
 							<div className="flex items-center justify-between">
-								<label htmlFor="m-slider" className="font-medium text-sm">
+								<label
+									htmlFor="m-slider"
+									className="font-medium text-gray-700 text-sm dark:text-gray-300"
+								>
 									洋红 (M)
 								</label>
-								<span className="rounded bg-gray-100 px-2 py-1 font-mono text-sm">
+								<span className="rounded bg-gray-100 px-2 py-1 font-mono text-gray-800 text-sm dark:bg-gray-700 dark:text-gray-200">
 									{cmykColor.m}%
 								</span>
 							</div>
-							<input
-								id="m-slider"
-								type="range"
-								min="0"
-								max="100"
-								value={cmykColor.m}
-								onChange={(e) =>
-									handleCmykChange({ ...cmykColor, m: Number(e.target.value) })
-								}
-								className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-200"
-							/>
+							<div className="relative">
+								<input
+									id="m-slider"
+									type="range"
+									min="0"
+									max="100"
+									value={cmykColor.m}
+									onChange={(e) =>
+										handleCmykChange({
+											...cmykColor,
+											m: Number(e.target.value),
+										})
+									}
+									className="h-3 w-full cursor-pointer appearance-none rounded-lg bg-gradient-to-r from-gray-100 to-pink-500 dark:from-gray-700 dark:to-pink-600"
+									style={{
+										background: `linear-gradient(to right, rgb(255, 255, 255) 0%, rgb(${255 - cmykColor.m * 2.55}, 0, ${255 - cmykColor.m * 2.55}) 100%)`,
+									}}
+								/>
+							</div>
 						</div>
 
 						{/* Y滑块 */}
-						<div className="flex flex-col gap-2">
+						<div className="flex flex-col gap-1">
 							<div className="flex items-center justify-between">
-								<label htmlFor="y-slider" className="font-medium text-sm">
+								<label
+									htmlFor="y-slider"
+									className="font-medium text-gray-700 text-sm dark:text-gray-300"
+								>
 									黄色 (Y)
 								</label>
-								<span className="rounded bg-gray-100 px-2 py-1 font-mono text-sm">
+								<span className="rounded bg-gray-100 px-2 py-1 font-mono text-gray-800 text-sm dark:bg-gray-700 dark:text-gray-200">
 									{cmykColor.y}%
 								</span>
 							</div>
-							<input
-								id="y-slider"
-								type="range"
-								min="0"
-								max="100"
-								value={cmykColor.y}
-								onChange={(e) =>
-									handleCmykChange({ ...cmykColor, y: Number(e.target.value) })
-								}
-								className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-200"
-							/>
+							<div className="relative">
+								<input
+									id="y-slider"
+									type="range"
+									min="0"
+									max="100"
+									value={cmykColor.y}
+									onChange={(e) =>
+										handleCmykChange({
+											...cmykColor,
+											y: Number(e.target.value),
+										})
+									}
+									className="h-3 w-full cursor-pointer appearance-none rounded-lg bg-gradient-to-r from-gray-100 to-yellow-500 dark:from-gray-700 dark:to-yellow-600"
+									style={{
+										background: `linear-gradient(to right, rgb(255, 255, 255) 0%, rgb(${255 - cmykColor.y * 2.55}, ${255 - cmykColor.y * 2.55}, 0) 100%)`,
+									}}
+								/>
+							</div>
 						</div>
 
 						{/* K滑块 */}
-						<div className="flex flex-col gap-2">
+						<div className="flex flex-col gap-1">
 							<div className="flex items-center justify-between">
-								<label htmlFor="k-slider" className="font-medium text-sm">
+								<label
+									htmlFor="k-slider"
+									className="font-medium text-gray-700 text-sm dark:text-gray-300"
+								>
 									黑色 (K)
 								</label>
-								<span className="rounded bg-gray-100 px-2 py-1 font-mono text-sm">
+								<span className="rounded bg-gray-100 px-2 py-1 font-mono text-gray-800 text-sm dark:bg-gray-700 dark:text-gray-200">
 									{cmykColor.k}%
 								</span>
 							</div>
-							<input
-								id="k-slider"
-								type="range"
-								min="0"
-								max="100"
-								value={cmykColor.k}
-								onChange={(e) =>
-									handleCmykChange({ ...cmykColor, k: Number(e.target.value) })
-								}
-								className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-200"
-							/>
+							<div className="relative">
+								<input
+									id="k-slider"
+									type="range"
+									min="0"
+									max="100"
+									value={cmykColor.k}
+									onChange={(e) =>
+										handleCmykChange({
+											...cmykColor,
+											k: Number(e.target.value),
+										})
+									}
+									className="h-3 w-full cursor-pointer appearance-none rounded-lg bg-gradient-to-r from-gray-100 to-gray-800 dark:from-gray-700 dark:to-gray-900"
+									style={{
+										background: `linear-gradient(to right, rgb(255, 255, 255) 0%, rgb(${255 - cmykColor.k * 2.55}, ${255 - cmykColor.k * 2.55}, ${255 - cmykColor.k * 2.55}) 100%)`,
+									}}
+								/>
+							</div>
 						</div>
 					</div>
 				)}
@@ -333,14 +367,14 @@ const ColorPicker: FC<ColorPickerProps> = ({
 			{/* 颜色预览和输入框 */}
 			<div className="flex items-center gap-2">
 				<div
-					className="h-10 w-10 rounded border border-gray-300"
-					style={{ backgroundColor: inputValue }}
+					className="h-10 w-10 rounded border border-gray-300 dark:border-gray-600"
+					style={{ backgroundColor: hexColor }}
 				/>
 				<input
 					type="text"
 					value={inputValue}
 					onChange={handleInputChange}
-					className="flex-1 rounded border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+					className="flex-1 rounded border border-gray-300 px-3 py-2 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
 					placeholder="输入颜色值 (HEX/RGB向量/CMYK向量)"
 				/>
 			</div>
