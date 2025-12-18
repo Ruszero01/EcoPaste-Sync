@@ -39,11 +39,14 @@ pub fn get_sync_status(state: State<'_, Arc<Mutex<CloudSyncEngine>>>) -> Result<
     Ok(engine.get_status().clone())
 }
 
-/// 手动触发同步
+/// 手动触发同步（同步真实剪贴板数据到云端）
 #[tauri::command]
-pub async fn trigger_sync(state: State<'_, Arc<Mutex<CloudSyncEngine>>>) -> Result<SyncResult, String> {
+pub async fn trigger_sync(
+    local_data: Vec<crate::sync_core::SyncDataItem>,
+    state: State<'_, Arc<Mutex<CloudSyncEngine>>>,
+) -> Result<SyncResult, String> {
     let mut engine = state.lock().await;
-    engine.trigger().await
+    engine.trigger_with_data(Some(local_data)).await
 }
 
 /// 启动自动同步

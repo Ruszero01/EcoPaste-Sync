@@ -46,6 +46,7 @@ tauri-plugin-eco-autostart.workspace = true
 tauri-plugin-eco-webdav.workspace = true
 tauri-plugin-eco-auto-sync.workspace = true
 tauri-plugin-eco-active-window.workspace = true
+tauri-plugin-eco-sync.workspace = true
 
 [target."cfg(target_os = \"macos\")".dependencies]
 tauri-nspanel.workspace = true

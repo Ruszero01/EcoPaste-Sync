@@ -736,8 +736,10 @@ checksum = "1a7964611d71df112cb1730f2ee67324fcf4d0fc6606acbbe9bfe06df124637c"
 dependencies = [
  "android-tzdata",
  "iana-time-zone",
+ "js-sys",
  "num-traits",
  "serde",
+ "wasm-bindgen",
  "windows-link 0.1.1",
 ]
 
@@ -1376,6 +1378,7 @@ dependencies = [
  "tauri-plugin-eco-clipboard",
  "tauri-plugin-eco-ocr",
  "tauri-plugin-eco-paste",
+ "tauri-plugin-eco-sync",
  "tauri-plugin-eco-webdav",
  "tauri-plugin-eco-window",
  "tauri-plugin-fs",
@@ -3217,6 +3220,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "md5"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "490cc448043f947bae3cbee9c203358d62dbee0db12107a74be5c30ccfd09771"
+
+[[package]]
 name = "memchr"
 version = "2.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4753,10 +4762,12 @@ dependencies = [
  "system-configuration",
  "tokio",
  "tokio-native-tls",
+ "tokio-util",
  "tower-service",
  "url",
  "wasm-bindgen",
  "wasm-bindgen-futures",
+ "wasm-streams",
  "web-sys",
  "winreg 0.50.0",
 ]
@@ -6201,6 +6212,23 @@ dependencies = [
  "tauri-plugin-eco-window",
  "winapi",
  "x11",
+]
+
+[[package]]
+name = "tauri-plugin-eco-sync"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "chrono",
+ "log",
+ "md5",
+ "reqwest 0.11.27",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tauri",
+ "tauri-plugin",
+ "tokio",
 ]
 
 [[package]]

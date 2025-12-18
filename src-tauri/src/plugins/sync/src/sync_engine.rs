@@ -150,15 +150,27 @@ impl CloudSyncEngine {
         result
     }
 
-    /// 手动触发同步
-    pub async fn trigger(&mut self) -> Result<SyncResult, String> {
+    /// 手动触发同步（同步真实剪贴板数据到云端）
+    pub async fn trigger_with_data(&mut self, local_data: Option<Vec<crate::sync_core::SyncDataItem>>) -> Result<SyncResult, String> {
+        // 加载本地数据到 DataManager
+        if let Some(data) = local_data {
+            let data_manager = self.data_manager.clone();
+            let mut manager = data_manager.lock().await;
+            manager.load_local_data(data).await;
+        }
+
         match self.sync().await {
             Ok(process_result) => Ok(SyncResult {
                 success: process_result.success,
                 message: if process_result.success {
-                    "手动同步完成".to_string()
+                    format!(
+                        "✅ 同步完成: 上传 {} 项，下载 {} 项，删除 {} 项",
+                        process_result.uploaded_items.len(),
+                        process_result.downloaded_items.len(),
+                        process_result.deleted_items.len()
+                    )
                 } else {
-                    "手动同步失败".to_string()
+                    "❌ 同步失败".to_string()
                 },
             }),
             Err(e) => Err(e),

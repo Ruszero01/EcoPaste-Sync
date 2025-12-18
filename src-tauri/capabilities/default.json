@@ -57,6 +57,7 @@
 		"eco-auto-sync:default",
 		"eco-autostart:default",
 		"eco-clipboard:default",
+		"eco-sync:default",
 		"eco-ocr:default",
 		"eco-paste:default",
 		"eco-webdav:default",

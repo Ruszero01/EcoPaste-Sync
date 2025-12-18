@@ -6,7 +6,6 @@ use crate::types::*;
 use crate::webdav::WebDAVClientState;
 use crate::data_manager::DataManager;
 use crate::file_sync_manager::FileSyncManager;
-use chrono;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -569,78 +568,13 @@ impl SyncCore {
     /// 加载本地数据
     async fn load_local_data(&self) -> Result<Vec<SyncDataItem>, String> {
         let data_manager = self.data_manager.lock().await;
-        let mut local_data = data_manager.get_local_data().to_vec();
-
-        // 如果本地数据为空，创建一些测试数据
-        if local_data.is_empty() {
-            local_data = vec![
-                SyncDataItem {
-                    id: "test-item-1".to_string(),
-                    item_type: "text".to_string(),
-                    checksum: Some("abc123".to_string()),
-                    value: Some("Hello, World!".to_string()),
-                    favorite: false,
-                    note: None,
-                    create_time: chrono::Utc::now().timestamp(),
-                    last_modified: chrono::Utc::now().timestamp(),
-                    device_id: "local-device".to_string(),
-                    sync_status: SyncDataStatus::None,
-                    deleted: false,
-                },
-                SyncDataItem {
-                    id: "test-item-2".to_string(),
-                    item_type: "text".to_string(),
-                    checksum: Some("def456".to_string()),
-                    value: Some("This is a test clipboard item".to_string()),
-                    favorite: true,
-                    note: Some("Important note".to_string()),
-                    create_time: chrono::Utc::now().timestamp(),
-                    last_modified: chrono::Utc::now().timestamp(),
-                    device_id: "local-device".to_string(),
-                    sync_status: SyncDataStatus::None,
-                    deleted: false,
-                },
-            ];
-
-            // 更新 DataManager 的本地数据
-            drop(data_manager);
-            let mut data_manager_mut = self.data_manager.lock().await;
-            data_manager_mut.load_local_data(local_data.clone()).await;
-        }
-
-        Ok(local_data)
+        Ok(data_manager.get_local_data().to_vec())
     }
 
     /// 加载云端数据
     async fn load_cloud_data(&self) -> Result<Vec<SyncDataItem>, String> {
         let data_manager = self.data_manager.lock().await;
-        let mut cloud_data = data_manager.get_cloud_data().to_vec();
-
-        // 如果云端数据为空，创建一些测试数据
-        if cloud_data.is_empty() {
-            cloud_data = vec![
-                SyncDataItem {
-                    id: "cloud-item-1".to_string(),
-                    item_type: "text".to_string(),
-                    checksum: Some("xyz789".to_string()),
-                    value: Some("This is from the cloud".to_string()),
-                    favorite: false,
-                    note: None,
-                    create_time: chrono::Utc::now().timestamp(),
-                    last_modified: chrono::Utc::now().timestamp(),
-                    device_id: "cloud-device".to_string(),
-                    sync_status: SyncDataStatus::Synced,
-                    deleted: false,
-                },
-            ];
-
-            // 更新 DataManager 的云端数据
-            drop(data_manager);
-            let mut data_manager_mut = self.data_manager.lock().await;
-            data_manager_mut.load_cloud_data(cloud_data.clone()).await;
-        }
-
-        Ok(cloud_data)
+        Ok(data_manager.get_cloud_data().to_vec())
     }
 
     /// 根据同步模式筛选数据

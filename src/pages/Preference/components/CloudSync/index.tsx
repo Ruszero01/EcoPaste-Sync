@@ -2,6 +2,7 @@ import ProList from "@/components/ProList";
 import ProListItem from "@/components/ProListItem";
 import { LISTEN_KEY } from "@/constants";
 import { getDatabaseInfo, resetDatabase } from "@/database";
+import * as backendSync from "@/plugins/sync";
 import { type WebDAVConfig, testConnection } from "@/plugins/webdav";
 import { globalStore } from "@/stores/global";
 import type { SyncModeConfig } from "@/types/sync.d";
@@ -93,6 +94,19 @@ const CloudSync = () => {
 	);
 	const [isConfigSyncing, setIsConfigSyncing] = useState(false);
 	const [form] = Form.useForm();
+
+	// 后端同步引擎调试状态
+	const [backendForm] = Form.useForm();
+	const [backendFavoriteMode, setBackendFavoriteMode] = useState(false);
+	const [backendFileMode, setBackendFileMode] = useState(false);
+	const [backendAutoSyncEnabled, setBackendAutoSyncEnabled] = useState(false);
+	const [backendAutoSyncInterval, setBackendAutoSyncInterval] = useState(5);
+	const [backendTesting, setBackendTesting] = useState(false);
+	const [backendSyncing, setBackendSyncing] = useState(false);
+	const [backendConfigLoading, setBackendConfigLoading] = useState(false);
+	const [backendConnectionStatus, setBackendConnectionStatus] = useState<
+		"idle" | "testing" | "success" | "failed"
+	>("idle");
 
 	// 保存上次同步时间到本地存储
 	const saveLastSyncTime = useCallback((timestamp: number) => {
@@ -967,6 +981,169 @@ const CloudSync = () => {
 		}
 	};
 
+	// 后端同步引擎：收藏模式切换
+	const handleBackendFavoriteModeChange = async (enabled: boolean) => {
+		setBackendFavoriteMode(enabled);
+		appMessage.success(enabled ? "后端收藏模式已开启" : "后端收藏模式已关闭");
+	};
+
+	// 后端同步引擎：文件模式切换
+	const handleBackendFileModeChange = async (enabled: boolean) => {
+		setBackendFileMode(enabled);
+		appMessage.success(enabled ? "后端文件模式已开启" : "后端文件模式已关闭");
+	};
+
+	// 后端同步引擎：自动同步切换（需要先保存配置）
+	const handleBackendAutoSyncToggle = async (enabled: boolean) => {
+		// 检查是否已保存配置
+		if (backendConnectionStatus !== "success") {
+			appMessage.warning("请先保存配置以初始化客户端");
+			return;
+		}
+
+		try {
+			if (enabled) {
+				await backendSync.backendStartAutoSync(backendAutoSyncInterval);
+				setBackendAutoSyncEnabled(true);
+				appMessage.success("后端自动同步已启动");
+			} else {
+				await backendSync.backendStopAutoSync();
+				setBackendAutoSyncEnabled(false);
+				appMessage.info("后端自动同步已停止");
+			}
+		} catch (error) {
+			console.error("后端自动同步操作失败:", error);
+			appMessage.error("操作失败");
+		}
+	};
+
+	// 后端同步引擎：自动同步间隔变更（需要先保存配置）
+	const handleBackendAutoSyncIntervalChange = async (minutes: number) => {
+		// 检查是否已保存配置
+		if (backendConnectionStatus !== "success") {
+			appMessage.warning("请先保存配置以初始化客户端");
+			return;
+		}
+
+		try {
+			setBackendAutoSyncInterval(minutes);
+			if (backendAutoSyncEnabled) {
+				await backendSync.backendUpdateAutoSyncInterval(minutes);
+				appMessage.success(`后端同步间隔已更新为 ${minutes} 分钟`);
+			}
+		} catch (error) {
+			console.error("更新后端同步间隔失败:", error);
+			appMessage.error("操作失败");
+		}
+	};
+
+	// 后端同步引擎：保存配置
+	const handleBackendConfigSubmit = async (values: any) => {
+		setBackendConfigLoading(true);
+		setBackendConnectionStatus("testing");
+		try {
+			const config = {
+				url: values.backend_url,
+				username: values.backend_username,
+				password: values.backend_password,
+				path: values.backend_path || "/EcoPaste-Sync",
+				timeout: 30000,
+			};
+
+			// 测试连接
+			const result = await backendSync.backendTestWebdavConnection(config);
+			if (result.success) {
+				// 转换为后端期望的 SyncConfig 格式
+				const syncConfig = {
+					server_url: values.backend_url,
+					username: values.backend_username,
+					password: values.backend_password,
+					path: values.backend_path || "/EcoPaste-Sync",
+					auto_sync: backendAutoSyncEnabled,
+					auto_sync_interval_minutes: backendAutoSyncInterval,
+					timeout: 30000,
+				};
+
+				// 初始化同步引擎
+				await backendSync.backendInitSync(syncConfig);
+				setBackendConnectionStatus("success");
+				appMessage.success(
+					`后端配置已保存，连接成功，延迟: ${result.latency_ms}ms`,
+				);
+			} else {
+				setBackendConnectionStatus("failed");
+				appMessage.error(`后端连接失败: ${result.error_message || "未知错误"}`);
+			}
+		} catch (error) {
+			console.error("后端配置保存失败:", error);
+			setBackendConnectionStatus("failed");
+			appMessage.error("后端配置保存失败");
+		} finally {
+			setBackendConfigLoading(false);
+		}
+	};
+
+	// 后端同步引擎：测试连接
+	const handleBackendTestConnection = async () => {
+		const values = backendForm.getFieldsValue();
+		if (!values.backend_url) {
+			appMessage.error("请先填写服务器地址");
+			return;
+		}
+
+		setBackendTesting(true);
+		setBackendConnectionStatus("testing");
+		try {
+			const config = {
+				url: values.backend_url,
+				username: values.backend_username,
+				password: values.backend_password,
+				path: values.backend_path || "/EcoPaste-Sync",
+				timeout: 30000,
+			};
+
+			const result = await backendSync.backendTestWebdavConnection(config);
+			if (result.success) {
+				setBackendConnectionStatus("success");
+				appMessage.success(`后端连接成功，延迟: ${result.latency_ms}ms`);
+			} else {
+				setBackendConnectionStatus("failed");
+				appMessage.error("后端连接异常");
+			}
+		} catch (error) {
+			console.error("后端测试连接失败:", error);
+			setBackendConnectionStatus("failed");
+			appMessage.error("后端测试连接失败");
+		} finally {
+			setBackendTesting(false);
+		}
+	};
+
+	// 后端同步引擎：立即同步（需要先保存配置）
+	const handleBackendTriggerSync = async () => {
+		// 检查是否已保存配置
+		if (backendConnectionStatus !== "success") {
+			appMessage.warning("请先保存配置以初始化客户端");
+			return;
+		}
+
+		setBackendSyncing(true);
+		try {
+			// 触发同步
+			const result = await backendSync.backendTriggerSync();
+			if (result?.success) {
+				appMessage.success(`后端同步完成: ${result.message}`);
+			} else {
+				appMessage.warning(`后端同步未完成: ${result?.message || "未知错误"}`);
+			}
+		} catch (error) {
+			console.error("后端同步失败:", error);
+			appMessage.error("后端同步失败");
+		} finally {
+			setBackendSyncing(false);
+		}
+	};
+
 	return (
 		<>
 			{modalContextHolder}
@@ -1322,6 +1499,166 @@ const CloudSync = () => {
 							onClick={handleShowDatabaseInfo}
 						>
 							显示数据库信息
+						</Button>
+					</ProListItem>
+				</ProList>
+			)}
+
+			{/* 开发环境专用：后端同步引擎调试 */}
+			{isDev() && (
+				<ProList header="后端同步引擎（仅限开发环境）">
+					{/* 服务器配置 */}
+					<Form
+						form={backendForm}
+						layout="vertical"
+						onFinish={handleBackendConfigSubmit}
+						initialValues={{ backend_path: "/EcoPaste-Sync" }}
+					>
+						<ProListItem title="服务器地址">
+							<Form.Item
+								name="backend_url"
+								style={{ margin: 0, minWidth: 300, maxWidth: 400 }}
+							>
+								<Input placeholder="https://webdav/sync" size="small" />
+							</Form.Item>
+						</ProListItem>
+
+						<ProListItem title="用户名">
+							<Form.Item
+								name="backend_username"
+								style={{ margin: 0, minWidth: 300, maxWidth: 400 }}
+							>
+								<Input placeholder="username" size="small" />
+							</Form.Item>
+						</ProListItem>
+
+						<ProListItem title="密码">
+							<Form.Item
+								name="backend_password"
+								style={{ margin: 0, minWidth: 300, maxWidth: 400 }}
+							>
+								<Input.Password placeholder="password" size="small" />
+							</Form.Item>
+						</ProListItem>
+
+						<ProListItem title="同步路径">
+							<Form.Item
+								name="backend_path"
+								style={{ margin: 0, minWidth: 300, maxWidth: 400 }}
+							>
+								<Input placeholder="/path" size="small" />
+							</Form.Item>
+						</ProListItem>
+
+						<ProListItem
+							title={
+								backendConnectionStatus !== "idle" ? (
+									<Alert
+										message={
+											backendConnectionStatus === "testing"
+												? "正在测试连接..."
+												: backendConnectionStatus === "success"
+													? "连接成功"
+													: "连接失败"
+										}
+										type={
+											backendConnectionStatus === "testing"
+												? "info"
+												: backendConnectionStatus === "success"
+													? "success"
+													: "error"
+										}
+										showIcon
+										style={{
+											margin: 0,
+											display: "inline-flex",
+											alignItems: "center",
+											height: "32px",
+											padding: "4px 8px",
+											minWidth: "auto",
+										}}
+									/>
+								) : null
+							}
+						>
+							<Flex gap={8}>
+								<Button
+									type="default"
+									size="small"
+									icon={<CloudOutlined />}
+									loading={backendTesting}
+									onClick={handleBackendTestConnection}
+								>
+									测试连接
+								</Button>
+								<Button
+									type="primary"
+									size="small"
+									htmlType="submit"
+									loading={backendConfigLoading}
+								>
+									保存配置
+								</Button>
+							</Flex>
+						</ProListItem>
+					</Form>
+
+					<ProListItem
+						title="收藏模式"
+						description="后端同步引擎：仅同步收藏的项目"
+					>
+						<Switch
+							checked={backendFavoriteMode}
+							onChange={handleBackendFavoriteModeChange}
+						/>
+					</ProListItem>
+
+					<ProListItem
+						title="文件模式"
+						description="后端同步引擎：同步图片和文件内容"
+					>
+						<Switch
+							checked={backendFileMode}
+							onChange={handleBackendFileModeChange}
+						/>
+					</ProListItem>
+
+					<ProListItem
+						title="自动同步"
+						description="后端同步引擎：启用定时自动同步"
+					>
+						<Flex vertical gap={8} align="flex-end">
+							<Switch
+								checked={backendAutoSyncEnabled}
+								onChange={handleBackendAutoSyncToggle}
+							/>
+							{backendAutoSyncEnabled && (
+								<Select
+									value={backendAutoSyncInterval}
+									onChange={handleBackendAutoSyncIntervalChange}
+									style={{ width: 120 }}
+									size="small"
+								>
+									<Select.Option value={1}>1 分钟</Select.Option>
+									<Select.Option value={5}>5 分钟</Select.Option>
+									<Select.Option value={15}>15 分钟</Select.Option>
+									<Select.Option value={30}>30 分钟</Select.Option>
+									<Select.Option value={60}>1 小时</Select.Option>
+								</Select>
+							)}
+						</Flex>
+					</ProListItem>
+
+					<ProListItem title="立即同步" description="使用后端同步引擎执行同步">
+						<Button
+							type="primary"
+							size="small"
+							icon={<CloudSyncOutlined />}
+							loading={backendSyncing}
+							onClick={handleBackendTriggerSync}
+							disabled={backendConnectionStatus !== "success"}
+						>
+							立即同步
 						</Button>
 					</ProListItem>
 				</ProList>
