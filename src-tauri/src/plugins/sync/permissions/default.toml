@@ -1,0 +1,26 @@
+"$schema" = "schemas/schema.json"
+
+[default]
+description = "Default permissions for the cloud sync engine plugin"
+permissions = [
+    "allow-init-sync",
+    "allow-start-sync",
+    "allow-stop-sync",
+    "allow-get-sync-status",
+    "allow-trigger-sync",
+    "allow-start-auto-sync",
+    "allow-stop-auto-sync",
+    "allow-get-auto-sync-status",
+    "allow-update-auto-sync-interval",
+    "allow-test-webdav-connection",
+    "allow-get-sync-progress",
+    "allow-update-sync-config",
+    "allow-get-sync-config",
+    "allow-upload-file",
+    "allow-download-file",
+    "allow-delete-file",
+    "allow-sync-file-batch",
+    "allow-delete-files",
+    "allow-get-file-sync-config",
+    "allow-update-file-sync-config"
+]
