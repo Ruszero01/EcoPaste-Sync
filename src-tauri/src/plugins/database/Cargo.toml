@@ -1,11 +1,11 @@
 [package]
-name = "tauri-plugin-eco-sync"
+name = "tauri-plugin-eco-database"
 version = "0.1.0"
-description = "Cloud Sync Engine Plugin for EcoPaste"
+description = "Unified Database Plugin for EcoPaste"
 authors = []
 edition = "2021"
 rust-version = "1.77.2"
-links = "tauri-plugin-eco-sync"
+links = "tauri-plugin-eco-database"
 
 [build-dependencies]
 tauri-plugin.workspace = true
@@ -16,12 +16,8 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1.0", features = ["full"] }
 log = "0.4"
-base64 = "0.22"
-reqwest = { version = "0.11", features = ["json", "stream"] }
-sha2 = "0.10"
-md5 = "0.7"
+rusqlite = { version = "0.31", features = ["bundled"] }
 chrono = { version = "0.4", features = ["serde"] }
-tauri-plugin-eco-database.workspace = true
 
 [features]
 default = []

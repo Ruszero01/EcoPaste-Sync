@@ -23,6 +23,7 @@ tauri-plugin-eco-autostart = { path = "./src-tauri/src/plugins/autostart" }
 tauri-plugin-eco-webdav = { path = "./src-tauri/src/plugins/webdav" }
 tauri-plugin-eco-auto-sync = { path = "./src-tauri/src/plugins/auto_sync" }
 tauri-plugin-eco-active-window = { path = "./src-tauri/src/plugins/active_window" }
+tauri-plugin-eco-database = { path = "./src-tauri/src/plugins/database" }
 tauri-plugin-eco-sync = { path = "./src-tauri/src/plugins/sync" }
 
 # 依赖版本统一 - 使用较新版本

@@ -269,6 +269,14 @@ impl CloudSyncEngine {
         self.progress.as_ref()
     }
 
+    /// 获取同步模式是否仅收藏
+    pub fn get_sync_mode_only_favorites(&self) -> bool {
+        self.config
+            .as_ref()
+            .map(|c| c.sync_mode.only_favorites)
+            .unwrap_or(false)
+    }
+
     /// 上传单个文件
     pub async fn upload_file(&self, task: crate::file_sync_manager::FileUploadTask) -> Result<crate::file_sync_manager::FileOperationResult, String> {
         let file_sync_manager = self.file_sync_manager.clone();

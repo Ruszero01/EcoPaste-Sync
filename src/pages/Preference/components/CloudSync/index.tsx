@@ -250,6 +250,34 @@ const CloudSync = () => {
 		syncModeConfigRef.current = syncModeConfig;
 	}, [syncModeConfig]);
 
+	// 初始化数据库路径
+	useEffect(() => {
+		const initializeDatabase = async () => {
+			try {
+				const { backendSetDatabasePath } = await import("@/plugins/database");
+
+				// 获取保存数据目录和应用信息
+				const saveDataDir = globalStore.env.saveDataDir;
+				const appName = globalStore.env.appName || "EcoPaste-Sync";
+				const devMode = isDev();
+
+				if (saveDataDir) {
+					await backendSetDatabasePath({
+						save_data_dir: saveDataDir,
+						app_name: appName,
+						is_dev: devMode,
+					});
+				} else {
+					// 保存数据目录未设置，静默处理
+				}
+			} catch {
+				// 数据库路径初始化失败，静默处理
+			}
+		};
+
+		initializeDatabase();
+	}, []);
+
 	// 服务器配置状态
 	const [webdavConfig, setWebdavConfig] = useState<WebDAVConfig | null>(null);
 

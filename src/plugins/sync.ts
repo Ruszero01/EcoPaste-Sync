@@ -1,8 +1,24 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { WebDAVConfig } from "./webdav";
 
-// 同步配置 - 使用统一的 WebDAVConfig 类型
-export type BackendSyncConfig = WebDAVConfig;
+// 后端同步配置（与 Rust SyncConfig 对应）
+export interface BackendSyncConfig {
+	server_url: string;
+	username: string;
+	password: string;
+	path: string;
+	auto_sync: boolean;
+	auto_sync_interval_minutes: number;
+	timeout: number;
+}
+
+// WebDAV 连接测试配置（用于测试连接）
+export interface BackendWebDAVTestConfig {
+	url: string;
+	username: string;
+	password: string;
+	path: string;
+	timeout: number;
+}
 
 // 同步状态
 export interface BackendSyncStatus {
@@ -80,10 +96,10 @@ export const backendGetSyncStatus = () => {
 };
 
 /**
- * 触发立即同步（同步真实剪贴板数据到云端）
+ * 触发立即同步（后端直接从数据库读取数据，无需前端传参）
  */
-export const backendTriggerSync = (localData: any[]) => {
-	return invoke<boolean>(COMMAND.TRIGGER_SYNC, { localData });
+export const backendTriggerSync = () => {
+	return invoke<{ success: boolean; message: string }>(COMMAND.TRIGGER_SYNC);
 };
 
 /**
@@ -119,7 +135,9 @@ export const backendUpdateAutoSyncInterval = (intervalMinutes: number) => {
 /**
  * 测试后端 WebDAV 连接
  */
-export const backendTestWebdavConnection = (config: BackendSyncConfig) => {
+export const backendTestWebdavConnection = (
+	config: BackendWebDAVTestConfig,
+) => {
 	return invoke<BackendConnectionTestResult>(COMMAND.TEST_WEBDAV_CONNECTION, {
 		config,
 	});

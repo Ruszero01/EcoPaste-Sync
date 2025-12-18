@@ -10,10 +10,14 @@ use std::sync::Arc;
 use std::time::Instant;
 use tauri::State;
 use tokio::sync::Mutex;
+use tauri_plugin_eco_database::DatabaseState;
 
 /// 初始化同步
 #[tauri::command]
-pub async fn init_sync(config: SyncConfig, state: State<'_, Arc<Mutex<CloudSyncEngine>>>) -> Result<SyncResult, String> {
+pub async fn init_sync(
+    config: SyncConfig,
+    state: State<'_, Arc<Mutex<CloudSyncEngine>>>,
+) -> Result<SyncResult, String> {
     let mut engine = state.lock().await;
     engine.init(config).await
 }
@@ -39,12 +43,51 @@ pub fn get_sync_status(state: State<'_, Arc<Mutex<CloudSyncEngine>>>) -> Result<
     Ok(engine.get_status().clone())
 }
 
-/// 手动触发同步（同步真实剪贴板数据到云端）
+/// 手动触发同步（后端直接从数据库读取数据）
 #[tauri::command]
 pub async fn trigger_sync(
-    local_data: Vec<crate::sync_core::SyncDataItem>,
     state: State<'_, Arc<Mutex<CloudSyncEngine>>>,
+    db_state: State<'_, DatabaseState>,
 ) -> Result<SyncResult, String> {
+    // 从数据库读取数据
+    let db = db_state.lock().await;
+
+    let local_data = if db.is_initialized() {
+        // 获取同步模式配置
+        let engine = state.lock().await;
+        let only_favorites = engine.get_sync_mode_only_favorites();
+        drop(engine);
+
+        // 查询需要同步的数据
+        let sync_items = db.query_sync_data(only_favorites, Some(500))?;
+        drop(db);
+
+        // 转换为内部数据格式
+        sync_items
+            .into_iter()
+            .map(|item| crate::sync_core::SyncDataItem {
+                id: item.id,
+                item_type: item.item_type,
+                checksum: item.checksum,
+                value: item.value,
+                favorite: item.favorite,
+                note: item.note,
+                create_time: item.create_time,
+                last_modified: item.last_modified,
+                device_id: item.device_id,
+                sync_status: crate::sync_core::SyncDataStatus::None,
+                deleted: item.deleted,
+            })
+            .collect()
+    } else {
+        drop(db);
+        log::warn!("数据库未初始化，使用空数据同步");
+        Vec::new()
+    };
+
+    log::info!("从数据库加载了 {} 条记录准备同步", local_data.len());
+
+    // 执行同步
     let mut engine = state.lock().await;
     engine.trigger_with_data(Some(local_data)).await
 }

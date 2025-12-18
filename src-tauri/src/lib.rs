@@ -6,6 +6,7 @@ use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_eco_window::{show_main_window, MAIN_WINDOW_LABEL, PREFERENCE_WINDOW_LABEL};
 use tauri_plugin_log::{Target, TargetKind};
 use tauri_plugin_eco_sync::{create_shared_engine, create_shared_client, create_shared_manager};
+use tauri_plugin_eco_database::create_shared_database;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -109,6 +110,8 @@ pub fn run() {
         .plugin(tauri_plugin_eco_auto_sync::init())
         // 自定义活动窗口插件
         .plugin(tauri_plugin_eco_active_window::init())
+        // 统一数据库插件
+        .plugin(tauri_plugin_eco_database::init())
         // 云同步引擎插件
         .plugin(tauri_plugin_eco_sync::init())
         // Shell 插件：https://github.com/tauri-apps/plugins-workspace/tree/v2/plugins/shell
@@ -116,6 +119,7 @@ pub fn run() {
         // 初始化云同步引擎状态
         .manage(create_shared_client())
         .manage(create_shared_manager())
+        .manage(create_shared_database())
         .manage(create_shared_engine(create_shared_client(), create_shared_manager()))
         .on_window_event(|window, event| match event {
             // 让 app 保持在后台运行：https://tauri.app/v1/guides/features/system-tray/#preventing-the-app-from-closing
