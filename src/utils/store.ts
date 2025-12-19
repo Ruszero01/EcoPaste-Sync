@@ -12,9 +12,28 @@ import { omit } from "lodash-es";
 import { getLocale } from "tauri-plugin-locale-api";
 
 /**
+ * 初始化数据库插件 - 独立函数，可以单独调用
+ */
+const initDatabasePlugin = async () => {
+	try {
+		const { backendSetDatabasePath } = await import("@/plugins/database");
+
+		// 后端自动获取路径，无需前端传递参数
+		await backendSetDatabasePath();
+		return true;
+	} catch (error) {
+		console.warn("⚠️ 数据库插件初始化失败:", error);
+		return false;
+	}
+};
+
+/**
  * 初始化配置项
  */
 const initStore = async () => {
+	// 首先初始化数据库插件 - 确保环境变量已设置
+	await initDatabasePlugin();
+
 	globalStore.appearance.language ??= await getLocale<Language>();
 	globalStore.env.platform = platform();
 	globalStore.env.appName = await getName();
@@ -35,6 +54,9 @@ export const saveStore = async (backup = false) => {
 
 	return writeTextFile(path, JSON.stringify(store, null, 2));
 };
+
+// 导出数据库初始化函数，供外部调用
+export { initDatabasePlugin };
 
 /**
  * 从本地存储恢复配置项

@@ -7,8 +7,10 @@ use crate::auto_sync_manager::AutoSyncManagerState;
 use crate::sync_core::{SyncCore, SyncModeConfig, SyncProcessResult};
 use crate::data_manager::{DataManager, create_shared_manager as create_data_manager};
 use crate::file_sync_manager::{FileSyncManager, create_shared_manager as create_file_sync_manager};
+use crate::cleanup_manager::{CleanupManager, CleanupConfig, CleanupStatus};
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tauri_plugin_eco_database::DatabaseState;
 
 /// 统一配置结构
 /// 合并老配置和新配置，提供统一的配置接口
@@ -43,6 +45,8 @@ pub struct CloudSyncEngine {
     pub data_manager: Arc<Mutex<DataManager>>,
     /// 文件同步管理器
     pub file_sync_manager: Arc<Mutex<FileSyncManager>>,
+    /// 云端数据清理管理器
+    pub cleanup_manager: Arc<Mutex<CleanupManager>>,
 }
 
 impl CloudSyncEngine {
@@ -58,6 +62,7 @@ impl CloudSyncEngine {
             data_manager.clone(),
             file_sync_manager.clone(),
         )));
+        let cleanup_manager = Arc::new(Mutex::new(CleanupManager::new(webdav_client.clone())));
 
         Self {
             status: SyncStatus::Idle,
@@ -68,11 +73,12 @@ impl CloudSyncEngine {
             sync_core,
             data_manager,
             file_sync_manager,
+            cleanup_manager,
         }
     }
 
     /// 初始化同步引擎
-    pub async fn init(&mut self, config: SyncConfig) -> Result<SyncResult, String> {
+    pub async fn init(&mut self, config: SyncConfig, database_state: &DatabaseState) -> Result<SyncResult, String> {
         // 初始化 WebDAV 客户端
         let webdav_config = crate::webdav::WebDAVConfig {
             url: config.server_url.clone(),
@@ -105,7 +111,7 @@ impl CloudSyncEngine {
 
         // 如果配置中启用了自动同步，启动它
         if config.auto_sync {
-            self.start_auto_sync(config.auto_sync_interval_minutes).await?;
+            self.start_auto_sync(config.auto_sync_interval_minutes, database_state).await?;
         }
 
         Ok(SyncResult {
@@ -136,7 +142,7 @@ impl CloudSyncEngine {
 
     /// 执行同步操作
     /// 委托给 SyncCore 执行，遵循清晰的数据流向
-    pub async fn sync(&mut self) -> Result<SyncProcessResult, String> {
+    pub async fn sync(&mut self, database_state: &DatabaseState) -> Result<SyncProcessResult, String> {
         let config = self.config.as_ref()
             .ok_or_else(|| "同步引擎未初始化，请先调用 init()".to_string())?;
 
@@ -144,14 +150,18 @@ impl CloudSyncEngine {
         let mut core = sync_core.lock().await;
 
         self.status = SyncStatus::Syncing;
-        let result = core.perform_sync(config.sync_mode.clone()).await;
+        let result = core.perform_sync(config.sync_mode.clone(), database_state).await;
         self.status = SyncStatus::Idle;
 
         result
     }
 
     /// 手动触发同步（同步真实剪贴板数据到云端）
-    pub async fn trigger_with_data(&mut self, local_data: Option<Vec<crate::sync_core::SyncDataItem>>) -> Result<SyncResult, String> {
+    pub async fn trigger_with_data(
+        &mut self,
+        local_data: Option<Vec<crate::sync_core::SyncDataItem>>,
+        database_state: &DatabaseState,
+    ) -> Result<SyncResult, String> {
         // 加载本地数据到 DataManager
         if let Some(data) = local_data {
             let data_manager = self.data_manager.clone();
@@ -159,7 +169,7 @@ impl CloudSyncEngine {
             manager.load_local_data(data).await;
         }
 
-        match self.sync().await {
+        match self.sync(database_state).await {
             Ok(process_result) => Ok(SyncResult {
                 success: process_result.success,
                 message: if process_result.success {
@@ -178,14 +188,22 @@ impl CloudSyncEngine {
     }
 
     /// 启动自动同步
-    pub async fn start_auto_sync(&mut self, interval_minutes: u64) -> Result<SyncResult, String> {
+    pub async fn start_auto_sync(&mut self, interval_minutes: u64, database_state: &DatabaseState) -> Result<SyncResult, String> {
+        // 🧹 停止定期清理（自动同步开启时不需要）
+        {
+            let mut cleanup_manager = self.cleanup_manager.lock().await;
+            cleanup_manager.stop();
+        }
+
         let auto_sync_manager = self.auto_sync_manager.clone();
         let mut manager = auto_sync_manager.lock().await;
 
         // 设置自动同步回调
         let sync_core = self.sync_core.clone();
+        let database_state_clone = database_state.clone();
         manager.set_sync_callback(Box::new(move || {
             let sync_core = sync_core.clone();
+            let database_state = database_state_clone.clone();
             tauri::async_runtime::spawn(async move {
                 let mut core = sync_core.lock().await;
                 let mode_config = // TODO: 获取当前模式配置
@@ -204,7 +222,7 @@ impl CloudSyncEngine {
                         device_id: "device".to_string(),
                         previous_mode: None,
                     };
-                let _ = core.perform_sync(mode_config).await;
+                let _ = core.perform_sync(mode_config, &database_state).await;
             });
         }));
 
@@ -225,6 +243,14 @@ impl CloudSyncEngine {
 
         if let Err(e) = manager.stop().await {
             return Err(e);
+        }
+
+        // 🧹 启动定期清理（自动同步停止时）
+        {
+            let mut cleanup_manager = self.cleanup_manager.lock().await;
+            if let Err(e) = cleanup_manager.start().await {
+                log::warn!("⚠️ 启动定期清理失败: {}", e);
+            }
         }
 
         Ok(SyncResult {
@@ -275,6 +301,40 @@ impl CloudSyncEngine {
             .as_ref()
             .map(|c| c.sync_mode.only_favorites)
             .unwrap_or(false)
+    }
+
+    /// 使用数据库状态执行同步
+    /// 从数据库直接读取数据并执行同步流程
+    pub async fn sync_with_database(
+        &mut self,
+        database_state: &DatabaseState,
+        only_favorites: bool,
+    ) -> Result<SyncProcessResult, String> {
+        let config = self.config.as_ref()
+            .ok_or_else(|| "同步引擎未初始化，请先调用 init()".to_string())?;
+
+        let sync_core = self.sync_core.clone();
+        let mut core = sync_core.lock().await;
+
+        self.status = SyncStatus::Syncing;
+
+        // 简化模式配置，只保留 only_favorites
+        let mut mode_config = config.sync_mode.clone();
+        mode_config.only_favorites = only_favorites;
+
+        log::info!("🔄 开始执行同步... only_favorites={}", only_favorites);
+
+        // 直接执行同步，让 perform_sync 负责所有数据库操作
+        // 避免死锁：不要在调用 perform_sync 之前锁定 database_state
+        let result = core.perform_sync(mode_config, database_state).await;
+        self.status = SyncStatus::Idle;
+
+        match &result {
+            Ok(_) => log::info!("✅ 同步执行完成"),
+            Err(e) => log::error!("❌ 同步执行失败: {}", e),
+        }
+
+        result
     }
 
     /// 上传单个文件
@@ -346,6 +406,36 @@ impl CloudSyncEngine {
                 device_id: "device".to_string(), // TODO: 生成设备ID
                 previous_mode: None,
             },
+        }
+    }
+
+    /// 配置定期清理
+    pub async fn configure_cleanup(&mut self, config: CleanupConfig) -> Result<SyncResult, String> {
+        let mut cleanup_manager = self.cleanup_manager.lock().await;
+        cleanup_manager.update_config(config);
+
+        Ok(SyncResult {
+            success: true,
+            message: "清理配置已更新".to_string(),
+        })
+    }
+
+    /// 获取清理状态
+    pub fn get_cleanup_status(&self) -> CleanupStatus {
+        let manager = self.cleanup_manager.blocking_lock();
+        manager.get_status().clone()
+    }
+
+    /// 手动执行一次清理
+    pub async fn perform_cleanup(&mut self) -> Result<SyncResult, String> {
+        let mut cleanup_manager = self.cleanup_manager.lock().await;
+
+        match cleanup_manager.perform_cleanup().await {
+            Ok(_) => Ok(SyncResult {
+                success: true,
+                message: "云端数据清理完成".to_string(),
+            }),
+            Err(e) => Err(e),
         }
     }
 }

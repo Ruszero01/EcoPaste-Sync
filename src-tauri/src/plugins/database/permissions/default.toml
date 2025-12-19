@@ -1,0 +1,14 @@
+"$schema" = "schemas/schema.json"
+
+[default]
+description = "Default permissions for the database plugin"
+permissions = [
+    "allow-set-database-path",
+    "allow-query-history",
+    "allow-query-sync-data",
+    "allow-update-sync-status",
+    "allow-batch-update-sync-status",
+    "allow-upsert-from-cloud",
+    "allow-mark-deleted",
+    "allow-get-statistics"
+]

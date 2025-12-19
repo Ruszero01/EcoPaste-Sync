@@ -1,21 +1,39 @@
 //! 数据库命令实现
 //! 提供前端调用的完整 API
 
-use crate::{DatabaseManager, DatabaseState, HistoryItem, SyncDataItem, QueryOptions, DatabaseStatistics};
-use std::sync::Arc;
+use crate::{DatabaseState, HistoryItem, SyncDataItem, QueryOptions, DatabaseStatistics};
 use tauri::State;
-use tokio::sync::Mutex;
 
-/// 设置数据库路径并初始化
+/// 设置数据库路径并初始化 - 从后端环境自动获取路径
 #[tauri::command]
 pub fn set_database_path(
-    save_data_dir: String,
-    app_name: String,
-    is_dev: bool,
     state: State<'_, DatabaseState>,
 ) -> Result<(), String> {
     let mut db = state.blocking_lock();
-    db.set_database_path(save_data_dir, app_name, is_dev)
+
+    // 使用标准路径（与前端 appDataDir 对应）
+    // 优先使用用户配置目录，然后回退到数据目录
+    let save_data_dir = dirs::data_dir()
+        .or_else(|| dirs::config_dir())
+        .or_else(|| dirs::home_dir().map(|p| p.join(".local/share")))
+        .ok_or_else(|| "无法获取数据目录".to_string())?;
+
+    // 获取应用标识符作为名称（与前端保持一致）
+    let bundle_id = "com.Rains.EcoPaste-Sync";
+    let app_name = "EcoPaste-Sync".to_string();
+
+    // 检查是否为开发模式
+    let is_dev = cfg!(debug_assertions);
+
+    // 构建数据目录：{saveDataDir}/{bundleId}
+    let data_dir = save_data_dir.join(bundle_id);
+
+    // set_database_path 会自动构建文件名：{dataDir}/{appName}.{ext}
+    db.set_database_path(
+        data_dir.to_string_lossy().to_string(),
+        app_name,
+        is_dev,
+    )
 }
 
 /// 查询历史记录

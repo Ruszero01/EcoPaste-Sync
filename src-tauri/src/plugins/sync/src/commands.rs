@@ -17,9 +17,10 @@ use tauri_plugin_eco_database::DatabaseState;
 pub async fn init_sync(
     config: SyncConfig,
     state: State<'_, Arc<Mutex<CloudSyncEngine>>>,
+    db_state: State<'_, DatabaseState>,
 ) -> Result<SyncResult, String> {
     let mut engine = state.lock().await;
-    engine.init(config).await
+    engine.init(config, &db_state).await
 }
 
 /// 启动同步
@@ -49,54 +50,60 @@ pub async fn trigger_sync(
     state: State<'_, Arc<Mutex<CloudSyncEngine>>>,
     db_state: State<'_, DatabaseState>,
 ) -> Result<SyncResult, String> {
-    // 从数据库读取数据
-    let db = db_state.lock().await;
-
-    let local_data = if db.is_initialized() {
-        // 获取同步模式配置
-        let engine = state.lock().await;
-        let only_favorites = engine.get_sync_mode_only_favorites();
-        drop(engine);
-
-        // 查询需要同步的数据
-        let sync_items = db.query_sync_data(only_favorites, Some(500))?;
-        drop(db);
-
-        // 转换为内部数据格式
-        sync_items
-            .into_iter()
-            .map(|item| crate::sync_core::SyncDataItem {
-                id: item.id,
-                item_type: item.item_type,
-                checksum: item.checksum,
-                value: item.value,
-                favorite: item.favorite,
-                note: item.note,
-                create_time: item.create_time,
-                last_modified: item.last_modified,
-                device_id: item.device_id,
-                sync_status: crate::sync_core::SyncDataStatus::None,
-                deleted: item.deleted,
-            })
-            .collect()
-    } else {
-        drop(db);
-        log::warn!("数据库未初始化，使用空数据同步");
-        Vec::new()
-    };
-
-    log::info!("从数据库加载了 {} 条记录准备同步", local_data.len());
-
-    // 执行同步
     let mut engine = state.lock().await;
-    engine.trigger_with_data(Some(local_data)).await
+    let db = db_state;
+
+    // 获取同步模式配置
+    let only_favorites = engine.get_sync_mode_only_favorites();
+    log::info!("🔄 触发同步: only_favorites={}", only_favorites);
+
+    // 直接从数据库查询并执行同步
+    let result = engine.sync_with_database(&db, only_favorites).await;
+
+    match result {
+        Ok(process_result) => {
+            log::info!("✅ 同步成功: {} 项上传, {} 项下载, {} 项删除",
+                process_result.uploaded_items.len(),
+                process_result.downloaded_items.len(),
+                process_result.deleted_items.len()
+            );
+            Ok(SyncResult {
+                success: process_result.success,
+                message: if process_result.success {
+                    if process_result.uploaded_items.is_empty()
+                        && process_result.downloaded_items.is_empty()
+                        && process_result.deleted_items.is_empty()
+                    {
+                        "✅ 同步完成: 云端和本地数据已一致，无需同步".to_string()
+                    } else {
+                        format!(
+                            "✅ 同步完成: 上传 {} 项，下载 {} 项，删除 {} 项",
+                            process_result.uploaded_items.len(),
+                            process_result.downloaded_items.len(),
+                            process_result.deleted_items.len()
+                        )
+                    }
+                } else {
+                    "❌ 同步失败".to_string()
+                },
+            })
+        }
+        Err(e) => {
+            log::error!("❌ 同步失败: {}", e);
+            Err(e)
+        }
+    }
 }
 
 /// 启动自动同步
 #[tauri::command]
-pub async fn start_auto_sync(interval_minutes: u64, state: State<'_, Arc<Mutex<CloudSyncEngine>>>) -> Result<SyncResult, String> {
+pub async fn start_auto_sync(
+    interval_minutes: u64,
+    state: State<'_, Arc<Mutex<CloudSyncEngine>>>,
+    db_state: State<'_, DatabaseState>,
+) -> Result<SyncResult, String> {
     let mut engine = state.lock().await;
-    engine.start_auto_sync(interval_minutes).await
+    engine.start_auto_sync(interval_minutes, &db_state).await
 }
 
 /// 停止自动同步
@@ -221,9 +228,10 @@ pub fn get_sync_progress(state: State<'_, Arc<Mutex<CloudSyncEngine>>>) -> Resul
 pub async fn update_sync_config(
     config: SyncConfig,
     state: State<'_, Arc<Mutex<CloudSyncEngine>>>,
+    db_state: State<'_, DatabaseState>,
 ) -> Result<SyncResult, String> {
     let mut engine = state.lock().await;
-    engine.init(config).await
+    engine.init(config, &db_state).await
 }
 
 /// 获取当前同步配置

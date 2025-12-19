@@ -162,6 +162,12 @@ pub struct DataManager {
     local_data: Vec<SyncDataItem>,
     /// 云端数据缓存
     cloud_data: Vec<SyncDataItem>,
+    /// 本地同步状态跟踪（独立于 SyncDataItem）
+    /// key: item_id, value: 同步状态
+    local_sync_status: HashMap<String, SyncDataStatus>,
+    /// 本地变更项目跟踪（确保编辑后能正确同步）
+    /// key: item_id，当项目在本地被编辑时加入此集合
+    locally_changed_items: HashSet<String>,
     /// 当前同步索引
     #[allow(dead_code)]
     current_index: Option<SyncIndex>,
@@ -183,6 +189,8 @@ impl DataManager {
         Self {
             local_data: vec![],
             cloud_data: vec![],
+            local_sync_status: HashMap::new(),
+            locally_changed_items: HashSet::new(),
             current_index: None,
             change_history: vec![],
             previous_mode_config: None,
@@ -237,12 +245,7 @@ impl DataManager {
                 continue;
             }
 
-            // 时间范围筛选
-            if let Some(time_range) = &filter.time_range {
-                if item.create_time < time_range.start_time || item.create_time > time_range.end_time {
-                    continue;
-                }
-            }
+            // 简化：移除时间范围筛选（create_time字段已移除）
 
             filtered.push(item.clone());
         }
@@ -340,51 +343,44 @@ impl DataManager {
         if local.value != cloud.value {
             diff_fields.push("value".to_string());
         }
-        if local.checksum != cloud.checksum {
-            diff_fields.push("checksum".to_string());
-        }
-        if local.last_modified != cloud.last_modified {
-            diff_fields.push("last_modified".to_string());
-        }
+        // 简化：移除checksum和last_modified比较（字段已移除）
 
         diff_fields
     }
 
-    /// 判断是否为冲突
-    /// 冲突定义：双方都有实质性更新且时间戳接近
+    /// 判断是否为冲突（简化版）
+    /// 冲突定义：删除状态不同或内容不同
     fn is_conflict(&self, local: &SyncDataItem, cloud: &SyncDataItem) -> bool {
         // 如果一方被标记为删除，另一方有更新，则是删除冲突
         if local.deleted != cloud.deleted {
             return true;
         }
 
-        // 如果时间戳差异很小且内容不同，可能是并发修改冲突
-        let time_diff = (local.last_modified - cloud.last_modified).abs();
-        if time_diff < 60000 && local.value != cloud.value { // 1分钟内
+        // 如果内容不同，可能是并发修改冲突
+        if local.value != cloud.value {
             return true;
         }
 
         false
     }
 
-    /// 确定冲突类型
+    /// 确定冲突类型（简化版）
     fn determine_conflict_type(&self, local: &SyncDataItem, cloud: &SyncDataItem) -> ConflictType {
         if local.deleted != cloud.deleted {
             ConflictType::Delete
-        } else if local.last_modified != cloud.last_modified {
-            ConflictType::Timestamp
         } else {
             ConflictType::Content
         }
     }
 
-    /// 建议冲突解决方案
+    /// 建议冲突解决方案（简化版）
     fn suggest_conflict_resolution(&self, local: &SyncDataItem, cloud: &SyncDataItem) -> ConflictResolution {
-        // 如果云端版本更新，使用云端版本
-        if cloud.last_modified > local.last_modified {
-            ConflictResolution::UseRemote
+        // 简化：基于内容比较决定使用哪个版本
+        if local.value != cloud.value {
+            // 内容不同，倾向于使用本地版本
+            ConflictResolution::UseLocal
         } else {
-            // 否则使用本地版本
+            // 内容相同，使用本地版本
             ConflictResolution::UseLocal
         }
     }
@@ -454,9 +450,14 @@ impl DataManager {
     }
 
     /// 更新项目
+    /// 自动标记为本地变更，确保同步时会被收集
     async fn update_item(&mut self, item: &SyncDataItem) -> Result<(), String> {
         if let Some(existing) = self.local_data.iter_mut().find(|i| i.id == item.id) {
             *existing = item.clone();
+            // 标记为本地变更，确保同步时会被收集
+            self.locally_changed_items.insert(item.id.clone());
+            // 同时标记为未同步状态
+            self.local_sync_status.insert(item.id.clone(), SyncDataStatus::None);
             Ok(())
         } else {
             Err("项目不存在".to_string())
@@ -482,10 +483,12 @@ impl DataManager {
         let mut validation_details = HashMap::new();
 
         for local_item in &self.local_data {
+            let sync_status = self.get_item_sync_status(&local_item.id);
+
             // 检查状态一致性
             if let Some(cloud_item) = self.cloud_data.iter().find(|i| i.id == local_item.id) {
                 // 如果本地显示已同步，但云端不匹配，则是异常状态
-                if local_item.sync_status == SyncDataStatus::Synced {
+                if sync_status == SyncDataStatus::Synced {
                     let is_actually_synced = self.is_item_actually_synced(local_item, cloud_item);
                     if !is_actually_synced {
                         abnormal_items.push(local_item.id.clone());
@@ -498,7 +501,7 @@ impl DataManager {
                 }
             } else {
                 // 本地显示已同步但云端不存在，也是异常状态
-                if local_item.sync_status == SyncDataStatus::Synced {
+                if sync_status == SyncDataStatus::Synced {
                     abnormal_items.push(local_item.id.clone());
                     items_to_fix.push(local_item.id.clone());
                     validation_details.insert(
@@ -526,14 +529,7 @@ impl DataManager {
             return false;
         }
 
-        // 使用校验和验证（如果可用）
-        if let (Some(local_checksum), Some(cloud_checksum)) = (&local_item.checksum, &cloud_item.checksum) {
-            if !local_checksum.is_empty() && !cloud_checksum.is_empty() {
-                return local_checksum == cloud_checksum;
-            }
-        }
-
-        // 使用内容比较（fallback）
+        // 使用内容比较（简化：移除checksum比较）
         if let (Some(local_value), Some(cloud_value)) = (&local_item.value, &cloud_item.value) {
             let max_len = 1000;
             let local_slice = if local_value.len() > max_len {
@@ -559,13 +555,13 @@ impl DataManager {
         let synced_items = self
             .local_data
             .iter()
-            .filter(|item| item.sync_status == SyncDataStatus::Synced)
+            .filter(|item| self.get_item_sync_status(&item.id) == SyncDataStatus::Synced)
             .count();
         let unsynced_items = total_items - synced_items;
         let conflict_items = self
             .local_data
             .iter()
-            .filter(|item| item.sync_status == SyncDataStatus::Conflict)
+            .filter(|item| self.get_item_sync_status(&item.id) == SyncDataStatus::Conflict)
             .count();
         let deleted_items = self.local_data.iter().filter(|item| item.deleted).count();
 
@@ -596,8 +592,10 @@ impl DataManager {
         let mut abnormal_items = Vec::new();
 
         for item in &self.local_data {
+            let sync_status = self.get_item_sync_status(&item.id);
+
             // 检查同步状态是否异常
-            if item.sync_status == SyncDataStatus::Synced {
+            if sync_status == SyncDataStatus::Synced {
                 // 验证项目是否真的符合同步模式要求
                 let is_valid_for_sync = self.is_item_valid_for_sync_mode(item, mode_config);
 
@@ -607,7 +605,7 @@ impl DataManager {
             }
 
             // 检查是否有空或异常的同步状态
-            if matches!(item.sync_status, SyncDataStatus::None) {
+            if matches!(sync_status, SyncDataStatus::None) {
                 abnormal_items.push(item.id.clone());
             }
         }
@@ -615,10 +613,8 @@ impl DataManager {
         if !abnormal_items.is_empty() {
             self.upgrade_detected = true;
             // 重置这些项目的同步状态
-            for item in &mut self.local_data {
-                if abnormal_items.contains(&item.id) {
-                    item.sync_status = SyncDataStatus::None;
-                }
+            for item_id in &abnormal_items {
+                self.local_sync_status.insert(item_id.clone(), SyncDataStatus::None);
             }
         }
 
@@ -715,28 +711,27 @@ impl DataManager {
     pub fn sync_local_status_with_cloud(&mut self) -> Vec<String> {
         let mut mismatched_items = Vec::new();
 
-        // 先收集需要更新的项目ID和状态
-        let mut updates: Vec<(String, SyncDataStatus)> = Vec::new();
+        // 先收集需要更新的项目ID
+        let mut updates: Vec<String> = Vec::new();
 
         for cloud_item in &self.cloud_data {
             if let Some(local_item) = self.local_data.iter().find(|i| i.id == cloud_item.id) {
                 if !local_item.deleted {
                     let is_actually_synced = self.is_item_actually_synced(local_item, cloud_item);
+                    let current_status = self.get_item_sync_status(&local_item.id);
 
                     // 状态不匹配且项目实际已同步，需要更新状态
-                    if is_actually_synced && local_item.sync_status != SyncDataStatus::Synced {
+                    if is_actually_synced && current_status != SyncDataStatus::Synced {
                         mismatched_items.push(cloud_item.id.clone());
-                        updates.push((cloud_item.id.clone(), SyncDataStatus::Synced));
+                        updates.push(cloud_item.id.clone());
                     }
                 }
             }
         }
 
-        // 应用更新（避免借用冲突）
-        for (item_id, new_status) in updates {
-            if let Some(item) = self.local_data.iter_mut().find(|i| i.id == item_id) {
-                item.sync_status = new_status;
-            }
+        // 应用更新
+        for item_id in updates {
+            self.local_sync_status.insert(item_id, SyncDataStatus::Synced);
         }
 
         mismatched_items
@@ -792,31 +787,26 @@ impl DataManager {
     }
 
     /// 标记项目为已同步
+    /// 同步成功后，自动清理本地变更记录
     pub fn mark_item_as_synced(&mut self, item_id: &str) {
-        if let Some(item) = self.local_data.iter_mut().find(|i| i.id == *item_id) {
-            item.sync_status = SyncDataStatus::Synced;
-        }
+        self.local_sync_status.insert(item_id.to_string(), SyncDataStatus::Synced);
+        // 同步成功后，清理本地变更记录
+        self.locally_changed_items.remove(item_id);
     }
 
     /// 标记项目为同步失败
     pub fn mark_item_as_failed(&mut self, item_id: &str) {
-        if let Some(item) = self.local_data.iter_mut().find(|i| i.id == *item_id) {
-            item.sync_status = SyncDataStatus::Failed;
-        }
+        self.local_sync_status.insert(item_id.to_string(), SyncDataStatus::Failed);
     }
 
     /// 标记项目为未同步
     pub fn mark_item_as_unsynced(&mut self, item_id: &str) {
-        if let Some(item) = self.local_data.iter_mut().find(|i| i.id == *item_id) {
-            item.sync_status = SyncDataStatus::None;
-        }
+        self.local_sync_status.insert(item_id.to_string(), SyncDataStatus::None);
     }
 
     /// 标记项目为需要同步
     pub fn mark_item_as_needs_sync(&mut self, item_id: &str) {
-        if let Some(item) = self.local_data.iter_mut().find(|i| i.id == *item_id) {
-            item.sync_status = SyncDataStatus::None;
-        }
+        self.local_sync_status.insert(item_id.to_string(), SyncDataStatus::None);
     }
 
     /// 标记项目为已删除
@@ -826,22 +816,52 @@ impl DataManager {
         }
     }
 
-    /// 从云端保存项目到本地
-    pub fn save_item_from_cloud(&mut self, cloud_item: &SyncDataItem) {
+    /// 标记项目为本地变更（编辑、内容更新、收藏状态变更等）
+    /// 用于手动标记项目为变更状态，确保同步时会被收集
+    pub fn mark_item_as_changed(&mut self, item_id: &str) {
+        self.locally_changed_items.insert(item_id.to_string());
+        // 同时标记为未同步状态
+        self.local_sync_status.insert(item_id.to_string(), SyncDataStatus::None);
+    }
+
+    /// 获取本地变更的项目ID列表
+    /// 这些项目在同步时应该被优先处理
+    pub fn get_locally_changed_items(&self) -> Vec<String> {
+        self.locally_changed_items.iter().cloned().collect()
+    }
+
+    /// 清除本地变更记录
+    /// 通常在同步完成后调用
+    pub fn clear_locally_changed_items(&mut self) {
+        self.locally_changed_items.clear();
+    }
+
+    /// 检查项目是否被标记为本地变更
+    pub fn is_item_locally_changed(&self, item_id: &str) -> bool {
+        self.locally_changed_items.contains(item_id)
+    }
+
+    /// 获取项目的同步状态
+    pub fn get_item_sync_status(&self, item_id: &str) -> SyncDataStatus {
+        self.local_sync_status.get(item_id).cloned().unwrap_or(SyncDataStatus::None)
+    }
+
+    /// 从云端保存项目到本地（保留统计元数据）
+    pub fn save_item_from_cloud(&mut self, cloud_item: &tauri_plugin_eco_database::SyncDataItem) {
         if let Some(local_item) = self.local_data.iter_mut().find(|i| i.id == cloud_item.id) {
-            // 更新现有项目
+            // 更新现有项目（保留统计元数据）
             local_item.item_type = cloud_item.item_type.clone();
-            local_item.checksum = cloud_item.checksum.clone();
             local_item.value = cloud_item.value.clone();
             local_item.favorite = cloud_item.favorite;
             local_item.note = cloud_item.note.clone();
-            local_item.last_modified = cloud_item.last_modified;
-            local_item.device_id = cloud_item.device_id.clone();
+            local_item.last_modified = chrono::Utc::now().timestamp_millis();
             local_item.deleted = cloud_item.deleted;
-            local_item.sync_status = cloud_item.sync_status.clone();
+            // 从云端下载的数据天然就是已同步的
+            self.local_sync_status.insert(cloud_item.id.clone(), SyncDataStatus::Synced);
         } else {
-            // 添加新项目
+            // 添加新项目（从云端下载的，天然就是已同步的）
             self.local_data.push(cloud_item.clone());
+            self.local_sync_status.insert(cloud_item.id.clone(), SyncDataStatus::Synced);
         }
     }
 }

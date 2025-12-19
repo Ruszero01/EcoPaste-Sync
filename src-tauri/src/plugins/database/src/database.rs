@@ -29,6 +29,49 @@ impl DatabaseManager {
     /// # Arguments
     /// * `db_path` - 数据库文件路径
     pub fn init(&mut self, db_path: PathBuf) -> Result<(), String> {
+        // 先克隆路径用于创建连接
+        let db_path_clone = db_path.clone();
+
+        // 创建数据库连接并初始化表结构
+        let conn = Connection::open(&db_path_clone)
+            .map_err(|e| format!("打开数据库失败: {}", e))?;
+
+        // 创建 history 表
+        conn.execute_batch(r#"
+            CREATE TABLE IF NOT EXISTS history (
+                id TEXT PRIMARY KEY,
+                type TEXT,
+                [group] TEXT,
+                value TEXT,
+                search TEXT,
+                count INTEGER,
+                width INTEGER,
+                height INTEGER,
+                favorite INTEGER DEFAULT 0,
+                createTime TEXT,
+                note TEXT,
+                subtype TEXT,
+                lazyDownload INTEGER DEFAULT 0,
+                fileSize INTEGER,
+                fileType TEXT,
+                deleted INTEGER DEFAULT 0,
+                syncStatus TEXT DEFAULT 'none',
+                isCloudData INTEGER DEFAULT 0,
+                codeLanguage TEXT,
+                isCode INTEGER DEFAULT 0,
+                lastModified INTEGER,
+                sourceAppName TEXT,
+                sourceAppIcon TEXT,
+                position INTEGER DEFAULT 0
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_history_deleted ON history(deleted);
+            CREATE INDEX IF NOT EXISTS idx_history_favorite ON history(favorite);
+            CREATE INDEX IF NOT EXISTS idx_history_createTime ON history(createTime);
+            CREATE INDEX IF NOT EXISTS idx_history_syncStatus ON history(syncStatus);
+            CREATE INDEX IF NOT EXISTS idx_history_isCloudData ON history(isCloudData);
+        "#).map_err(|e| format!("创建数据库表失败: {}", e))?;
+
         self.db_path = Some(db_path);
         self.initialized = true;
         log::info!("数据库管理器已初始化: {:?}", self.db_path);
@@ -154,6 +197,8 @@ impl DatabaseManager {
 
         let history_items = self.query_history(options)?;
 
+        log::info!("查询到 {} 条历史记录 (only_favorites={})", history_items.len(), only_favorites);
+
         Ok(history_items.into_iter().map(SyncDataItem::from).collect())
     }
 
@@ -219,7 +264,7 @@ impl DatabaseManager {
             |_| Ok(true),
         ).unwrap_or(false);
 
-        let create_time = chrono::DateTime::from_timestamp_millis(item.create_time)
+        let create_time = chrono::DateTime::from_timestamp_millis(item.last_modified)
             .map(|dt| dt.to_rfc3339())
             .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
 

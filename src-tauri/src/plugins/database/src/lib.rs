@@ -12,7 +12,7 @@ pub use commands::*;
 use std::sync::Arc;
 use tauri::{
     plugin::{Builder, TauriPlugin},
-    Manager, Runtime,
+    Runtime,
 };
 use tokio::sync::Mutex;
 
@@ -27,12 +27,6 @@ pub fn create_shared_database() -> DatabaseState {
 /// 初始化插件
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("eco-database")
-        .setup(|app, _api| {
-            // 延迟初始化数据库，在前端调用 set_database_path 命令时设置路径
-            log::info!("数据库插件已加载，等待路径配置");
-
-            Ok(())
-        })
         .invoke_handler(tauri::generate_handler![
             commands::set_database_path,
             commands::query_history,

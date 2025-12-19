@@ -18,6 +18,7 @@ tokio = { version = "1.0", features = ["full"] }
 log = "0.4"
 rusqlite = { version = "0.31", features = ["bundled"] }
 chrono = { version = "0.4", features = ["serde"] }
+dirs = "5.0"
 
 [features]
 default = []

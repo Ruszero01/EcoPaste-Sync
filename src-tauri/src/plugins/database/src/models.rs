@@ -80,41 +80,37 @@ impl Default for HistoryItem {
 pub struct SyncDataItem {
     pub id: String,
     pub item_type: String,
-    pub checksum: Option<String>,
+    pub subtype: Option<String>,
     pub value: Option<String>,
     pub favorite: bool,
     pub note: Option<String>,
-    pub create_time: i64,
     pub last_modified: i64,
-    pub device_id: String,
-    pub sync_status: String,
     pub deleted: bool,
+    // 统计元数据
+    pub file_size: Option<i64>,
+    pub width: Option<i32>,
+    pub height: Option<i32>,
 }
 
 impl From<HistoryItem> for SyncDataItem {
     fn from(item: HistoryItem) -> Self {
-        let create_time = chrono::DateTime::parse_from_rfc3339(&item.create_time)
+        let last_modified = chrono::DateTime::parse_from_rfc3339(&item.create_time)
             .map(|dt| dt.timestamp_millis())
             .unwrap_or_else(|_| chrono::Utc::now().timestamp_millis());
 
         Self {
             id: item.id,
             item_type: item.item_type.unwrap_or_else(|| "text".to_string()),
-            checksum: item.search.as_ref().map(|s| {
-                if s.len() > 32 {
-                    s[..32].to_string()
-                } else {
-                    s.clone()
-                }
-            }),
+            subtype: item.subtype, // 从历史数据中提取 subtype
             value: item.value,
             favorite: item.favorite == 1,
             note: item.note,
-            create_time,
-            last_modified: item.last_modified.unwrap_or(create_time),
-            device_id: "local-device".to_string(),
-            sync_status: item.sync_status.unwrap_or_else(|| "none".to_string()),
+            last_modified: item.last_modified.unwrap_or(last_modified),
             deleted: item.deleted.unwrap_or(0) == 1,
+            // 统计元数据
+            file_size: item.file_size,
+            width: item.width,
+            height: item.height,
         }
     }
 }

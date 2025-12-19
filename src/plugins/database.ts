@@ -70,14 +70,10 @@ const COMMAND = {
 } as const;
 
 /**
- * 设置数据库路径并初始化
+ * 设置数据库路径并初始化 - 后端自动获取路径
  */
-export const backendSetDatabasePath = (config: DatabaseConfig) => {
-	return invoke<void>(COMMAND.SET_DATABASE_PATH, {
-		saveDataDir: config.save_data_dir,
-		appName: config.app_name,
-		isDev: config.is_dev,
-	});
+export const backendSetDatabasePath = () => {
+	return invoke<void>(COMMAND.SET_DATABASE_PATH, {});
 };
 
 /**

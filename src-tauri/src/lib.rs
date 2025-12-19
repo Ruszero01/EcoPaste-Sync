@@ -116,10 +116,12 @@ pub fn run() {
         .plugin(tauri_plugin_eco_sync::init())
         // Shell 插件：https://github.com/tauri-apps/plugins-workspace/tree/v2/plugins/shell
         .plugin(tauri_plugin_shell::init())
-        // 初始化云同步引擎状态
+        // 初始化共享状态
         .manage(create_shared_client())
         .manage(create_shared_manager())
+        // 先创建并管理数据库实例，供所有组件使用
         .manage(create_shared_database())
+        // 创建并管理同步引擎实例
         .manage(create_shared_engine(create_shared_client(), create_shared_manager()))
         .on_window_event(|window, event| match event {
             // 让 app 保持在后台运行：https://tauri.app/v1/guides/features/system-tray/#preventing-the-app-from-closing
