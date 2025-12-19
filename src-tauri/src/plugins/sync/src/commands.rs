@@ -314,3 +314,21 @@ pub async fn update_file_sync_config(
         message: "文件同步配置已更新".to_string(),
     })
 }
+
+/// 上传本地配置到云端
+#[tauri::command]
+pub async fn upload_local_config(
+    state: State<'_, Arc<Mutex<CloudSyncEngine>>>,
+) -> Result<SyncResult, String> {
+    let engine = state.lock().await;
+    engine.upload_local_config().await
+}
+
+/// 应用云端配置
+#[tauri::command]
+pub async fn apply_remote_config(
+    state: State<'_, Arc<Mutex<CloudSyncEngine>>>,
+) -> Result<SyncResult, String> {
+    let engine = state.lock().await;
+    engine.apply_remote_config().await
+}

@@ -8,6 +8,7 @@ use crate::sync_core::{SyncCore, SyncModeConfig, SyncProcessResult};
 use crate::data_manager::{DataManager, create_shared_manager as create_data_manager};
 use crate::file_sync_manager::{FileSyncManager, create_shared_manager as create_file_sync_manager};
 use crate::cleanup_manager::{CleanupManager, CleanupConfig, CleanupStatus};
+use crate::config_sync_manager::{ConfigSyncManager};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tauri_plugin_eco_database::DatabaseState;
@@ -47,6 +48,8 @@ pub struct CloudSyncEngine {
     pub file_sync_manager: Arc<Mutex<FileSyncManager>>,
     /// 云端数据清理管理器
     pub cleanup_manager: Arc<Mutex<CleanupManager>>,
+    /// 配置同步管理器
+    pub config_sync_manager: Arc<Mutex<ConfigSyncManager>>,
 }
 
 impl CloudSyncEngine {
@@ -63,6 +66,7 @@ impl CloudSyncEngine {
             file_sync_manager.clone(),
         )));
         let cleanup_manager = Arc::new(Mutex::new(CleanupManager::new(webdav_client.clone())));
+        let config_sync_manager = Arc::new(Mutex::new(ConfigSyncManager::new(webdav_client.clone())));
 
         Self {
             status: SyncStatus::Idle,
@@ -74,6 +78,7 @@ impl CloudSyncEngine {
             data_manager,
             file_sync_manager,
             cleanup_manager,
+            config_sync_manager,
         }
     }
 
@@ -431,6 +436,32 @@ impl CloudSyncEngine {
             Ok(_) => Ok(SyncResult {
                 success: true,
                 message: "✅ 清理完成".to_string(),
+            }),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// 上传本地配置到云端
+    pub async fn upload_local_config(&self) -> Result<SyncResult, String> {
+        let config_sync_manager = self.config_sync_manager.lock().await;
+
+        match config_sync_manager.upload_local_config().await {
+            Ok(result) => Ok(SyncResult {
+                success: result.success,
+                message: result.message,
+            }),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// 应用云端配置
+    pub async fn apply_remote_config(&self) -> Result<SyncResult, String> {
+        let config_sync_manager = self.config_sync_manager.lock().await;
+
+        match config_sync_manager.apply_remote_config().await {
+            Ok(result) => Ok(SyncResult {
+                success: result.success,
+                message: result.message,
             }),
             Err(e) => Err(e),
         }

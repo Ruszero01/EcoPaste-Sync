@@ -13,6 +13,7 @@ mod sync_core;
 mod data_manager;
 mod file_sync_manager;
 mod cleanup_manager;
+mod config_sync_manager;
 mod events;
 
 pub use sync_engine::{create_shared_engine, CloudSyncEngine};
@@ -30,6 +31,7 @@ pub use file_sync_manager::{
     create_shared_manager as create_file_sync_manager
 };
 pub use cleanup_manager::{CleanupManager, CleanupConfig, CleanupStatus};
+pub use config_sync_manager::{ConfigSyncManager, ConfigSyncResult, AppConfig};
 pub use events::{EventEmitter, SyncEvent, create_shared_emitter};
 
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
@@ -54,7 +56,9 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::sync_file_batch,
             commands::delete_files,
             commands::get_file_sync_config,
-            commands::update_file_sync_config
+            commands::update_file_sync_config,
+            commands::upload_local_config,
+            commands::apply_remote_config
         ])
         .build()
 }
