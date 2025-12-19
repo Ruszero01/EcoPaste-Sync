@@ -165,6 +165,33 @@ impl CloudSyncEngine {
 
         self.status = SyncStatus::Syncing;
         let result = core.perform_sync(config.sync_mode.clone(), database_state).await;
+
+        // 执行书签同步（只在主同步成功且有书签数据时）
+        if let Ok(_) = &result {
+            log::info!("🔄 执行书签同步...");
+            let bookmark_sync_manager = self.bookmark_sync_manager.clone();
+            let manager = bookmark_sync_manager.lock().await;
+
+            // 检查是否有书签数据需要同步
+            if manager.has_bookmark_data() {
+                match manager.sync_bookmarks().await {
+                    Ok(bookmark_result) => {
+                        if bookmark_result.need_upload || bookmark_result.need_download {
+                            log::info!("📚 书签同步: {}", bookmark_result.message);
+                        } else {
+                            log::info!("📚 书签数据无需同步");
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!("⚠️ 书签同步失败: {}", e);
+                        // 书签同步失败不影响主同步结果
+                    }
+                }
+            } else {
+                log::info!("📚 本地无书签数据，跳过书签同步");
+            }
+        }
+
         self.status = SyncStatus::Idle;
 
         result
@@ -338,6 +365,33 @@ impl CloudSyncEngine {
         // 直接执行同步，让 perform_sync 负责所有数据库操作
         // 避免死锁：不要在调用 perform_sync 之前锁定 database_state
         let result = core.perform_sync(mode_config, database_state).await;
+
+        // 执行书签同步（只在主同步成功且有书签数据时）
+        if let Ok(_) = &result {
+            log::info!("🔄 执行书签同步...");
+            let bookmark_sync_manager = self.bookmark_sync_manager.clone();
+            let manager = bookmark_sync_manager.lock().await;
+
+            // 检查是否有书签数据需要同步
+            if manager.has_bookmark_data() {
+                match manager.sync_bookmarks().await {
+                    Ok(bookmark_result) => {
+                        if bookmark_result.need_upload || bookmark_result.need_download {
+                            log::info!("📚 书签同步: {}", bookmark_result.message);
+                        } else {
+                            log::info!("📚 书签数据无需同步");
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!("⚠️ 书签同步失败: {}", e);
+                        // 书签同步失败不影响主同步结果
+                    }
+                }
+            } else {
+                log::info!("📚 本地无书签数据，跳过书签同步");
+            }
+        }
+
         self.status = SyncStatus::Idle;
 
         match &result {
@@ -474,6 +528,12 @@ impl CloudSyncEngine {
             }),
             Err(e) => Err(e),
         }
+    }
+
+    /// 设置书签同步数据
+    pub async fn set_bookmark_sync_data(&mut self, bookmark_data: crate::bookmark_sync_manager::BookmarkSyncData) {
+        let mut bookmark_sync_manager = self.bookmark_sync_manager.lock().await;
+        bookmark_sync_manager.set_local_data(bookmark_data);
     }
 
     /// 执行书签同步

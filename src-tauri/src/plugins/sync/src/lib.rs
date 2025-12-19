@@ -62,7 +62,8 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::upload_local_config,
             commands::apply_remote_config,
             commands::sync_bookmarks,
-            commands::download_bookmarks
+            commands::download_bookmarks,
+            commands::set_bookmark_sync_data
         ])
         .build()
 }

@@ -350,3 +350,17 @@ pub async fn download_bookmarks(
     let engine = state.lock().await;
     engine.download_bookmarks().await
 }
+
+/// 设置书签同步数据
+#[tauri::command]
+pub async fn set_bookmark_sync_data(
+    bookmark_data: crate::bookmark_sync_manager::BookmarkSyncData,
+    state: State<'_, Arc<Mutex<CloudSyncEngine>>>,
+) -> Result<SyncResult, String> {
+    let mut engine = state.lock().await;
+    engine.set_bookmark_sync_data(bookmark_data).await;
+    Ok(SyncResult {
+        success: true,
+        message: "✅ 书签数据已设置".to_string(),
+    })
+}
