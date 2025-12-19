@@ -332,3 +332,21 @@ pub async fn apply_remote_config(
     let engine = state.lock().await;
     engine.apply_remote_config().await
 }
+
+/// 执行书签同步
+#[tauri::command]
+pub async fn sync_bookmarks(
+    state: State<'_, Arc<Mutex<CloudSyncEngine>>>,
+) -> Result<SyncResult, String> {
+    let engine = state.lock().await;
+    engine.sync_bookmarks().await
+}
+
+/// 下载书签数据
+#[tauri::command]
+pub async fn download_bookmarks(
+    state: State<'_, Arc<Mutex<CloudSyncEngine>>>,
+) -> Result<SyncResult, String> {
+    let engine = state.lock().await;
+    engine.download_bookmarks().await
+}

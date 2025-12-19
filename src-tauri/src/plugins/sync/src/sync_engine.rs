@@ -9,6 +9,7 @@ use crate::data_manager::{DataManager, create_shared_manager as create_data_mana
 use crate::file_sync_manager::{FileSyncManager, create_shared_manager as create_file_sync_manager};
 use crate::cleanup_manager::{CleanupManager, CleanupConfig, CleanupStatus};
 use crate::config_sync_manager::{ConfigSyncManager};
+use crate::bookmark_sync_manager::{BookmarkSyncManager, BookmarkSyncResult};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tauri_plugin_eco_database::DatabaseState;
@@ -50,6 +51,8 @@ pub struct CloudSyncEngine {
     pub cleanup_manager: Arc<Mutex<CleanupManager>>,
     /// 配置同步管理器
     pub config_sync_manager: Arc<Mutex<ConfigSyncManager>>,
+    /// 书签同步管理器
+    pub bookmark_sync_manager: Arc<Mutex<BookmarkSyncManager>>,
 }
 
 impl CloudSyncEngine {
@@ -67,6 +70,11 @@ impl CloudSyncEngine {
         )));
         let cleanup_manager = Arc::new(Mutex::new(CleanupManager::new(webdav_client.clone())));
         let config_sync_manager = Arc::new(Mutex::new(ConfigSyncManager::new(webdav_client.clone())));
+        let device_id = "device-".to_string() + &chrono::Utc::now().timestamp_millis().to_string();
+        let bookmark_sync_manager = Arc::new(Mutex::new(BookmarkSyncManager::new(
+            webdav_client.clone(),
+            device_id,
+        )));
 
         Self {
             status: SyncStatus::Idle,
@@ -79,6 +87,7 @@ impl CloudSyncEngine {
             file_sync_manager,
             cleanup_manager,
             config_sync_manager,
+            bookmark_sync_manager,
         }
     }
 
@@ -462,6 +471,36 @@ impl CloudSyncEngine {
             Ok(result) => Ok(SyncResult {
                 success: result.success,
                 message: result.message,
+            }),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// 执行书签同步
+    pub async fn sync_bookmarks(&self) -> Result<SyncResult, String> {
+        let bookmark_sync_manager = self.bookmark_sync_manager.lock().await;
+
+        match bookmark_sync_manager.sync_bookmarks().await {
+            Ok(result) => Ok(SyncResult {
+                success: result.success,
+                message: result.message,
+            }),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// 下载书签数据
+    pub async fn download_bookmarks(&self) -> Result<SyncResult, String> {
+        let bookmark_sync_manager = self.bookmark_sync_manager.lock().await;
+
+        match bookmark_sync_manager.download_bookmarks().await {
+            Ok(Some(_data)) => Ok(SyncResult {
+                success: true,
+                message: "书签数据下载成功".to_string(),
+            }),
+            Ok(None) => Ok(SyncResult {
+                success: true,
+                message: "云端无书签数据".to_string(),
             }),
             Err(e) => Err(e),
         }
