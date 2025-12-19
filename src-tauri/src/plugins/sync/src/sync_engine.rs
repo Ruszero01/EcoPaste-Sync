@@ -116,7 +116,7 @@ impl CloudSyncEngine {
 
         Ok(SyncResult {
             success: true,
-            message: "同步引擎初始化成功".to_string(),
+            message: "✅ 初始化完成".to_string(),
         })
     }
 
@@ -125,7 +125,7 @@ impl CloudSyncEngine {
         self.status = SyncStatus::Idle;
         Ok(SyncResult {
             success: true,
-            message: "同步引擎已启动".to_string(),
+            message: "✅ 启动成功".to_string(),
         })
     }
 
@@ -136,7 +136,7 @@ impl CloudSyncEngine {
         self.status = SyncStatus::Idle;
         Ok(SyncResult {
             success: true,
-            message: "同步引擎已停止".to_string(),
+            message: "✅ 已停止".to_string(),
         })
     }
 
@@ -174,10 +174,7 @@ impl CloudSyncEngine {
                 success: process_result.success,
                 message: if process_result.success {
                     format!(
-                        "✅ 同步完成: 上传 {} 项，下载 {} 项，删除 {} 项",
-                        process_result.uploaded_items.len(),
-                        process_result.downloaded_items.len(),
-                        process_result.deleted_items.len()
+                        "✅ 同步完成",
                     )
                 } else {
                     "❌ 同步失败".to_string()
@@ -232,7 +229,7 @@ impl CloudSyncEngine {
 
         Ok(SyncResult {
             success: true,
-            message: format!("自动同步已启动，间隔: {} 分钟", interval_minutes),
+            message: format!("✅ 自动同步已启动 ({}分钟)", interval_minutes),
         })
     }
 
@@ -255,7 +252,7 @@ impl CloudSyncEngine {
 
         Ok(SyncResult {
             success: true,
-            message: "自动同步已停止".to_string(),
+            message: "✅ 自动同步已停止".to_string(),
         })
     }
 
@@ -270,7 +267,7 @@ impl CloudSyncEngine {
 
         Ok(SyncResult {
             success: true,
-            message: format!("自动同步间隔已更新为: {} 分钟", interval_minutes),
+            message: format!("✅ 同步间隔: {}分钟", interval_minutes),
         })
     }
 
@@ -416,7 +413,7 @@ impl CloudSyncEngine {
 
         Ok(SyncResult {
             success: true,
-            message: "清理配置已更新".to_string(),
+            message: "✅ 清理配置已更新".to_string(),
         })
     }
 
@@ -433,7 +430,7 @@ impl CloudSyncEngine {
         match cleanup_manager.perform_cleanup().await {
             Ok(_) => Ok(SyncResult {
                 success: true,
-                message: "云端数据清理完成".to_string(),
+                message: "✅ 清理完成".to_string(),
             }),
             Err(e) => Err(e),
         }

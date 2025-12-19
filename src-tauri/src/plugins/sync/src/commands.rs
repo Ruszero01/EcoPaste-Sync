@@ -74,10 +74,10 @@ pub async fn trigger_sync(
                         && process_result.downloaded_items.is_empty()
                         && process_result.deleted_items.is_empty()
                     {
-                        "✅ 同步完成: 云端和本地数据已一致，无需同步".to_string()
+                        "✅ 同步完成".to_string()
                     } else {
                         format!(
-                            "✅ 同步完成: 上传 {} 项，下载 {} 项，删除 {} 项",
+                            "✅ 同步: 上传{} 下{} 删{}",
                             process_result.uploaded_items.len(),
                             process_result.downloaded_items.len(),
                             process_result.deleted_items.len()
