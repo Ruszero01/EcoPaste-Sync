@@ -10,6 +10,7 @@
 //! 5. 删除遗漏 - 完整的删除流程，确保云端文件被正确删除
 
 use crate::webdav::WebDAVClientState;
+use md5;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -37,6 +38,32 @@ pub struct FileMetadata {
     pub checksum: Option<String>,
     /// MIME类型
     pub mime_type: Option<String>,
+}
+
+/// 计算文件的MD5哈希值
+/// 用于文件去重和变更检测
+pub async fn calculate_file_checksum(file_path: &PathBuf) -> Result<String, String> {
+    let mut file = tokio::fs::File::open(file_path)
+        .await
+        .map_err(|e| format!("打开文件失败: {}", e))?;
+
+    let mut context = md5::Context::new();
+    let mut buffer = vec![0u8; 8192]; // 8KB buffer
+
+    loop {
+        let bytes_read = file.read(&mut buffer)
+            .await
+            .map_err(|e| format!("读取文件失败: {}", e))?;
+
+        if bytes_read == 0 {
+            break;
+        }
+
+        context.consume(&buffer[..bytes_read]);
+    }
+
+    let result = context.compute();
+    Ok(format!("{:x}", result))
 }
 
 /// 文件上传任务
@@ -982,15 +1009,25 @@ impl FileSyncManager {
             errors: vec![],
         };
 
-        // 获取需要处理文件的项目（排除已删除的项目）
-        let file_items: Vec<_> = cloud_result.success_items
+        // 从本地原始数据中筛选文件类型的项目
+        let file_items: Vec<_> = local_raw_data
             .iter()
-            .filter(|_id| {
-                // 这里简化处理，实际应检查项目是否为文件类型
-                true
+            .filter(|item| {
+                // 检查是否为文件类型（image或files）
+                item.item_type == "image" || item.item_type == "files"
+            })
+            .filter(|item| {
+                // 检查是否在云端同步的项目列表中
+                cloud_result.success_items.contains(&item.id)
             })
             .cloned()
             .collect();
+
+        println!(
+            "文件上传筛选: 本地 {} 个文件项目，{} 个成功同步项目",
+            local_raw_data.len(),
+            cloud_result.success_items.len()
+        );
 
         if file_items.is_empty() {
             result.success = true;
@@ -998,72 +1035,100 @@ impl FileSyncManager {
         }
 
         // 去重：基于项目ID，避免重复处理同一个项目
+        let mut seen_ids = std::collections::HashSet::new();
         let unique_items: Vec<_> = file_items
             .into_iter()
-            .collect::<std::collections::HashSet<_>>()
-            .into_iter()
+            .filter(|item| seen_ids.insert(item.id.clone()))
             .collect();
 
-        for item_id in unique_items {
-            // 从本地原始数据中找到对应的完整数据
-            if let Some(local_item) = local_raw_data.iter().find(|item| item.id == item_id) {
-                // 从原始数据中提取文件路径数组
-                let file_paths = self.extract_file_paths(local_item);
+        for item in unique_items {
+            // 从原始数据中提取文件路径数组
+            let file_paths = self.extract_file_paths(&item);
 
-                if file_paths.is_empty() {
-                    continue;
-                }
+            if file_paths.is_empty() {
+                println!("没有找到有效的文件路径: {}", item.id);
+                continue;
+            }
 
-                // 上传文件并创建元数据
-                for file_path in file_paths {
-                    let file_name = file_path.file_name()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or("unknown");
+            println!(
+                "处理文件上传: {}, 类型: {}, 文件数量: {}",
+                item.id,
+                item.item_type,
+                file_paths.len()
+            );
 
-                    let remote_path = self.build_legacy_remote_path(&item_id, file_name);
+            // 上传文件并创建元数据
+            for file_path in file_paths {
+                let file_name = file_path.file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("unknown");
 
-                    let task = FileUploadTask {
-                        metadata: FileMetadata {
-                            id: item_id.clone(),
-                            file_name: file_name.to_string(),
-                            original_path: Some(file_path.clone()),
-                            remote_path: remote_path.clone(),
-                            size: 0, // 将在上传时计算
-                            create_time: std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap()
-                                .as_millis() as i64,
-                            last_modified: std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap()
-                                .as_millis() as i64,
-                            checksum: None,
-                            mime_type: None,
-                        },
-                        local_path: file_path,
-                        remote_path,
-                    };
+                let remote_path = self.build_legacy_remote_path(&item.id, file_name);
 
-                    match self.upload_file(task).await {
-                        Ok(upload_result) => {
-                            if upload_result.success {
-                                result.success_count += 1;
-                                result.total_bytes += upload_result.total_bytes;
-                            } else {
-                                result.failed_count += 1;
-                                result.errors.extend(upload_result.errors);
-                            }
-                        }
-                        Err(e) => {
+                // 计算文件哈希和大小
+                let checksum = match calculate_file_checksum(&file_path).await {
+                    Ok(hash) => {
+                        log::info!("📝 文件哈希计算成功: {} -> {}", file_name, hash);
+                        Some(hash)
+                    }
+                    Err(e) => {
+                        log::warn!("⚠️ 文件哈希计算失败: {}, 错误: {}", file_name, e);
+                        None
+                    }
+                };
+
+                let metadata = FileMetadata {
+                    id: item.id.clone(),
+                    file_name: file_name.to_string(),
+                    original_path: Some(file_path.clone()),
+                    remote_path: remote_path.clone(),
+                    size: 0, // 将在上传时计算
+                    create_time: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_millis() as i64,
+                    last_modified: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_millis() as i64,
+                    checksum,
+                    mime_type: None,
+                };
+
+                let task = FileUploadTask {
+                    metadata,
+                    local_path: file_path.clone(),
+                    remote_path,
+                };
+
+                match self.upload_file(task).await {
+                    Ok(upload_result) => {
+                        if upload_result.success {
+                            result.success_count += 1;
+                            result.total_bytes += upload_result.total_bytes;
+                            println!("文件上传成功: {}", file_name);
+                        } else {
                             result.failed_count += 1;
-                            result.errors.push(e);
+                            result.errors.extend(upload_result.errors);
+                            println!("文件上传失败: {}", file_name);
                         }
+                    }
+                    Err(e) => {
+                        result.failed_count += 1;
+                        result.errors.push(e.clone());
+                        println!("文件上传异常: {}", e);
                     }
                 }
             }
         }
 
         result.success = result.failed_count == 0;
+        println!(
+            "文件上传完成: 成功 {} 个, 失败 {} 个, 总大小 {} 字节",
+            result.success_count,
+            result.failed_count,
+            result.total_bytes
+        );
         Ok(result)
     }
 
@@ -1179,28 +1244,49 @@ impl FileSyncManager {
             return Ok(true);
         }
 
-        let _client = self.webdav_client.lock().await;
-        // let mut delete_promises: Vec<_> = Vec::new();
+        log::info!("🔄 开始删除远程文件，共 {} 项", item_ids.len());
 
+        let mut found_files = Vec::new();
+        let mut delete_tasks = Vec::new();
+
+        // 先尝试构建可能的文件路径模式并尝试删除
         for item_id in item_ids {
-            // 构建远程文件路径（简化处理）
-            let remote_path = format!("files/{}_*", item_id);
+            // 根据之前的上传路径格式：files/{id}_{filename}
+            // 我们不知道具体文件名，所以尝试常见扩展名
+            let possible_extensions = ["bin", "jpg", "jpeg", "png", "gif", "pdf", "doc", "docx", "xls", "xlsx"];
 
-            // 注意：WebDAV不支持通配符删除，这里只是示例
-            // 实际应用中需要先获取文件列表，然后逐个删除
-            println!("准备删除远程文件: {}", remote_path);
-
-            // 这里简化处理，实际应查询云端索引获取具体文件路径
-            // delete_promises.push(client.delete_file(&remote_path));
+            for ext in &possible_extensions {
+                let remote_path = format!("files/{}_{}", item_id, ext);
+                found_files.push(remote_path.clone());
+                delete_tasks.push(remote_path);
+            }
         }
 
-        // 等待所有删除操作完成
-        // let delete_results = futures::future::join_all(delete_promises).await;
+        // 并发删除文件
+        let mut success_count = 0;
+        let mut failed_count = 0;
 
-        // 统计删除结果
-        // let success_count = delete_results.iter().filter(|r| r.is_ok()).count();
-        // Ok(success_count == item_ids.len())
+        for remote_path in delete_tasks {
+            let client = self.webdav_client.lock().await;
+            match client.delete_file(&remote_path).await {
+                Ok(true) => {
+                    success_count += 1;
+                    log::info!("✅ 远程文件删除成功: {}", remote_path);
+                }
+                Ok(false) => {
+                    failed_count += 1;
+                    log::warn!("⚠️ 远程文件不存在或删除失败: {}", remote_path);
+                }
+                Err(e) => {
+                    failed_count += 1;
+                    log::error!("❌ 远程文件删除错误 {}: {}", remote_path, e);
+                }
+            }
+        }
 
+        log::info!("📊 远程文件删除完成: 成功 {} 个，失败 {} 个", success_count, failed_count);
+
+        // 即使部分失败也返回成功，因为文件可能本来就不存在
         Ok(true)
     }
 

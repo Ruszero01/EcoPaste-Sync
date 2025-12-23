@@ -76,6 +76,8 @@ impl Default for HistoryItem {
 }
 
 /// 同步数据项（用于云同步）
+/// 注意：云端不保留 deleted 字段，已删除项目直接从云端移除
+/// 注意：所有元数据都保存在 value 字段中（JSON格式），外部不再保留冗余字段
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncDataItem {
     pub id: String,
@@ -85,11 +87,6 @@ pub struct SyncDataItem {
     pub favorite: bool,
     pub note: Option<String>,
     pub last_modified: i64,
-    pub deleted: bool,
-    // 统计元数据
-    pub file_size: Option<i64>,
-    pub width: Option<i32>,
-    pub height: Option<i32>,
 }
 
 impl From<HistoryItem> for SyncDataItem {
@@ -106,11 +103,7 @@ impl From<HistoryItem> for SyncDataItem {
             favorite: item.favorite == 1,
             note: item.note,
             last_modified: item.last_modified.unwrap_or(last_modified),
-            deleted: item.deleted.unwrap_or(0) == 1,
-            // 统计元数据
-            file_size: item.file_size,
-            width: item.width,
-            height: item.height,
+            // 所有元数据都保存在 value 字段中（JSON格式）
         }
     }
 }

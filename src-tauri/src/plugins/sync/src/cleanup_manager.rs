@@ -127,7 +127,7 @@ impl CleanupManager {
     /// 清理云端数据中的垃圾数据
     async fn cleanup_cloud_data(
         webdav_client: WebDAVClientState,
-        config: &CleanupConfig,
+        _config: &CleanupConfig,
     ) -> Result<(), String> {
         let client = webdav_client.lock().await;
 

@@ -218,6 +218,22 @@ impl DatabaseManager {
         Ok(())
     }
 
+    /// 更新项目的 value 字段
+    ///
+    /// # Arguments
+    /// * `id` - 项目ID
+    /// * `value` - 新的 value 值
+    pub fn update_item_value(&self, id: &str, value: &str) -> Result<(), String> {
+        let conn = self.get_connection()?;
+
+        conn.execute(
+            "UPDATE history SET value = ?1 WHERE id = ?2",
+            params![value, id],
+        ).map_err(|e| format!("更新项目值失败: {}", e))?;
+
+        Ok(())
+    }
+
     /// 批量更新同步状态
     ///
     /// # Arguments
@@ -281,7 +297,7 @@ impl DatabaseManager {
                     if item.favorite { 1 } else { 0 },
                     item.note,
                     "synced",
-                    if item.deleted { 1 } else { 0 },
+                    0, // 🧹 云端数据不包含 deleted 字段，从云端同步的项目都是活跃的
                     item.last_modified,
                     item.id,
                 ],
@@ -299,7 +315,7 @@ impl DatabaseManager {
                     item.note,
                     create_time,
                     "synced",
-                    if item.deleted { 1 } else { 0 },
+                    0, // 🧹 云端数据不包含 deleted 字段，从云端同步的项目都是活跃的
                     item.last_modified,
                 ],
             ).map_err(|e| format!("插入云端数据失败: {}", e))?;
@@ -308,7 +324,7 @@ impl DatabaseManager {
         Ok(())
     }
 
-    /// 标记项目为已删除
+    /// 标记项目为已删除（软删除）
     ///
     /// # Arguments
     /// * `id` - 项目ID
@@ -321,6 +337,47 @@ impl DatabaseManager {
         ).map_err(|e| format!("标记删除失败: {}", e))?;
 
         Ok(())
+    }
+
+    /// 彻底删除项目（硬删除）
+    /// 用于同步完成后清理本地删除标记
+    ///
+    /// # Arguments
+    /// * `id` - 项目ID
+    pub fn hard_delete(&self, id: &str) -> Result<(), String> {
+        let conn = self.get_connection()?;
+
+        conn.execute(
+            "DELETE FROM history WHERE id = ?1",
+            params![id],
+        ).map_err(|e| format!("硬删除失败: {}", e))?;
+
+        Ok(())
+    }
+
+    /// 批量硬删除项目
+    ///
+    /// # Arguments
+    /// * `ids` - 项目ID列表
+    pub fn batch_hard_delete(&self, ids: &[String]) -> Result<usize, String> {
+        if ids.is_empty() {
+            return Ok(0);
+        }
+
+        let conn = self.get_connection().map_err(|e| e.to_string())?;
+
+        let placeholders: String = ids.iter().map(|_| "?").collect();
+        let query = format!("DELETE FROM history WHERE id IN ({})", placeholders);
+
+        let mut statement = conn.prepare(&query).map_err(|e| e.to_string())?;
+        let mut count = 0;
+
+        for (i, id) in ids.iter().enumerate() {
+            statement.execute(rusqlite::params![i as u32, id]).map_err(|e| e.to_string())?;
+            count += 1;
+        }
+
+        Ok(count)
     }
 
     /// 获取统计信息

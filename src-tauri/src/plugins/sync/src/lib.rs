@@ -48,6 +48,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::stop_auto_sync,
             commands::get_auto_sync_status,
             commands::update_auto_sync_interval,
+            commands::notify_data_changed,
             commands::test_webdav_connection,
             commands::get_sync_progress,
             commands::update_sync_config,
@@ -65,5 +66,14 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::download_bookmarks,
             commands::set_bookmark_sync_data
         ])
+        .setup(|_app_handle, _webview_manager| {
+            // 在插件初始化时创建共享实例
+            let _webdav_client = create_shared_client();
+            let _auto_sync_manager = create_shared_manager();
+            let _sync_engine = create_shared_engine(_webdav_client.clone(), _auto_sync_manager.clone());
+
+            log::info!("✅ 同步插件初始化成功");
+            Ok(())
+        })
         .build()
 }

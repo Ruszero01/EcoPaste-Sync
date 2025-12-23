@@ -1,23 +1,17 @@
 import { createDragPreview } from "@/components/DragPreview";
 import UnoIcon from "@/components/UnoIcon";
-import { updateSQL } from "@/database";
 import { MainContext } from "@/pages/Main";
-import { batchPasteClipboard, smartPasteClipboard } from "@/plugins/clipboard";
+import { smartPasteClipboard } from "@/plugins/clipboard";
+import { batchPasteClipboard, writeClipboard } from "@/plugins/clipboard";
 import type { HistoryTablePayload } from "@/types/database";
-import {
-	cmykToVector,
-	hexToRgb,
-	parseColorString,
-	rgbToCmyk,
-	rgbToHex,
-	rgbToVector,
-} from "@/utils/color";
 import { formatDate } from "@/utils/dayjs";
 import { joinPath } from "@/utils/path";
 import { startDrag } from "@crabnebula/tauri-plugin-drag";
+import { invoke } from "@tauri-apps/api/core";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { Menu, MenuItem, type MenuItemOptions } from "@tauri-apps/api/menu";
-import { downloadDir, resolveResource } from "@tauri-apps/api/path";
+import type { MenuItemOptions } from "@tauri-apps/api/menu";
+import { downloadDir } from "@tauri-apps/api/path";
+import { resolveResource } from "@tauri-apps/api/path";
 import { copyFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import { openPath, openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { App, Flex, type FlexProps } from "antd";
@@ -27,7 +21,7 @@ import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import { filesize } from "filesize";
 import { findIndex, isNil, remove } from "lodash-es";
-import type { DragEvent, FC, MouseEvent } from "react";
+import type { FC } from "react";
 import { useContext } from "react";
 import { useTranslation } from "react-i18next";
 import { useSnapshot } from "valtio";
@@ -254,7 +248,11 @@ const Item: FC<ItemProps> = (props) => {
 		updateData: Partial<HistoryTablePayload>,
 	) => {
 		for (const item of items) {
-			await updateSQL("history", { id: item.id, ...updateData });
+			// 调用database插件批量更新
+			await invoke("batch_update_field", {
+				ids: [item.id],
+				fields: updateData,
+			});
 		}
 	};
 
@@ -369,7 +367,7 @@ const Item: FC<ItemProps> = (props) => {
 			clearMultiSelectState();
 
 			// 更新数据库
-			await updateSQL("history", { id, createTime });
+			await invoke("update_create_time", { id, createTime });
 		} else {
 		}
 	};
@@ -393,17 +391,33 @@ const Item: FC<ItemProps> = (props) => {
 		}
 
 		try {
-			// 使用批量更新函数，但不改变同步状态，保持单个收藏的原有行为
-			const result = await batchUpdateFavorite([id], nextFavorite, false);
+			// 调用database插件更新收藏状态
+			const result = await invoke("update_favorite", {
+				id,
+				favorite: nextFavorite,
+			});
 
 			if (!result.success) {
-				const errorMessage =
-					typeof result.error === "string"
-						? result.error
-						: result.error instanceof Error
-							? result.error.message
-							: "收藏状态更新失败";
-				throw new Error(errorMessage);
+				throw new Error(result.error || "更新收藏状态失败");
+			}
+
+			// 通知后端变更跟踪器（收藏状态变更）
+			try {
+				await invoke("notify_data_changed", {
+					item_id: id,
+					change_type: "favorite",
+				});
+
+				// 同时更新本地syncStatus为"changed"，让UI立即显示变更状态
+				if (itemIndex !== -1) {
+					state.list[itemIndex] = {
+						...state.list[itemIndex],
+						syncStatus: "changed",
+					};
+				}
+			} catch (notifyError) {
+				console.warn("通知后端变更跟踪器失败:", notifyError);
+				// 不影响主要功能继续执行
 			}
 		} catch (error) {
 			console.error("收藏状态更新失败:", error);
@@ -450,8 +464,8 @@ const Item: FC<ItemProps> = (props) => {
 			// 执行批量删除
 			try {
 				// 使用删除管理器执行批量删除
-				const { deleteManager } = await import("@/utils/deleteManager");
-				const result = await deleteManager.deleteItems(selectedIds);
+				// 使用后端数据库命令执行批量删除
+				const result = await invoke("delete_items", { ids: selectedIds });
 
 				if (result.success) {
 					// 清除多选状态
@@ -589,12 +603,11 @@ const Item: FC<ItemProps> = (props) => {
 
 			// 执行批量收藏/取消收藏
 			try {
-				// 使用批量更新函数，但不改变同步状态，保持单个收藏的原有行为
-				const result = await batchUpdateFavorite(
-					selectedIds,
-					newFavoriteStatus,
-					false,
-				);
+				// 调用database插件批量更新收藏状态
+				const result = await invoke("batch_update_favorite", {
+					ids: selectedIds,
+					favorite: newFavoriteStatus,
+				});
 
 				if (result.success) {
 					// 更新本地状态 - 只更新收藏状态，不更新时间戳和位置
@@ -606,6 +619,21 @@ const Item: FC<ItemProps> = (props) => {
 								favorite: newFavoriteStatus,
 							};
 						}
+					}
+
+					// 通知后端变更跟踪器（批量收藏状态变更）
+					try {
+						await Promise.all(
+							selectedIds.map((itemId) =>
+								invoke("notify_data_changed", {
+									item_id: itemId,
+									change_type: "favorite",
+								}),
+							),
+						);
+					} catch (notifyError) {
+						console.warn("通知后端变更跟踪器失败:", notifyError);
+						// 不影响主要功能继续执行
 					}
 
 					// 清除多选状态
@@ -735,6 +763,25 @@ const Item: FC<ItemProps> = (props) => {
 		}
 	};
 
+	// 选中下一个或者上一个
+	const selectNextOrPrev = (isNext = true) => {
+		let nextIndex = index;
+
+		if (isNext) {
+			if (index === state.list.length - 1) return;
+
+			nextIndex = index + 1;
+		} else {
+			if (index === 0) return;
+
+			nextIndex = index - 1;
+		}
+
+		state.activeId = state.list[nextIndex]?.id;
+
+		return nextIndex;
+	};
+
 	// 删除条目
 	const deleteItem = async () => {
 		let confirmed = true;
@@ -762,8 +809,8 @@ const Item: FC<ItemProps> = (props) => {
 
 		try {
 			// 使用删除管理器执行删除
-			const { deleteManager } = await import("@/utils/deleteManager");
-			const result = await deleteManager.deleteItem(id);
+			// 使用后端数据库命令执行删除
+			const result = await invoke("delete_item", { id });
 
 			if (!result.success) {
 				message.error(`删除失败: ${result.errors?.join("; ") ?? "未知错误"}`);
@@ -834,7 +881,7 @@ const Item: FC<ItemProps> = (props) => {
 			const index = findIndex(state.list, { id });
 
 			if (index !== -1) {
-				const createTime = formatDate();
+				const currentTime = Date.now();
 
 				// 获取当前的自动排序设置
 				const currentAutoSort = clipboardStore.content.autoSort;
@@ -842,14 +889,14 @@ const Item: FC<ItemProps> = (props) => {
 				if (currentAutoSort) {
 					// 自动排序开启：移动到顶部
 					const [targetItem] = state.list.splice(index, 1);
-					state.list.unshift({ ...targetItem, createTime });
+					state.list.unshift({ ...targetItem, time: currentTime });
 				} else {
 					// 自动排序关闭：保持原位置，只更新时间
-					state.list[index] = { ...state.list[index], createTime };
+					state.list[index] = { ...state.list[index], time: currentTime };
 				}
 
 				// 更新数据库
-				await updateSQL("history", { id, createTime });
+				await invoke("update_time", { id, time: currentTime });
 
 				// 无论是否在多选状态，都清除多选状态，确保聚焦框正常显示
 				clearMultiSelectState();
@@ -858,25 +905,6 @@ const Item: FC<ItemProps> = (props) => {
 				state.activeId = id;
 			}
 		}
-	};
-
-	// 选中下一个或者上一个
-	const selectNextOrPrev = (isNext = true) => {
-		let nextIndex = index;
-
-		if (isNext) {
-			if (index === state.list.length - 1) return;
-
-			nextIndex = index + 1;
-		} else {
-			if (index === 0) return;
-
-			nextIndex = index - 1;
-		}
-
-		state.activeId = state.list[nextIndex]?.id;
-
-		return nextIndex;
 	};
 
 	// 颜色格式转换函数
@@ -1058,24 +1086,23 @@ const Item: FC<ItemProps> = (props) => {
 		const isMultiSelectMode =
 			clipboardStore.multiSelect.isMultiSelecting &&
 			clipboardStore.multiSelect.selectedIds.size > 0;
-		const selectedCount = clipboardStore.multiSelect.selectedIds.size;
 
 		// 如果是多选模式且当前项目被选中，显示批量操作菜单
 		if (isMultiSelectMode && clipboardStore.multiSelect.selectedIds.has(id)) {
 			const batchItems: ContextMenuItem[] = [
 				{
-					text: `批量粘贴选中的 ${selectedCount} 个项目`,
+					text: `批量粘贴选中的 ${clipboardStore.multiSelect.selectedIds.size}个项目`,
 					action: pasteValue,
 				},
 				{
-					text: `批量收藏选中的 ${selectedCount} 个项目`,
+					text: `批量收藏选中的 ${clipboardStore.multiSelect.selectedIds.size}个项目`,
 					action: () => {
 						// 使用事件总线触发批量收藏，与Header组件保持一致
 						state.$eventBus?.emit(LISTEN_KEY.CLIPBOARD_ITEM_BATCH_FAVORITE);
 					},
 				},
 				{
-					text: `批量删除选中的 ${selectedCount} 个项目`,
+					text: `批量删除选中的 ${clipboardStore.multiSelect.selectedIds.size}个项目`,
 					action: () => {
 						// 使用事件总线触发批量删除，与Header组件保持一致
 						state.$eventBus?.emit(LISTEN_KEY.CLIPBOARD_ITEM_BATCH_DELETE);

@@ -7,7 +7,7 @@ use crate::webdav::WebDAVClientState;
 use crate::data_manager::DataManager;
 use crate::file_sync_manager::FileSyncManager;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tauri_plugin_eco_database::DatabaseState;
@@ -63,63 +63,6 @@ pub type LocalSyncDataItem = tauri_plugin_eco_database::SyncDataItem;
 
 /// 重新导出类型别名，方便使用
 pub use LocalSyncDataItem as SyncDataItem;
-
-/// 从 value 字段提取文件元数据
-/// 支持两种格式：
-/// 1. 本地格式：JSON数组文件路径，如 ["C:\\path\\to\\file"]
-/// 2. 云端格式：简化元数据 JSON，如 {"fileName": "file.rs", "checksum": "...", "remotePath": "..."}
-fn extract_file_metadata_from_value(value: &Option<String>) -> Option<super::file_sync_manager::FileMetadata> {
-    if let Some(ref v) = value {
-        // 尝试解析为 JSON
-        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(v) {
-            // 优先尝试云端简化元数据格式（包含 checksum 字段）
-            if let Some(checksum_obj) = parsed.get("checksum") {
-                if let Some(checksum) = checksum_obj.as_str() {
-                    let file_name = parsed.get("fileName")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("unknown")
-                        .to_string();
-
-                    let remote_path = parsed.get("remotePath")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
-
-                    // 构建简化的 FileMetadata
-                    let metadata = super::file_sync_manager::FileMetadata {
-                        id: "".to_string(),
-                        file_name: file_name.clone(),
-                        original_path: None,
-                        remote_path,
-                        size: 0,
-                        create_time: 0,
-                        last_modified: 0,
-                        checksum: Some(checksum.to_string()),
-                        mime_type: None,
-                    };
-
-                    log::info!("🔍 从云端简化元数据提取到文件哈希: {} = {}", file_name, checksum);
-                    return Some(metadata);
-                }
-            }
-
-            // 尝试标准 FileMetadata 格式
-            if let Ok(meta) = serde_json::from_value::<super::file_sync_manager::FileMetadata>(parsed.clone()) {
-                return Some(meta);
-            }
-
-            // 尝试本地文件路径格式（JSON数组）
-            if let Ok(paths) = serde_json::from_str::<Vec<String>>(v) {
-                if !paths.is_empty() {
-                    // 本地格式，没有哈希，返回 None
-                    log::info!("🔍 检测到本地文件路径格式，无文件哈希");
-                    return None;
-                }
-            }
-        }
-    }
-    None
-}
 
 /// 同步数据状态
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -380,9 +323,12 @@ impl SyncCore {
             mode_config.include_images,
             mode_config.include_files);
 
-        // 🧹 清理本地已删除的数据
-        // 注意：SyncDataItem 不再包含 deleted 字段，软删除标记保存在本地数据库中
-        // 上传时会自动过滤掉已删除的项目
+        // 🧹 清理本地已删除的数据（从本地数据中移除 deleted=true 的项目）
+        let local_active_count = local_data.iter().filter(|item| !item.deleted).count();
+        if local_active_count < local_data.len() {
+            log::info!("🧹 本地数据清理: {} -> {} 项", local_data.len(), local_active_count);
+            // 这里只是记录日志，实际清理在上传时进行
+        }
 
         // 7. 冲突检测和解决 (60%)
         self.update_progress(0.6);
@@ -394,19 +340,9 @@ impl SyncCore {
         // 8. 执行同步操作 - 上传本地新增/更新 (70%)
         self.update_progress(0.7);
         log::info!("🔄 步骤 8/12: 计算同步操作...");
-
-        // 查询本地软删除数据，区分已同步和未同步项目
-        let local_deleted_items = self.load_local_deleted_items(database_state).await.unwrap_or_default();
-
-        // 🔑 关键修复：先批量查询所有本地项目的同步状态，避免循环查询数据库
-        log::info!("🔄 批量查询本地项目同步状态...");
-        let local_sync_status = self.batch_query_local_sync_status(&filtered_local, database_state).await;
-        log::info!("✅ 已获取 {} 个本地项目的同步状态", local_sync_status.len());
-
-        let (items_to_upload, items_to_download, items_to_delete, synced_items) =
-            self.calculate_sync_operations(&filtered_local, &filtered_cloud, &local_deleted_items, local_sync_status).await;
-        log::info!("✅ 同步操作计算完成: 上传 {} 项，下载 {} 项，删除 {} 项，已同步 {} 项",
-                   items_to_upload.len(), items_to_download.len(), items_to_delete.len(), synced_items.len());
+        let (items_to_upload, items_to_download, items_to_delete) =
+            self.calculate_sync_operations(&filtered_local, &filtered_cloud).await;
+        log::info!("✅ 同步操作计算完成: 上传 {} 项，下载 {} 项，删除 {} 项", items_to_upload.len(), items_to_download.len(), items_to_delete.len());
 
         // 上传本地变更
         if !items_to_upload.is_empty() {
@@ -425,7 +361,7 @@ impl SyncCore {
             log::info!("✅ 步骤 8/12: 无需上传本地变更");
         }
 
-        // 9. 下载云端变更（只保存数据，不处理文件） (80%)
+        // 9. 执行同步操作 - 下载云端新增/更新 (80%)
         self.update_progress(0.8);
         if !items_to_download.is_empty() {
             log::info!("🔄 步骤 9/12: 下载云端变更...");
@@ -441,21 +377,6 @@ impl SyncCore {
             }
         } else {
             log::info!("✅ 步骤 9/12: 无需下载云端变更");
-        }
-
-        // 9. 更新已同步项目状态 (80%)
-        self.update_progress(0.80);
-        if !synced_items.is_empty() {
-            log::info!("🔄 步骤 9/12: 更新已同步项目状态...");
-            let db = database_state.lock().await;
-            for item_id in &synced_items {
-                if let Err(e) = db.update_sync_status(item_id, "synced") {
-                    self.report_error(format!("更新已同步项目状态失败: {}", e));
-                }
-            }
-            log::info!("✅ 已同步项目状态更新完成: {} 项", synced_items.len());
-        } else {
-            log::info!("✅ 步骤 9/12: 无需更新已同步项目状态");
         }
 
         // 10. 处理删除操作 (85%)
@@ -476,23 +397,43 @@ impl SyncCore {
             log::info!("✅ 步骤 10/12: 无需删除操作");
         }
 
-        // 11. 更新索引 (95%)
-        self.update_progress(0.95);
-        log::info!("🔄 步骤 11/11: 更新索引...");
-        self.update_sync_index(&mode_config).await?;
-        log::info!("✅ 索引更新完成");
-
-        // 注意：文件操作已在步骤 8/12 中完成，无需重复处理
-
-        // 12. 状态一致性验证和修复 (100%)
-        self.update_progress(1.0);
-        log::info!("🔄 步骤 12/12: 状态一致性验证和修复...");
+        // 11. 状态一致性验证和修复 (90%)
+        self.update_progress(0.9);
+        log::info!("🔄 步骤 11/12: 状态一致性验证和修复...");
         let validation_result = self.validate_and_fix_state().await?;
         let abnormal_items = validation_result.abnormal_items.clone();
         if !validation_result.is_valid {
             self.fix_abnormal_state(validation_result).await?;
         }
         log::info!("✅ 状态验证完成");
+
+        // 🧹 清理本地已删除的数据（彻底删除）
+        {
+            let db = database_state.lock().await;
+            let deleted_items: Vec<String> = {
+                let manager = self.data_manager.lock().await;
+                manager.get_local_data()
+                    .iter()
+                    .filter(|item| item.deleted)
+                    .map(|item| item.id.clone())
+                    .collect()
+            };
+
+            if !deleted_items.is_empty() {
+                log::info!("🧹 清理本地已删除数据，共 {} 项", deleted_items.len());
+                for item_id in &deleted_items {
+                    if let Err(e) = db.mark_deleted(item_id) {
+                        self.report_error(format!("清理本地删除数据失败: {}", e));
+                    }
+                }
+            }
+        }
+
+        // 12. 更新索引和清理 (100%)
+        self.update_progress(1.0);
+        log::info!("🔄 步骤 12/12: 更新索引和清理...");
+        self.update_sync_index(&mode_config).await?;
+        log::info!("✅ 索引更新完成");
 
         result.conflict_items.extend(abnormal_items);
 
@@ -654,7 +595,7 @@ impl SyncCore {
             limit: None,
             offset: None,
             only_favorites: false,
-            exclude_deleted: false, // 包含软删除数据，用于删除检测和冲突处理
+            exclude_deleted: false,
         };
 
         log::info!("🔄 正在查询历史数据...");
@@ -700,7 +641,11 @@ impl SyncCore {
                     favorite: item.favorite != 0,
                     note: item.note,
                     last_modified,
-                    // 所有元数据都保存在 value 字段中（JSON格式）
+                    deleted: item.deleted.unwrap_or(0) != 0,
+                    // 统计元数据
+                    file_size: item.file_size,
+                    width: item.width,
+                    height: item.height,
                 }
             })
             .collect();
@@ -712,109 +657,6 @@ impl SyncCore {
 
         log::info!("✅ 本地数据加载完成");
         Ok(sync_items)
-    }
-
-    /// 查询本地软删除的项目ID和同步状态
-    /// 用于区分已同步和未同步数据的删除策略
-    async fn load_local_deleted_items(&self, database_state: &DatabaseState) -> Result<Vec<(String, SyncDataStatus)>, String> {
-        let db = database_state.lock().await;
-        let data_manager = self.data_manager.clone();
-
-        // 查询软删除的数据
-        let options = tauri_plugin_eco_database::QueryOptions {
-            where_clause: Some("deleted = 1".to_string()),
-            order_by: None,
-            limit: None,
-            offset: None,
-            only_favorites: false,
-            exclude_deleted: false, // 包含软删除数据
-        };
-
-        let history_items = match db.query_history(options) {
-            Ok(items) => {
-                log::info!("✅ 本地软删除数据查询成功，共 {} 条记录", items.len());
-                items
-            }
-            Err(e) => {
-                log::error!("❌ 本地软删除数据查询失败: {}", e);
-                return Ok(vec![]);
-            }
-        };
-
-        // 检查每个软删除项目的同步状态
-        let mut deleted_items_with_status = Vec::new();
-        let manager = data_manager.lock().await;
-        for item in history_items {
-            let sync_status = manager.get_item_sync_status(&item.id);
-            deleted_items_with_status.push((item.id, sync_status));
-        }
-
-        // 统计不同状态的软删除项目数量
-        let synced_count = deleted_items_with_status.iter().filter(|(_, status)| *status == SyncDataStatus::Synced).count();
-        let none_count = deleted_items_with_status.iter().filter(|(_, status)| *status == SyncDataStatus::None).count();
-
-        log::info!("📋 软删除项目统计: 已同步={}, 未同步={}, 总计={}",
-                   synced_count, none_count, deleted_items_with_status.len());
-
-        Ok(deleted_items_with_status)
-    }
-
-    /// 批量查询本地项目的同步状态
-    /// 优化性能：一次性查询所有项目的同步状态，避免循环查询数据库
-    async fn batch_query_local_sync_status(
-        &self,
-        local_data: &[SyncDataItem],
-        database_state: &DatabaseState,
-    ) -> HashMap<String, String> {
-        if local_data.is_empty() {
-            return HashMap::new();
-        }
-
-        let db = database_state.lock().await;
-
-        // 构建 IN 查询
-        let ids: Vec<String> = local_data.iter().map(|item| item.id.clone()).collect();
-        let placeholders: Vec<String> = ids.iter().enumerate()
-            .map(|(i, _)| format!("?{}", i + 1))
-            .collect();
-        let where_clause = format!("id IN ({})", placeholders.join(", "));
-
-        let options = tauri_plugin_eco_database::QueryOptions {
-            where_clause: Some(where_clause),
-            order_by: None,
-            limit: None,
-            offset: None,
-            only_favorites: false,
-            exclude_deleted: false,
-        };
-
-        let history_items = match db.query_history(options) {
-            Ok(items) => {
-                log::info!("✅ 批量查询历史数据成功，共 {} 条记录", items.len());
-                items
-            }
-            Err(e) => {
-                log::error!("❌ 批量查询历史数据失败: {}", e);
-                return HashMap::new();
-            }
-        };
-
-        // 构建同步状态映射
-        let mut sync_status_map = HashMap::new();
-        for item in &history_items {
-            let status = item.sync_status.clone().unwrap_or_else(|| "none".to_string());
-            sync_status_map.insert(item.id.clone(), status);
-        }
-
-        // 对于没有查询到的项目，默认为 "none"
-        for item in local_data {
-            if !sync_status_map.contains_key(&item.id) {
-                sync_status_map.insert(item.id.clone(), "none".to_string());
-            }
-        }
-
-        log::info!("✅ 同步状态映射构建完成，共 {} 项", sync_status_map.len());
-        sync_status_map
     }
 
     /// 加载云端数据
@@ -926,160 +768,77 @@ impl SyncCore {
     }
 
     /// 计算同步操作
-    /// 逻辑：
-    /// 1. 计算上传/下载项目
-    /// 2. 收集已同步项目（只需更新同步状态）
-    /// 3. 收集需要从云端删除的软删除项目
-    /// 注意：同步状态判断已在用户操作层面完成，此处只需收集软删除项目
     async fn calculate_sync_operations(
         &self,
         local_data: &[SyncDataItem],
         cloud_data: &[SyncDataItem],
-        local_deleted_items: &[(String, SyncDataStatus)],
-        local_sync_status: HashMap<String, String>,
-    ) -> (Vec<String>, Vec<String>, Vec<String>, Vec<String>) {
+    ) -> (Vec<String>, Vec<String>, Vec<String>) {
         let mut items_to_upload = Vec::new();
         let mut items_to_download = Vec::new();
         let mut items_to_delete = Vec::new();
-        let mut synced_items = Vec::new();
 
-        // 构建索引（云端数据本身就不包含已删除项目）
+        // 构建索引（过滤已删除项目）
         let local_index: HashMap<String, &SyncDataItem> = local_data
             .iter()
+            .filter(|item| !item.deleted) // 过滤掉已删除的项目（上传时不包含删除的项目）
             .map(|item| (item.id.clone(), item))
             .collect();
 
         let cloud_index: HashMap<String, &SyncDataItem> = cloud_data
             .iter()
+            .filter(|item| !item.deleted) // 过滤掉云端已删除的项目
             .map(|item| (item.id.clone(), item))
             .collect();
 
-        // 收集所有软删除项目ID（同步状态判断已在用户操作层面完成）
-        let all_deleted_ids: Vec<String> = local_deleted_items.iter().map(|(id, _)| id.clone()).collect();
+        // 收集需要清理的已删除项目
+        let items_to_cleanup: Vec<String> = local_data
+            .iter()
+            .filter(|item| item.deleted)
+            .map(|item| item.id.clone())
+            .collect();
 
-        log::info!("🗑️ 收集到 {} 个本地软删除项目", all_deleted_ids.len());
+        if !items_to_cleanup.is_empty() {
+            log::info!("🧹 发现 {} 项已删除数据将在上传前清理", items_to_cleanup.len());
+        }
 
         // 查找本地新增或更新的项目（需要上传）
         for (id, local_item) in &local_index {
             if let Some(cloud_item) = cloud_index.get(id) {
-                // 🔑 关键修复：检查本地项目的同步状态
-                let sync_status = local_sync_status.get(id).cloned().unwrap_or_else(|| "none".to_string());
-                if sync_status == "synced" {
-                    log::info!("✅ 跳过已同步项目: {}", id);
-                    synced_items.push(id.clone());
-                    continue;
-                }
-
-                // 双方都存在，检查数据是否真的需要同步
-                let mut data_changed = local_item.last_modified != cloud_item.last_modified
-                    || local_item.favorite != cloud_item.favorite
-                    || local_item.note != cloud_item.note;
-
-                // 特殊处理文件/图片类型：优先比较文件哈希
-                if local_item.item_type == "image" || local_item.item_type == "files" {
-                    let local_metadata = extract_file_metadata_from_value(&local_item.value);
-                    let cloud_file_metadata = extract_file_metadata_from_value(&cloud_item.value);
-
-                    if let (Some(local_meta), Some(cloud_meta)) = (local_metadata, cloud_file_metadata) {
-                        // 比较文件哈希
-                        let checksum_changed = match (&local_meta.checksum, &cloud_meta.checksum) {
-                            (Some(lc), Some(cc)) => lc != cc, // 都有哈希，比较是否相同
-                            (Some(_), None) => true,           // 本地有哈希，云端没有 - 异常情况
-                            (None, Some(_)) => false,          // 本地没有哈希，云端有 - 文件已同步过
-                            (None, None) => false,             // 都没有哈希，无法比较
-                        };
-
-                        if checksum_changed {
-                            log::info!("🔍 检测到文件哈希变化: {} (本地: {:?}, 云端: {:?})",
-                                      id, local_meta.checksum, cloud_meta.checksum);
-                            data_changed = true;
-                        } else {
-                            log::info!("✅ 文件哈希一致: {} (只标记为已同步，无需上传)", id);
-                            // 标记为已同步项目，后续只更新同步状态
-                            synced_items.push(id.clone());
-                        }
-                    } else {
-                        // 一方或双方无法解析元数据，使用常规比较
-                        if local_item.value != cloud_item.value {
-                            data_changed = true;
-                            log::info!("📝 检测到文件元数据变化: {} (无法解析哈希)", id);
-                        } else {
-                            log::info!("✅ 文件数据一致: {} (只标记为已同步)", id);
-                            synced_items.push(id.clone());
-                        }
-                    }
-                } else {
-                    // 非文件类型，直接比较 value
-                    if local_item.value != cloud_item.value {
-                        data_changed = true;
-                    } else {
-                        log::info!("✅ 数据一致: {} (只标记为已同步)", id);
-                        synced_items.push(id.clone());
-                    }
-                }
-
-                if data_changed {
-                    if local_item.last_modified > cloud_item.last_modified {
-                        log::info!("📤 检测到本地更新的项目: {} (本地时间戳: {}, 云端时间戳: {})",
-                                  id, local_item.last_modified, cloud_item.last_modified);
-                        items_to_upload.push(id.clone());
-                    } else if cloud_item.last_modified > local_item.last_modified {
-                        log::info!("⬇️ 云端更新更新，需要下载: {} (本地: {}, 云端: {})",
-                                  id, local_item.last_modified, cloud_item.last_modified);
-                    } else {
-                        log::info!("📝 检测到数据内容变更: {} (时间戳相同但内容不同)", id);
-                        items_to_upload.push(id.clone());
-                    }
-                } else {
-                    log::info!("✅ 数据一致无需同步: {} (时间戳: {})", id, local_item.last_modified);
+                // 双方都存在，检查时间戳判断谁更新
+                if local_item.last_modified > cloud_item.last_modified {
+                    items_to_upload.push(id.clone());
                 }
             } else {
                 // 本地新增（云端没有）
-                log::info!("📤 检测到本地新增项目: {}", id);
                 items_to_upload.push(id.clone());
             }
         }
 
         // 查找云端新增或更新的项目（需要下载）
-        for (id, _cloud_item) in &cloud_index {
-            if let Some(_local_item) = local_index.get(id) {
-                // 双方都存在的情况已经在上面处理了，这里不需要重复处理
-                // 只处理本地没有的情况（云端新增）
+        for (id, cloud_item) in &cloud_index {
+            if let Some(local_item) = local_index.get(id) {
+                // 双方都存在，检查时间戳判断谁更新
+                if cloud_item.last_modified > local_item.last_modified {
+                    items_to_download.push(id.clone());
+                }
             } else {
                 // 云端新增（本地没有）
-                log::info!("⬇️ 检测到云端新增项目: {}", id);
                 items_to_download.push(id.clone());
             }
         }
 
-        // 查找需要删除的项目
-        // 云端有但本地没有的项目，检查是否在软删除列表中
-        // 只有在软删除列表中的项目，才需要从云端删除
-        let deleted_set: HashSet<String> = all_deleted_ids.iter().cloned().collect();
-
-        for (id, _) in &cloud_index {
-            if !local_index.contains_key(id) {
-                // 本地没有这个项目，检查是否在软删除列表中
-                if deleted_set.contains(id) {
-                    items_to_delete.push(id.clone());
-                    log::info!("🗑️ 检测到本地软删除项目，需要从云端删除: {}", id);
-                } else {
-                    // 本地没有这个项目，且不在软删除列表中
-                    // 这是换设备同步的正常情况，不应该删除云端数据
-                    log::info!("ℹ️ 云端项目在本地不存在（未软删除），可能为新设备同步: {}", id);
+        // 查找需要删除的项目（本地标记为删除的项目）
+        for item in local_data {
+            if item.deleted {
+                // 检查云端是否还有这个项目（如果是新增删除，本地有云端可能没有）
+                // 或者云端还有这个项目且未标记删除
+                if cloud_index.contains_key(&item.id) {
+                    items_to_delete.push(item.id.clone());
                 }
             }
         }
 
-        // 注意：所有软删除项目都需要从云端删除（同步状态判断已在用户操作层面完成）
-        log::info!("📊 软删除项目处理: 总数={}, 从云端删除={}, 新设备同步保留={}",
-                   all_deleted_ids.len(), items_to_delete.len(),
-                   all_deleted_ids.len() - items_to_delete.len());
-
-        log::info!("📊 同步操作统计: 上传 {} 项, 下载 {} 项, 删除 {} 项, 已同步 {} 项",
-            items_to_upload.len(), items_to_download.len(), items_to_delete.len(), synced_items.len());
-
-        (items_to_upload, items_to_download, items_to_delete, synced_items)
+        (items_to_upload, items_to_download, items_to_delete)
     }
 
     /// 上传本地变更
@@ -1138,8 +897,16 @@ impl SyncCore {
         };
         drop(client);
 
-        // 🧹 云端数据本身就不包含已删除项目，直接使用
-        let cloud_existing_clean = cloud_existing;
+        // 🧹 清理云端已删除的数据（从云端数据中移除 deleted=true 的项目）
+        let cloud_existing_clean: Vec<_> = cloud_existing.iter()
+            .filter(|item| !item.deleted)
+            .cloned()
+            .collect();
+
+        if cloud_existing.len() > cloud_existing_clean.len() {
+            log::info!("🧹 清理云端已删除数据: {} -> {}",
+                cloud_existing.len(), cloud_existing_clean.len());
+        }
 
         // 构建合并后的完整数据（云端数据 + 本地新数据）
         let mut merged_items = cloud_existing_clean;
@@ -1192,77 +959,31 @@ impl SyncCore {
             log::info!("🔄 开始上传文件/图片，共 {} 项", file_items_to_upload.len());
             let file_sync_manager_locked = file_sync_manager.lock().await;
 
-            // 用于存储上传成功的文件元数据
-            let mut uploaded_file_metadata: Vec<(String, serde_json::Value)> = Vec::new();
-
             for file_item in &file_items_to_upload {
-                if let Some(value) = &file_item.value {
-                    // 尝试解析JSON格式的文件路径
-                    let file_path_str = if value.starts_with('[') {
-                        // JSON数组格式：["/path/to/file"]
-                        if let Ok(paths) = serde_json::from_str::<Vec<String>>(value) {
-                            if !paths.is_empty() {
-                                paths[0].clone()
-                            } else {
-                                continue;
-                            }
-                        } else {
-                            log::error!("❌ 无法解析文件路径JSON: {}", value);
-                            continue;
-                        }
-                    } else {
-                        // 直接字符串格式
-                        value.clone()
-                    };
-
-                    let file_name = std::path::Path::new(&file_path_str)
+                if let Some(file_path) = &file_item.value {
+                    let file_name = std::path::Path::new(file_path)
                         .file_name()
                         .and_then(|n| n.to_str())
                         .unwrap_or("unknown");
 
-                    log::info!("📁 上传文件: {} -> {}", file_path_str, file_name);
+                    log::info!("📁 上传文件: {} -> {}", file_path, file_name);
 
-                    // 检查文件是否存在
-                    let file_path_buf = std::path::PathBuf::from(&file_path_str);
-                    if !file_path_buf.exists() {
-                        log::error!("❌ 文件不存在: {}", file_path_str);
-                        continue;
-                    }
-
-                    // 计算文件哈希（用于去重和变更检测）
-                    let file_checksum = match crate::file_sync_manager::calculate_file_checksum(&file_path_buf).await {
-                        Ok(hash) => {
-                            log::info!("🔐 文件哈希: {} = {}", file_name, hash);
-                            Some(hash)
-                        }
-                        Err(e) => {
-                            log::warn!("⚠️ 计算文件哈希失败: {} ({})", file_name, e);
-                            None
-                        }
-                    };
-
-                    // 关键修复：使用数据库中的时间戳，而不是文件系统的修改时间
-                    // 这样确保时间戳一致，避免误判为需要重新上传
-                    let file_modified_time = file_item.last_modified;
-
-                    // 构建文件上传任务（包含文件哈希和数据库时间戳）
+                    // 构建文件上传任务（使用简化后的元数据）
                     let metadata = crate::file_sync_manager::FileMetadata {
                         id: file_item.id.clone(),
                         file_name: file_name.to_string(),
-                        original_path: Some(file_path_buf.clone()),
+                        original_path: Some(std::path::PathBuf::from(file_path)),
                         remote_path: format!("files/{}_{}", file_item.id, file_name),
                         size: 0, // TODO: 获取文件大小
                         create_time: file_item.last_modified, // 使用last_modified作为create_time
-                        last_modified: file_modified_time, // 使用数据库时间戳确保一致性
-                        checksum: file_checksum.clone(), // 存储文件哈希
+                        last_modified: chrono::Utc::now().timestamp_millis(),
+                        checksum: None, // 简化：不再使用checksum
                         mime_type: None,
                     };
 
-                    log::info!("📅 使用数据库时间戳: {} ({})", file_name, file_modified_time);
-
                     let upload_task = crate::file_sync_manager::FileUploadTask {
                         metadata,
-                        local_path: std::path::PathBuf::from(&file_path_str),
+                        local_path: std::path::PathBuf::from(file_path),
                         remote_path: format!("files/{}_{}", file_item.id, file_name),
                     };
 
@@ -1271,21 +992,6 @@ impl SyncCore {
                         Ok(result) => {
                             if result.success {
                                 log::info!("✅ 文件上传成功: {}", file_name);
-
-                                // 收集文件元数据，用于更新云端同步索引
-                                // 🧹 简化元数据格式：只保留文件管理必需字段
-                                let mut metadata_map = serde_json::Map::new();
-                                metadata_map.insert("fileName".to_string(), serde_json::Value::String(file_name.to_string()));
-                                metadata_map.insert("remotePath".to_string(), serde_json::Value::String(format!("files/{}_{}", file_item.id, file_name)));
-
-                                // 存储文件哈希（用于去重和变更检测）
-                                if let Some(ref checksum) = file_checksum {
-                                    metadata_map.insert("checksum".to_string(), serde_json::Value::String(checksum.clone()));
-                                    log::info!("🔐 已保存文件哈希到云端元数据: {} = {}", file_name, checksum);
-                                }
-
-                                let file_metadata = serde_json::Value::Object(metadata_map);
-                                uploaded_file_metadata.push((file_item.id.clone(), file_metadata));
                             } else {
                                 log::error!("❌ 文件上传失败: {}, 错误: {:?}", file_name, result.errors);
                             }
@@ -1294,14 +1000,6 @@ impl SyncCore {
                             log::error!("❌ 文件上传异常: {}, 错误: {}", file_name, e);
                         }
                     }
-                }
-            }
-
-            // ✅ 关键修复：更新merged_items中的文件项目，将值替换为文件元数据
-            for (item_id, metadata) in uploaded_file_metadata {
-                if let Some(item) = merged_items.iter_mut().find(|i| i.id == item_id) {
-                    item.value = Some(serde_json::to_string(&metadata).unwrap_or_else(|_| "{}".to_string()));
-                    log::info!("📝 已更新文件元数据到同步索引: {}", item_id);
                 }
             }
         }
@@ -1370,16 +1068,27 @@ impl SyncCore {
         match client.download_sync_data("sync-data.json").await {
             Ok(result) => {
                 if let Some(data) = result.data {
-                    // 反序列化云端数据（云端不包含已删除项目）
+                    // 反序列化云端数据（直接使用数据库模型，没有 sync_status 字段）
                     let cloud_items: Vec<tauri_plugin_eco_database::SyncDataItem> = serde_json::from_str(&data)
                         .map_err(|e| format!("反序列化云端数据失败: {}", e))?;
+
+                    // 🧹 过滤掉已删除的项目（清理云端数据）
+                    let cloud_items_active: Vec<_> = cloud_items.iter()
+                        .filter(|item| !item.deleted)
+                        .cloned()
+                        .collect();
+
+                    if cloud_items.len() > cloud_items_active.len() {
+                        log::info!("🧹 下载时过滤已删除数据: {} -> {}",
+                            cloud_items.len(), cloud_items_active.len());
+                    }
 
                     // 收集需要下载的文件项目
                     let mut file_items_to_download = Vec::new();
 
-                    // 查找需要下载的项目
+                    // 查找需要下载的项目（使用过滤后的活跃数据）
                     for item_id in items {
-                        if let Some(cloud_item) = cloud_items.iter().find(|i| i.id == *item_id) {
+                        if let Some(cloud_item) = cloud_items_active.iter().find(|i| i.id == *item_id) {
                             // 将云端项目保存到内存
                             let mut manager = data_manager.lock().await;
                             manager.save_item_from_cloud(cloud_item);
@@ -1391,7 +1100,7 @@ impl SyncCore {
                                 log::info!("📁 准备下载文件: {} (类型: {})", cloud_item.id, cloud_item.item_type);
                             }
 
-                            // 保存到数据库（所有元数据都在 value 字段中）
+                            // 保存到数据库（保留统计元数据）
                             let db_item = tauri_plugin_eco_database::SyncDataItem {
                                 id: cloud_item.id.clone(),
                                 item_type: cloud_item.item_type.clone(),
@@ -1400,7 +1109,11 @@ impl SyncCore {
                                 favorite: cloud_item.favorite,
                                 note: cloud_item.note.clone(),
                                 last_modified: chrono::Utc::now().timestamp_millis(),
-                                // 所有元数据都保存在 value 字段中（JSON格式）
+                                deleted: cloud_item.deleted,
+                                // 添加统计元数据
+                                file_size: cloud_item.file_size,
+                                width: cloud_item.width,
+                                height: cloud_item.height,
                             };
 
                             let db = database_state.lock().await;
@@ -1413,11 +1126,11 @@ impl SyncCore {
                         }
                     }
 
-                    // 🧹 更新DataManager中的云端数据
+                    // 🧹 更新DataManager中的云端数据（使用过滤后的数据）
                     {
                         let mut manager = data_manager.lock().await;
-                        manager.load_cloud_data(cloud_items.clone()).await;
-                        log::info!("✅ DataManager云端数据已更新，共 {} 项", cloud_items.len());
+                        manager.load_cloud_data(cloud_items_active.clone()).await;
+                        log::info!("✅ DataManager云端数据已更新，共 {} 项", cloud_items_active.len());
                     }
 
                     // 下载文件/图片
@@ -1480,10 +1193,6 @@ impl SyncCore {
     }
 
     /// 处理删除操作
-    /// 同步引擎的删除逻辑：
-    /// 1. 删除云端文件和数据索引
-    /// 2. 本地硬删除软删除项目
-    /// 注意：同步状态判断在用户操作层面（数据库操作层面）处理
     async fn process_deletions(&self, items: &[String], database_state: &DatabaseState) -> Result<Vec<String>, String> {
         if items.is_empty() {
             return Ok(vec![]);
@@ -1492,53 +1201,65 @@ impl SyncCore {
         log::info!("🔄 开始处理删除操作，共 {} 项", items.len());
 
         let mut deleted_items = Vec::new();
-        let file_sync_manager = self.file_sync_manager.clone();
+        let data_manager = self.data_manager.clone();
 
-        // 传入的 items 都是需要从云端删除的已同步软删除项目
-        let synced_deleted_items = items.to_vec();
-        log::info!("📋 需要处理的 {} 个已同步删除项目", synced_deleted_items.len());
+        // 获取本地数据用于检查同步状态
+        let local_data = {
+            let manager = data_manager.lock().await;
+            manager.get_local_data().to_vec()
+        };
 
-        // 1. 删除云端文件和数据索引
-        if !synced_deleted_items.is_empty() {
-            log::info!("🗑️ 开始删除云端文件和记录...");
+        // 分离已同步和未同步的项目
+        let mut synced_items_to_mark = Vec::new();
+        let mut unsynced_items_to_delete = Vec::new();
 
-            // 1.1 删除云端文件
-            let file_sync_manager_locked = file_sync_manager.lock().await;
-            if let Err(e) = file_sync_manager_locked.delete_remote_files(&synced_deleted_items).await {
-                log::error!("❌ 删除云端文件失败: {}", e);
-                // 不阻断流程，继续删除云端记录
-            } else {
-                log::info!("✅ 云端文件删除完成");
+        for item_id in items {
+            if local_data.iter().find(|i| i.id == *item_id).is_some() {
+                let sync_status = {
+                    let manager = data_manager.lock().await;
+                    manager.get_item_sync_status(item_id)
+                };
+
+                match sync_status {
+                    SyncDataStatus::Synced => {
+                        // 已同步：先标记删除，下一次同步时清理
+                        synced_items_to_mark.push(item_id.clone());
+                        log::info!("📋 已同步项目标记删除: {} (下次同步时清理)", item_id);
+                    }
+                    _ => {
+                        // 未同步：直接数据库删除
+                        unsynced_items_to_delete.push(item_id.clone());
+                        log::info!("🗑️ 未同步项目直接删除: {}", item_id);
+                    }
+                }
             }
-            drop(file_sync_manager_locked);
+        }
 
-            // 1.2 删除云端记录（从索引中移除）
+        // 1. 处理已同步项目的删除标记（延迟清理）
+        if !synced_items_to_mark.is_empty() {
             let webdav_client = self.webdav_client.clone();
             let client = webdav_client.lock().await;
 
+            // 下载当前云端数据
             if let Ok(result) = client.download_sync_data("sync-data.json").await {
                 if let Some(data) = result.data {
                     let cloud_items_result: Result<Vec<SyncDataItem>, _> = serde_json::from_str(&data);
                     if let Ok(mut cloud_items) = cloud_items_result {
-                        // 过滤掉要删除的项目（云端索引中不保留已删除内容）
-                        let original_count = cloud_items.len();
-                        cloud_items.retain(|item| !synced_deleted_items.contains(&item.id));
-
-                        if cloud_items.len() < original_count {
-                            log::info!("🧹 从云端索引移除 {} 项记录", original_count - cloud_items.len());
-
-                            // 重新上传更新后的数据（已删除项目被完全移除）
-                            let updated_json = serde_json::to_string(&cloud_items)
-                                .map_err(|e| format!("序列化删除更新数据失败: {}", e))?;
-
-                            if let Err(e) = client.upload_sync_data("sync-data.json", &updated_json).await {
-                                self.report_error(format!("更新云端索引失败: {}", e));
-                                return Err(format!("云端删除失败: {}", e));
-                            } else {
-                                log::info!("✅ 云端索引更新成功");
+                        // 标记项目为已删除
+                        for item_id in &synced_items_to_mark {
+                            if let Some(item) = cloud_items.iter_mut().find(|i| i.id == *item_id) {
+                                item.deleted = true;
                             }
+                        }
+
+                        // 重新上传更新后的数据
+                        let updated_json = serde_json::to_string(&cloud_items)
+                            .map_err(|e| format!("序列化删除更新数据失败: {}", e))?;
+
+                        if let Err(e) = client.upload_sync_data("sync-data.json", &updated_json).await {
+                            self.report_error(format!("更新云端删除状态失败: {}", e));
                         } else {
-                            log::warn!("⚠️ 云端索引中未找到要删除的项目");
+                            log::info!("✅ 云端删除标记更新成功: {} 项", synced_items_to_mark.len());
                         }
                     }
                 }
@@ -1546,29 +1267,31 @@ impl SyncCore {
             drop(client);
         }
 
-        // 2. 本地硬删除软删除项目
-        log::info!("🗑️ 开始本地硬删除软删除项目...");
-        let db = database_state.lock().await;
-        for item_id in &synced_deleted_items {
-            if let Err(e) = db.hard_delete(item_id) {
-                self.report_error(format!("本地硬删除失败: {}", e));
-                log::error!("❌ 本地硬删除失败: {}", e);
-            } else {
-                log::info!("✅ 本地硬删除完成: {}", item_id);
-                deleted_items.push(item_id.clone());
+        // 2. 处理未同步项目的直接删除
+        if !unsynced_items_to_delete.is_empty() {
+            let db = database_state.lock().await;
+            for item_id in &unsynced_items_to_delete {
+                // 直接从数据库删除（未同步的数据云端还没有）
+                if let Err(e) = db.mark_deleted(item_id) {
+                    self.report_error(format!("标记数据库删除失败: {}", e));
+                } else {
+                    log::info!("✅ 数据库删除成功: {}", item_id);
+                }
             }
         }
 
         // 3. 更新本地DataManager状态
         {
-            let data_manager = self.data_manager.clone();
             let mut manager = data_manager.lock().await;
-            for item_id in &synced_deleted_items {
+            for item_id in items {
                 manager.mark_item_as_deleted(item_id);
+                deleted_items.push(item_id.clone());
             }
         }
 
-        log::info!("✅ 删除操作完成，共处理 {} 项", deleted_items.len());
+        log::info!("✅ 删除处理完成: 标记删除 {} 项，直接删除 {} 项",
+            synced_items_to_mark.len(), unsynced_items_to_delete.len());
+
         Ok(deleted_items)
     }
 
@@ -1615,242 +1338,4 @@ impl SyncCore {
         log::info!("✅ 同步索引更新完成");
         Ok(())
     }
-
-    /// 基于最终索引处理文件操作
-    /// 按照用户建议的新流程：
-    /// 1. 先数据比对和索引更新
-    /// 2. 再文件操作
-    /// 这样确保文件操作基于最终确定的状态进行
-    async fn process_file_operations(&self, _database_state: &DatabaseState) -> Result<(), String> {
-        log::info!("🔄 开始处理文件操作（基于最终同步索引）...");
-
-        let data_manager = self.data_manager.clone();
-        let file_sync_manager = self.file_sync_manager.clone();
-
-        // 获取最终同步后的数据
-        let local_data = {
-            let manager = data_manager.lock().await;
-            manager.get_local_data().to_vec()
-        };
-
-        // 筛选出文件类型的项目（image和files）
-        // 注意：SyncDataItem 不再包含 deleted 字段，软删除的项目不会出现在上传列表中
-        let file_items: Vec<_> = local_data
-            .iter()
-            .filter(|item| {
-                item.item_type == "image" || item.item_type == "files"
-            })
-            .cloned()
-            .collect();
-
-        if file_items.is_empty() {
-            log::info!("✅ 无文件项目需要处理");
-            return Ok(());
-        }
-
-        log::info!("📁 发现 {} 个文件项目需要处理", file_items.len());
-
-        // 构建文件操作批次
-        let mut upload_tasks = Vec::new();
-        let mut download_tasks = Vec::new();
-        let delete_ids = Vec::new();
-
-        // 分析每个文件项目，确定操作类型
-        for item in &file_items {
-            // 提取文件元数据
-            let file_sync_manager_locked = file_sync_manager.lock().await;
-            let metadata_list = file_sync_manager_locked.extract_file_metadata(item);
-            drop(file_sync_manager_locked);
-
-            if metadata_list.is_empty() {
-                // 没有元数据，可能是旧格式或新上传的项目，需要上传
-                if let Some(ref value) = item.value {
-                    // 尝试解析为文件路径（JSON数组或字符串）
-                    let file_paths = self.parse_file_paths(value);
-                    for file_path in file_paths {
-                        if file_path.exists() {
-                            let file_name = file_path.file_name()
-                                .and_then(|n| n.to_str())
-                                .unwrap_or("unknown");
-
-                            // 计算文件哈希（用于去重和变更检测）
-                            let file_checksum = match crate::file_sync_manager::calculate_file_checksum(&file_path).await {
-                                Ok(hash) => {
-                                    log::info!("🔐 文件哈希: {} = {}", file_name, hash);
-                                    Some(hash)
-                                }
-                                Err(e) => {
-                                    log::warn!("⚠️ 计算文件哈希失败: {} ({})", file_name, e);
-                                    None
-                                }
-                            };
-
-                            // 关键修复：使用数据库中的时间戳，而不是文件系统的修改时间
-                            let file_modified_time = item.last_modified;
-
-                            // 构建上传任务
-                            let metadata = crate::file_sync_manager::FileMetadata {
-                                id: item.id.clone(),
-                                file_name: file_name.to_string(),
-                                original_path: Some(file_path.clone()),
-                                remote_path: format!("files/{}_{}", item.id, file_name),
-                                size: 0,
-                                create_time: item.last_modified,
-                                last_modified: file_modified_time,
-                                checksum: file_checksum,
-                                mime_type: None,
-                            };
-
-                            log::info!("📅 使用数据库时间戳: {} ({})", file_name, file_modified_time);
-
-                            let task = crate::file_sync_manager::FileUploadTask {
-                                metadata: metadata.clone(),
-                                local_path: file_path.clone(),
-                                remote_path: format!("files/{}_{}", item.id, file_name),
-                            };
-
-                            upload_tasks.push(task);
-                            log::info!("📤 准备上传文件: {} -> {}", file_path.display(), file_name);
-                        }
-                    }
-                }
-            } else {
-                // 有元数据，检查是否需要下载
-                for metadata in metadata_list {
-                    // 如果没有原始路径或路径无效，需要下载
-                    let needs_download = metadata.original_path
-                        .as_ref()
-                        .map(|p| !p.exists())
-                        .unwrap_or(true);
-
-                    if needs_download {
-                        // 从云端下载文件
-                        let cache_dir = {
-                            let file_sync_manager_locked = file_sync_manager.lock().await;
-                            file_sync_manager_locked.get_cache_dir().await
-                        };
-
-                        if let Ok(cache_path) = cache_dir {
-                            let local_path = cache_path.join(&metadata.file_name);
-                            let task = crate::file_sync_manager::FileDownloadTask {
-                                metadata: metadata.clone(),
-                                local_path,
-                                remote_path: metadata.remote_path.clone(),
-                            };
-
-                            download_tasks.push(task);
-                            log::info!("📥 准备下载文件: {}", metadata.file_name);
-                        }
-                    }
-                }
-            }
-        }
-
-        // 处理删除操作：检查云端已删除但本地还有的项目
-        // 这部分逻辑已在process_deletions中处理，这里跳过
-
-        // 执行文件操作
-        if !upload_tasks.is_empty() || !download_tasks.is_empty() || !delete_ids.is_empty() {
-            log::info!("🔄 执行文件操作: {} 个上传, {} 个下载, {} 个删除",
-                upload_tasks.len(), download_tasks.len(), delete_ids.len());
-
-            let mut file_sync_manager_mut = file_sync_manager.lock().await;
-            let batch = crate::file_sync_manager::FileSyncBatch {
-                upload_tasks,
-                download_tasks,
-                delete_ids,
-                timestamp: chrono::Utc::now().timestamp_millis(),
-            };
-
-            match file_sync_manager_mut.sync_file_batch(batch).await {
-                Ok(result) => {
-                    if result.success {
-                        log::info!("✅ 文件操作完成: 成功 {} 个", result.success_count);
-                    } else {
-                        log::warn!("⚠️ 文件操作部分失败: 成功 {} 个, 失败 {} 个",
-                            result.success_count, result.failed_count);
-                        if !result.errors.is_empty() {
-                            for error in result.errors.iter().take(5) {
-                                log::error!("   - {}", error);
-                            }
-                        }
-                    }
-                }
-                Err(e) => {
-                    log::error!("❌ 文件操作失败: {}", e);
-                    return Err(format!("文件操作失败: {}", e));
-                }
-            }
-        } else {
-            log::info!("✅ 所有文件已是最新状态，无需操作");
-        }
-
-        log::info!("✅ 文件操作处理完成");
-        Ok(())
-    }
-
-    /// 解析文件路径
-    /// 支持JSON数组格式 ["path1", "path2"] 和直接字符串格式 "path"
-    fn parse_file_paths(&self, value: &str) -> Vec<std::path::PathBuf> {
-        // 尝试JSON数组格式
-        if value.starts_with('[') {
-            if let Ok(paths) = serde_json::from_str::<Vec<String>>(value) {
-                return paths.into_iter()
-                    .map(std::path::PathBuf::from)
-                    .filter(|p| !p.to_string_lossy().is_empty())
-                    .collect();
-            }
-        }
-
-        // 直接字符串格式
-        vec![std::path::PathBuf::from(value)]
-    }
-}
-
-/// 获取图片尺寸
-/// # Arguments
-/// * `path` - 图片文件路径
-async fn get_image_dimensions(path: &std::path::Path) -> Result<(u32, u32), String> {
-    // 使用简单的图片头信息解析来获取尺寸
-    // 支持常见的图片格式：PNG, JPEG, GIF
-    use tokio::io::AsyncReadExt;
-
-    let mut file = tokio::fs::File::open(path).await
-        .map_err(|e| format!("打开文件失败: {}", e))?;
-
-    let mut buf = vec![0u8; 32];
-    let bytes_read = file.read_exact(&mut buf).await
-        .map_err(|e| format!("读取文件失败: {}", e))?;
-
-    if bytes_read < 12 {
-        return Err("文件太小，不是有效的图片".to_string());
-    }
-
-    // PNG 文件签名: 89 50 4E 47 0D 0A 1A 0A
-    if buf[0..8] == [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] {
-        // PNG 尺寸在第 16-24 字节 (big-endian)
-        if bytes_read >= 24 {
-            let width = ((buf[16] as u32) << 24) | ((buf[17] as u32) << 16) | ((buf[18] as u32) << 8) | (buf[19] as u32);
-            let height = ((buf[20] as u32) << 24) | ((buf[21] as u32) << 16) | ((buf[22] as u32) << 8) | (buf[23] as u32);
-            return Ok((width, height));
-        }
-    }
-    // JPEG 文件签名: FF D8 FF
-    else if buf[0..3] == [0xFF, 0xD8, 0xFF] {
-        // JPEG 尺寸解析更复杂，需要扫描标记
-        // 这里简化处理，返回默认值
-        log::warn!("⚠️ JPEG 尺寸解析未实现，使用默认值");
-        return Ok((0, 0));
-    }
-    // GIF 文件签名: 47 49 46 38
-    else if buf[0..4] == [0x47, 0x49, 0x46, 0x38] {
-        // GIF 尺寸在第 6-10 字节 (little-endian)
-        if bytes_read >= 10 {
-            let width = (buf[6] as u32) | ((buf[7] as u32) << 8);
-            let height = (buf[8] as u32) | ((buf[9] as u32) << 8);
-            return Ok((width, height));
-        }
-    }
-
-    Err(format!("不支持的图片格式: {}", path.display()))
 }

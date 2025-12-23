@@ -29,3 +29,4 @@ tauri-plugin-eco-sync = { path = "./src-tauri/src/plugins/sync" }
 # 依赖版本统一 - 使用较新版本
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif"] }
 file_icon_provider = "0.4"
+md5 = { version = "0.7", default-features = false, features = ["std"] }

@@ -3,7 +3,6 @@
 
 use crate::webdav::WebDAVClientState;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// 书签分组
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,6 +52,7 @@ pub struct BookmarkSyncManager {
     /// 本地书签数据
     local_data: Option<BookmarkSyncData>,
     /// 设备ID
+    #[allow(dead_code)]
     device_id: String,
 }
 

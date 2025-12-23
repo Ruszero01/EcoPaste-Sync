@@ -100,7 +100,7 @@ pub fn upsert_from_cloud(
     db.upsert_from_cloud(&item)
 }
 
-/// 标记删除
+/// 标记删除（软删除）
 #[tauri::command]
 pub fn mark_deleted(
     id: String,
@@ -108,6 +108,26 @@ pub fn mark_deleted(
 ) -> Result<(), String> {
     let db = state.blocking_lock();
     db.mark_deleted(&id)
+}
+
+/// 硬删除
+#[tauri::command]
+pub fn hard_delete(
+    id: String,
+    state: State<'_, DatabaseState>,
+) -> Result<(), String> {
+    let db = state.blocking_lock();
+    db.hard_delete(&id)
+}
+
+/// 批量硬删除
+#[tauri::command]
+pub fn batch_hard_delete(
+    ids: Vec<String>,
+    state: State<'_, DatabaseState>,
+) -> Result<usize, String> {
+    let db = state.blocking_lock();
+    db.batch_hard_delete(&ids)
 }
 
 /// 获取统计信息

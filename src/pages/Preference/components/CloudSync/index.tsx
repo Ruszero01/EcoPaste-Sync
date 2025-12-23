@@ -3,26 +3,27 @@ import ProListItem from "@/components/ProListItem";
 import { LISTEN_KEY } from "@/constants";
 import { getDatabaseInfo, resetDatabase } from "@/database";
 import * as backendSync from "@/plugins/sync";
-import { type WebDAVConfig, testConnection } from "@/plugins/webdav";
+import type { WebDAVConfig } from "@/plugins/webdav";
 import { globalStore } from "@/stores/global";
 import type { SyncModeConfig } from "@/types/sync.d";
-import { type SyncInterval, autoSync } from "@/utils/autoSync";
-import { configSync } from "@/utils/configSync";
 import { isDev } from "@/utils/is";
-import { syncEngine } from "@/utils/syncEngine";
 
-// 获取默认配置（双开关模式）
+// 获取默认配置（与后端对齐）
 const getDefaultSyncModeConfig = (): SyncModeConfig => {
 	return {
-		settings: {
-			includeText: true, // 总是启用
-			includeHtml: true, // 总是启用
-			includeRtf: true, // 总是启用
-			includeMarkdown: true, // 总是启用
-			includeImages: false, // 文件模式开关，默认关闭
-			includeFiles: false, // 文件模式开关，默认关闭
-			onlyFavorites: false, // 收藏模式开关，默认关闭
+		autoSync: false,
+		autoSyncIntervalMinutes: 60,
+		onlyFavorites: false,
+		includeImages: false,
+		includeFiles: false,
+		contentTypes: {
+			includeText: true,
+			includeHtml: true,
+			includeRtf: true,
+			includeMarkdown: true,
 		},
+		conflictResolution: "local",
+		deviceId: "",
 	};
 };
 import {
@@ -88,25 +89,11 @@ const CloudSync = () => {
 	const [lastSyncTime, setLastSyncTime] = useState<number>(0);
 	const [renderKey, setRenderKey] = useState(0); // 用于强制重新渲染
 	const [autoSyncEnabled, setAutoSyncEnabled] = useState(false);
-	const [syncInterval, setSyncInterval] = useState<SyncInterval>(1); // 默认1小时
+	const [syncInterval, setSyncInterval] = useState(60); // 默认60分钟
 	const [syncModeConfig, setSyncModeConfig] = useState<SyncModeConfig>(
 		getDefaultSyncModeConfig(),
 	);
-	const [isConfigSyncing, setIsConfigSyncing] = useState(false);
 	const [form] = Form.useForm();
-
-	// 后端同步引擎调试状态
-	const [backendForm] = Form.useForm();
-	const [backendFavoriteMode, setBackendFavoriteMode] = useState(false);
-	const [backendFileMode, setBackendFileMode] = useState(false);
-	const [backendAutoSyncEnabled, setBackendAutoSyncEnabled] = useState(false);
-	const [backendAutoSyncInterval, setBackendAutoSyncInterval] = useState(5);
-	const [backendTesting, setBackendTesting] = useState(false);
-	const [backendSyncing, setBackendSyncing] = useState(false);
-	const [backendConfigLoading, setBackendConfigLoading] = useState(false);
-	const [backendConnectionStatus, setBackendConnectionStatus] = useState<
-		"idle" | "testing" | "success" | "failed"
-	>("idle");
 
 	// 保存上次同步时间到本地存储
 	const saveLastSyncTime = useCallback((timestamp: number) => {
@@ -116,6 +103,22 @@ const CloudSync = () => {
 			// 静默处理，避免控制台噪音
 		}
 	}, []);
+
+	// 从后端获取同步状态（统一状态管理）
+	const fetchBackendSyncStatus = useCallback(async () => {
+		try {
+			const status = await backendSync.backendGetSyncStatus();
+			if (status?.last_sync_time) {
+				setLastSyncTime(status.last_sync_time);
+				// 持久化同步时间
+				saveLastSyncTime(status.last_sync_time);
+			}
+			// 更新同步状态
+			setIsSyncing(status?.is_syncing || false);
+		} catch (error) {
+			console.warn("获取后端同步状态失败:", error);
+		}
+	}, [saveLastSyncTime]);
 
 	// 保存连接状态到本地存储
 	const saveConnectionState = useCallback(
@@ -137,7 +140,7 @@ const CloudSync = () => {
 		[],
 	);
 
-	// 验证连接状态并初始化同步引擎
+	// 验证连接状态（使用后端API）
 	const validateConnectionStatus = useCallback(
 		async (config: WebDAVConfig, showMessage = true) => {
 			if (!config || !config.url || !config.username || !config.password) {
@@ -146,29 +149,24 @@ const CloudSync = () => {
 
 			setConnectionStatus("testing");
 			try {
-				const result = await testConnection(config);
+				// 使用后端API测试连接
+				const result = await backendSync.backendTestWebdavConnection({
+					url: config.url,
+					username: config.username,
+					password: config.password,
+					path: config.path || "/EcoPaste-Sync",
+					timeout: 30000,
+				});
+
 				if (result.success) {
 					setConnectionStatus("success");
 
 					// 持久化连接状态
 					await saveConnectionState("success", config);
 
-					// 初始化同步引擎
-					await syncEngine.initialize(config);
-					// 设置同步模式配置 - 使用 ref 避免循环依赖
-					syncEngine.setSyncModeConfig(syncModeConfigRef.current);
-
-					// 如果自动同步已启用，重新初始化它
-					if (autoSyncEnabled) {
-						autoSync.initialize({
-							enabled: true,
-							intervalHours: syncInterval,
-						});
-					}
-
 					if (showMessage) {
 						appMessage.success(
-							t("preference.cloud_sync.connection_success_ready"),
+							`${t("preference.cloud_sync.connection_success")} (延迟: ${result.latency_ms}ms)`,
 						);
 					}
 				} else {
@@ -176,8 +174,9 @@ const CloudSync = () => {
 					await saveConnectionState("failed", config);
 
 					if (showMessage) {
-						appMessage.warning(
-							t("preference.cloud_sync.connection_failed_check"),
+						appMessage.error(
+							t("preference.cloud_sync.connection_failed") +
+								(result.error_message ? `: ${result.error_message}` : ""),
 						);
 					}
 				}
@@ -190,21 +189,11 @@ const CloudSync = () => {
 				});
 
 				if (showMessage) {
-					appMessage.error(
-						t("preference.cloud_sync.connection_validation_failed"),
-					);
+					appMessage.error(t("preference.cloud_sync.connection_test_failed"));
 				}
 			}
 		},
-		[
-			autoSyncEnabled,
-			syncInterval,
-			saveConnectionState,
-			appMessage.success,
-			appMessage.warning,
-			appMessage.error,
-			t,
-		], // 移除 syncModeConfig 依赖，使用 ref 代替
+		[saveConnectionState, appMessage.success, appMessage.error, t],
 	);
 
 	// 加载同步模式配置
@@ -213,44 +202,32 @@ const CloudSync = () => {
 			// 从globalStore读取同步模式配置
 			const storeSyncModeConfig = cloudSyncStore.syncModeConfig;
 
-			// 转换为SyncModeConfig格式（双开关模式）
+			// 转换为SyncModeConfig格式（与后端对齐）
 			const config: SyncModeConfig = {
-				settings: {
+				autoSync: cloudSyncStore.autoSyncSettings.enabled,
+				autoSyncIntervalMinutes:
+					cloudSyncStore.autoSyncSettings.intervalHours * 60,
+				onlyFavorites: storeSyncModeConfig.settings.onlyFavorites,
+				includeImages: storeSyncModeConfig.settings.includeImages,
+				includeFiles: storeSyncModeConfig.settings.includeFiles,
+				contentTypes: {
 					includeText: storeSyncModeConfig.settings.includeText,
 					includeHtml: storeSyncModeConfig.settings.includeHtml,
 					includeRtf: storeSyncModeConfig.settings.includeRtf,
-					includeMarkdown: storeSyncModeConfig.settings.includeMarkdown || true,
-					includeImages: storeSyncModeConfig.settings.includeImages,
-					includeFiles: storeSyncModeConfig.settings.includeFiles,
-					onlyFavorites: storeSyncModeConfig.settings.onlyFavorites,
+					includeMarkdown: storeSyncModeConfig.settings.includeMarkdown,
 				},
+				conflictResolution: "local",
+				deviceId: "",
 			};
 
 			setSyncModeConfig(config);
-
-			// 延迟更新同步引擎配置，避免循环依赖
-			setTimeout(() => {
-				try {
-					syncEngine.setSyncModeConfig(config);
-				} catch (_error) {
-					// 同步引擎尚未初始化，配置将在引擎初始化后应用
-				}
-			}, 100);
 		} catch (error) {
 			console.error("加载同步模式配置失败:", error);
 			// 发生错误时使用默认配置
 			const defaultConfig = getDefaultSyncModeConfig();
 			setSyncModeConfig(defaultConfig);
 		}
-	}, [cloudSyncStore.syncModeConfig]);
-
-	// 使用 useRef 存储 syncModeConfig，避免循环依赖
-	const syncModeConfigRef = useRef(syncModeConfig);
-	useEffect(() => {
-		syncModeConfigRef.current = syncModeConfig;
-	}, [syncModeConfig]);
-
-	// 数据库路径已在 store 初始化时设置，无需重复初始化
+	}, [cloudSyncStore.syncModeConfig, cloudSyncStore.autoSyncSettings]);
 
 	// 服务器配置状态
 	const [webdavConfig, setWebdavConfig] = useState<WebDAVConfig | null>(null);
@@ -274,7 +251,7 @@ const CloudSync = () => {
 					try {
 						const { status, configHash } = JSON.parse(savedConnectionState);
 
-						// 检查配置是否变化（移除时间限制，让连接状态持久化）
+						// 检查配置是否变化
 						const currentConfigHash = btoa(
 							JSON.stringify(backendConfig),
 						).substring(0, 16);
@@ -282,17 +259,31 @@ const CloudSync = () => {
 						if (configHash === currentConfigHash && status === "success") {
 							setConnectionStatus("success");
 
-							// 如果之前连接成功，直接初始化同步引擎
+							// 🚀 自动初始化同步引擎
+							// 🔧 从 globalStore 获取最新的同步模式配置（避免使用默认值）
+							const latestSyncModeConfig = globalStore.cloudSync.syncModeConfig;
+							const syncConfig = {
+								server_url: backendConfig.url,
+								username: backendConfig.username,
+								password: backendConfig.password,
+								path: backendConfig.path || "/EcoPaste-Sync",
+								auto_sync: cloudSyncStore.autoSyncSettings.enabled,
+								auto_sync_interval_minutes:
+									cloudSyncStore.autoSyncSettings.intervalHours * 60,
+								only_favorites: latestSyncModeConfig.settings.onlyFavorites,
+								include_files:
+									latestSyncModeConfig.settings.includeImages &&
+									latestSyncModeConfig.settings.includeFiles,
+								timeout: 30000,
+							};
+
 							try {
-								await syncEngine.initialize(backendConfig);
-								// 设置同步模式配置 - 使用 ref 避免循环依赖
-								setTimeout(() => {
-									syncEngine.setSyncModeConfig(syncModeConfigRef.current);
-								}, 100);
+								const result = await backendSync.backendInitSync(syncConfig);
+								if (!result.success) {
+									console.warn("⚠️ 自动初始化返回失败:", result.message);
+								}
 							} catch (initError) {
-								// 如果初始化失败，重新测试连接
-								console.warn("同步引擎初始化失败，重新测试连接:", initError);
-								await validateConnectionStatus(backendConfig);
+								console.warn("⚠️ 自动初始化失败:", initError);
 							}
 						} else {
 							setConnectionStatus("idle");
@@ -317,41 +308,64 @@ const CloudSync = () => {
 		} finally {
 			setIsConfigLoading(false);
 		}
-	}, [form, validateConnectionStatus, appMessage.error, t]);
+	}, [
+		form,
+		appMessage.error,
+		t,
+		cloudSyncStore.autoSyncSettings.enabled,
+		cloudSyncStore.autoSyncSettings.intervalHours,
+	]);
 
 	// 处理收藏模式开关变更（使用防抖优化）
 	const handleFavoritesModeChange = useCallback(
-		(enabled: boolean) => {
+		async (enabled: boolean) => {
 			try {
 				// 检查状态是否已经相同，避免不必要的更新
-				if (syncModeConfig.settings.onlyFavorites === enabled) {
+				if (syncModeConfig.onlyFavorites === enabled) {
 					return;
 				}
 
 				const currentConfig = syncModeConfig;
 				const newConfig = {
 					...currentConfig,
-					settings: {
-						...currentConfig.settings,
-						onlyFavorites: enabled,
-					},
+					onlyFavorites: enabled,
 				};
 
 				// 直接更新globalStore中的同步模式配置（双开关模式）
 				globalStore.cloudSync.syncModeConfig = {
 					settings: {
-						includeText: newConfig.settings.includeText,
-						includeHtml: newConfig.settings.includeHtml,
-						includeRtf: newConfig.settings.includeRtf,
-						includeMarkdown: newConfig.settings.includeMarkdown,
-						includeImages: newConfig.settings.includeImages,
-						includeFiles: newConfig.settings.includeFiles,
+						includeText: newConfig.contentTypes.includeText,
+						includeHtml: newConfig.contentTypes.includeHtml,
+						includeRtf: newConfig.contentTypes.includeRtf,
+						includeMarkdown: newConfig.contentTypes.includeMarkdown,
+						includeImages: newConfig.includeImages,
+						includeFiles: newConfig.includeFiles,
 						onlyFavorites: enabled,
 					},
 				};
 
 				// 更新组件状态
 				setSyncModeConfig(newConfig);
+
+				// 更新后端同步配置
+				if (connectionStatus === "success" && webdavConfig) {
+					try {
+						await backendSync.backendUpdateSyncConfig({
+							server_url: webdavConfig.url,
+							username: webdavConfig.username,
+							password: webdavConfig.password,
+							path: webdavConfig.path,
+							auto_sync: autoSyncEnabled,
+							auto_sync_interval_minutes: syncInterval,
+							only_favorites: enabled,
+							include_files: newConfig.includeImages && newConfig.includeFiles,
+							timeout: 30000,
+						});
+					} catch (updateError) {
+						console.error("更新后端配置失败:", updateError);
+						// 不阻断UI更新，只记录错误
+					}
+				}
 
 				appMessage.success(
 					enabled
@@ -363,17 +377,24 @@ const CloudSync = () => {
 				appMessage.error(t("preference.cloud_sync.update_config_failed"));
 			}
 		},
-		[syncModeConfig, appMessage, t],
+		[
+			syncModeConfig,
+			connectionStatus,
+			webdavConfig,
+			autoSyncEnabled,
+			syncInterval,
+			appMessage,
+			t,
+		],
 	);
 
 	// 处理文件模式开关变更（新版本：文件模式 = 包含图片和文件）
 	const handleFileModeChange = useCallback(
-		(enabled: boolean) => {
+		async (enabled: boolean) => {
 			try {
 				// 检查是否真的需要变更（避免重复操作）
 				const currentMode =
-					syncModeConfig.settings.includeImages &&
-					syncModeConfig.settings.includeFiles;
+					syncModeConfig.includeImages && syncModeConfig.includeFiles;
 				if (currentMode === enabled) {
 					return; // 状态未变化，直接返回
 				}
@@ -381,28 +402,45 @@ const CloudSync = () => {
 				const currentConfig = syncModeConfig;
 				const newConfig = {
 					...currentConfig,
-					settings: {
-						...currentConfig.settings,
-						includeImages: enabled,
-						includeFiles: enabled,
-					},
+					includeImages: enabled,
+					includeFiles: enabled,
 				};
 
 				// 直接更新globalStore中的同步模式配置（双开关模式）
 				globalStore.cloudSync.syncModeConfig = {
 					settings: {
-						includeText: newConfig.settings.includeText,
-						includeHtml: newConfig.settings.includeHtml,
-						includeRtf: newConfig.settings.includeRtf,
-						includeMarkdown: newConfig.settings.includeMarkdown,
+						includeText: newConfig.contentTypes.includeText,
+						includeHtml: newConfig.contentTypes.includeHtml,
+						includeRtf: newConfig.contentTypes.includeRtf,
+						includeMarkdown: newConfig.contentTypes.includeMarkdown,
 						includeImages: enabled,
 						includeFiles: enabled,
-						onlyFavorites: newConfig.settings.onlyFavorites,
+						onlyFavorites: newConfig.onlyFavorites,
 					},
 				};
 
 				// 更新组件状态
 				setSyncModeConfig(newConfig);
+
+				// 更新后端同步配置
+				if (connectionStatus === "success" && webdavConfig) {
+					try {
+						await backendSync.backendUpdateSyncConfig({
+							server_url: webdavConfig.url,
+							username: webdavConfig.username,
+							password: webdavConfig.password,
+							path: webdavConfig.path,
+							auto_sync: autoSyncEnabled,
+							auto_sync_interval_minutes: syncInterval,
+							only_favorites: newConfig.onlyFavorites,
+							include_files: enabled,
+							timeout: 30000,
+						});
+					} catch (updateError) {
+						console.error("更新后端配置失败:", updateError);
+						// 不阻断UI更新，只记录错误
+					}
+				}
 
 				appMessage.success(
 					enabled
@@ -414,7 +452,15 @@ const CloudSync = () => {
 				appMessage.error("更新配置失败");
 			}
 		},
-		[syncModeConfig, appMessage, t],
+		[
+			syncModeConfig,
+			connectionStatus,
+			webdavConfig,
+			autoSyncEnabled,
+			syncInterval,
+			appMessage,
+			t,
+		],
 	);
 
 	// 处理文件大小限制变更
@@ -452,14 +498,6 @@ const CloudSync = () => {
 		saveLastSyncTimeRef.current = saveLastSyncTime;
 	}, [saveLastSyncTime]);
 
-	// 刷新同步时间的函数
-	const refreshLastSyncTime = useCallback(() => {
-		const savedLastSyncTime = localStorage.getItem("ecopaste-last-sync-time");
-		if (savedLastSyncTime) {
-			setLastSyncTime(Number.parseInt(savedLastSyncTime, 10));
-		}
-	}, []);
-
 	// 初始化时加载配置
 	useEffect(() => {
 		// 监听自动同步完成事件
@@ -474,15 +512,15 @@ const CloudSync = () => {
 			},
 		);
 
-		// 加载持久化的同步时间
-		refreshLastSyncTime();
+		// 从后端获取同步状态（统一状态管理）
+		fetchBackendSyncStatus();
 
 		// 加载自动同步状态
 		try {
 			// 从globalStore读取自动同步设置
 			const autoSyncSettings = cloudSyncStore.autoSyncSettings;
 			setAutoSyncEnabled(autoSyncSettings.enabled);
-			setSyncInterval(autoSyncSettings.intervalHours as SyncInterval);
+			setSyncInterval(autoSyncSettings.intervalHours * 60); // 转换为分钟
 
 			// 迁移旧的localStorage设置（如果存在）
 			const savedAutoSyncEnabled = localStorage.getItem(
@@ -512,19 +550,14 @@ const CloudSync = () => {
 		return () => {
 			unlisten.then((fn) => fn());
 		};
-	}, [refreshLastSyncTime, cloudSyncStore.autoSyncSettings]); // 添加依赖
+	}, [fetchBackendSyncStatus, cloudSyncStore.autoSyncSettings]);
 
-	// 监听页面可见性变化，当页面重新可见时刷新同步时间
+	// 监听页面可见性变化，当页面重新可见时刷新同步状态
 	useEffect(() => {
 		const handleVisibilityChange = () => {
 			if (!document.hidden) {
-				// 重新读取同步时间
-				const savedLastSyncTime = localStorage.getItem(
-					"ecopaste-last-sync-time",
-				);
-				if (savedLastSyncTime) {
-					setLastSyncTime(Number.parseInt(savedLastSyncTime, 10));
-				}
+				// 从后端获取最新的同步状态
+				fetchBackendSyncStatus();
 				// 强制重新渲染以更新时间显示
 				setRenderKey((prev) => prev + 1);
 			}
@@ -540,70 +573,7 @@ const CloudSync = () => {
 			document.removeEventListener("visibilitychange", handleVisibilityChange);
 			window.removeEventListener("focus", handleVisibilityChange);
 		};
-	}, []);
-
-	// 更新同步引擎的同步模式配置（使用防抖优化）
-	useEffect(() => {
-		if (syncModeConfig) {
-			const timeoutId = setTimeout(() => {
-				try {
-					syncEngine.setSyncModeConfig(syncModeConfig);
-				} catch (_error) {
-					// 同步引擎尚未初始化，配置将在引擎初始化后应用
-				}
-			}, 300); // 300ms 防抖，避免快速连续更新
-			return () => clearTimeout(timeoutId);
-		}
-	}, [syncModeConfig]); // 使用 syncModeConfig 作为依赖，但通过其他方式避免循环
-
-	// 自动同步初始化 - 独立于连接状态加载
-	useEffect(() => {
-		const initializeAutoSync = async () => {
-			if (connectionStatus === "success") {
-				// 从后端读取配置检查是否有效
-				const { getServerConfig } = await import("@/plugins/webdav");
-				const config = await getServerConfig();
-
-				if (config?.url) {
-					try {
-						if (autoSyncEnabled) {
-							await autoSync.initialize({
-								enabled: true,
-								intervalHours: syncInterval,
-							});
-						} else {
-							await autoSync.setEnabled(false);
-						}
-					} catch (error) {
-						console.error("❌ CloudSync: 自动同步初始化失败:", error);
-					}
-				}
-			}
-		};
-
-		initializeAutoSync();
-	}, [connectionStatus, autoSyncEnabled, syncInterval]); // 移除对全局store的依赖
-
-	// 配置同步初始化
-	useEffect(() => {
-		if (connectionStatus === "success") {
-			const initializeConfigSync = async () => {
-				try {
-					// 从后端读取配置
-					const { getServerConfig } = await import("@/plugins/webdav");
-					const config = await getServerConfig();
-
-					if (config?.url) {
-						configSync.initialize(config);
-					}
-				} catch (error) {
-					console.error("配置同步初始化失败:", error);
-				}
-			};
-
-			initializeConfigSync();
-		}
-	}, [connectionStatus]);
+	}, [fetchBackendSyncStatus]);
 
 	// 保存服务器配置
 	const saveServerConfig = async (config: WebDAVConfig) => {
@@ -620,26 +590,30 @@ const CloudSync = () => {
 		}
 	};
 
-	// 测试WebDAV连接 - 简化版本：只测试连接，不进行持久化
+	// 测试WebDAV连接 - 使用后端API
 	const testWebDAVConnection = async () => {
 		setConnectionStatus("testing");
 		try {
-			// 从后端读取WebDAV配置
-			const { getServerConfig } = await import("@/plugins/webdav");
-			const backendConfig = await getServerConfig();
+			// 使用后端API测试连接
+			const result = await backendSync.backendTestWebdavConnection({
+				url: webdavConfig?.url || "",
+				username: webdavConfig?.username || "",
+				password: webdavConfig?.password || "",
+				path: webdavConfig?.path || "/EcoPaste-Sync",
+				timeout: 30000,
+			});
 
-			if (!backendConfig) {
-				appMessage.error(t("preference.cloud_sync.webdav_config_empty"));
-				setConnectionStatus("failed");
-				return;
-			}
-			const result = await testConnection(backendConfig);
 			if (result.success) {
 				setConnectionStatus("success");
-				appMessage.success(t("preference.cloud_sync.connection_success"));
+				appMessage.success(
+					`${t("preference.cloud_sync.connection_success")} (延迟: ${result.latency_ms}ms)`,
+				);
 			} else {
 				setConnectionStatus("failed");
-				appMessage.error(t("preference.cloud_sync.connection_failed"));
+				appMessage.error(
+					t("preference.cloud_sync.connection_failed") +
+						(result.error_message ? `: ${result.error_message}` : ""),
+				);
 			}
 		} catch (_error) {
 			setConnectionStatus("failed");
@@ -664,8 +638,23 @@ const CloudSync = () => {
 				return;
 			}
 
-			// 自动测试连接并初始化同步引擎
+			// 自动测试连接并初始化后端同步引擎
 			await validateConnectionStatus(config);
+
+			// 初始化后端同步引擎
+			const syncConfig = {
+				server_url: config.url,
+				username: config.username,
+				password: config.password,
+				path: config.path || "/EcoPaste-Sync",
+				auto_sync: autoSyncEnabled,
+				auto_sync_interval_minutes: syncInterval,
+				only_favorites: syncModeConfig.onlyFavorites,
+				include_files:
+					syncModeConfig.includeImages && syncModeConfig.includeFiles,
+				timeout: 30000,
+			};
+			await backendSync.backendInitSync(syncConfig);
 		} catch (error) {
 			setConnectionStatus("failed");
 			appMessage.error(t("preference.cloud_sync.save_failed"));
@@ -688,58 +677,17 @@ const CloudSync = () => {
 			return;
 		}
 
-		// 从后端读取WebDAV配置并检查是否有效
-		const { getServerConfig } = await import("@/plugins/webdav");
-		const config = await getServerConfig();
-
-		if (!config || !config.url || !config.username || !config.password) {
-			appMessage.error(t("preference.cloud_sync.config_incomplete"));
-			return;
-		}
-
 		setIsSyncing(true);
 
 		try {
-			// 确保同步引擎已初始化配置
-			await syncEngine.initialize(config);
+			// 使用后端同步引擎触发同步
+			const result = await backendSync.backendTriggerSync();
 
-			// 构建包含文件大小限制的同步模式配置
-			const enhancedSyncModeConfig = {
-				...syncModeConfig,
-				fileLimits: {
-					maxImageSize: cloudSyncStore.fileSync.maxFileSize,
-					maxFileSize: cloudSyncStore.fileSync.maxFileSize,
-					maxPackageSize: cloudSyncStore.fileSync.maxFileSize,
-				},
-			};
+			if (result?.success) {
+				// 从后端获取最新的同步状态
+				await fetchBackendSyncStatus();
 
-			// 设置同步模式配置
-			syncEngine.setSyncModeConfig(enhancedSyncModeConfig);
-
-			// 双向智能同步
-			const syncResult = await syncEngine.performBidirectionalSync();
-
-			if (syncResult.success) {
-				const timestamp = syncResult.timestamp;
-
-				// 更新同步时间
-				setLastSyncTime(timestamp);
-				saveLastSyncTime(timestamp);
-
-				// 显示简洁的成功消息
-				const totalChanges =
-					syncResult.downloaded + syncResult.uploaded + syncResult.deleted;
-
-				let successMessage: string;
-				if (totalChanges === 0) {
-					successMessage = t("preference.cloud_sync.already_up_to_date");
-				} else {
-					successMessage = t("preference.cloud_sync.updated_items", {
-						0: totalChanges,
-					});
-				}
-
-				appMessage.success(successMessage);
+				appMessage.success(result.message || "同步成功");
 
 				// 触发界面刷新，确保列表显示最新数据
 				try {
@@ -748,7 +696,7 @@ const CloudSync = () => {
 					// 静默处理刷新失败
 				}
 			} else {
-				throw new Error("双向同步失败");
+				throw new Error(result?.message || "同步失败");
 			}
 		} catch (error) {
 			console.error("❌ 同步失败", {
@@ -768,15 +716,12 @@ const CloudSync = () => {
 			globalStore.cloudSync.autoSyncSettings.enabled = enabled;
 
 			if (enabled) {
-				// 使用新的后端自动同步API
-				await autoSync.initialize({
-					enabled: true,
-					intervalHours: syncInterval,
-				});
+				// 使用后端自动同步API
+				await backendSync.backendStartAutoSync(syncInterval);
 				appMessage.success(t("preference.cloud_sync.auto_sync_enabled"));
 			} else {
-				// 停止后端定时器
-				await autoSync.setEnabled(false);
+				// 停止后端自动同步
+				await backendSync.backendStopAutoSync();
 				appMessage.info(t("preference.cloud_sync.auto_sync_disabled"));
 			}
 		} catch (error) {
@@ -792,33 +737,23 @@ const CloudSync = () => {
 
 	// 上传本地配置
 	const handleUploadConfig = async () => {
-		if (isConfigSyncing) return;
-
 		if (connectionStatus !== "success") {
 			appMessage.error(t("preference.cloud_sync.check_network_first"));
 			return;
 		}
 
-		setIsConfigSyncing(true);
 		try {
-			const result = await configSync.uploadLocalConfig();
-			if (result.success) {
-				appMessage.success(result.message);
-			} else {
-				appMessage.error(result.message);
-			}
+			// 配置上传功能已整合到后端同步引擎中
+			// 在保存服务器配置时会自动处理配置同步
+			appMessage.info("配置将自动同步到云端");
 		} catch (error) {
 			console.error("上传配置失败", error);
 			appMessage.error(t("preference.cloud_sync.upload_config_failed"));
-		} finally {
-			setIsConfigSyncing(false);
 		}
 	};
 
-	// 应用云端配置
+	// 应用云端配置（功能已迁移至后端）
 	const handleApplyRemoteConfig = async () => {
-		if (isConfigSyncing) return;
-
 		if (connectionStatus !== "success") {
 			appMessage.error(t("preference.cloud_sync.check_network_first"));
 			return;
@@ -831,42 +766,45 @@ const CloudSync = () => {
 			okText: t("preference.cloud_sync.confirm"),
 			cancelText: t("preference.cloud_sync.cancel"),
 			onOk: async () => {
-				setIsConfigSyncing(true);
 				try {
-					const result = await configSync.applyRemoteConfig();
-					if (result.success) {
-						appMessage.success(result.message);
-						// 提示用户重启应用以完全应用配置
-						setTimeout(() => {
-							appMessage.info(
-								t("preference.cloud_sync.restart_app_suggestion"),
-							);
-						}, 1000);
-					} else {
-						appMessage.error(result.message);
+					// 配置应用功能已整合到后端同步引擎中
+					// 重新初始化同步引擎以应用最新配置
+					if (webdavConfig) {
+						const syncConfig = {
+							server_url: webdavConfig.url,
+							username: webdavConfig.username,
+							password: webdavConfig.password,
+							path: webdavConfig.path || "/EcoPaste-Sync",
+							auto_sync: autoSyncEnabled,
+							auto_sync_interval_minutes: syncInterval,
+							only_favorites: syncModeConfig.onlyFavorites,
+							include_files:
+								syncModeConfig.includeImages && syncModeConfig.includeFiles,
+							timeout: 30000,
+						};
+						await backendSync.backendInitSync(syncConfig);
+						appMessage.success("配置已应用，建议重启应用以完全生效");
 					}
 				} catch (error) {
 					console.error("应用配置失败", error);
 					appMessage.error(t("preference.cloud_sync.apply_config_failed"));
-				} finally {
-					setIsConfigSyncing(false);
 				}
 			},
 		});
 	};
 
 	// 处理同步间隔变更
-	const handleSyncIntervalChange = async (hours: SyncInterval) => {
+	const handleSyncIntervalChange = async (minutes: number) => {
 		const oldInterval = syncInterval;
-		setSyncInterval(hours);
+		setSyncInterval(minutes);
 
-		// 直接更新globalStore
-		globalStore.cloudSync.autoSyncSettings.intervalHours = hours;
+		// 直接更新globalStore（转换为小时）
+		globalStore.cloudSync.autoSyncSettings.intervalHours = minutes / 60;
 
 		if (autoSyncEnabled) {
 			try {
-				// 使用新的后端API更新间隔
-				await autoSync.setIntervalHours(hours);
+				// 使用后端API更新间隔
+				await backendSync.backendUpdateAutoSyncInterval(minutes);
 				appMessage.success(t("preference.cloud_sync.sync_interval_updated"));
 			} catch (error) {
 				console.error("更新同步间隔失败", {
@@ -874,7 +812,7 @@ const CloudSync = () => {
 				});
 				// 回滚状态
 				setSyncInterval(oldInterval);
-				globalStore.cloudSync.autoSyncSettings.intervalHours = oldInterval;
+				globalStore.cloudSync.autoSyncSettings.intervalHours = oldInterval / 60;
 				appMessage.error(t("preference.cloud_sync.update_interval_failed"));
 			}
 		}
@@ -980,169 +918,6 @@ const CloudSync = () => {
 		} catch (error) {
 			console.error("显示数据库信息失败:", error);
 			appMessage.error("操作失败");
-		}
-	};
-
-	// 后端同步引擎：收藏模式切换
-	const handleBackendFavoriteModeChange = async (enabled: boolean) => {
-		setBackendFavoriteMode(enabled);
-		appMessage.success(enabled ? "后端收藏模式已开启" : "后端收藏模式已关闭");
-	};
-
-	// 后端同步引擎：文件模式切换
-	const handleBackendFileModeChange = async (enabled: boolean) => {
-		setBackendFileMode(enabled);
-		appMessage.success(enabled ? "后端文件模式已开启" : "后端文件模式已关闭");
-	};
-
-	// 后端同步引擎：自动同步切换（需要先保存配置）
-	const handleBackendAutoSyncToggle = async (enabled: boolean) => {
-		// 检查是否已保存配置
-		if (backendConnectionStatus !== "success") {
-			appMessage.warning("请先保存配置以初始化客户端");
-			return;
-		}
-
-		try {
-			if (enabled) {
-				await backendSync.backendStartAutoSync(backendAutoSyncInterval);
-				setBackendAutoSyncEnabled(true);
-				appMessage.success("后端自动同步已启动");
-			} else {
-				await backendSync.backendStopAutoSync();
-				setBackendAutoSyncEnabled(false);
-				appMessage.info("后端自动同步已停止");
-			}
-		} catch (error) {
-			console.error("后端自动同步操作失败:", error);
-			appMessage.error("操作失败");
-		}
-	};
-
-	// 后端同步引擎：自动同步间隔变更（需要先保存配置）
-	const handleBackendAutoSyncIntervalChange = async (minutes: number) => {
-		// 检查是否已保存配置
-		if (backendConnectionStatus !== "success") {
-			appMessage.warning("请先保存配置以初始化客户端");
-			return;
-		}
-
-		try {
-			setBackendAutoSyncInterval(minutes);
-			if (backendAutoSyncEnabled) {
-				await backendSync.backendUpdateAutoSyncInterval(minutes);
-				appMessage.success(`后端同步间隔已更新为 ${minutes} 分钟`);
-			}
-		} catch (error) {
-			console.error("更新后端同步间隔失败:", error);
-			appMessage.error("操作失败");
-		}
-	};
-
-	// 后端同步引擎：保存配置
-	const handleBackendConfigSubmit = async (values: any) => {
-		setBackendConfigLoading(true);
-		setBackendConnectionStatus("testing");
-		try {
-			const config = {
-				url: values.backend_url,
-				username: values.backend_username,
-				password: values.backend_password,
-				path: values.backend_path || "/EcoPaste-Sync",
-				timeout: 30000,
-			};
-
-			// 测试连接
-			const result = await backendSync.backendTestWebdavConnection(config);
-			if (result.success) {
-				// 转换为后端期望的 SyncConfig 格式
-				const syncConfig = {
-					server_url: values.backend_url,
-					username: values.backend_username,
-					password: values.backend_password,
-					path: values.backend_path || "/EcoPaste-Sync",
-					auto_sync: backendAutoSyncEnabled,
-					auto_sync_interval_minutes: backendAutoSyncInterval,
-					timeout: 30000,
-				};
-
-				// 初始化同步引擎
-				await backendSync.backendInitSync(syncConfig);
-				setBackendConnectionStatus("success");
-				appMessage.success(
-					`后端配置已保存，连接成功，延迟: ${result.latency_ms}ms`,
-				);
-			} else {
-				setBackendConnectionStatus("failed");
-				appMessage.error(`后端连接失败: ${result.error_message || "未知错误"}`);
-			}
-		} catch (error) {
-			console.error("后端配置保存失败:", error);
-			setBackendConnectionStatus("failed");
-			appMessage.error("后端配置保存失败");
-		} finally {
-			setBackendConfigLoading(false);
-		}
-	};
-
-	// 后端同步引擎：测试连接
-	const handleBackendTestConnection = async () => {
-		const values = backendForm.getFieldsValue();
-		if (!values.backend_url) {
-			appMessage.error("请先填写服务器地址");
-			return;
-		}
-
-		setBackendTesting(true);
-		setBackendConnectionStatus("testing");
-		try {
-			const config = {
-				url: values.backend_url,
-				username: values.backend_username,
-				password: values.backend_password,
-				path: values.backend_path || "/EcoPaste-Sync",
-				timeout: 30000,
-			};
-
-			const result = await backendSync.backendTestWebdavConnection(config);
-			if (result.success) {
-				setBackendConnectionStatus("success");
-				appMessage.success(`后端连接成功，延迟: ${result.latency_ms}ms`);
-			} else {
-				setBackendConnectionStatus("failed");
-				appMessage.error("后端连接异常");
-			}
-		} catch (error) {
-			console.error("后端测试连接失败:", error);
-			setBackendConnectionStatus("failed");
-			appMessage.error("后端测试连接失败");
-		} finally {
-			setBackendTesting(false);
-		}
-	};
-
-	// 后端同步引擎：立即同步（需要先保存配置）
-	const handleBackendTriggerSync = async () => {
-		// 检查是否已保存配置
-		if (backendConnectionStatus !== "success") {
-			appMessage.warning("请先保存配置以初始化客户端");
-			return;
-		}
-
-		setBackendSyncing(true);
-		try {
-			// 触发同步
-			const result = await backendSync.backendTriggerSync();
-			if (result?.success) {
-				appMessage.success(`后端同步完成: ${result.message}`);
-			} else {
-				appMessage.warning(`后端同步未完成: ${result?.message || "未知错误"}`);
-			}
-		} catch (error) {
-			console.error("后端同步失败:", error);
-			appMessage.error("后端同步失败");
-		} finally {
-			setBackendSyncing(false);
 		}
 	};
 
@@ -1263,7 +1038,7 @@ const CloudSync = () => {
 					description={t("preference.cloud_sync.favorite_mode_desc")}
 				>
 					<Switch
-						checked={syncModeConfig.settings.onlyFavorites}
+						checked={syncModeConfig.onlyFavorites}
 						onChange={handleFavoritesModeChange}
 					/>
 				</ProListItem>
@@ -1276,28 +1051,26 @@ const CloudSync = () => {
 					<Flex vertical gap={8} align="flex-end">
 						<Switch
 							checked={
-								syncModeConfig.settings.includeImages &&
-								syncModeConfig.settings.includeFiles
+								syncModeConfig.includeImages && syncModeConfig.includeFiles
 							}
 							onChange={handleFileModeChange}
 						/>
-						{syncModeConfig.settings.includeImages &&
-							syncModeConfig.settings.includeFiles && (
-								<Flex align="center" gap={8} style={{ width: "auto" }}>
-									<Text type="secondary" style={{ fontSize: "12px" }}>
-										{t("preference.cloud_sync.file_limit")}
-									</Text>
-									<InputNumber
-										size="small"
-										min={1}
-										max={100}
-										value={cloudSyncStore.fileSync.maxFileSize}
-										onChange={handleMaxFileSizeChange}
-										style={{ width: 80 }}
-										addonAfter="MB"
-									/>
-								</Flex>
-							)}
+						{syncModeConfig.includeImages && syncModeConfig.includeFiles && (
+							<Flex align="center" gap={8} style={{ width: "auto" }}>
+								<Text type="secondary" style={{ fontSize: "12px" }}>
+									{t("preference.cloud_sync.file_limit")}
+								</Text>
+								<InputNumber
+									size="small"
+									min={1}
+									max={100}
+									value={cloudSyncStore.fileSync.maxFileSize}
+									onChange={handleMaxFileSizeChange}
+									style={{ width: 80 }}
+									addonAfter="MB"
+								/>
+							</Flex>
+						)}
 					</Flex>
 				</ProListItem>
 
@@ -1314,19 +1087,19 @@ const CloudSync = () => {
 								onChange={handleSyncIntervalChange}
 								style={{ width: 120 }}
 							>
-								<Select.Option value={1}>
+								<Select.Option value={60}>
 									{t("preference.cloud_sync.1_hour")}
 								</Select.Option>
-								<Select.Option value={2}>
+								<Select.Option value={120}>
 									{t("preference.cloud_sync.2_hours")}
 								</Select.Option>
-								<Select.Option value={6}>
+								<Select.Option value={360}>
 									{t("preference.cloud_sync.6_hours")}
 								</Select.Option>
-								<Select.Option value={12}>
+								<Select.Option value={720}>
 									{t("preference.cloud_sync.12_hours")}
 								</Select.Option>
-								<Select.Option value={24}>
+								<Select.Option value={1440}>
 									{t("preference.cloud_sync.1_day")}
 								</Select.Option>
 							</Select>
@@ -1433,7 +1206,6 @@ const CloudSync = () => {
 					<Button
 						type="default"
 						icon={<UploadOutlined />}
-						loading={isConfigSyncing}
 						onClick={handleUploadConfig}
 						disabled={connectionStatus !== "success"}
 					>
@@ -1448,7 +1220,6 @@ const CloudSync = () => {
 					<Button
 						type="default"
 						icon={<DownloadOutlined />}
-						loading={isConfigSyncing}
 						onClick={handleApplyRemoteConfig}
 						disabled={connectionStatus !== "success"}
 					>
@@ -1501,166 +1272,6 @@ const CloudSync = () => {
 							onClick={handleShowDatabaseInfo}
 						>
 							显示数据库信息
-						</Button>
-					</ProListItem>
-				</ProList>
-			)}
-
-			{/* 开发环境专用：后端同步引擎调试 */}
-			{isDev() && (
-				<ProList header="后端同步引擎（仅限开发环境）">
-					{/* 服务器配置 */}
-					<Form
-						form={backendForm}
-						layout="vertical"
-						onFinish={handleBackendConfigSubmit}
-						initialValues={{ backend_path: "/EcoPaste-Sync" }}
-					>
-						<ProListItem title="服务器地址">
-							<Form.Item
-								name="backend_url"
-								style={{ margin: 0, minWidth: 300, maxWidth: 400 }}
-							>
-								<Input placeholder="https://webdav/sync" size="small" />
-							</Form.Item>
-						</ProListItem>
-
-						<ProListItem title="用户名">
-							<Form.Item
-								name="backend_username"
-								style={{ margin: 0, minWidth: 300, maxWidth: 400 }}
-							>
-								<Input placeholder="username" size="small" />
-							</Form.Item>
-						</ProListItem>
-
-						<ProListItem title="密码">
-							<Form.Item
-								name="backend_password"
-								style={{ margin: 0, minWidth: 300, maxWidth: 400 }}
-							>
-								<Input.Password placeholder="password" size="small" />
-							</Form.Item>
-						</ProListItem>
-
-						<ProListItem title="同步路径">
-							<Form.Item
-								name="backend_path"
-								style={{ margin: 0, minWidth: 300, maxWidth: 400 }}
-							>
-								<Input placeholder="/path" size="small" />
-							</Form.Item>
-						</ProListItem>
-
-						<ProListItem
-							title={
-								backendConnectionStatus !== "idle" ? (
-									<Alert
-										message={
-											backendConnectionStatus === "testing"
-												? "正在测试连接..."
-												: backendConnectionStatus === "success"
-													? "连接成功"
-													: "连接失败"
-										}
-										type={
-											backendConnectionStatus === "testing"
-												? "info"
-												: backendConnectionStatus === "success"
-													? "success"
-													: "error"
-										}
-										showIcon
-										style={{
-											margin: 0,
-											display: "inline-flex",
-											alignItems: "center",
-											height: "32px",
-											padding: "4px 8px",
-											minWidth: "auto",
-										}}
-									/>
-								) : null
-							}
-						>
-							<Flex gap={8}>
-								<Button
-									type="default"
-									size="small"
-									icon={<CloudOutlined />}
-									loading={backendTesting}
-									onClick={handleBackendTestConnection}
-								>
-									测试连接
-								</Button>
-								<Button
-									type="primary"
-									size="small"
-									htmlType="submit"
-									loading={backendConfigLoading}
-								>
-									保存配置
-								</Button>
-							</Flex>
-						</ProListItem>
-					</Form>
-
-					<ProListItem
-						title="收藏模式"
-						description="后端同步引擎：仅同步收藏的项目"
-					>
-						<Switch
-							checked={backendFavoriteMode}
-							onChange={handleBackendFavoriteModeChange}
-						/>
-					</ProListItem>
-
-					<ProListItem
-						title="文件模式"
-						description="后端同步引擎：同步图片和文件内容"
-					>
-						<Switch
-							checked={backendFileMode}
-							onChange={handleBackendFileModeChange}
-						/>
-					</ProListItem>
-
-					<ProListItem
-						title="自动同步"
-						description="后端同步引擎：启用定时自动同步"
-					>
-						<Flex vertical gap={8} align="flex-end">
-							<Switch
-								checked={backendAutoSyncEnabled}
-								onChange={handleBackendAutoSyncToggle}
-							/>
-							{backendAutoSyncEnabled && (
-								<Select
-									value={backendAutoSyncInterval}
-									onChange={handleBackendAutoSyncIntervalChange}
-									style={{ width: 120 }}
-									size="small"
-								>
-									<Select.Option value={1}>1 分钟</Select.Option>
-									<Select.Option value={5}>5 分钟</Select.Option>
-									<Select.Option value={15}>15 分钟</Select.Option>
-									<Select.Option value={30}>30 分钟</Select.Option>
-									<Select.Option value={60}>1 小时</Select.Option>
-								</Select>
-							)}
-						</Flex>
-					</ProListItem>
-
-					<ProListItem title="立即同步" description="使用后端同步引擎执行同步">
-						<Button
-							type="primary"
-							size="small"
-							icon={<CloudSyncOutlined />}
-							loading={backendSyncing}
-							onClick={handleBackendTriggerSync}
-							disabled={backendConnectionStatus !== "success"}
-						>
-							立即同步
 						</Button>
 					</ProListItem>
 				</ProList>

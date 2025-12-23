@@ -20,7 +20,29 @@ pub async fn init_sync(
     db_state: State<'_, DatabaseState>,
 ) -> Result<SyncResult, String> {
     let mut engine = state.lock().await;
-    engine.init(config, &db_state).await
+
+    log::info!("🔄 开始初始化同步引擎...");
+    log::info!("📡 服务器: {}, 路径: {}", config.server_url, config.path);
+    log::info!("🔧 同步配置: only_favorites={}, include_files={}, auto_sync={}",
+               config.only_favorites, config.include_files, config.auto_sync);
+
+    match engine.init(config, &db_state).await {
+        Ok(result) => {
+            log::info!("✅ 同步引擎初始化成功: {}", result.message);
+            log::info!("🔍 引擎配置状态: config.is_some={}", engine.config.is_some());
+            if let Some(ref engine_config) = engine.config {
+                log::info!("🔍 保存的引擎配置: server_url={}, only_favorites={}, include_files={}",
+                           engine_config.server_url,
+                           engine_config.sync_mode.only_favorites,
+                           engine_config.sync_mode.include_files);
+            }
+            Ok(result)
+        }
+        Err(e) => {
+            log::error!("❌ 同步引擎初始化失败: {}", e);
+            Err(e)
+        }
+    }
 }
 
 /// 启动同步
@@ -45,6 +67,7 @@ pub fn get_sync_status(state: State<'_, Arc<Mutex<CloudSyncEngine>>>) -> Result<
 }
 
 /// 手动触发同步（后端直接从数据库读取数据）
+/// 自动检查并初始化同步引擎（如果尚未初始化）
 #[tauri::command]
 pub async fn trigger_sync(
     state: State<'_, Arc<Mutex<CloudSyncEngine>>>,
@@ -53,9 +76,27 @@ pub async fn trigger_sync(
     let mut engine = state.lock().await;
     let db = db_state;
 
+    log::info!("🔍 [TRIGGER] 引擎配置状态检查: config.is_some={}", engine.config.is_some());
+    if let Some(ref engine_config) = engine.config {
+        log::info!("🔍 [TRIGGER] 当前引擎配置: server_url={}, only_favorites={}, include_files={}",
+                   engine_config.server_url,
+                   engine_config.sync_mode.only_favorites,
+                   engine_config.sync_mode.include_files);
+    }
+
+    // 检查引擎是否已初始化，如果没有则尝试自动初始化
+    if engine.config.is_none() {
+        log::warn!("⚠️ [TRIGGER] 同步引擎未初始化，尝试自动初始化...");
+
+        // 从数据库获取存储的配置信息
+        // 注意：这里需要实际实现从数据库读取配置的逻辑
+        // 目前我们返回错误提示用户先保存配置
+        return Err("同步引擎未初始化，请先在设置中保存服务器配置".to_string());
+    }
+
     // 获取同步模式配置
     let only_favorites = engine.get_sync_mode_only_favorites();
-    log::info!("🔄 触发同步: only_favorites={}", only_favorites);
+    log::info!("🔄 [TRIGGER] 触发同步: only_favorites={}", only_favorites);
 
     // 直接从数据库查询并执行同步
     let result = engine.sync_with_database(&db, only_favorites).await;

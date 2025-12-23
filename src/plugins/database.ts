@@ -61,12 +61,33 @@ export interface DatabaseStatistics {
 const COMMAND = {
 	SET_DATABASE_PATH: "plugin:eco-database|set_database_path",
 	QUERY_HISTORY: "plugin:eco-database|query_history",
+	QUERY_HISTORY_WITH_FILTER: "plugin:eco-database|query_history_with_filter",
 	QUERY_SYNC_DATA: "plugin:eco-database|query_sync_data",
 	UPDATE_SYNC_STATUS: "plugin:eco-database|update_sync_status",
 	BATCH_UPDATE_SYNC_STATUS: "plugin:eco-database|batch_update_sync_status",
 	UPSERT_FROM_CLOUD: "plugin:eco-database|upsert_from_cloud",
+	INSERT_WITH_DEDUPLICATION: "plugin:eco-database|insert_with_deduplication",
 	MARK_DELETED: "plugin:eco-database|mark_deleted",
+	BATCH_MARK_DELETED: "plugin:eco-database|batch_mark_deleted",
+	HARD_DELETE: "plugin:eco-database|hard_delete",
+	BATCH_HARD_DELETE: "plugin:eco-database|batch_hard_delete",
 	GET_STATISTICS: "plugin:eco-database|get_statistics",
+	UPDATE_FAVORITE: "plugin:eco-database|update_favorite",
+	BATCH_UPDATE_FAVORITE: "plugin:eco-database|batch_update_favorite",
+	UPDATE_NOTE: "plugin:eco-database|update_note",
+	UPDATE_CONTENT: "plugin:eco-database|update_content",
+	UPDATE_TYPE: "plugin:eco-database|update_type",
+	MARK_CHANGED: "plugin:eco-database|mark_changed",
+	BATCH_MARK_CHANGED: "plugin:eco-database|batch_mark_changed",
+	UPDATE_TIME: "plugin:eco-database|update_time",
+	GET_CHANGED_ITEMS_COUNT: "plugin:eco-database|get_changed_items_count",
+	GET_CHANGED_ITEMS_LIST: "plugin:eco-database|get_changed_items_list",
+	QUERY_WITH_FILTER: "plugin:eco-database|query_with_filter",
+	QUERY_FOR_SYNC: "plugin:eco-database|query_for_sync",
+	SEARCH_DATA: "plugin:eco-database|search_data",
+	QUERY_BY_GROUP: "plugin:eco-database|query_by_group",
+	GET_ALL_GROUPS: "plugin:eco-database|get_all_groups",
+	GET_FILTERED_STATISTICS: "plugin:eco-database|get_filtered_statistics",
 } as const;
 
 /**
@@ -86,6 +107,18 @@ export const backendQueryHistory = (options: {
 	offset?: number;
 }) => {
 	return invoke<HistoryItem[]>(COMMAND.QUERY_HISTORY, options);
+};
+
+/**
+ * 查询历史记录（带自定义筛选条件）
+ */
+export const backendQueryHistoryWithFilter = (options: {
+	where_clause?: string;
+	order_by?: string;
+	limit?: number;
+	offset?: number;
+}) => {
+	return invoke<HistoryItem[]>(COMMAND.QUERY_HISTORY_WITH_FILTER, options);
 };
 
 /**
@@ -128,6 +161,18 @@ export const backendUpsertFromCloud = (item: SyncDataItem) => {
 	return invoke<void>(COMMAND.UPSERT_FROM_CLOUD, {
 		item,
 	});
+};
+
+/**
+ * 插入数据（带去重功能）
+ */
+export const backendInsertWithDeduplication = (item: any) => {
+	return invoke<{ is_update: boolean; insert_id: string | null }>(
+		COMMAND.INSERT_WITH_DEDUPLICATION,
+		{
+			item,
+		},
+	);
 };
 
 /**

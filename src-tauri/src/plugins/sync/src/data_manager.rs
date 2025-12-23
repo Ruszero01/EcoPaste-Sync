@@ -228,10 +228,7 @@ impl DataManager {
         let mut filtered = Vec::new();
 
         for item in data {
-            // 跳过已删除的项目（如果不包含已删除）
-            if !filter.include_deleted && item.deleted {
-                continue;
-            }
+            // 🧹 云端数据不包含已删除项目，无需检查 deleted 字段
 
             // 仅收藏项目筛选
             if filter.only_favorites || mode_config.only_favorites {
@@ -351,11 +348,7 @@ impl DataManager {
     /// 判断是否为冲突（简化版）
     /// 冲突定义：删除状态不同或内容不同
     fn is_conflict(&self, local: &SyncDataItem, cloud: &SyncDataItem) -> bool {
-        // 如果一方被标记为删除，另一方有更新，则是删除冲突
-        if local.deleted != cloud.deleted {
-            return true;
-        }
-
+        // 🧹 云端数据不包含 deleted 字段，删除冲突通过数据比对处理
         // 如果内容不同，可能是并发修改冲突
         if local.value != cloud.value {
             return true;
@@ -365,12 +358,9 @@ impl DataManager {
     }
 
     /// 确定冲突类型（简化版）
-    fn determine_conflict_type(&self, local: &SyncDataItem, cloud: &SyncDataItem) -> ConflictType {
-        if local.deleted != cloud.deleted {
-            ConflictType::Delete
-        } else {
-            ConflictType::Content
-        }
+    fn determine_conflict_type(&self, _local: &SyncDataItem, _cloud: &SyncDataItem) -> ConflictType {
+        // 🧹 删除冲突通过数据比对处理，无需检查 deleted 字段
+        ConflictType::Content
     }
 
     /// 建议冲突解决方案（简化版）
@@ -551,7 +541,9 @@ impl DataManager {
     /// 计算统计信息
     pub fn calculate_statistics(&self) -> SyncStatistics {
         let total_items = self.local_data.len();
-        let active_items = self.local_data.iter().filter(|item| !item.deleted).count();
+        // 🧹 云端数据不包含 deleted 字段，所有项目都是活跃的
+        // 软删除的项目不会出现在上传列表中
+        let active_items = total_items;
         let synced_items = self
             .local_data
             .iter()
@@ -563,7 +555,8 @@ impl DataManager {
             .iter()
             .filter(|item| self.get_item_sync_status(&item.id) == SyncDataStatus::Conflict)
             .count();
-        let deleted_items = self.local_data.iter().filter(|item| item.deleted).count();
+        // 🧹 云端数据不包含 deleted 项目，deleted_items 始终为 0
+        let deleted_items = 0;
 
         SyncStatistics {
             total_items,
@@ -716,15 +709,14 @@ impl DataManager {
 
         for cloud_item in &self.cloud_data {
             if let Some(local_item) = self.local_data.iter().find(|i| i.id == cloud_item.id) {
-                if !local_item.deleted {
-                    let is_actually_synced = self.is_item_actually_synced(local_item, cloud_item);
-                    let current_status = self.get_item_sync_status(&local_item.id);
+                // 🧹 云端数据不包含 deleted 字段，软删除的项目不会出现在 local_data 中
+                let is_actually_synced = self.is_item_actually_synced(local_item, cloud_item);
+                let current_status = self.get_item_sync_status(&local_item.id);
 
-                    // 状态不匹配且项目实际已同步，需要更新状态
-                    if is_actually_synced && current_status != SyncDataStatus::Synced {
-                        mismatched_items.push(cloud_item.id.clone());
-                        updates.push(cloud_item.id.clone());
-                    }
+                // 状态不匹配且项目实际已同步，需要更新状态
+                if is_actually_synced && current_status != SyncDataStatus::Synced {
+                    mismatched_items.push(cloud_item.id.clone());
+                    updates.push(cloud_item.id.clone());
                 }
             }
         }
@@ -810,10 +802,10 @@ impl DataManager {
     }
 
     /// 标记项目为已删除
+    /// 🧹 由于 SyncDataItem 不再包含 deleted 字段，
+    /// 我们从 local_data 中移除该项目，这样它就不会出现在上传列表中
     pub fn mark_item_as_deleted(&mut self, item_id: &str) {
-        if let Some(item) = self.local_data.iter_mut().find(|i| i.id == *item_id) {
-            item.deleted = true;
-        }
+        self.local_data.retain(|item| item.id != *item_id);
     }
 
     /// 标记项目为本地变更（编辑、内容更新、收藏状态变更等）
@@ -855,7 +847,7 @@ impl DataManager {
             local_item.favorite = cloud_item.favorite;
             local_item.note = cloud_item.note.clone();
             local_item.last_modified = chrono::Utc::now().timestamp_millis();
-            local_item.deleted = cloud_item.deleted;
+            // 🧹 云端数据不包含 deleted 字段，从云端下载的项目都是活跃的
             // 从云端下载的数据天然就是已同步的
             self.local_sync_status.insert(cloud_item.id.clone(), SyncDataStatus::Synced);
         } else {

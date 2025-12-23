@@ -8,6 +8,8 @@ export interface BackendSyncConfig {
 	path: string;
 	auto_sync: boolean;
 	auto_sync_interval_minutes: number;
+	only_favorites: boolean;
+	include_files: boolean;
 	timeout: number;
 }
 
@@ -71,21 +73,23 @@ const COMMAND = {
  * 初始化后端同步引擎
  */
 export const backendInitSync = (config: BackendSyncConfig) => {
-	return invoke<boolean>(COMMAND.INIT_SYNC, { config });
+	return invoke<{ success: boolean; message: string }>(COMMAND.INIT_SYNC, {
+		config,
+	});
 };
 
 /**
  * 开始后端同步
  */
 export const backendStartSync = () => {
-	return invoke<boolean>(COMMAND.START_SYNC);
+	return invoke<{ success: boolean; message: string }>(COMMAND.START_SYNC);
 };
 
 /**
  * 停止后端同步
  */
 export const backendStopSync = () => {
-	return invoke<boolean>(COMMAND.STOP_SYNC);
+	return invoke<{ success: boolean; message: string }>(COMMAND.STOP_SYNC);
 };
 
 /**
@@ -106,14 +110,17 @@ export const backendTriggerSync = () => {
  * 启动后端自动同步
  */
 export const backendStartAutoSync = (intervalMinutes: number) => {
-	return invoke<boolean>(COMMAND.START_AUTO_SYNC, { intervalMinutes });
+	return invoke<{ success: boolean; message: string }>(
+		COMMAND.START_AUTO_SYNC,
+		{ intervalMinutes },
+	);
 };
 
 /**
  * 停止后端自动同步
  */
 export const backendStopAutoSync = () => {
-	return invoke<boolean>(COMMAND.STOP_AUTO_SYNC);
+	return invoke<{ success: boolean; message: string }>(COMMAND.STOP_AUTO_SYNC);
 };
 
 /**
@@ -127,9 +134,12 @@ export const backendGetAutoSyncStatus = () => {
  * 更新后端自动同步间隔
  */
 export const backendUpdateAutoSyncInterval = (intervalMinutes: number) => {
-	return invoke<boolean>(COMMAND.UPDATE_AUTO_SYNC_INTERVAL, {
-		intervalMinutes,
-	});
+	return invoke<{ success: boolean; message: string }>(
+		COMMAND.UPDATE_AUTO_SYNC_INTERVAL,
+		{
+			intervalMinutes,
+		},
+	);
 };
 
 /**
@@ -154,7 +164,10 @@ export const backendGetSyncProgress = () => {
  * 更新后端同步配置
  */
 export const backendUpdateSyncConfig = (config: BackendSyncConfig) => {
-	return invoke<boolean>(COMMAND.UPDATE_SYNC_CONFIG, { config });
+	return invoke<{ success: boolean; message: string }>(
+		COMMAND.UPDATE_SYNC_CONFIG,
+		{ config },
+	);
 };
 
 /**

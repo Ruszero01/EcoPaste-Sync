@@ -9,7 +9,7 @@ use crate::data_manager::{DataManager, create_shared_manager as create_data_mana
 use crate::file_sync_manager::{FileSyncManager, create_shared_manager as create_file_sync_manager};
 use crate::cleanup_manager::{CleanupManager, CleanupConfig, CleanupStatus};
 use crate::config_sync_manager::{ConfigSyncManager};
-use crate::bookmark_sync_manager::{BookmarkSyncManager, BookmarkSyncResult};
+use crate::bookmark_sync_manager::{BookmarkSyncManager};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tauri_plugin_eco_database::DatabaseState;
@@ -459,9 +459,9 @@ impl CloudSyncEngine {
             sync_mode: SyncModeConfig {
                 auto_sync: old_config.auto_sync,
                 auto_sync_interval_minutes: old_config.auto_sync_interval_minutes,
-                only_favorites: false, // TODO: 从配置中获取
-                include_images: true,
-                include_files: true,
+                only_favorites: old_config.only_favorites,
+                include_images: old_config.include_files,
+                include_files: old_config.include_files,
                 content_types: crate::sync_core::ContentTypeConfig {
                     include_text: true,
                     include_html: true,
