@@ -8,6 +8,7 @@ const COMMANDS: &[&str] = &[
     "stop_auto_sync",
     "get_auto_sync_status",
     "update_auto_sync_interval",
+    "notify_data_changed",
     "test_webdav_connection",
     "get_sync_progress",
     "update_sync_config",

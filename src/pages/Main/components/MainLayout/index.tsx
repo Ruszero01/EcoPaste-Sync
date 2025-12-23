@@ -25,7 +25,9 @@ const MainLayout = () => {
 	});
 
 	// 监听主题变化并更新当前窗口的 Mica 效果
-	useImmediateKey(globalStore.appearance, "isDark", updateMicaTheme);
+	useImmediateKey(globalStore.appearance, "isDark", (value) =>
+		updateMicaTheme(value as boolean),
+	);
 	return (
 		<div
 			className={clsx("flex h-screen", {

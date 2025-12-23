@@ -28,12 +28,12 @@ const DEFAULT_COLORS = [
 	"#48dbfb",
 ];
 
-const CustomGroupManager: CustomGroupManagerProps = ({
+const CustomGroupManager = ({
 	groups,
 	onAddGroup,
 	onDeleteGroup,
 	onToggleGroup,
-}) => {
+}: CustomGroupManagerProps) => {
 	const { t } = useTranslation();
 	const [newGroupName, setNewGroupName] = useState("");
 	const [showAddGroup, setShowAddGroup] = useState(false);

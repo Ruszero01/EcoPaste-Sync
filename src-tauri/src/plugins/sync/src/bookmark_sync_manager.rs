@@ -31,7 +31,7 @@ pub struct BookmarkItem {
 pub struct BookmarkSyncData {
     pub groups: Vec<BookmarkGroup>,
     pub items: Vec<BookmarkItem>,
-    pub last_modified: i64,
+    pub time: i64,
     pub device_id: String,
 }
 
@@ -76,9 +76,9 @@ impl BookmarkSyncManager {
         self.local_data.as_ref()
     }
 
-    /// 获取本地最后修改时间
-    pub fn get_local_last_modified(&self) -> i64 {
-        self.local_data.as_ref().map(|d| d.last_modified).unwrap_or(0)
+    /// 获取本地时间戳
+    pub fn get_local_time(&self) -> i64 {
+        self.local_data.as_ref().map(|d| d.time).unwrap_or(0)
     }
 
     /// 执行书签同步逻辑
@@ -100,7 +100,7 @@ impl BookmarkSyncManager {
         };
 
         log::info!("🔍 书签同步分析: 本地分组数={}, 本地时间戳={}",
-            local_data.groups.len(), local_data.last_modified);
+            local_data.groups.len(), local_data.time);
 
         // 从云端下载书签数据
         let client = self.webdav_client.lock().await;
@@ -156,10 +156,10 @@ impl BookmarkSyncManager {
         };
 
         log::info!("🔍 书签同步分析: 云端分组数={}, 云端时间戳={}, 云端设备ID={}",
-            cloud_data.groups.len(), cloud_data.last_modified, cloud_data.device_id);
+            cloud_data.groups.len(), cloud_data.time, cloud_data.device_id);
 
         // 核心同步逻辑：只比较时间戳，最新的数据胜出
-        if local_data.last_modified > cloud_data.last_modified {
+        if local_data.time > cloud_data.time {
             log::info!("📤 本地数据更新，上传到云端");
             let upload_result = self.upload_bookmarks(&local_data).await?;
             return Ok(BookmarkSyncResult {
@@ -170,7 +170,7 @@ impl BookmarkSyncManager {
             });
         }
 
-        if cloud_data.last_modified > local_data.last_modified {
+        if cloud_data.time > local_data.time {
             log::info!("📥 云端数据更新，下载到本地");
             return Ok(BookmarkSyncResult {
                 success: true,

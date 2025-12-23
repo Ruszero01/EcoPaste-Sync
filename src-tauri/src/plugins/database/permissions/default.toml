@@ -3,6 +3,8 @@
 [default]
 description = "Default permissions for the database plugin"
 permissions = [
+    "allow-query-history-with-filter",
+    "allow-insert-with-deduplication",
     "allow-set-database-path",
     "allow-query-history",
     "allow-query-sync-data",
@@ -10,5 +12,24 @@ permissions = [
     "allow-batch-update-sync-status",
     "allow-upsert-from-cloud",
     "allow-mark-deleted",
-    "allow-get-statistics"
+    "allow-batch-mark-deleted",
+    "allow-hard-delete",
+    "allow-batch-hard-delete",
+    "allow-get-statistics",
+    "allow-update-favorite",
+    "allow-batch-update-favorite",
+    "allow-update-note",
+    "allow-update-content",
+    "allow-update-type",
+    "allow-mark-changed",
+    "allow-batch-mark-changed",
+    "allow-update-time",
+    "allow-get-changed-items-count",
+    "allow-get-changed-items-list",
+    "allow-query-with-filter",
+    "allow-query-for-sync",
+    "allow-search-data",
+    "allow-query-by-group",
+    "allow-get-all-groups",
+    "allow-get-filtered-statistics"
 ]

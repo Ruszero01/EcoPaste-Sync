@@ -1,12 +1,15 @@
 import type { AudioRef } from "@/components/Audio";
 import Audio from "@/components/Audio";
 import { LISTEN_KEY } from "@/constants";
-import { executeSQL, insertWithDeduplication, updateSQL } from "@/database";
+import {
+	backendInsertWithDeduplication,
+	backendQueryHistoryWithFilter,
+} from "@/plugins/database";
 import { initializeMicaEffect } from "@/plugins/window";
 import type { HistoryTablePayload, TablePayload } from "@/types/database";
 import type { Store } from "@/types/store";
 import { formatDate } from "@/utils/dayjs";
-import { setSyncEventListener } from "@/utils/syncEngine";
+import { invoke } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
 import { useReactive } from "ahooks";
 import type { EventEmitter } from "ahooks/lib/useEventEmitter";
@@ -68,19 +71,6 @@ const Main = () => {
 		// 初始化 Windows 11 Mica 材质效果
 		initializeMicaEffect();
 
-		// 设置同步事件监听器 - 确保在应用启动早期设置
-		setSyncEventListener(() => {
-			// 同步事件触发时刷新界面
-			// 使用项目标准的刷新事件
-			try {
-				emit(LISTEN_KEY.REFRESH_CLIPBOARD_LIST);
-			} catch {
-				// 备用方案：直接调用列表刷新
-				getListCache.current.clear();
-				getListDebounced(50);
-			}
-		});
-
 		// 开启剪贴板监听
 		startListen();
 
@@ -126,11 +116,21 @@ const Main = () => {
 					createTime,
 					id: nanoid(),
 					favorite: false,
-					syncStatus: "none", // 新项目默认为未同步状态
+					syncStatus: "not_synced", // 新项目默认为未同步状态
 					isCloudData: false, // 标记为本地数据
 				};
 
-				const result = await insertWithDeduplication("history", data);
+				// 调用后端数据库插件插入数据
+				// 注意：后端期待的是 i32 类型，需要转换布尔值为 0/1
+				const result = await backendInsertWithDeduplication({
+					...data,
+					time: Date.now(), // Rust端需要time字段为毫秒时间戳
+					favorite: data.favorite ? 1 : 0,
+					deleted: data.deleted ? 1 : 0,
+					isCloudData: data.isCloudData ? 1 : 0,
+					lazyDownload: data.lazyDownload ? 1 : 0,
+					isCode: data.isCode ? 1 : 0,
+				});
 
 				// 清除缓存，因为数据已更新
 				getListCache.current.clear();
@@ -140,7 +140,7 @@ const Main = () => {
 				const currentAutoSort = clipboardStore.content.autoSort;
 
 				// 如果是插入新记录（不是更新现有记录）
-				if (!result.isUpdate) {
+				if (!result.is_update) {
 					if (currentAutoSort) {
 						// 自动排序模式下：刷新列表，新记录会自动排在顶部
 						await getList();
@@ -158,7 +158,7 @@ const Main = () => {
 					}
 				} else {
 					// 如果是更新现有记录
-					const updatedItemId = result.insertId;
+					const updatedItemId = result.insert_id;
 
 					if (currentAutoSort) {
 						// 自动排序模式下：刷新列表，更新的记录会根据时间重新排序
@@ -344,21 +344,24 @@ const Main = () => {
 			const itemIndex = findIndex(state.list, { id: data.id });
 
 			if (itemIndex !== -1) {
-				const createTime = formatDate();
+				const currentTime = Date.now();
 
 				// 获取当前的自动排序设置
 				const currentAutoSort = clipboardStore.content.autoSort;
 
 				if (currentAutoSort) {
 					// 自动排序模式：更新时间，让系统重新排序
-					await updateSQL("history", { id: data.id, createTime });
+					await invoke("update_time", { id: data.id, time: currentTime });
 					// 刷新列表以获取新的排序
 					await getList();
 				} else {
 					// 手动排序模式：只更新时间，不改变位置
-					await updateSQL("history", { id: data.id, createTime });
+					await invoke("update_time", { id: data.id, time: currentTime });
 					// 更新本地列表中的时间，但保持位置不变
-					state.list[itemIndex] = { ...state.list[itemIndex], createTime };
+					state.list[itemIndex] = {
+						...state.list[itemIndex],
+						time: currentTime,
+					};
 				}
 
 				// 自动聚焦到快速粘贴的条目
@@ -472,28 +475,30 @@ const Main = () => {
 		// 根据自动排序设置决定排序方式
 		// 自动排序：按时间排序；手动排序：按位置倒序（新的在上面）
 		const orderBy = currentAutoSort
-			? "ORDER BY createTime DESC"
-			: "ORDER BY position DESC, createTime DESC";
+			? "ORDER BY time DESC"
+			: "ORDER BY position DESC, time DESC";
 
 		let rawData: HistoryTablePayload[];
 
 		// 如果是链接分组，查询所有链接类型和路径类型的数据，同时考虑书签筛选
 		if (linkTab) {
 			let whereClause =
-				"WHERE (subtype = 'url' OR subtype = 'path') AND deleted = 0";
-			const values: any[] = [];
+				"(subtype = 'url' OR subtype = 'path') AND (deleted IS NULL OR deleted = 0)";
+			const searchParams: any = {};
 
 			// 如果有搜索条件（书签分组筛选），添加到查询中
 			if (search) {
 				whereClause += " AND (search LIKE ? OR note LIKE ?)";
-				const searchValue = `%${search}%`;
-				values.push(searchValue, searchValue);
+				searchParams.search = `%${search}%`;
 			}
 
-			const list = await executeSQL(
-				`SELECT * FROM history ${whereClause} ${orderBy};`,
-				values,
-			);
+			const list = await backendQueryHistoryWithFilter({
+				where_clause: whereClause,
+				order_by: orderBy,
+				limit: undefined,
+				offset: undefined,
+			});
+
 			// 转换数据类型，与 selectSQL 保持一致
 			rawData = (Array.isArray(list) ? list : []).map((item: any) => ({
 				...item,
@@ -504,23 +509,26 @@ const Main = () => {
 				isCode: Boolean(item.isCode),
 				position: Number(item.position || 0),
 				syncStatus: item.syncStatus || "none",
+				createTime: item.time, // 统一使用createTime字段
 			})) as HistoryTablePayload[];
 		} else if (colorTab) {
 			// 颜色分组查询：查询 type 为 'color' 的数据
-			let whereClause = "WHERE type = 'color' AND deleted = 0";
-			const values: any[] = [];
+			let whereClause = "type = 'color' AND (deleted IS NULL OR deleted = 0)";
+			const searchParams: any = {};
 
 			// 如果有搜索条件，添加到查询中
 			if (search) {
 				whereClause += " AND (search LIKE ? OR note LIKE ?)";
-				const searchValue = `%${search}%`;
-				values.push(searchValue, searchValue);
+				searchParams.search = `%${search}%`;
 			}
 
-			const list = await executeSQL(
-				`SELECT * FROM history ${whereClause} ${orderBy};`,
-				values,
-			);
+			const list = await backendQueryHistoryWithFilter({
+				where_clause: whereClause,
+				order_by: orderBy,
+				limit: undefined,
+				offset: undefined,
+			});
+
 			// 转换数据类型，与 selectSQL 保持一致
 			rawData = (Array.isArray(list) ? list : []).map((item: any) => ({
 				...item,
@@ -531,27 +539,27 @@ const Main = () => {
 				isCode: Boolean(item.isCode),
 				position: Number(item.position || 0),
 				syncStatus: item.syncStatus || "none",
+				createTime: item.time, // 统一使用createTime字段
 			})) as HistoryTablePayload[];
 		} else {
 			// 特殊处理纯文本和代码分组的查询
-			let whereClause = "WHERE deleted = 0";
-			const values: any[] = [];
+			let whereClause = "(deleted IS NULL OR deleted = 0)";
+			const searchParams: any = {};
 
 			// 添加基本条件
 			if (group) {
 				whereClause += " AND [group] = ?";
-				values.push(group);
+				searchParams.group = group;
 			}
 
 			if (search) {
 				whereClause += " AND (search LIKE ? OR note LIKE ?)";
-				const searchValue = `%${search}%`;
-				values.push(searchValue, searchValue);
+				searchParams.search = `%${search}%`;
 			}
 
 			if (favorite !== undefined) {
 				whereClause += " AND favorite = ?";
-				values.push(favorite ? 1 : 0);
+				searchParams.favorite = favorite ? 1 : 0;
 			}
 
 			// 如果是代码分组，添加 isCode = true 条件
@@ -564,10 +572,13 @@ const Main = () => {
 					" AND (isCode = 0 OR isCode IS NULL) AND type != 'color'";
 			}
 
-			const list = await executeSQL(
-				`SELECT * FROM history ${whereClause} ${orderBy};`,
-				values,
-			);
+			const list = await backendQueryHistoryWithFilter({
+				where_clause: whereClause,
+				order_by: orderBy,
+				limit: undefined,
+				offset: undefined,
+			});
+
 			// 转换数据类型，与 selectSQL 保持一致
 			rawData = (Array.isArray(list) ? list : []).map((item: any) => ({
 				...item,
@@ -578,6 +589,7 @@ const Main = () => {
 				isCode: Boolean(item.isCode),
 				position: Number(item.position || 0),
 				syncStatus: item.syncStatus || "none",
+				createTime: item.time, // 统一使用createTime字段
 			})) as HistoryTablePayload[];
 		}
 

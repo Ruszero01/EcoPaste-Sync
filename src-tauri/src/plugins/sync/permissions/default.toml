@@ -12,6 +12,7 @@ permissions = [
     "allow-stop-auto-sync",
     "allow-get-auto-sync-status",
     "allow-update-auto-sync-interval",
+    "allow-notify-data-changed",
     "allow-test-webdav-connection",
     "allow-get-sync-progress",
     "allow-update-sync-config",

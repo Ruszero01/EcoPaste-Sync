@@ -13,18 +13,12 @@ import { getLocale } from "tauri-plugin-locale-api";
 
 /**
  * 初始化数据库插件 - 独立函数，可以单独调用
+ * 注意：现在数据库插件会在后端自动初始化，这里仅作兼容性保留
  */
 const initDatabasePlugin = async () => {
-	try {
-		const { backendSetDatabasePath } = await import("@/plugins/database");
-
-		// 后端自动获取路径，无需前端传递参数
-		await backendSetDatabasePath();
-		return true;
-	} catch (error) {
-		console.warn("⚠️ 数据库插件初始化失败:", error);
-		return false;
-	}
+	// 数据库插件现在会在后端自动初始化，无需前端手动调用
+	// 这里保留函数是为了兼容性，实际不需要做任何事情
+	return true;
 };
 
 /**

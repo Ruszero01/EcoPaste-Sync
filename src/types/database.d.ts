@@ -5,7 +5,7 @@ export type TableName = "history";
 export interface HistoryTablePayload extends ClipboardPayload {
 	id: string;
 	favorite: boolean;
-	createTime: string;
+	time: number;
 	note?: string;
 	// 按需下载相关字段
 	lazyDownload?: boolean;
@@ -14,10 +14,8 @@ export interface HistoryTablePayload extends ClipboardPayload {
 	// 软删除字段
 	deleted?: boolean;
 	// 同步状态字段
-	syncStatus?: "none" | "synced" | "syncing";
+	syncStatus?: "not_synced" | "synced" | "changed";
 	isCloudData?: boolean;
-	// 最后修改时间字段（用于同步）
-	lastModified?: number;
 	// 代码检测相关字段
 	isCode?: boolean;
 	codeLanguage?: string;

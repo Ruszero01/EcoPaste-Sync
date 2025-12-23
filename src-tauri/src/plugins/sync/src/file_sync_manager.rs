@@ -30,10 +30,8 @@ pub struct FileMetadata {
     pub remote_path: String,
     /// 文件大小（字节）
     pub size: u64,
-    /// 创建时间
-    pub create_time: i64,
-    /// 最后修改时间
-    pub last_modified: i64,
+    /// 时间戳（统一使用）
+    pub time: i64,
     /// 文件校验和
     pub checksum: Option<String>,
     /// MIME类型
@@ -997,7 +995,7 @@ impl FileSyncManager {
     pub async fn handle_file_package_uploads(
         &self,
         local_raw_data: &[crate::sync_core::SyncDataItem],
-        cloud_result: &crate::data_manager::DataChangeResult,
+        success_item_ids: &[String],
     ) -> Result<FileOperationResult, String> {
         let mut result = FileOperationResult {
             success: false,
@@ -1018,7 +1016,7 @@ impl FileSyncManager {
             })
             .filter(|item| {
                 // 检查是否在云端同步的项目列表中
-                cloud_result.success_items.contains(&item.id)
+                success_item_ids.contains(&item.id)
             })
             .cloned()
             .collect();
@@ -1026,7 +1024,7 @@ impl FileSyncManager {
         println!(
             "文件上传筛选: 本地 {} 个文件项目，{} 个成功同步项目",
             local_raw_data.len(),
-            cloud_result.success_items.len()
+            success_item_ids.len()
         );
 
         if file_items.is_empty() {
@@ -1083,11 +1081,7 @@ impl FileSyncManager {
                     original_path: Some(file_path.clone()),
                     remote_path: remote_path.clone(),
                     size: 0, // 将在上传时计算
-                    create_time: std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
-                        .as_millis() as i64,
-                    last_modified: std::time::SystemTime::now()
+                    time: std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap()
                         .as_millis() as i64,

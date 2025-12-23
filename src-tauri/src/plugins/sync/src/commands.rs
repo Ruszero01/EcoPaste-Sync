@@ -23,18 +23,13 @@ pub async fn init_sync(
 
     log::info!("🔄 开始初始化同步引擎...");
     log::info!("📡 服务器: {}, 路径: {}", config.server_url, config.path);
-    log::info!("🔧 同步配置: only_favorites={}, include_files={}, auto_sync={}",
-               config.only_favorites, config.include_files, config.auto_sync);
 
     match engine.init(config, &db_state).await {
         Ok(result) => {
             log::info!("✅ 同步引擎初始化成功: {}", result.message);
             log::info!("🔍 引擎配置状态: config.is_some={}", engine.config.is_some());
             if let Some(ref engine_config) = engine.config {
-                log::info!("🔍 保存的引擎配置: server_url={}, only_favorites={}, include_files={}",
-                           engine_config.server_url,
-                           engine_config.sync_mode.only_favorites,
-                           engine_config.sync_mode.include_files);
+                log::info!("🔍 保存的引擎配置: server_url={}", engine_config.server_url);
             }
             Ok(result)
         }
@@ -78,10 +73,7 @@ pub async fn trigger_sync(
 
     log::info!("🔍 [TRIGGER] 引擎配置状态检查: config.is_some={}", engine.config.is_some());
     if let Some(ref engine_config) = engine.config {
-        log::info!("🔍 [TRIGGER] 当前引擎配置: server_url={}, only_favorites={}, include_files={}",
-                   engine_config.server_url,
-                   engine_config.sync_mode.only_favorites,
-                   engine_config.sync_mode.include_files);
+        log::info!("🔍 [TRIGGER] 当前引擎配置: server_url={}", engine_config.server_url);
     }
 
     // 检查引擎是否已初始化，如果没有则尝试自动初始化
@@ -176,6 +168,43 @@ pub async fn test_webdav_connection(
 ) -> Result<ConnectionTestResult, String> {
     // 使用传入的配置测试连接
     test_connection_with_config(&config).await
+}
+
+/// 通知数据变更（用于变更跟踪器）
+/// 根据优化方案，当本地数据发生以下变更时设置状态为已变更：
+/// [收藏状态变更] [内容变更] [类型变更] [子类型变更] [备注变更] [文件哈希变更]
+#[tauri::command]
+pub async fn notify_data_changed(
+    item_id: String,
+    change_type: String, // 变更类型：favorite, content, type, subtype, note, file_hash
+    state: State<'_, Arc<Mutex<CloudSyncEngine>>>,
+) -> Result<(), String> {
+    let engine = state.lock().await;
+
+    // 直接访问同步核心引擎
+    let core = engine.sync_core.clone();
+    let data_manager = {
+        let core_locked = core.lock().await;
+        core_locked.data_manager.clone()
+    };
+
+    // 调用变更跟踪器标记为已变更
+    let mut manager = data_manager.lock().await;
+
+    // 验证变更类型并记录日志
+    match change_type.as_str() {
+        "favorite" => log::info!("🔔 收到收藏状态变更通知: {}", item_id),
+        "content" => log::info!("🔔 收到内容变更通知: {}", item_id),
+        "type" => log::info!("🔔 收到类型变更通知: {}", item_id),
+        "subtype" => log::info!("🔔 收到子类型变更通知: {}", item_id),
+        "note" => log::info!("🔔 收到备注变更通知: {}", item_id),
+        "file_hash" => log::info!("🔔 收到文件哈希变更通知: {}", item_id),
+        _ => log::warn!("⚠️ 未知的变更类型: {}", change_type),
+    }
+
+    manager.mark_item_as_changed(&item_id);
+
+    Ok(())
 }
 
 /// 使用指定配置测试连接

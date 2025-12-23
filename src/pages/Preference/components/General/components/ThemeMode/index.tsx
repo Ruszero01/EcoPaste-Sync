@@ -28,13 +28,13 @@ const ThemeMode = () => {
 	});
 
 	useImmediateKey(globalStore.appearance, "theme", async (value) => {
-		let nextTheme = value === "auto" ? null : value;
+		// Tauri的setTheme方法：auto模式需要传null，非auto模式传Theme值
+		const themeToSet = value === "auto" ? null : (value as Theme);
 
-		await appWindow.setTheme(nextTheme);
+		await (appWindow.setTheme as any)(themeToSet);
 
-		nextTheme = nextTheme ?? (await appWindow.theme());
-
-		const isDark = nextTheme === "dark";
+		const actualTheme = await appWindow.theme();
+		const isDark = actualTheme === "dark";
 		globalStore.appearance.isDark = isDark;
 
 		// 更新 Mica 主题

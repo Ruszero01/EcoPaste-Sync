@@ -1,11 +1,11 @@
 import CodeEditor from "@/components/CodeEditor";
 import ColorPicker from "@/components/ColorPicker";
 import { LISTEN_KEY } from "@/constants";
-import { updateSQL } from "@/database";
 import { MainContext } from "@/pages/Main";
 import { clipboardStore } from "@/stores/clipboard";
 import type { HistoryTablePayload } from "@/types/database";
 import { detectMarkdown } from "@/utils/codeDetector";
+import { invoke } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
 import MDEditor from "@uiw/react-md-editor";
 import { useBoolean } from "ahooks";
@@ -268,8 +268,7 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 			item.subtype = updateType === "color" ? undefined : updateSubtype;
 			item.value = content;
 			item.lastModified = currentTime;
-			// 重置同步状态为'none'，表示需要同步
-			item.syncStatus = "none";
+			// 注意：不设置syncStatus，让后端变更跟踪器处理
 
 			// 立即更新本地状态中的对应项，确保前端显示立即更新
 			const itemIndex = state.list.findIndex(
@@ -280,28 +279,81 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 				state.list[itemIndex] = { ...item };
 			}
 
-			// 更新数据库，包含新的内容、类型、时间戳和同步状态
-			await updateSQL("history", {
-				id,
-				value: content,
-				type: updateType,
-				subtype: updateSubtype, // 更新subtype字段
-				isCode: updateIsCode,
-				codeLanguage: updateCodeLanguage,
-				lastModified: currentTime,
-				syncStatus: "none",
-			});
+			// 调用database插件更新数据库
+			// 1. 更新内容
+			if (item.value !== content) {
+				await invoke("update_content", { id, content });
+			}
 
-			// 如果自动收藏功能开启，更新收藏状态，同时保持同步状态为'none'
+			// 2. 更新类型和子类型
+			if (item.type !== updateType || item.subtype !== updateSubtype) {
+				await invoke("update_type", {
+					id,
+					item_type: updateType,
+					subtype: updateSubtype,
+				});
+			}
+
+			// 检测并通知各种类型的变更
+			const changeTypes: string[] = [];
+
+			// 检测内容变更
+			if (item.value !== content) {
+				changeTypes.push("content");
+			}
+
+			// 检测类型变更
+			if (item.type !== updateType) {
+				changeTypes.push("type");
+			}
+
+			// 检测子类型变更
+			if (item.subtype !== updateSubtype) {
+				changeTypes.push("subtype");
+			}
+
+			// 检测文件哈希变更（当类型为文件或图片时）
+			if (
+				(updateType === "files" || updateType === "image") &&
+				item.value !== content
+			) {
+				changeTypes.push("file_hash");
+			}
+
+			// 批量通知所有变更类型
+			if (changeTypes.length > 0) {
+				try {
+					await Promise.all(
+						changeTypes.map((changeType) =>
+							invoke("notify_data_changed", {
+								item_id: id,
+								change_type: changeType,
+							}),
+						),
+					);
+				} catch (notifyError) {
+					console.warn("通知后端变更跟踪器失败:", notifyError);
+					// 不影响主要功能继续执行
+				}
+			}
+
+			// 如果自动收藏功能开启，更新收藏状态
 			if (clipboardStore.content.autoFavorite && !favorite) {
 				item.favorite = true;
 
-				await updateSQL("history", {
-					id,
-					favorite: 1,
-					lastModified: currentTime,
-					syncStatus: "none",
-				} as any);
+				// 调用database插件更新收藏状态
+				await invoke("update_favorite", { id, favorite: true });
+
+				// 通知后端变更跟踪器（收藏状态变更）
+				try {
+					await invoke("notify_data_changed", {
+						item_id: id,
+						change_type: "favorite",
+					});
+				} catch (notifyError) {
+					console.warn("通知后端变更跟踪器失败:", notifyError);
+					// 不影响主要功能继续执行
+				}
 			}
 
 			// 触发列表刷新事件，确保前端显示与数据库中的类型保持一致

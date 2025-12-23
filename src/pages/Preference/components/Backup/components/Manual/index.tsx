@@ -1,12 +1,18 @@
 import ProList from "@/components/ProList";
 import UnoIcon from "@/components/UnoIcon";
-import { joinPath } from "@/utils/path";
+import { LISTEN_KEY } from "@/constants";
+import { showWindow } from "@/plugins/window";
+import { formatDate } from "@/utils/dayjs";
+import { getSaveDataPath, joinPath } from "@/utils/path";
+import { saveStore } from "@/utils/store";
 import { emit } from "@tauri-apps/api/event";
 import { downloadDir } from "@tauri-apps/api/path";
 import { confirm, open } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { Flex, List, message } from "antd";
+import dayjs from "dayjs";
 import type { FC } from "react";
+import { useTranslation } from "react-i18next";
 import { compress, decompress, fullName } from "tauri-plugin-fs-pro-api";
 import type { State } from "../..";
 
@@ -48,7 +54,7 @@ const Manual: FC<{ state: State }> = (props) => {
 
 			emit(LISTEN_KEY.CLOSE_DATABASE);
 
-			await wait();
+			await new Promise((resolve) => setTimeout(resolve, 100));
 
 			await decompress(path, getSaveDataPath());
 

@@ -459,9 +459,9 @@ impl CloudSyncEngine {
             sync_mode: SyncModeConfig {
                 auto_sync: old_config.auto_sync,
                 auto_sync_interval_minutes: old_config.auto_sync_interval_minutes,
-                only_favorites: old_config.only_favorites,
-                include_images: old_config.include_files,
-                include_files: old_config.include_files,
+                only_favorites: false, // 默认值，从 SyncConfig 中无法获取
+                include_images: false, // 默认值，从 SyncConfig 中无法获取
+                include_files: false, // 默认值，从 SyncConfig 中无法获取
                 content_types: crate::sync_core::ContentTypeConfig {
                     include_text: true,
                     include_html: true,

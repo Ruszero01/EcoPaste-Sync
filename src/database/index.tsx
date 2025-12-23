@@ -32,7 +32,7 @@ export const initDatabase = async () => {
 			width INTEGER,
 			height INTEGER,
 			favorite INTEGER DEFAULT 0,
-			createTime TEXT,
+			time INTEGER,
 			note TEXT,
 			subtype TEXT,
 			lazyDownload INTEGER DEFAULT 0,
@@ -44,10 +44,10 @@ export const initDatabase = async () => {
 		);
         `);
 
-	// 检查并添加新字段（用于向后兼容）
+	// 检查并添加新字段（根据优化方案重构）
 	try {
 		await executeSQL(
-			"ALTER TABLE history ADD COLUMN syncStatus TEXT DEFAULT 'none'",
+			"ALTER TABLE history ADD COLUMN syncStatus TEXT DEFAULT 'not_synced'",
 		);
 	} catch (_error) {
 		// 字段已存在，忽略错误
@@ -75,7 +75,7 @@ export const initDatabase = async () => {
 	}
 
 	try {
-		await executeSQL("ALTER TABLE history ADD COLUMN lastModified INTEGER");
+		await executeSQL("ALTER TABLE history ADD COLUMN time INTEGER");
 	} catch (_error) {
 		// 字段已存在，忽略错误
 	}
@@ -113,9 +113,9 @@ export const initDatabase = async () => {
 			recordsWithoutPosition.length > 0 &&
 			recordsWithoutPosition[0].count > 0
 		) {
-			// 为现有记录按createTime倒序设置position值（新的在上面）
+			// 为现有记录按time倒序设置position值（新的在上面）
 			const existingRecords = (await executeSQL(
-				"SELECT id FROM history WHERE deleted = 0 ORDER BY createTime DESC",
+				"SELECT id FROM history WHERE deleted = 0 ORDER BY time DESC",
 			)) as any[];
 
 			// 批量更新position值，最新的记录获得最大的position值
@@ -214,7 +214,7 @@ export const buildWhere = (conditions: Record<string, any>) => {
 export const dbSelect = async <T = any>(
 	tableName: TableName,
 	where: Record<string, any> = {},
-	orderBy = "ORDER BY createTime DESC",
+	orderBy = "ORDER BY time DESC",
 	limit?: number,
 ) => {
 	const { whereSQL, values } = buildWhere(where);
@@ -234,13 +234,13 @@ export const dbSelect = async <T = any>(
 			isCode: Boolean(item.isCode),
 			// 确保position字段为数字类型
 			position: Number(item.position || 0),
-			// 确保同步状态的有效性，只允许有效的状态值
+			// 确保同步状态的有效性，只允许有效的状态值 (新架构)
 			syncStatus:
 				item.syncStatus === "synced" ||
-				item.syncStatus === "syncing" ||
-				item.syncStatus === "error"
+				item.syncStatus === "changed" ||
+				item.syncStatus === "not_synced"
 					? item.syncStatus
-					: "none",
+					: "not_synced",
 		}),
 	);
 
@@ -327,8 +327,7 @@ export const insertOrUpdate = async (
 				...payloadWithoutSource
 			} = payload;
 			const updateData: Partial<HistoryTablePayload> = {
-				createTime: currentTime,
-				lastModified: Date.now(),
+				time: currentTime,
 				// 保留原始来源应用信息
 				sourceAppName: existingRecords[0].sourceAppName,
 				sourceAppIcon: existingRecords[0].sourceAppIcon,
@@ -395,7 +394,7 @@ export const insertOrUpdate = async (
 				value: `%${normalizedPath}%`,
 				deleted: 0,
 			},
-			"ORDER BY createTime DESC",
+			"ORDER BY time DESC",
 			1,
 		);
 
@@ -409,8 +408,7 @@ export const insertOrUpdate = async (
 				...payloadWithoutSource
 			} = payload;
 			const updateData: Partial<HistoryTablePayload> = {
-				createTime: currentTime,
-				lastModified: Date.now(),
+				time: currentTime,
 				// 保留原始来源应用信息
 				sourceAppName: existing.sourceAppName,
 				sourceAppIcon: existing.sourceAppIcon,
@@ -434,7 +432,7 @@ export const insertOrUpdate = async (
 		const existingRecords = await dbSelect(
 			tableName,
 			whereConditions,
-			"ORDER BY createTime DESC",
+			"ORDER BY time DESC",
 			1,
 		);
 
@@ -448,8 +446,7 @@ export const insertOrUpdate = async (
 				...payloadWithoutSource
 			} = payload;
 			const updateData: Partial<HistoryTablePayload> = {
-				createTime: currentTime,
-				lastModified: Date.now(),
+				time: currentTime,
 				// 保留原始来源应用信息
 				sourceAppName: existing.sourceAppName,
 				sourceAppIcon: existing.sourceAppIcon,
@@ -524,7 +521,7 @@ export const executeSQL = async (query: string, values?: unknown[]) => {
 export const selectSQL = async <List,>(
 	tableName: TableName,
 	payload: TablePayload = {},
-	orderBy = "ORDER BY createTime DESC",
+	orderBy = "ORDER BY time DESC",
 ) => {
 	const { keys, values } = handlePayload(payload);
 
@@ -568,13 +565,13 @@ export const selectSQL = async <List,>(
 		isCode: Boolean(item.isCode),
 		// 确保position字段为数字类型
 		position: Number(item.position || 0),
-		// 确保同步状态的有效性，只允许有效的状态值
+		// 确保同步状态的有效性，只允许有效的状态值 (新架构)
 		syncStatus:
 			item.syncStatus === "synced" ||
-			item.syncStatus === "syncing" ||
-			item.syncStatus === "error"
+			item.syncStatus === "changed" ||
+			item.syncStatus === "not_synced"
 				? item.syncStatus
-				: "none",
+				: "not_synced",
 	}));
 
 	return processedList as List;
@@ -716,11 +713,8 @@ export const deleteSQL = async (_tableName: TableName, item: TablePayload) => {
 	}
 
 	try {
-		// 导入删除管理器
-		const { deleteManager } = await import("@/utils/deleteManager");
-
-		// 使用删除管理器执行删除
-		const result = await deleteManager.deleteItem(id);
+		// 直接执行SQL删除操作
+		const result = await executeSQL("DELETE FROM history WHERE id = ?", [id]);
 
 		if (!result.success) {
 			throw new Error(result.errors?.join("; ") ?? "删除失败");
@@ -743,7 +737,7 @@ export const cleanupDuplicateRecords = async () => {
 	try {
 		// 获取所有files和image类型的记录
 		const fileRecords = (await executeSQL(
-			`SELECT * FROM history WHERE type = "files" OR type = "image" ORDER BY createTime DESC`,
+			`SELECT * FROM history WHERE type = "files" OR type = "image" ORDER BY time DESC`,
 		)) as any[];
 
 		const processedPaths = new Set<string>();
@@ -824,12 +818,12 @@ export const resetDatabase = async () => {
 /**
  * 更新单个记录的同步状态
  * @param id 记录ID
- * @param syncStatus 同步状态
+ * @param syncStatus 同步状态 (新架构：not_synced | synced | changed)
  * @param isCloudData 是否为云端数据
  */
 export const updateSyncStatus = async (
 	id: string,
-	syncStatus: "none" | "synced" | "syncing",
+	syncStatus: "not_synced" | "synced" | "changed",
 	isCloudData?: boolean,
 ) => {
 	try {
@@ -850,12 +844,12 @@ export const updateSyncStatus = async (
 /**
  * 批量更新同步状态
  * @param ids 记录ID数组
- * @param syncStatus 同步状态
+ * @param syncStatus 同步状态 (新架构：not_synced | synced | changed)
  * @param isCloudData 是否为云端数据
  */
 export const batchUpdateSyncStatus = async (
 	ids: string[],
-	syncStatus: "none" | "synced" | "syncing",
+	syncStatus: "not_synced" | "synced" | "changed",
 	isCloudData?: boolean,
 ) => {
 	try {
@@ -894,8 +888,8 @@ export const getPendingSyncRecords = async (limit?: number) => {
 		// 使用通用SELECT函数
 		const records = await dbSelect(
 			"history",
-			{ syncStatus: "none" },
-			"ORDER BY createTime DESC",
+			{ syncStatus: "not_synced" },
+			"ORDER BY time DESC",
 			limit,
 		);
 
@@ -914,58 +908,13 @@ export const batchDeleteItems = async (ids: string[]) => {
 	if (!ids || ids.length === 0) return { success: true, deletedCount: 0 };
 
 	try {
-		// 导入删除管理器
-		const { deleteManager } = await import("@/utils/deleteManager");
-
-		// 先获取要删除的条目信息，以便找出所有相关重复条目
-		const itemsToDelete = (await executeSQL(
-			`SELECT * FROM history WHERE id IN (${ids.map(() => "?").join(",")})`,
-			ids,
-		)) as any[];
-
-		// 找出所有需要删除的ID（包括重复条目）
-		const allIdsToDelete = new Set<string>();
-
-		for (const item of itemsToDelete) {
-			allIdsToDelete.add(item.id);
-
-			// 对于文件和图片类型，删除所有相同路径的条目（不管类型）
-			if (item.type === "files" || item.type === "image") {
-				let filePath = item.value;
-
-				// 如果是files类型，尝试从JSON中提取文件路径
-				if (item.type === "files" && item.value?.startsWith("[")) {
-					try {
-						const filePaths = JSON.parse(item.value);
-						filePath = filePaths[0];
-					} catch {
-						// 解析失败，使用原值
-					}
-				}
-
-				// 查找所有相同文件路径的条目
-				const duplicateItems = (await executeSQL(
-					`SELECT id FROM history WHERE (type = "files" OR type = "image") AND deleted = 0 AND (
-						value = ? OR
-						value LIKE ? OR
-						? LIKE value
-					)`,
-					[
-						filePath,
-						`%"${filePath.replace(/\\/g, "/")}%`,
-						`${filePath.replace(/\\/g, "/")}%`,
-					],
-				)) as any[];
-
-				// 将所有重复条目也加入删除列表
-				for (const duplicate of duplicateItems) {
-					allIdsToDelete.add(duplicate.id);
-				}
-			}
-		}
-
-		// 使用删除管理器执行批量删除
-		const result = await deleteManager.deleteItems(Array.from(allIdsToDelete));
+		// 直接执行SQL批量删除操作
+		const result = await executeSQL(
+			`DELETE FROM history WHERE id IN (${Array.from(allIdsToDelete)
+				.map(() => "?")
+				.join(",")})`,
+			Array.from(allIdsToDelete),
+		);
 
 		// 转换结果格式以保持向后兼容
 		if (!result.success) {
@@ -1065,7 +1014,7 @@ export const getHistoryData = async (includeDeleted = false) => {
 	const result = await dbSelect(
 		"history",
 		whereConditions,
-		"ORDER BY createTime DESC",
+		"ORDER BY time DESC",
 	);
 
 	// 同时检查数据库中的总数据状态
@@ -1292,7 +1241,7 @@ export const cleanupInvalidData = async () => {
 		for (const duplicate of duplicates) {
 			// 获取该ID的所有记录，按时间排序，保留最新的
 			const records = (await executeSQL(
-				"SELECT rowid, * FROM history WHERE id = ? ORDER BY createTime DESC, rowid DESC;",
+				"SELECT rowid, * FROM history WHERE id = ? ORDER BY time DESC, rowid DESC;",
 				[duplicate.id],
 			)) as any[];
 
@@ -1426,7 +1375,7 @@ export const getDatabaseInfo = async () => {
 		const recentRecords = await dbSelect(
 			"history",
 			{ deleted: 0 },
-			"ORDER BY createTime DESC",
+			"ORDER BY time DESC",
 			10,
 		);
 

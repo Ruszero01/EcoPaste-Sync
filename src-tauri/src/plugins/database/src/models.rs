@@ -16,8 +16,7 @@ pub struct HistoryItem {
     pub width: Option<i32>,
     pub height: Option<i32>,
     pub favorite: i32,
-    #[serde(rename = "createTime")]
-    pub create_time: String,
+    pub time: i64,
     pub note: Option<String>,
     pub subtype: Option<String>,
     #[serde(rename = "lazyDownload")]
@@ -35,8 +34,6 @@ pub struct HistoryItem {
     pub code_language: Option<String>,
     #[serde(rename = "isCode")]
     pub is_code: Option<i32>,
-    #[serde(rename = "lastModified")]
-    pub last_modified: Option<i64>,
     #[serde(rename = "sourceAppName")]
     pub source_app_name: Option<String>,
     #[serde(rename = "sourceAppIcon")]
@@ -56,7 +53,7 @@ impl Default for HistoryItem {
             width: None,
             height: None,
             favorite: 0,
-            create_time: String::new(),
+            time: 0,
             note: None,
             subtype: None,
             lazy_download: Some(0),
@@ -67,7 +64,6 @@ impl Default for HistoryItem {
             is_cloud_data: Some(0),
             code_language: None,
             is_code: Some(0),
-            last_modified: None,
             source_app_name: None,
             source_app_icon: None,
             position: Some(0),
@@ -86,15 +82,11 @@ pub struct SyncDataItem {
     pub value: Option<String>,
     pub favorite: bool,
     pub note: Option<String>,
-    pub last_modified: i64,
+    pub time: i64,
 }
 
 impl From<HistoryItem> for SyncDataItem {
     fn from(item: HistoryItem) -> Self {
-        let last_modified = chrono::DateTime::parse_from_rfc3339(&item.create_time)
-            .map(|dt| dt.timestamp_millis())
-            .unwrap_or_else(|_| chrono::Utc::now().timestamp_millis());
-
         Self {
             id: item.id,
             item_type: item.item_type.unwrap_or_else(|| "text".to_string()),
@@ -102,10 +94,55 @@ impl From<HistoryItem> for SyncDataItem {
             value: item.value,
             favorite: item.favorite == 1,
             note: item.note,
-            last_modified: item.last_modified.unwrap_or(last_modified),
+            time: item.time,
             // 所有元数据都保存在 value 字段中（JSON格式）
         }
     }
+}
+
+/// 插入数据项
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InsertItem {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub item_type: Option<String>,
+    pub group: Option<String>,
+    pub value: Option<String>,
+    pub search: Option<String>,
+    pub count: Option<i32>,
+    pub width: Option<i32>,
+    pub height: Option<i32>,
+    pub favorite: i32,
+    pub time: i64,
+    pub note: Option<String>,
+    pub subtype: Option<String>,
+    #[serde(rename = "lazyDownload")]
+    pub lazy_download: Option<i32>,
+    #[serde(rename = "fileSize")]
+    pub file_size: Option<i64>,
+    #[serde(rename = "fileType")]
+    pub file_type: Option<String>,
+    pub deleted: Option<i32>,
+    #[serde(rename = "syncStatus")]
+    pub sync_status: Option<String>,
+    #[serde(rename = "isCloudData")]
+    pub is_cloud_data: Option<i32>,
+    #[serde(rename = "codeLanguage")]
+    pub code_language: Option<String>,
+    #[serde(rename = "isCode")]
+    pub is_code: Option<i32>,
+    #[serde(rename = "sourceAppName")]
+    pub source_app_name: Option<String>,
+    #[serde(rename = "sourceAppIcon")]
+    pub source_app_icon: Option<String>,
+    pub position: Option<i32>,
+}
+
+/// 插入结果
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InsertResult {
+    pub is_update: bool,
+    pub insert_id: Option<String>,
 }
 
 /// 查询选项

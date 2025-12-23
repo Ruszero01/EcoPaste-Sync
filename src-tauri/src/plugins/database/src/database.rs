@@ -1,11 +1,11 @@
 //! 数据库管理器
 //! 提供 SQLite 数据库的统一访问接口
 
-use crate::models::{HistoryItem, QueryOptions, SyncDataItem};
+use crate::models::{HistoryItem, QueryOptions, SyncDataItem, InsertItem, InsertResult};
+use crate::ChangeTracker;
 use rusqlite::{params, Connection};
 use std::path::PathBuf;
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 /// 数据库管理器
 pub struct DatabaseManager {
@@ -13,6 +13,8 @@ pub struct DatabaseManager {
     db_path: Option<PathBuf>,
     /// 是否已初始化
     initialized: bool,
+    /// 内部状态跟踪器
+    change_tracker: ChangeTracker,
 }
 
 impl DatabaseManager {
@@ -21,6 +23,7 @@ impl DatabaseManager {
         Self {
             db_path: None,
             initialized: false,
+            change_tracker: ChangeTracker::new(),
         }
     }
 
@@ -48,7 +51,7 @@ impl DatabaseManager {
                 width INTEGER,
                 height INTEGER,
                 favorite INTEGER DEFAULT 0,
-                createTime TEXT,
+                time INTEGER,
                 note TEXT,
                 subtype TEXT,
                 lazyDownload INTEGER DEFAULT 0,
@@ -59,7 +62,6 @@ impl DatabaseManager {
                 isCloudData INTEGER DEFAULT 0,
                 codeLanguage TEXT,
                 isCode INTEGER DEFAULT 0,
-                lastModified INTEGER,
                 sourceAppName TEXT,
                 sourceAppIcon TEXT,
                 position INTEGER DEFAULT 0
@@ -67,10 +69,30 @@ impl DatabaseManager {
 
             CREATE INDEX IF NOT EXISTS idx_history_deleted ON history(deleted);
             CREATE INDEX IF NOT EXISTS idx_history_favorite ON history(favorite);
-            CREATE INDEX IF NOT EXISTS idx_history_createTime ON history(createTime);
             CREATE INDEX IF NOT EXISTS idx_history_syncStatus ON history(syncStatus);
             CREATE INDEX IF NOT EXISTS idx_history_isCloudData ON history(isCloudData);
         "#).map_err(|e| format!("创建数据库表失败: {}", e))?;
+
+        // 检查并添加缺失的字段（向后兼容）
+        let mut stmt = conn.prepare("PRAGMA table_info(history)")
+            .map_err(|e| format!("查询表结构失败: {}", e))?;
+
+        let mut existing_columns = std::collections::HashSet::new();
+        let mut rows = stmt.query([]).map_err(|e| format!("查询表结构失败: {}", e))?;
+        while let Some(row) = rows.next().map_err(|e| format!("读取表结构失败: {}", e))? {
+            let name: String = row.get(1).map_err(|e| format!("获取字段名失败: {}", e))?;
+            existing_columns.insert(name);
+        }
+
+        // 添加 time 字段（如果不存在）
+        if !existing_columns.contains("time") {
+            conn.execute_batch("ALTER TABLE history ADD COLUMN time INTEGER;")
+                .map_err(|e| format!("添加 time 字段失败: {}", e))?;
+        }
+
+        // 添加完成后，再创建 time 字段的索引
+        conn.execute_batch("CREATE INDEX IF NOT EXISTS idx_history_time ON history(time);")
+            .map_err(|e| format!("创建索引失败: {}", e))?;
 
         self.db_path = Some(db_path);
         self.initialized = true;
@@ -95,6 +117,12 @@ impl DatabaseManager {
     /// 获取数据库路径
     pub fn get_db_path(&self) -> Option<&PathBuf> {
         self.db_path.as_ref()
+    }
+
+    /// 获取内部状态跟踪器
+    /// sync引擎通过此方法查询已变更的数据
+    pub fn get_change_tracker(&self) -> &ChangeTracker {
+        &self.change_tracker
     }
 
     /// 查询历史记录
@@ -125,7 +153,7 @@ impl DatabaseManager {
         if let Some(order_by) = &options.order_by {
             sql.push_str(&format!(" ORDER BY {}", order_by));
         } else {
-            sql.push_str(" ORDER BY createTime DESC");
+            sql.push_str(" ORDER BY time DESC");
         }
 
         // 限制
@@ -152,7 +180,7 @@ impl DatabaseManager {
                 width: row.get(6).ok(),
                 height: row.get(7).ok(),
                 favorite: row.get(8).unwrap_or(0),
-                create_time: row.get(9).unwrap_or_default(),
+                time: row.get(9).unwrap_or(0),
                 note: row.get(10).ok(),
                 subtype: row.get(11).ok(),
                 lazy_download: row.get(12).ok(),
@@ -163,10 +191,9 @@ impl DatabaseManager {
                 is_cloud_data: row.get(17).ok(),
                 code_language: row.get::<_, Option<String>>(18).ok().flatten(),
                 is_code: row.get::<_, Option<i32>>(19).ok().flatten(),
-                last_modified: row.get::<_, Option<i64>>(20).ok().flatten(),
-                source_app_name: row.get::<_, Option<String>>(21).ok().flatten(),
-                source_app_icon: row.get::<_, Option<String>>(22).ok().flatten(),
-                position: row.get::<_, Option<i32>>(23).ok().flatten(),
+                source_app_name: row.get::<_, Option<String>>(20).ok().flatten(),
+                source_app_icon: row.get::<_, Option<String>>(21).ok().flatten(),
+                position: row.get::<_, Option<i32>>(22).ok().flatten(),
             })
         }).map_err(|e| format!("查询失败: {}", e))?;
 
@@ -191,7 +218,7 @@ impl DatabaseManager {
             only_favorites,
             exclude_deleted: false, // 同步需要包含已删除的项目
             limit,
-            order_by: Some("createTime DESC".to_string()),
+            order_by: Some("time DESC".to_string()),
             ..Default::default()
         };
 
@@ -230,6 +257,24 @@ impl DatabaseManager {
             "UPDATE history SET value = ?1 WHERE id = ?2",
             params![value, id],
         ).map_err(|e| format!("更新项目值失败: {}", e))?;
+
+        Ok(())
+    }
+
+    /// 通用更新字段方法
+    ///
+    /// # Arguments
+    /// * `id` - 项目ID
+    /// * `field` - 字段名
+    /// * `value` - 字段值
+    pub fn update_field(&self, id: &str, field: &str, value: &str) -> Result<(), String> {
+        let conn = self.get_connection()?;
+
+        let sql = format!("UPDATE history SET {} = ?1 WHERE id = ?2", field);
+        conn.execute(
+            &sql,
+            params![value, id],
+        ).map_err(|e| format!("更新字段 {} 失败: {}", field, e))?;
 
         Ok(())
     }
@@ -280,43 +325,38 @@ impl DatabaseManager {
             |_| Ok(true),
         ).unwrap_or(false);
 
-        let create_time = chrono::DateTime::from_timestamp_millis(item.last_modified)
-            .map(|dt| dt.to_rfc3339())
-            .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
-
         if exists {
             // 更新
             conn.execute(
                 "UPDATE history SET
                     type = ?1, value = ?2, favorite = ?3, note = ?4,
-                    syncStatus = ?5, deleted = ?6, lastModified = ?7, isCloudData = 1
+                    syncStatus = ?5, deleted = ?6, time = ?7, isCloudData = 1
                 WHERE id = ?8",
                 params![
                     item.item_type,
                     item.value,
-                    if item.favorite { 1 } else { 0 },
+                    item.favorite,
                     item.note,
                     "synced",
                     0, // 🧹 云端数据不包含 deleted 字段，从云端同步的项目都是活跃的
-                    item.last_modified,
+                    item.time,
                     item.id,
                 ],
             ).map_err(|e| format!("更新云端数据失败: {}", e))?;
         } else {
             // 插入
             conn.execute(
-                "INSERT INTO history (id, type, value, favorite, note, createTime, syncStatus, deleted, lastModified, isCloudData)
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 1)",
+                "INSERT INTO history (id, type, value, favorite, note, time, syncStatus, deleted, isCloudData)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 1)",
                 params![
                     item.id,
                     item.item_type,
                     item.value,
-                    if item.favorite { 1 } else { 0 },
+                    item.favorite,
                     item.note,
-                    create_time,
+                    item.time,
                     "synced",
                     0, // 🧹 云端数据不包含 deleted 字段，从云端同步的项目都是活跃的
-                    item.last_modified,
                 ],
             ).map_err(|e| format!("插入云端数据失败: {}", e))?;
         }
@@ -413,6 +453,195 @@ impl DatabaseManager {
             active_items: active as usize,
             synced_items: synced as usize,
             favorite_items: favorites as usize,
+        })
+    }
+
+    /// 插入数据（带去重功能）
+    ///
+    /// # Arguments
+    /// * `item` - 要插入的数据项
+    pub fn insert_with_deduplication(&self, item: &InsertItem) -> Result<InsertResult, String> {
+        let conn = self.get_connection()?;
+
+        // 检查是否已存在（优先使用ID去重）
+        let exists_by_id: bool = conn.query_row(
+            "SELECT 1 FROM history WHERE id = ?1",
+            params![item.id],
+            |_| Ok(true),
+        ).unwrap_or(false);
+
+        if exists_by_id {
+            // 如果ID已存在，判断是否为重复内容
+            let existing_value: Option<String> = conn.query_row(
+                "SELECT value FROM history WHERE id = ?1",
+                params![item.id],
+                |row| row.get(0),
+            ).unwrap_or(None);
+
+            let is_duplicate = existing_value.as_ref() == Some(&item.value.clone().unwrap_or_default());
+
+            if is_duplicate {
+                // 如果内容和ID都相同，认为是重复操作，不执行任何操作
+                return Ok(InsertResult {
+                    is_update: false,
+                    insert_id: None,
+                });
+            } else {
+                // ID相同但内容不同，执行更新
+                conn.execute(
+                    "UPDATE history SET
+                        type = ?1, value = ?2, search = ?3, count = ?4,
+                        width = ?5, height = ?6, favorite = ?7,
+                        time = ?8, note = ?9, subtype = ?10,
+                        lazyDownload = ?11, fileSize = ?12, fileType = ?13,
+                        deleted = ?14, syncStatus = ?15, isCloudData = ?16,
+                        codeLanguage = ?17, isCode = ?18,
+                        sourceAppName = ?19, sourceAppIcon = ?20, position = ?21
+                    WHERE id = ?22",
+                    params![
+                        item.item_type,
+                        item.value,
+                        item.search,
+                        item.count.unwrap_or(1),
+                        item.width,
+                        item.height,
+                        item.favorite,
+                        item.time,
+                        item.note,
+                        item.subtype,
+                        item.lazy_download.unwrap_or(0),
+                        item.file_size,
+                        item.file_type,
+                        item.deleted.unwrap_or(0),
+                        item.sync_status.clone().unwrap_or_else(|| "not_synced".to_string()),
+                        item.is_cloud_data.unwrap_or(0),
+                        item.code_language,
+                        item.is_code.unwrap_or(0),
+                        item.source_app_name,
+                        item.source_app_icon,
+                        item.position.unwrap_or(0),
+                        item.id,
+                    ],
+                ).map_err(|e| format!("更新数据失败: {}", e))?;
+
+                // 标记为已变更
+                self.change_tracker.mark_changed(&item.id);
+
+                return Ok(InsertResult {
+                    is_update: true,
+                    insert_id: Some(item.id.clone()),
+                });
+            }
+        }
+
+        // 检查是否已存在相同内容（基于type + value组合）
+        let existing_id: Option<String> = conn.query_row(
+            "SELECT id FROM history WHERE type = ?1 AND value = ?2 AND deleted = 0 LIMIT 1",
+            params![item.item_type, item.value],
+            |row| row.get(0),
+        ).unwrap_or(None);
+
+        if let Some(existing_id) = existing_id {
+            // 如果存在相同内容的记录，更新该记录
+            conn.execute(
+                "UPDATE history SET
+                    [group] = ?1, search = ?2, count = ?3,
+                    width = ?4, height = ?5, favorite = ?6,
+                    time = ?7, note = ?8, subtype = ?9,
+                    lazyDownload = ?10, fileSize = ?11, fileType = ?12,
+                    deleted = ?13, syncStatus = ?14, isCloudData = ?15,
+                    codeLanguage = ?16, isCode = ?17,
+                    sourceAppName = ?18, sourceAppIcon = ?19, position = ?20
+                WHERE id = ?21",
+                params![
+                    item.group,
+                    item.search,
+                    item.count.unwrap_or(1),
+                    item.width,
+                    item.height,
+                    item.favorite,
+                    item.time,
+                    item.note,
+                    item.subtype,
+                    item.lazy_download.unwrap_or(0),
+                    item.file_size,
+                    item.file_type,
+                    item.deleted.unwrap_or(0),
+                    item.sync_status.clone().unwrap_or_else(|| "not_synced".to_string()),
+                    item.is_cloud_data.unwrap_or(0),
+                    item.code_language,
+                    item.is_code.unwrap_or(0),
+                    item.source_app_name,
+                    item.source_app_icon,
+                    item.position.unwrap_or(0),
+                    existing_id,
+                ],
+            ).map_err(|e| format!("更新相同内容失败: {}", e))?;
+
+            // 标记为已变更
+            self.change_tracker.mark_changed(&existing_id);
+
+            return Ok(InsertResult {
+                is_update: true,
+                insert_id: Some(existing_id),
+            });
+        }
+
+        // 获取最大position，用于手动排序模式
+        let max_position: i32 = conn.query_row(
+            "SELECT COALESCE(MAX(position), 0) FROM history",
+            params![],
+            |row| row.get(0),
+        ).unwrap_or(0);
+
+        // 插入新记录
+        conn.execute(
+            "INSERT INTO history (
+                id, type, [group], value, search, count,
+                width, height, favorite, time, note, subtype,
+                lazyDownload, fileSize, fileType, deleted,
+                syncStatus, isCloudData, codeLanguage, isCode,
+                sourceAppName, sourceAppIcon, position
+            ) VALUES (
+                ?1, ?2, ?3, ?4, ?5, ?6,
+                ?7, ?8, ?9, ?10, ?11, ?12,
+                ?13, ?14, ?15, ?16,
+                ?17, ?18, ?19, ?20,
+                ?21, ?22, ?23
+            )",
+            params![
+                item.id,
+                item.item_type,
+                item.group,
+                item.value,
+                item.search,
+                item.count.unwrap_or(1),
+                item.width,
+                item.height,
+                item.favorite,
+                item.time,
+                item.note,
+                item.subtype,
+                item.lazy_download.unwrap_or(0),
+                item.file_size,
+                item.file_type,
+                item.deleted.unwrap_or(0),
+                item.sync_status.clone().unwrap_or_else(|| "not_synced".to_string()),
+                item.is_cloud_data.unwrap_or(0),
+                item.code_language,
+                item.is_code.unwrap_or(0),
+                item.source_app_name,
+                item.source_app_icon,
+                max_position + 1,
+            ],
+        ).map_err(|e| format!("插入数据失败: {}", e))?;
+
+        // 标记为已变更（新项目需要同步）
+        self.change_tracker.mark_changed(&item.id);
+
+        Ok(InsertResult {
+            is_update: false,
+            insert_id: Some(item.id.clone()),
         })
     }
 

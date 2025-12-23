@@ -7,7 +7,6 @@ import {
 	getSaveImagePath,
 	joinPath,
 } from "@/utils/path";
-import { wait } from "@/utils/shared";
 import { NodeIndexOutlined, ReloadOutlined } from "@ant-design/icons";
 import { emit } from "@tauri-apps/api/event";
 import { appLogDir, dataDir as tauriDataDir } from "@tauri-apps/api/path";
@@ -85,7 +84,7 @@ const SavePath: FC<{ state: State }> = (props) => {
 			emit(LISTEN_KEY.CLOSE_DATABASE);
 
 			await wait();
-
+			await new Promise((resolve) => setTimeout(resolve, 100));
 			// 检查目标路径中是否已存在数据文件
 			const hasExistingData = await checkExistingData(dstPath);
 

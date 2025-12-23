@@ -18,7 +18,7 @@ export const useImmediateKey = <T extends object>(
 		stableCallback(object[key]);
 
 		// 订阅变化
-		const unsubscribe = subscribeKey(object, key as string, stableCallback);
+		const unsubscribe = subscribeKey(object, key, stableCallback);
 
 		return unsubscribe;
 	}, [object, key, stableCallback]);

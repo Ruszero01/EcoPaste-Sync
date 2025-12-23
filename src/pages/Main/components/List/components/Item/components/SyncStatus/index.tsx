@@ -4,6 +4,7 @@ import type { HistoryTablePayload } from "@/types/database";
 import { Flex } from "antd";
 import clsx from "clsx";
 import type { FC } from "react";
+import { memo } from "react";
 import { useSnapshot } from "valtio";
 
 interface SyncStatusProps {
@@ -17,8 +18,7 @@ const SyncStatus: FC<SyncStatusProps> = ({ data }) => {
 
 	// 获取同步状态的颜色和图标
 	const getSyncStatusInfo = () => {
-		// 只有真正的已同步状态才显示已同步
-		// isCloudData 只是表示数据来源，不应作为同步状态判断
+		// 已同步状态
 		if (syncStatus === "synced") {
 			return {
 				color: favorite ? "#fa8c16" : "#0958d9", // 收藏用橘黄色，普通用深蓝色
@@ -27,21 +27,18 @@ const SyncStatus: FC<SyncStatusProps> = ({ data }) => {
 			};
 		}
 
-		// 同步中状态
-		if (syncStatus === "syncing") {
+		// 已变更状态（有本地变更）- 比已同步状态更暗的颜色
+		if (syncStatus === "changed") {
 			return {
-				color: isDark ? "#d48806" : "#fa8c16", // 暗色模式用深黄色，亮色模式用橘黄色
+				color: isDark
+					? favorite
+						? "#874d00"
+						: "#002766" // 暗色模式：收藏用更深橘黄色，普通用更深深蓝色
+					: favorite
+						? "#ad6800"
+						: "#003a8c", // 亮色模式：收藏用更暗橘黄色，普通用更暗深蓝色
 				icon: "i-mdi:cloud-sync",
-				title: "同步中",
-			};
-		}
-
-		// 同步错误状态
-		if (syncStatus === "error") {
-			return {
-				color: isDark ? "#cf1322" : "#f5222d", // 暗色模式用深红色，亮色模式用亮红色
-				icon: "i-mdi:cloud-alert",
-				title: "同步失败",
+				title: "待同步",
 			};
 		}
 
