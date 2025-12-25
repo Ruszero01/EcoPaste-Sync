@@ -1,11 +1,10 @@
 //! 数据库管理器
 //! 提供 SQLite 数据库的统一访问接口
 
-use crate::models::{HistoryItem, QueryOptions, SyncDataItem, InsertItem, InsertResult};
+use crate::models::{HistoryItem, QueryOptions, SyncDataItem, InsertItem, InsertResult, DatabaseStatistics};
 use crate::ChangeTracker;
 use rusqlite::{params, Connection};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
 
 /// 数据库管理器
 pub struct DatabaseManager {
@@ -673,18 +672,4 @@ impl Default for DatabaseManager {
     fn default() -> Self {
         Self::new()
     }
-}
-
-/// 数据库统计信息
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct DatabaseStatistics {
-    pub total_items: usize,
-    pub active_items: usize,
-    pub synced_items: usize,
-    pub favorite_items: usize,
-}
-
-/// 创建共享的数据库管理器
-pub fn create_shared_manager() -> Arc<Mutex<DatabaseManager>> {
-    Arc::new(Mutex::new(DatabaseManager::new()))
 }

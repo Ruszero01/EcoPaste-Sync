@@ -139,3 +139,12 @@ pub struct QueryOptions {
     /// 排除已删除
     pub exclude_deleted: bool,
 }
+
+/// 数据库统计信息
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DatabaseStatistics {
+    pub total_items: usize,
+    pub active_items: usize,
+    pub synced_items: usize,
+    pub favorite_items: usize,
+}
