@@ -116,7 +116,6 @@ const Main = () => {
 					id: nanoid(),
 					favorite: false,
 					syncStatus: "not_synced", // 新项目默认为未同步状态
-					isCloudData: false, // 标记为本地数据
 				};
 
 				// 调用后端数据库插件插入数据
@@ -126,7 +125,6 @@ const Main = () => {
 					time: Date.now(), // Rust端需要time字段为毫秒时间戳
 					favorite: data.favorite ? 1 : 0,
 					deleted: data.deleted ? 1 : 0,
-					isCloudData: data.isCloudData ? 1 : 0,
 					isCode: data.isCode ? 1 : 0,
 				});
 
@@ -502,7 +500,6 @@ const Main = () => {
 				...item,
 				favorite: Boolean(item.favorite),
 				deleted: Boolean(item.deleted),
-				isCloudData: Boolean(item.isCloudData),
 				isCode: Boolean(item.isCode),
 				position: Number(item.position || 0),
 				syncStatus: item.syncStatus || "none",
@@ -531,7 +528,6 @@ const Main = () => {
 				...item,
 				favorite: Boolean(item.favorite),
 				deleted: Boolean(item.deleted),
-				isCloudData: Boolean(item.isCloudData),
 				isCode: Boolean(item.isCode),
 				position: Number(item.position || 0),
 				syncStatus: item.syncStatus || "none",
@@ -580,7 +576,6 @@ const Main = () => {
 				...item,
 				favorite: Boolean(item.favorite),
 				deleted: Boolean(item.deleted),
-				isCloudData: Boolean(item.isCloudData),
 				isCode: Boolean(item.isCode),
 				position: Number(item.position || 0),
 				syncStatus: item.syncStatus || "none",

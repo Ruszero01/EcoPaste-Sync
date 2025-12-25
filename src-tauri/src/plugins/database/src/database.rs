@@ -56,7 +56,6 @@ impl DatabaseManager {
                 fileSize INTEGER,
                 deleted INTEGER DEFAULT 0,
                 syncStatus TEXT DEFAULT 'none',
-                isCloudData INTEGER DEFAULT 0,
                 codeLanguage TEXT,
                 isCode INTEGER DEFAULT 0,
                 sourceAppName TEXT,
@@ -67,7 +66,6 @@ impl DatabaseManager {
             CREATE INDEX IF NOT EXISTS idx_history_deleted ON history(deleted);
             CREATE INDEX IF NOT EXISTS idx_history_favorite ON history(favorite);
             CREATE INDEX IF NOT EXISTS idx_history_syncStatus ON history(syncStatus);
-            CREATE INDEX IF NOT EXISTS idx_history_isCloudData ON history(isCloudData);
             CREATE INDEX IF NOT EXISTS idx_history_time ON history(time);
         "#).map_err(|e| format!("创建数据库表失败: {}", e))?;
 
@@ -191,12 +189,11 @@ impl DatabaseManager {
                 file_size: row.get(12).ok(),
                 deleted: row.get(13).ok(),
                 sync_status: row.get(14).ok(),
-                is_cloud_data: row.get(15).ok(),
-                code_language: row.get::<_, Option<String>>(16).ok().flatten(),
-                is_code: row.get::<_, Option<i32>>(17).ok().flatten(),
-                source_app_name: row.get::<_, Option<String>>(18).ok().flatten(),
-                source_app_icon: row.get::<_, Option<String>>(19).ok().flatten(),
-                position: row.get::<_, Option<i32>>(20).ok().flatten(),
+                code_language: row.get::<_, Option<String>>(15).ok().flatten(),
+                is_code: row.get::<_, Option<i32>>(16).ok().flatten(),
+                source_app_name: row.get::<_, Option<String>>(17).ok().flatten(),
+                source_app_icon: row.get::<_, Option<String>>(18).ok().flatten(),
+                position: row.get::<_, Option<i32>>(19).ok().flatten(),
             })
         }).map_err(|e| format!("查询失败: {}", e))?;
 
@@ -333,7 +330,7 @@ impl DatabaseManager {
             conn.execute(
                 "UPDATE history SET
                     type = ?1, value = ?2, favorite = ?3, note = ?4,
-                    syncStatus = ?5, deleted = ?6, time = ?7, isCloudData = 1
+                    syncStatus = ?5, deleted = ?6, time = ?7
                 WHERE id = ?8",
                 params![
                     item.item_type,
@@ -349,8 +346,8 @@ impl DatabaseManager {
         } else {
             // 插入
             conn.execute(
-                "INSERT INTO history (id, type, value, favorite, note, time, syncStatus, deleted, isCloudData)
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 1)",
+                "INSERT INTO history (id, type, value, favorite, note, time, syncStatus, deleted)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 params![
                     item.id,
                     item.item_type,
@@ -497,10 +494,10 @@ impl DatabaseManager {
                         width = ?5, height = ?6, favorite = ?7,
                         time = ?8, note = ?9, subtype = ?10,
                         fileSize = ?11,
-                        deleted = ?12, syncStatus = ?13, isCloudData = ?14,
-                        codeLanguage = ?15, isCode = ?16,
-                        sourceAppName = ?17, sourceAppIcon = ?18, position = ?19
-                    WHERE id = ?20",
+                        deleted = ?12, syncStatus = ?13,
+                        codeLanguage = ?14, isCode = ?15,
+                        sourceAppName = ?16, sourceAppIcon = ?17, position = ?18
+                    WHERE id = ?19",
                     params![
                         item.item_type,
                         item.value,
@@ -515,7 +512,6 @@ impl DatabaseManager {
                         item.file_size,
                         item.deleted.unwrap_or(0),
                         item.sync_status.clone().unwrap_or_else(|| "not_synced".to_string()),
-                        item.is_cloud_data.unwrap_or(0),
                         item.code_language,
                         item.is_code.unwrap_or(0),
                         item.source_app_name,
@@ -551,10 +547,10 @@ impl DatabaseManager {
                     width = ?4, height = ?5, favorite = ?6,
                     time = ?7, note = ?8, subtype = ?9,
                     fileSize = ?10,
-                    deleted = ?11, syncStatus = ?12, isCloudData = ?13,
-                    codeLanguage = ?14, isCode = ?15,
-                    sourceAppName = ?16, sourceAppIcon = ?17, position = ?18
-                WHERE id = ?19",
+                    deleted = ?11, syncStatus = ?12,
+                    codeLanguage = ?13, isCode = ?14,
+                    sourceAppName = ?15, sourceAppIcon = ?16, position = ?17
+                WHERE id = ?18",
                 params![
                     item.group,
                     item.search,
@@ -568,7 +564,6 @@ impl DatabaseManager {
                     item.file_size,
                     item.deleted.unwrap_or(0),
                     item.sync_status.clone().unwrap_or_else(|| "not_synced".to_string()),
-                    item.is_cloud_data.unwrap_or(0),
                     item.code_language,
                     item.is_code.unwrap_or(0),
                     item.source_app_name,
@@ -601,14 +596,14 @@ impl DatabaseManager {
                 id, type, [group], value, search, count,
                 width, height, favorite, time, note, subtype,
                 fileSize, deleted,
-                syncStatus, isCloudData, codeLanguage, isCode,
+                syncStatus, codeLanguage, isCode,
                 sourceAppName, sourceAppIcon, position
             ) VALUES (
                 ?1, ?2, ?3, ?4, ?5, ?6,
                 ?7, ?8, ?9, ?10, ?11, ?12,
                 ?13, ?14,
-                ?15, ?16, ?17, ?18,
-                ?19, ?20, ?21
+                ?15, ?16, ?17,
+                ?18, ?19, ?20
             )",
             params![
                 item.id,
@@ -626,7 +621,6 @@ impl DatabaseManager {
                 item.file_size,
                 item.deleted.unwrap_or(0),
                 item.sync_status.clone().unwrap_or_else(|| "not_synced".to_string()),
-                item.is_cloud_data.unwrap_or(0),
                 item.code_language,
                 item.is_code.unwrap_or(0),
                 item.source_app_name,

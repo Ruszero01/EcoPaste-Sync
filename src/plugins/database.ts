@@ -24,7 +24,6 @@ export interface HistoryItem {
 	fileSize?: number;
 	deleted?: boolean;
 	syncStatus?: string;
-	isCloudData?: boolean;
 	codeLanguage?: string;
 	isCode?: number;
 	sourceAppName?: string;
