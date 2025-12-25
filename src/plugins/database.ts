@@ -53,6 +53,14 @@ export interface DatabaseStatistics {
 	favorite_items: number;
 }
 
+// 清理规则
+export interface CleanupRule {
+	// 保留天数，0 表示不限制
+	retain_days: number;
+	// 保留条数，0 表示不限制
+	retain_count: number;
+}
+
 const COMMAND = {
 	SET_DATABASE_PATH: "plugin:eco-database|set_database_path",
 	QUERY_HISTORY: "plugin:eco-database|query_history",
@@ -73,6 +81,7 @@ const COMMAND = {
 	QUERY_BY_GROUP: "plugin:eco-database|query_by_group",
 	GET_ALL_GROUPS: "plugin:eco-database|get_all_groups",
 	GET_FILTERED_STATISTICS: "plugin:eco-database|get_filtered_statistics",
+	CLEANUP_HISTORY: "plugin:eco-database|cleanup_history",
 } as const;
 
 /**
@@ -147,5 +156,14 @@ export const backendUpdateField = (
 		id,
 		field,
 		value,
+	});
+};
+
+/**
+ * 执行历史记录清理（后台自动清理）
+ */
+export const backendCleanupHistory = (rule: CleanupRule) => {
+	return invoke<void>(COMMAND.CLEANUP_HISTORY, {
+		rule,
 	});
 };

@@ -221,10 +221,10 @@ const Item: FC<ItemProps> = (props) => {
 		autoSort?: boolean,
 	) => {
 		const currentAutoSort = autoSort ?? clipboardStore.content.autoSort;
-		const createTime = Date.now();
+		const currentTime = Date.now();
 		const updatedItems = items.map((item) => ({
 			...item,
-			createTime,
+			time: currentTime,
 		}));
 
 		if (currentAutoSort) {
@@ -246,12 +246,12 @@ const Item: FC<ItemProps> = (props) => {
 			for (const item of items) {
 				const index = findIndex(state.list, { id: item.id });
 				if (index !== -1) {
-					state.list[index] = { ...state.list[index], createTime };
+					state.list[index] = { ...state.list[index], time: currentTime };
 				}
 			}
 		}
 
-		return { updatedItems, createTime };
+		return { updatedItems, currentTime };
 	};
 
 	// 公共函数：批量更新数据库
@@ -264,7 +264,7 @@ const Item: FC<ItemProps> = (props) => {
 			await backendUpdateField(
 				item.id,
 				"time",
-				(updateData.createTime || Date.now()).toString(),
+				(updateData.time || Date.now()).toString(),
 			);
 		}
 	};
@@ -794,11 +794,11 @@ const Item: FC<ItemProps> = (props) => {
 				await batchPasteClipboard(sortedSelectedItems);
 
 				// 更新项目位置和时间
-				const { updatedItems, createTime } =
+				const { updatedItems, currentTime } =
 					updateItemsPositionAndTime(sortedSelectedItems);
 
 				// 批量更新数据库
-				await batchUpdateDatabase(sortedSelectedItems, { createTime });
+				await batchUpdateDatabase(sortedSelectedItems, { time: currentTime });
 
 				// 清除多选状态
 				clearMultiSelectState();
@@ -1606,12 +1606,12 @@ const Item: FC<ItemProps> = (props) => {
 				// 文件类型拖拽完成后，只需要更新状态和清除多选
 
 				// 更新项目位置和时间
-				const { updatedItems, createTime } = updateItemsPositionAndTime(
+				const { updatedItems, currentTime } = updateItemsPositionAndTime(
 					batchDragInfo.items,
 				);
 
 				// 批量更新数据库
-				await batchUpdateDatabase(batchDragInfo.items, { createTime });
+				await batchUpdateDatabase(batchDragInfo.items, { time: currentTime });
 
 				// 清除多选状态
 				clearMultiSelectState();
@@ -1650,12 +1650,12 @@ const Item: FC<ItemProps> = (props) => {
 			}
 
 			// 更新项目位置和时间
-			const { updatedItems, createTime } = updateItemsPositionAndTime(
+			const { updatedItems, currentTime } = updateItemsPositionAndTime(
 				batchDragInfo.items,
 			);
 
 			// 批量更新数据库
-			await batchUpdateDatabase(batchDragInfo.items, { createTime });
+			await batchUpdateDatabase(batchDragInfo.items, { time: currentTime });
 
 			// 清除多选状态
 			clearMultiSelectState();

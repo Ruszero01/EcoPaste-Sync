@@ -111,6 +111,7 @@ const Main = () => {
 					...payload,
 					id: nanoid(),
 					favorite: false,
+					time: Date.now(), // 添加必需的时间字段
 					syncStatus: "not_synced", // 新项目默认为未同步状态
 				};
 

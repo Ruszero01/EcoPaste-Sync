@@ -7,6 +7,7 @@ mod commands;
 mod change_tracker;
 mod filter;
 mod debug;
+mod cleanup;
 
 pub use database::*;
 pub use models::*;
@@ -14,6 +15,7 @@ pub use commands::*;
 pub use change_tracker::*;
 pub use filter::*;
 pub use debug::*;
+pub use cleanup::*;
 
 use std::sync::Arc;
 use tauri::{
@@ -53,6 +55,8 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::query_by_group,
             commands::get_all_groups,
             commands::get_filtered_statistics,
+            // 清理命令
+            cleanup::cleanup_history,
             // 调试命令
             debug::get_database_info,
             debug::reset_database
