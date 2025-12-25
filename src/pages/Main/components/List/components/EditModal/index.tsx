@@ -234,7 +234,7 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 			// 当类型改变时，清除subtype以避免渲染问题
 			item.subtype = updateType === "color" ? undefined : updateSubtype;
 			item.value = formContent;
-			item.lastModified = currentTime;
+			item.time = currentTime;
 			// 注意：不设置syncStatus，让后端变更跟踪器处理
 
 			// 立即更新本地状态中的对应项，确保前端显示立即更新

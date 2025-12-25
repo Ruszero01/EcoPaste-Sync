@@ -43,7 +43,7 @@ const NoteModal = forwardRef<NoteModalRef>((_, ref) => {
 			const currentTime = Date.now();
 
 			item.note = note;
-			item.lastModified = currentTime;
+			item.time = currentTime;
 
 			// 调用database插件更新备注（后端会自动标记为已变更）
 			await backendUpdateField(id, "note", note);
