@@ -309,46 +309,26 @@ const Item: FC<ItemProps> = (props) => {
 
 	// 复制
 	const copy = async () => {
-		console.log("🔵 [复制按钮] 开始复制操作", {
-			id,
-			type: data.type,
-			group: data.group,
-			valueLength: data.value?.length || 0,
-		});
-
 		try {
 			// 步骤1：设置内部复制标志，防止复制操作后触发重复处理
-			console.log("🔵 [复制按钮] 设置内部复制标志");
 			clipboardStore.internalCopy = {
 				isCopying: true,
 				itemId: id,
 			};
 
 			// 步骤2：写入剪贴板
-			console.log("🔵 [复制按钮] 开始写入剪贴板");
 			await writeClipboard(data);
-			console.log("✅ [复制按钮] 写入剪贴板成功");
 
 			// 步骤3：更新数据库时间戳（使用后端变更跟踪器）
-			console.log("🔵 [复制按钮] 开始更新数据库时间戳");
 			const currentTime = Date.now();
 			await backendUpdateField(id, "time", currentTime.toString());
-			console.log("✅ [复制按钮] 数据库时间戳更新成功", {
-				timestamp: currentTime,
-				formattedTime: new Date(currentTime).toLocaleString(),
-			});
 
 			// 步骤4：清除内部复制标志
-			console.log("🔵 [复制按钮] 清除内部复制标志");
 			clipboardStore.internalCopy = {
 				isCopying: false,
 				itemId: null,
 			};
-
-			console.log("✅ [复制按钮] 复制操作完成");
 		} catch (error) {
-			console.error("❌ [复制按钮] 复制操作失败:", error);
-
 			// 如果是图片复制失败且文件不存在，提示用户
 			if (data.type === "image" && error instanceof Error) {
 				if (
@@ -1808,9 +1788,7 @@ const Item: FC<ItemProps> = (props) => {
 						</span>
 					)}
 					<span className="rounded-t bg-neutral-200/90 px-1.5 py-0.5 text-neutral-600 backdrop-blur-xl dark:bg-neutral-800/90 dark:text-neutral-400">
-						{dayjs(time)
-							.locale(i18nInstance.language)
-							.fromNow()}
+						{dayjs(time).locale(i18nInstance.language).fromNow()}
 					</span>
 				</Flex>
 			</div>
