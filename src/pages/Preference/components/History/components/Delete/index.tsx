@@ -1,5 +1,6 @@
 import AdaptiveSelect from "@/components/AdaptiveSelect";
 import { DeleteOutlined } from "@ant-design/icons";
+import { backendCleanupHistory, type CleanupRule } from "@/plugins/database";
 import {
 	Button,
 	Checkbox,
@@ -59,17 +60,31 @@ const Delete = () => {
 
 	const onSubmit = async () => {
 		try {
-			const { timeRange, customRange, deleteFavorite } = form.getFieldsValue();
+			const { timeRange: formTimeRange } = form.getFieldsValue();
 
 			setTrue();
 
-			// TODO: 临时禁用，等待重构完成后实现
-			// 功能正在重构中，将使用后端数据库命令
-			message.warning("历史记录清理功能正在重构中，敬请期待");
+			// 根据时间范围转换为保留天数
+			// timeRange 是小时数，转为天数
+			let retainDays = 0;
+			if (formTimeRange > 0) {
+				retainDays = Math.ceil(formTimeRange / 24);
+			}
 
+			// 调用后端清理
+			const rule: CleanupRule = {
+				retain_days: retainDays,
+				retain_count: 0, // 手动清理不限制条数
+			};
+
+			await backendCleanupHistory(rule);
+
+			message.success("历史记录清理完成");
 			toggle();
 		} catch (error) {
-			message.error(String(error));
+			message.error(
+				`清理失败: ${error instanceof Error ? error.message : "未知错误"}`,
+			);
 		} finally {
 			setFalse();
 		}
