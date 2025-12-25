@@ -1,12 +1,20 @@
 import ProList from "@/components/ProList";
 import ProListItem from "@/components/ProListItem";
 import { LISTEN_KEY } from "@/constants";
-import { getDatabaseInfo, resetDatabase } from "@/database";
 import * as backendSync from "@/plugins/sync";
-import type { WebDAVConfig } from "@/plugins/webdav";
 import { globalStore } from "@/stores/global";
 import type { SyncModeConfig } from "@/types/sync.d";
 import { isDev } from "@/utils/is";
+import { invoke } from "@tauri-apps/api/core";
+
+// WebDAV配置类型（与后端 BackendSyncConfig 对应）
+type WebDAVConfig = {
+	url: string;
+	username: string;
+	password: string;
+	path: string;
+	timeout: number;
+};
 
 // 获取默认配置（与后端对齐）
 const getDefaultSyncModeConfig = (): SyncModeConfig => {
@@ -26,6 +34,7 @@ const getDefaultSyncModeConfig = (): SyncModeConfig => {
 		deviceId: "",
 	};
 };
+
 import {
 	CheckCircleOutlined,
 	CloudOutlined,
@@ -80,6 +89,7 @@ const CloudSync = () => {
 		};
 		[modal, modalContextHolder] = Modal.useModal();
 	}
+
 	const { cloudSync: cloudSyncStore } = useSnapshot(globalStore);
 	const [isConfigLoading, setIsConfigLoading] = useState(false);
 	const [connectionStatus, setConnectionStatus] = useState<
@@ -235,13 +245,19 @@ const CloudSync = () => {
 	// 加载服务器配置
 	const loadServerConfig = useCallback(async () => {
 		try {
-			// 从后端读取WebDAV配置
-			const { getServerConfig } = await import("@/plugins/webdav");
-			const backendConfig = await getServerConfig();
+			// 直接从 globalStore 读取配置
+			const { serverConfig } = cloudSyncStore;
 
-			if (backendConfig?.url) {
-				setWebdavConfig(backendConfig);
-				form.setFieldsValue(backendConfig);
+			if (serverConfig.url) {
+				const webdavConfig: WebDAVConfig = {
+					url: serverConfig.url,
+					username: serverConfig.username,
+					password: serverConfig.password,
+					path: serverConfig.path,
+					timeout: serverConfig.timeout,
+				};
+				setWebdavConfig(webdavConfig);
+				form.setFieldsValue(webdavConfig);
 
 				// 检查缓存的连接状态是否仍然有效
 				const savedConnectionState = localStorage.getItem(
@@ -253,7 +269,11 @@ const CloudSync = () => {
 
 						// 检查配置是否变化
 						const currentConfigHash = btoa(
-							JSON.stringify(backendConfig),
+							JSON.stringify({
+								url: webdavConfig.url,
+								username: webdavConfig.username,
+								path: webdavConfig.path,
+							}),
 						).substring(0, 16);
 
 						if (configHash === currentConfigHash && status === "success") {
@@ -263,10 +283,10 @@ const CloudSync = () => {
 							// 🔧 从 globalStore 获取最新的同步模式配置（避免使用默认值）
 							const latestSyncModeConfig = globalStore.cloudSync.syncModeConfig;
 							const syncConfig = {
-								server_url: backendConfig.url,
-								username: backendConfig.username,
-								password: backendConfig.password,
-								path: backendConfig.path || "/EcoPaste-Sync",
+								server_url: webdavConfig.url,
+								username: webdavConfig.username,
+								password: webdavConfig.password,
+								path: webdavConfig.path || "/EcoPaste-Sync",
 								auto_sync: cloudSyncStore.autoSyncSettings.enabled,
 								auto_sync_interval_minutes:
 									cloudSyncStore.autoSyncSettings.intervalHours * 60,
@@ -578,9 +598,27 @@ const CloudSync = () => {
 	// 保存服务器配置
 	const saveServerConfig = async (config: WebDAVConfig) => {
 		try {
-			// 通过后端API保存配置
-			const { setServerConfig } = await import("@/plugins/webdav");
-			await setServerConfig(config);
+			// 直接保存到本地持久化文件
+			globalStore.cloudSync.serverConfig = {
+				url: config.url,
+				username: config.username,
+				password: config.password,
+				path: config.path,
+				timeout: config.timeout,
+			};
+
+			// 持久化到本地文件
+			const { saveStore } = await import("@/utils/store");
+			await saveStore();
+
+			// 让后端从本地文件重新加载配置
+			try {
+				await invoke("plugin:eco-sync|reload_config_from_file");
+			} catch (reloadError) {
+				// 后端可能还没有这个命令，静默处理
+				console.warn("通知后端重新加载配置失败:", reloadError);
+			}
+
 			return true;
 		} catch (error) {
 			console.error("保存配置失败", {
@@ -860,7 +898,7 @@ const CloudSync = () => {
 			okType: "danger",
 			onOk: async () => {
 				try {
-					const success = await resetDatabase();
+					const success = await invoke("plugin:eco-database|reset_database");
 					if (success) {
 						appMessage.success("数据库已重置");
 						emit(LISTEN_KEY.REFRESH_CLIPBOARD_LIST);
@@ -878,35 +916,25 @@ const CloudSync = () => {
 	// 开发环境专用：显示数据库信息
 	const handleShowDatabaseInfo = async () => {
 		try {
-			const dbInfo = await getDatabaseInfo();
+			const dbInfo = await invoke("plugin:eco-database|get_database_info");
 			if (dbInfo) {
 				console.group("📊 数据库信息");
 				console.info("=== 基本统计 ===");
-				console.info("总记录数:", dbInfo.totalCount);
-				console.info("活跃记录数:", dbInfo.activeCount);
-				console.info("已删除记录数:", dbInfo.deletedCount);
-				console.info("收藏记录数:", dbInfo.favoriteCount);
-				console.info("数据库文件大小:", dbInfo.dbSize);
+				console.info("总记录数:", dbInfo.total_count);
+				console.info("活跃记录数:", dbInfo.active_count);
+				console.info("已删除记录数:", dbInfo.deleted_count);
+				console.info("收藏记录数:", dbInfo.favorite_count);
 
 				console.info("\n=== 类型分布 ===");
-				for (const [type, count] of Object.entries(dbInfo.typeCounts)) {
+				for (const [type, count] of Object.entries(dbInfo.type_counts)) {
 					console.info(`${type}: ${count} 条`);
 				}
 
 				console.info("\n=== 同步状态分布 ===");
-				for (const [status, count] of Object.entries(dbInfo.syncStatusCounts)) {
+				for (const [status, count] of Object.entries(
+					dbInfo.sync_status_counts,
+				)) {
 					console.info(`${status}: ${count} 条`);
-				}
-
-				console.info("\n=== 最近10条记录 ===");
-				for (const [index, record] of dbInfo.recentRecords.entries()) {
-					const sourceInfo = record.sourceAppName
-						? ` 来源: ${record.sourceAppName}${record.sourceAppIcon ? " [有图标]" : ""}`
-						: " 无来源信息";
-
-					console.info(
-						`#${index + 1} [${record.type}] ${record.createTime} - ${record.value} (收藏: ${record.favorite}, 同步: ${record.syncStatus}, 云端: ${record.isCloudData}${sourceInfo})`,
-					);
 				}
 
 				console.groupEnd();

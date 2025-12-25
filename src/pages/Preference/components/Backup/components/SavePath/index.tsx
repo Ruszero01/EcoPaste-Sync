@@ -81,10 +81,7 @@ const SavePath: FC<{ state: State }> = (props) => {
 
 			state.spinning = true;
 
-			emit(LISTEN_KEY.CLOSE_DATABASE);
-
-			await wait();
-			await new Promise((resolve) => setTimeout(resolve, 100));
+			// 数据库插件现在由后端自动管理，无需手动关闭
 			// 检查目标路径中是否已存在数据文件
 			const hasExistingData = await checkExistingData(dstPath);
 

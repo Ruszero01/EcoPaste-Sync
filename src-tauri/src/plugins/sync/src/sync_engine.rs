@@ -7,7 +7,6 @@ use crate::auto_sync_manager::AutoSyncManagerState;
 use crate::sync_core::{SyncCore, SyncModeConfig, SyncProcessResult};
 use crate::data_manager::{DataManager, create_shared_manager as create_data_manager};
 use crate::file_sync_manager::{FileSyncManager, create_shared_manager as create_file_sync_manager};
-use crate::cleanup_manager::{CleanupManager, CleanupConfig, CleanupStatus};
 use crate::config_sync_manager::{ConfigSyncManager};
 use crate::bookmark_sync_manager::{BookmarkSyncManager};
 use std::sync::Arc;
@@ -47,8 +46,6 @@ pub struct CloudSyncEngine {
     pub data_manager: Arc<Mutex<DataManager>>,
     /// 文件同步管理器
     pub file_sync_manager: Arc<Mutex<FileSyncManager>>,
-    /// 云端数据清理管理器
-    pub cleanup_manager: Arc<Mutex<CleanupManager>>,
     /// 配置同步管理器
     pub config_sync_manager: Arc<Mutex<ConfigSyncManager>>,
     /// 书签同步管理器
@@ -68,7 +65,6 @@ impl CloudSyncEngine {
             data_manager.clone(),
             file_sync_manager.clone(),
         )));
-        let cleanup_manager = Arc::new(Mutex::new(CleanupManager::new(webdav_client.clone())));
         let config_sync_manager = Arc::new(Mutex::new(ConfigSyncManager::new(webdav_client.clone())));
         let device_id = "device-".to_string() + &chrono::Utc::now().timestamp_millis().to_string();
         let bookmark_sync_manager = Arc::new(Mutex::new(BookmarkSyncManager::new(
@@ -85,7 +81,6 @@ impl CloudSyncEngine {
             sync_core,
             data_manager,
             file_sync_manager,
-            cleanup_manager,
             config_sync_manager,
             bookmark_sync_manager,
         }
@@ -227,12 +222,6 @@ impl CloudSyncEngine {
 
     /// 启动自动同步
     pub async fn start_auto_sync(&mut self, interval_minutes: u64, database_state: &DatabaseState) -> Result<SyncResult, String> {
-        // 🧹 停止定期清理（自动同步开启时不需要）
-        {
-            let mut cleanup_manager = self.cleanup_manager.lock().await;
-            cleanup_manager.stop();
-        }
-
         let auto_sync_manager = self.auto_sync_manager.clone();
         let mut manager = auto_sync_manager.lock().await;
 
@@ -255,6 +244,7 @@ impl CloudSyncEngine {
                             include_text: true,
                             include_html: true,
                             include_rtf: true,
+                            include_markdown: true,
                         },
                         conflict_resolution: crate::sync_core::ConflictResolutionStrategy::Merge,
                         device_id: "device".to_string(),
@@ -281,14 +271,6 @@ impl CloudSyncEngine {
 
         if let Err(e) = manager.stop().await {
             return Err(e);
-        }
-
-        // 🧹 启动定期清理（自动同步停止时）
-        {
-            let mut cleanup_manager = self.cleanup_manager.lock().await;
-            if let Err(e) = cleanup_manager.start().await {
-                log::warn!("⚠️ 启动定期清理失败: {}", e);
-            }
         }
 
         Ok(SyncResult {
@@ -459,48 +441,19 @@ impl CloudSyncEngine {
             sync_mode: SyncModeConfig {
                 auto_sync: old_config.auto_sync,
                 auto_sync_interval_minutes: old_config.auto_sync_interval_minutes,
-                only_favorites: false, // 默认值，从 SyncConfig 中无法获取
-                include_images: false, // 默认值，从 SyncConfig 中无法获取
-                include_files: false, // 默认值，从 SyncConfig 中无法获取
+                only_favorites: old_config.only_favorites,
+                include_images: old_config.include_files, // 使用 include_files 作为 include_images 的值
+                include_files: old_config.include_files,
                 content_types: crate::sync_core::ContentTypeConfig {
                     include_text: true,
                     include_html: true,
                     include_rtf: true,
+                    include_markdown: true,
                 },
                 conflict_resolution: crate::sync_core::ConflictResolutionStrategy::Merge,
                 device_id: "device".to_string(), // TODO: 生成设备ID
                 previous_mode: None,
             },
-        }
-    }
-
-    /// 配置定期清理
-    pub async fn configure_cleanup(&mut self, config: CleanupConfig) -> Result<SyncResult, String> {
-        let mut cleanup_manager = self.cleanup_manager.lock().await;
-        cleanup_manager.update_config(config);
-
-        Ok(SyncResult {
-            success: true,
-            message: "✅ 清理配置已更新".to_string(),
-        })
-    }
-
-    /// 获取清理状态
-    pub fn get_cleanup_status(&self) -> CleanupStatus {
-        let manager = self.cleanup_manager.blocking_lock();
-        manager.get_status().clone()
-    }
-
-    /// 手动执行一次清理
-    pub async fn perform_cleanup(&mut self) -> Result<SyncResult, String> {
-        let mut cleanup_manager = self.cleanup_manager.lock().await;
-
-        match cleanup_manager.perform_cleanup().await {
-            Ok(_) => Ok(SyncResult {
-                success: true,
-                message: "✅ 清理完成".to_string(),
-            }),
-            Err(e) => Err(e),
         }
     }
 

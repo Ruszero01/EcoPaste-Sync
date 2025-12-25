@@ -4,12 +4,17 @@
 use crate::{DatabaseState, HistoryItem, SyncDataItem, QueryOptions, DatabaseStatistics, DataFilter, Pagination, SortInfo, FilterResult, InsertItem, InsertResult};
 use tauri::State;
 
-/// 设置数据库路径并初始化 - 从后端环境自动获取路径
+/// 设置数据库路径并初始化 - 仅用于插件内部，不供前端调用
 #[tauri::command]
 pub fn set_database_path(
     state: State<'_, DatabaseState>,
 ) -> Result<(), String> {
     let mut db = state.blocking_lock();
+
+    // 如果已经初始化，直接返回
+    if db.is_initialized() {
+        return Ok(());
+    }
 
     // 使用标准路径（与前端 appDataDir 对应）
     // 优先使用用户配置目录，然后回退到数据目录
@@ -78,49 +83,6 @@ pub fn query_history_with_filter(
     db.query_history(options)
 }
 
-/// 查询同步数据
-#[tauri::command]
-pub fn query_sync_data(
-    only_favorites: bool,
-    limit: Option<i32>,
-    state: State<'_, DatabaseState>,
-) -> Result<Vec<SyncDataItem>, String> {
-    let db = state.blocking_lock();
-    db.query_sync_data(only_favorites, limit)
-}
-
-/// 更新同步状态
-#[tauri::command]
-pub fn update_sync_status(
-    id: String,
-    status: String,
-    state: State<'_, DatabaseState>,
-) -> Result<(), String> {
-    let db = state.blocking_lock();
-    db.update_sync_status(&id, &status)
-}
-
-/// 批量更新同步状态
-#[tauri::command]
-pub fn batch_update_sync_status(
-    ids: Vec<String>,
-    status: String,
-    state: State<'_, DatabaseState>,
-) -> Result<usize, String> {
-    let db = state.blocking_lock();
-    db.batch_update_sync_status(&ids, &status)
-}
-
-/// 从云端插入或更新数据
-#[tauri::command]
-pub fn upsert_from_cloud(
-    item: SyncDataItem,
-    state: State<'_, DatabaseState>,
-) -> Result<(), String> {
-    let db = state.blocking_lock();
-    db.upsert_from_cloud(&item)
-}
-
 /// 插入数据（带去重功能）
 #[tauri::command]
 pub fn insert_with_deduplication(
@@ -137,14 +99,15 @@ pub fn mark_deleted(
     id: String,
     state: State<'_, DatabaseState>,
 ) -> Result<(), String> {
-    let db = state.blocking_lock();
+    let mut db = state.blocking_lock();
     let current_time = chrono::Utc::now().timestamp_millis();
 
     db.update_field(&id, "deleted", "1")?;
     db.update_field(&id, "time", &current_time.to_string())?;
 
-    // 标记为已变更
-    db.get_change_tracker().mark_changed(&id);
+    // 使用新的统一变更跟踪器
+    let conn = db.get_connection()?;
+    db.get_change_tracker().mark_item_changed(&conn, &id, "delete")?;
 
     Ok(())
 }
@@ -178,110 +141,76 @@ pub fn get_statistics(
     db.get_statistics()
 }
 
-/// 更新收藏状态（后端统一处理）
+/// 统一字段更新命令
+/// 通过 field 和 value 参数决定更新哪个字段
 #[tauri::command]
-pub fn update_favorite(
+pub fn update_field(
     id: String,
-    favorite: bool,
+    field: String,
+    value: String,
     state: State<'_, DatabaseState>,
 ) -> Result<(), String> {
-    let db = state.blocking_lock();
+    let mut db = state.blocking_lock();
     let current_time = chrono::Utc::now().timestamp_millis();
 
-    db.update_field(&id, "favorite", if favorite { "1" } else { "0" })?;
-    db.update_field(&id, "time", &current_time.to_string())?;
-
-    // 标记为已变更
-    db.get_change_tracker().mark_changed(&id);
-
-    Ok(())
-}
-
-/// 批量更新收藏状态
-#[tauri::command]
-pub fn batch_update_favorite(
-    ids: Vec<String>,
-    favorite: bool,
-    state: State<'_, DatabaseState>,
-) -> Result<usize, String> {
-    let db = state.blocking_lock();
-    let current_time = chrono::Utc::now().timestamp_millis();
-    let mut count = 0;
-
-    for id in &ids {
-        if db.update_field(id, "favorite", if favorite { "1" } else { "0" }).is_ok() {
-            // 同时更新时间
-            if db.update_field(id, "time", &current_time.to_string()).is_ok() {
-                // 标记为已变更
-                db.get_change_tracker().mark_changed(id);
-                count += 1;
-            }
+    // 验证字段名并更新
+    match field.as_str() {
+        "favorite" => {
+            let bool_value = value == "1" || value.to_lowercase() == "true";
+            db.update_field(&id, "favorite", if bool_value { "1" } else { "0" })?;
+            db.update_field(&id, "time", &current_time.to_string())?;
+            let conn = db.get_connection()?;
+            db.get_change_tracker().mark_item_changed(&conn, &id, "favorite")?;
         }
+        "note" => {
+            db.update_field(&id, "note", &value)?;
+            db.update_field(&id, "time", &current_time.to_string())?;
+            let conn = db.get_connection()?;
+            db.get_change_tracker().mark_item_changed(&conn, &id, "note")?;
+        }
+        "content" => {
+            db.update_field(&id, "value", &value)?;
+            db.update_field(&id, "time", &current_time.to_string())?;
+            let conn = db.get_connection()?;
+            db.get_change_tracker().mark_item_changed(&conn, &id, "content")?;
+        }
+        "type" => {
+            db.update_field(&id, "type", &value)?;
+            db.update_field(&id, "time", &current_time.to_string())?;
+            let conn = db.get_connection()?;
+            db.get_change_tracker().mark_item_changed(&conn, &id, "type")?;
+        }
+        "subtype" => {
+            db.update_field(&id, "subtype", &value)?;
+            db.update_field(&id, "time", &current_time.to_string())?;
+            let conn = db.get_connection()?;
+            db.get_change_tracker().mark_item_changed(&conn, &id, "subtype")?;
+        }
+        "time" => {
+            db.update_field(&id, "time", &value)?;
+            let conn = db.get_connection()?;
+            db.get_change_tracker().mark_item_changed(&conn, &id, "time")?;
+        }
+        "syncStatus" => {
+            db.update_field(&id, "syncStatus", &value)?;
+            let conn = db.get_connection()?;
+            db.get_change_tracker().mark_item_changed(&conn, &id, "sync_status")?;
+        }
+        "isCode" => {
+            let bool_value = value == "1" || value.to_lowercase() == "true";
+            db.update_field(&id, "isCode", if bool_value { "1" } else { "0" })?;
+            db.update_field(&id, "time", &current_time.to_string())?;
+            let conn = db.get_connection()?;
+            db.get_change_tracker().mark_item_changed(&conn, &id, "isCode")?;
+        }
+        "codeLanguage" => {
+            db.update_field(&id, "codeLanguage", &value)?;
+            db.update_field(&id, "time", &current_time.to_string())?;
+            let conn = db.get_connection()?;
+            db.get_change_tracker().mark_item_changed(&conn, &id, "codeLanguage")?;
+        }
+        _ => return Err(format!("不支持的字段名: {}", field)),
     }
-
-    Ok(count)
-}
-
-/// 更新备注
-#[tauri::command]
-pub fn update_note(
-    id: String,
-    note: String,
-    state: State<'_, DatabaseState>,
-) -> Result<(), String> {
-    let db = state.blocking_lock();
-    let current_time = chrono::Utc::now().timestamp_millis();
-
-    db.update_field(&id, "note", &note)?;
-    db.update_field(&id, "time", &current_time.to_string())?;
-
-    // 标记为已变更
-    db.get_change_tracker().mark_changed(&id);
-
-    Ok(())
-}
-
-/// 更新内容
-#[tauri::command]
-pub fn update_content(
-    id: String,
-    content: String,
-    state: State<'_, DatabaseState>,
-) -> Result<(), String> {
-    let db = state.blocking_lock();
-    let current_time = chrono::Utc::now().timestamp_millis();
-
-    db.update_field(&id, "value", &content)?;
-    db.update_field(&id, "time", &current_time.to_string())?;
-
-    // 标记为已变更
-    db.get_change_tracker().mark_changed(&id);
-
-    Ok(())
-}
-
-/// 更新类型
-#[tauri::command]
-pub fn update_type(
-    id: String,
-    item_type: String,
-    subtype: Option<String>,
-    state: State<'_, DatabaseState>,
-) -> Result<(), String> {
-    let db = state.blocking_lock();
-    let current_time = chrono::Utc::now().timestamp_millis();
-
-    db.update_field(&id, "type", &item_type)?;
-    db.update_field(&id, "time", &current_time.to_string())?;
-
-    // 如果有subtype，更新subtype字段
-    if let Some(sub) = subtype {
-        db.update_field(&id, "subtype", &sub)?;
-        db.update_field(&id, "time", &current_time.to_string())?;
-    }
-
-    // 标记为已变更
-    db.get_change_tracker().mark_changed(&id);
 
     Ok(())
 }
@@ -292,14 +221,15 @@ pub fn mark_changed(
     id: String,
     state: State<'_, DatabaseState>,
 ) -> Result<(), String> {
-    let db = state.blocking_lock();
+    let mut db = state.blocking_lock();
     let current_time = chrono::Utc::now().timestamp_millis();
 
     db.update_field(&id, "syncStatus", "changed")?;
     db.update_field(&id, "time", &current_time.to_string())?;
 
-    // 标记为已变更
-    db.get_change_tracker().mark_changed(&id);
+    // 使用新的统一变更跟踪器
+    let conn = db.get_connection()?;
+    db.get_change_tracker().mark_item_changed(&conn, &id, "manual")?;
 
     Ok(())
 }
@@ -310,7 +240,7 @@ pub fn batch_mark_changed(
     ids: Vec<String>,
     state: State<'_, DatabaseState>,
 ) -> Result<usize, String> {
-    let db = state.blocking_lock();
+    let mut db = state.blocking_lock();
     let current_time = chrono::Utc::now().timestamp_millis();
     let mut count = 0;
 
@@ -318,25 +248,18 @@ pub fn batch_mark_changed(
         if db.update_field(id, "syncStatus", "changed").is_ok() {
             // 同时更新时间
             if db.update_field(id, "time", &current_time.to_string()).is_ok() {
-                // 标记为已变更
-                db.get_change_tracker().mark_changed(id);
-                count += 1;
+                // 使用新的统一变更跟踪器
+                let conn = db.get_connection()?;
+                if let Err(e) = db.get_change_tracker().mark_item_changed(&conn, id, "manual") {
+                    log::warn!("标记变更失败: {}", e);
+                } else {
+                    count += 1;
+                }
             }
         }
     }
 
     Ok(count)
-}
-
-/// 更新时间
-#[tauri::command]
-pub fn update_time(
-    id: String,
-    time: i64,
-    state: State<'_, DatabaseState>,
-) -> Result<(), String> {
-    let db = state.blocking_lock();
-    db.update_field(&id, "time", &time.to_string())
 }
 
 /// 批量标记删除（软删除）
@@ -345,7 +268,7 @@ pub fn batch_mark_deleted(
     ids: Vec<String>,
     state: State<'_, DatabaseState>,
 ) -> Result<usize, String> {
-    let db = state.blocking_lock();
+    let mut db = state.blocking_lock();
     let current_time = chrono::Utc::now().timestamp_millis();
     let mut count = 0;
 
@@ -353,9 +276,13 @@ pub fn batch_mark_deleted(
         if db.update_field(id, "deleted", "1").is_ok() {
             // 同时更新时间
             if db.update_field(id, "time", &current_time.to_string()).is_ok() {
-                // 标记为已变更
-                db.get_change_tracker().mark_changed(id);
-                count += 1;
+                // 使用新的统一变更跟踪器
+                let conn = db.get_connection()?;
+                if let Err(e) = db.get_change_tracker().mark_item_changed(&conn, id, "delete") {
+                    log::warn!("标记删除失败: {}", e);
+                } else {
+                    count += 1;
+                }
             }
         }
     }
@@ -368,7 +295,7 @@ pub fn batch_mark_deleted(
 pub fn get_changed_items_count(
     state: State<'_, DatabaseState>,
 ) -> usize {
-    let db = state.blocking_lock();
+    let mut db = state.blocking_lock();
     db.get_change_tracker().count()
 }
 
@@ -377,7 +304,7 @@ pub fn get_changed_items_count(
 pub fn get_changed_items_list(
     state: State<'_, DatabaseState>,
 ) -> Vec<String> {
-    let db = state.blocking_lock();
+    let mut db = state.blocking_lock();
     db.get_change_tracker().get_changed_items()
 }
 

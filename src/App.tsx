@@ -1,4 +1,3 @@
-import { LISTEN_KEY } from "@/constants";
 import { useTray } from "@/hooks/useTray";
 import { HappyProvider } from "@ant-design/happy-work-theme";
 import { error } from "@tauri-apps/plugin-log";
@@ -59,8 +58,7 @@ const App = () => {
 		}
 	});
 
-	// 监听关闭数据库的事件
-	useTauriListen(LISTEN_KEY.CLOSE_DATABASE, closeDatabase);
+	// 数据库插件现在由后端自动管理，无需手动关闭
 
 	// 链接跳转到系统浏览器
 	useEventListener("click", (event) => {

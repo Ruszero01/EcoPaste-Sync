@@ -102,10 +102,6 @@ pub fn run() {
         .plugin(tauri_plugin_eco_paste::init())
         // 自定义判断是否自动启动的插件
         .plugin(tauri_plugin_eco_autostart::init())
-        // 自定义WebDAV插件
-        .plugin(tauri_plugin_eco_webdav::init())
-        // 自定义自动同步插件
-        .plugin(tauri_plugin_eco_auto_sync::init())
         // 自定义活动窗口插件
         .plugin(tauri_plugin_eco_active_window::init())
         // 统一数据库插件

@@ -63,7 +63,6 @@ export const globalStore = proxy<GlobalStore>({
 		// 文件同步设置
 		fileSync: {
 			enabled: true, // 默认开启
-			lightweightMode: true, // 默认轻量模式
 			maxFileSize: 10, // 默认10MB
 			supportedTypes: {
 				images: true,

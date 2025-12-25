@@ -1,7 +1,7 @@
 use tauri::{
     generate_handler,
     plugin::{Builder, TauriPlugin},
-    Runtime,
+    Manager, Runtime,
 };
 
 mod commands;
@@ -12,7 +12,6 @@ mod auto_sync_manager;
 mod sync_core;
 mod data_manager;
 mod file_sync_manager;
-mod cleanup_manager;
 mod config_sync_manager;
 mod bookmark_sync_manager;
 mod events;
@@ -23,7 +22,7 @@ pub use webdav::{create_shared_client, WebDAVClientState, WebDAVConfig};
 pub use auto_sync_manager::{create_shared_manager, AutoSyncManagerState};
 pub use sync_core::{
     SyncCore, SyncModeConfig, SyncDataItem, SyncIndex, SyncProcessResult, SyncStatistics,
-    StateValidationResult, SyncDataStatus
+    StateValidationResult
 };
 pub use data_manager::{DataManager, create_shared_manager as create_data_manager};
 pub use file_sync_manager::{
@@ -31,7 +30,6 @@ pub use file_sync_manager::{
     FileSyncBatch, FileSyncProgress, FileSyncStrategy, FileSyncConfig,
     create_shared_manager as create_file_sync_manager
 };
-pub use cleanup_manager::{CleanupManager, CleanupConfig, CleanupStatus};
 pub use config_sync_manager::{ConfigSyncManager, ConfigSyncResult, AppConfig};
 pub use bookmark_sync_manager::{BookmarkSyncManager, BookmarkSyncData, BookmarkSyncResult};
 pub use events::{EventEmitter, SyncEvent, create_shared_emitter};
@@ -48,11 +46,11 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::stop_auto_sync,
             commands::get_auto_sync_status,
             commands::update_auto_sync_interval,
-            commands::notify_data_changed,
             commands::test_webdav_connection,
             commands::get_sync_progress,
             commands::update_sync_config,
             commands::get_sync_config,
+            commands::reload_config_from_file,
             commands::upload_file,
             commands::download_file,
             commands::delete_file,
@@ -66,11 +64,16 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::download_bookmarks,
             commands::set_bookmark_sync_data
         ])
-        .setup(|_app_handle, _webview_manager| {
+        .setup(|app_handle, _webview_manager| {
             // 在插件初始化时创建共享实例
-            let _webdav_client = create_shared_client();
-            let _auto_sync_manager = create_shared_manager();
-            let _sync_engine = create_shared_engine(_webdav_client.clone(), _auto_sync_manager.clone());
+            let webdav_client = create_shared_client();
+            let auto_sync_manager = create_shared_manager();
+            let sync_engine = create_shared_engine(webdav_client.clone(), auto_sync_manager.clone());
+
+            // 注册状态管理器，让命令可以访问这些状态
+            app_handle.manage(webdav_client.clone());
+            app_handle.manage(auto_sync_manager.clone());
+            app_handle.manage(sync_engine.clone());
 
             log::info!("✅ 同步插件初始化成功");
             Ok(())

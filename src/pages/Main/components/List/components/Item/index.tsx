@@ -1,15 +1,28 @@
 import { createDragPreview } from "@/components/DragPreview";
 import UnoIcon from "@/components/UnoIcon";
+import { LISTEN_KEY } from "@/constants";
 import { MainContext } from "@/pages/Main";
 import { smartPasteClipboard } from "@/plugins/clipboard";
 import { batchPasteClipboard, writeClipboard } from "@/plugins/clipboard";
+import { backendUpdateField } from "@/plugins/database";
+import { clipboardStore } from "@/stores/clipboard";
+import { globalStore } from "@/stores/global";
 import type { HistoryTablePayload } from "@/types/database";
-import { formatDate } from "@/utils/dayjs";
+import {
+	cmykToRgb,
+	cmykToVector,
+	hexToRgb,
+	parseColorString,
+	rgbToCmyk,
+	rgbToHex,
+	rgbToVector,
+} from "@/utils/color";
+import { isMac } from "@/utils/is";
 import { joinPath } from "@/utils/path";
 import { startDrag } from "@crabnebula/tauri-plugin-drag";
 import { invoke } from "@tauri-apps/api/core";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import type { MenuItemOptions } from "@tauri-apps/api/menu";
+import { Menu, MenuItem, type MenuItemOptions } from "@tauri-apps/api/menu";
 import { downloadDir } from "@tauri-apps/api/path";
 import { resolveResource } from "@tauri-apps/api/path";
 import { copyFile, writeTextFile } from "@tauri-apps/plugin-fs";
@@ -209,7 +222,7 @@ const Item: FC<ItemProps> = (props) => {
 		autoSort?: boolean,
 	) => {
 		const currentAutoSort = autoSort ?? clipboardStore.content.autoSort;
-		const createTime = formatDate();
+		const createTime = Date.now();
 		const updatedItems = items.map((item) => ({
 			...item,
 			createTime,
@@ -249,10 +262,11 @@ const Item: FC<ItemProps> = (props) => {
 	) => {
 		for (const item of items) {
 			// 调用database插件批量更新
-			await invoke("batch_update_field", {
-				ids: [item.id],
-				fields: updateData,
-			});
+			await backendUpdateField(
+				item.id,
+				"time",
+				(updateData.createTime || Date.now()).toString(),
+			);
 		}
 	};
 
@@ -296,20 +310,45 @@ const Item: FC<ItemProps> = (props) => {
 
 	// 复制
 	const copy = async () => {
-		let hasError = false;
+		console.log("🔵 [复制按钮] 开始复制操作", {
+			id,
+			type: data.type,
+			group: data.group,
+			valueLength: data.value?.length || 0,
+		});
 
 		try {
-			// 设置内部复制标志，防止复制操作后触发重复处理
+			// 步骤1：设置内部复制标志，防止复制操作后触发重复处理
+			console.log("🔵 [复制按钮] 设置内部复制标志");
 			clipboardStore.internalCopy = {
 				isCopying: true,
 				itemId: id,
 			};
 
-			// 直接复制，同步阶段已确保所有文件都是本地可用的
+			// 步骤2：写入剪贴板
+			console.log("🔵 [复制按钮] 开始写入剪贴板");
 			await writeClipboard(data);
+			console.log("✅ [复制按钮] 写入剪贴板成功");
+
+			// 步骤3：更新数据库时间戳（使用后端变更跟踪器）
+			console.log("🔵 [复制按钮] 开始更新数据库时间戳");
+			const currentTime = Date.now();
+			await backendUpdateField(id, "time", currentTime.toString());
+			console.log("✅ [复制按钮] 数据库时间戳更新成功", {
+				timestamp: currentTime,
+				formattedTime: new Date(currentTime).toLocaleString(),
+			});
+
+			// 步骤4：清除内部复制标志
+			console.log("🔵 [复制按钮] 清除内部复制标志");
+			clipboardStore.internalCopy = {
+				isCopying: false,
+				itemId: null,
+			};
+
+			console.log("✅ [复制按钮] 复制操作完成");
 		} catch (error) {
-			hasError = true;
-			console.error("❌ 复制操作失败:", error);
+			console.error("❌ [复制按钮] 复制操作失败:", error);
 
 			// 如果是图片复制失败且文件不存在，提示用户
 			if (data.type === "image" && error instanceof Error) {
@@ -327,48 +366,13 @@ const Item: FC<ItemProps> = (props) => {
 				`复制失败: ${error instanceof Error ? error.message : "未知错误"}`,
 			);
 		} finally {
-			// 避免在剪贴板更新处理过程中尝试获取来源应用信息
+			// 延迟清除内部复制标志，避免在剪贴板更新处理过程中尝试获取来源应用信息
 			setTimeout(() => {
 				clipboardStore.internalCopy = {
 					isCopying: false,
 					itemId: null,
 				};
 			}, 200);
-		}
-
-		if (hasError) {
-			return;
-		}
-
-		const index = findIndex(state.list, { id });
-
-		if (index !== -1) {
-			const createTime = formatDate();
-
-			// 获取当前的自动排序设置
-			const currentAutoSort = clipboardStore.content.autoSort;
-
-			if (currentAutoSort) {
-				// 自动排序开启：移动到顶部
-				const [targetItem] = state.list.splice(index, 1);
-				state.list.unshift({ ...targetItem, createTime });
-
-				// 聚焦到移动后的条目
-				state.activeId = id;
-			} else {
-				// 自动排序关闭：保持原位置，只更新时间
-				state.list[index] = { ...state.list[index], createTime };
-
-				// 聚焦到当前条目
-				state.activeId = id;
-			}
-
-			// 复制操作后也清除多选状态，确保聚焦框正常显示
-			clearMultiSelectState();
-
-			// 更新数据库
-			await invoke("update_create_time", { id, createTime });
-		} else {
 		}
 	};
 
@@ -391,34 +395,8 @@ const Item: FC<ItemProps> = (props) => {
 		}
 
 		try {
-			// 调用database插件更新收藏状态
-			const result = await invoke("update_favorite", {
-				id,
-				favorite: nextFavorite,
-			});
-
-			if (!result.success) {
-				throw new Error(result.error || "更新收藏状态失败");
-			}
-
-			// 通知后端变更跟踪器（收藏状态变更）
-			try {
-				await invoke("notify_data_changed", {
-					item_id: id,
-					change_type: "favorite",
-				});
-
-				// 同时更新本地syncStatus为"changed"，让UI立即显示变更状态
-				if (itemIndex !== -1) {
-					state.list[itemIndex] = {
-						...state.list[itemIndex],
-						syncStatus: "changed",
-					};
-				}
-			} catch (notifyError) {
-				console.warn("通知后端变更跟踪器失败:", notifyError);
-				// 不影响主要功能继续执行
-			}
+			// 调用database插件更新收藏状态（后端会自动标记为已变更）
+			await backendUpdateField(id, "favorite", nextFavorite.toString());
 		} catch (error) {
 			console.error("收藏状态更新失败:", error);
 			// 如果数据库更新失败，恢复本地状态
@@ -604,55 +582,31 @@ const Item: FC<ItemProps> = (props) => {
 			// 执行批量收藏/取消收藏
 			try {
 				// 调用database插件批量更新收藏状态
-				const result = await invoke("batch_update_favorite", {
-					ids: selectedIds,
-					favorite: newFavoriteStatus,
-				});
+				const promises = selectedIds.map((id) =>
+					backendUpdateField(id, "favorite", newFavoriteStatus.toString()),
+				);
+				await Promise.all(promises);
 
-				if (result.success) {
-					// 更新本地状态 - 只更新收藏状态，不更新时间戳和位置
-					for (const selectedId of selectedIds) {
-						const itemIndex = findIndex(state.list, { id: selectedId });
-						if (itemIndex !== -1) {
-							state.list[itemIndex] = {
-								...state.list[itemIndex],
-								favorite: newFavoriteStatus,
-							};
-						}
+				// 更新本地状态 - 只更新收藏状态，不更新时间戳和位置
+				for (const selectedId of selectedIds) {
+					const itemIndex = findIndex(state.list, { id: selectedId });
+					if (itemIndex !== -1) {
+						state.list[itemIndex] = {
+							...state.list[itemIndex],
+							favorite: newFavoriteStatus,
+						};
 					}
-
-					// 通知后端变更跟踪器（批量收藏状态变更）
-					try {
-						await Promise.all(
-							selectedIds.map((itemId) =>
-								invoke("notify_data_changed", {
-									item_id: itemId,
-									change_type: "favorite",
-								}),
-							),
-						);
-					} catch (notifyError) {
-						console.warn("通知后端变更跟踪器失败:", notifyError);
-						// 不影响主要功能继续执行
-					}
-
-					// 清除多选状态
-					clearMultiSelectState();
-
-					// 显示成功提示
-					message.success(`成功${action} ${result.updatedCount} 个项目`);
-				} else {
-					const errorMessage =
-						typeof result.error === "string"
-							? result.error
-							: result.error instanceof Error
-								? result.error.message
-								: "未知错误";
-					message.error(`批量${action}失败: ${errorMessage}`);
 				}
+
+				// 清除多选状态
+				clearMultiSelectState();
+
+				// 显示成功提示
+				message.success(`成功${action} ${selectedIds.length} 个项目`);
 			} catch (error) {
-				console.error("❌ 批量收藏失败:", error);
-				message.error("批量收藏操作失败");
+				const errorMessage =
+					error instanceof Error ? error.message : "未知错误";
+				message.error(`批量${action}失败: ${errorMessage}`);
 			}
 		} finally {
 			// 清除批量操作进行中标志
@@ -896,7 +850,7 @@ const Item: FC<ItemProps> = (props) => {
 				}
 
 				// 更新数据库
-				await invoke("update_time", { id, time: currentTime });
+				await backendUpdateField(id, "time", currentTime.toString());
 
 				// 无论是否在多选状态，都清除多选状态，确保聚焦框正常显示
 				clearMultiSelectState();

@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 /// 剪贴板历史记录项
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct HistoryItem {
     pub id: String,
     #[serde(rename = "type")]
@@ -19,24 +20,13 @@ pub struct HistoryItem {
     pub time: i64,
     pub note: Option<String>,
     pub subtype: Option<String>,
-    #[serde(rename = "lazyDownload")]
-    pub lazy_download: Option<i32>,
-    #[serde(rename = "fileSize")]
     pub file_size: Option<i64>,
-    #[serde(rename = "fileType")]
-    pub file_type: Option<String>,
     pub deleted: Option<i32>,
-    #[serde(rename = "syncStatus")]
     pub sync_status: Option<String>,
-    #[serde(rename = "isCloudData")]
     pub is_cloud_data: Option<i32>,
-    #[serde(rename = "codeLanguage")]
     pub code_language: Option<String>,
-    #[serde(rename = "isCode")]
     pub is_code: Option<i32>,
-    #[serde(rename = "sourceAppName")]
     pub source_app_name: Option<String>,
-    #[serde(rename = "sourceAppIcon")]
     pub source_app_icon: Option<String>,
     pub position: Option<i32>,
 }
@@ -56,9 +46,7 @@ impl Default for HistoryItem {
             time: 0,
             note: None,
             subtype: None,
-            lazy_download: Some(0),
             file_size: None,
-            file_type: None,
             deleted: Some(0),
             sync_status: Some("none".to_string()),
             is_cloud_data: Some(0),
@@ -102,6 +90,7 @@ impl From<HistoryItem> for SyncDataItem {
 
 /// 插入数据项
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct InsertItem {
     pub id: String,
     #[serde(rename = "type")]
@@ -116,24 +105,13 @@ pub struct InsertItem {
     pub time: i64,
     pub note: Option<String>,
     pub subtype: Option<String>,
-    #[serde(rename = "lazyDownload")]
-    pub lazy_download: Option<i32>,
-    #[serde(rename = "fileSize")]
     pub file_size: Option<i64>,
-    #[serde(rename = "fileType")]
-    pub file_type: Option<String>,
     pub deleted: Option<i32>,
-    #[serde(rename = "syncStatus")]
     pub sync_status: Option<String>,
-    #[serde(rename = "isCloudData")]
     pub is_cloud_data: Option<i32>,
-    #[serde(rename = "codeLanguage")]
     pub code_language: Option<String>,
-    #[serde(rename = "isCode")]
     pub is_code: Option<i32>,
-    #[serde(rename = "sourceAppName")]
     pub source_app_name: Option<String>,
-    #[serde(rename = "sourceAppIcon")]
     pub source_app_icon: Option<String>,
     pub position: Option<i32>,
 }

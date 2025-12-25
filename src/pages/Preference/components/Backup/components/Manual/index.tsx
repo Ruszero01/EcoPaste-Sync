@@ -52,10 +52,7 @@ const Manual: FC<{ state: State }> = (props) => {
 
 			state.spinning = true;
 
-			emit(LISTEN_KEY.CLOSE_DATABASE);
-
-			await new Promise((resolve) => setTimeout(resolve, 100));
-
+			// 数据库插件现在由后端自动管理，无需手动关闭
 			await decompress(path, getSaveDataPath());
 
 			await restoreStore(true);

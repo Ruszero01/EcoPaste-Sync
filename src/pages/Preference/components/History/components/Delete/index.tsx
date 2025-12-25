@@ -1,7 +1,5 @@
 import AdaptiveSelect from "@/components/AdaptiveSelect";
-import type { HistoryTablePayload } from "@/types/database";
 import { DeleteOutlined } from "@ant-design/icons";
-import { emit } from "@tauri-apps/api/event";
 import {
 	Button,
 	Checkbox,
@@ -65,38 +63,11 @@ const Delete = () => {
 
 			setTrue();
 
-			let range: Dayjs[] = [];
-
-			if (timeRange < 0) {
-				range = customRange;
-			} else {
-				range = [dayjs().subtract(timeRange, "hour"), dayjs()];
-			}
-
-			const formatRange = range.map((item) => formatDate(item));
-
-			const list = await selectSQL<HistoryTablePayload[]>("history");
-
-			for await (const item of list) {
-				const { favorite, createTime } = item;
-
-				if (favorite && !deleteFavorite) continue;
-
-				const isBetween = dayjs(createTime).isBetween(
-					formatRange[0],
-					formatRange[1],
-					null,
-					"[]",
-				);
-
-				if (timeRange === 0 || isBetween) {
-					await deleteSQL("history", item);
-				}
-			}
+			// TODO: 临时禁用，等待重构完成后实现
+			// 功能正在重构中，将使用后端数据库命令
+			message.warning("历史记录清理功能正在重构中，敬请期待");
 
 			toggle();
-			message.success(t("preference.history.history.hints.delete_success"));
-			emit(LISTEN_KEY.REFRESH_CLIPBOARD_LIST);
 		} catch (error) {
 			message.error(String(error));
 		} finally {

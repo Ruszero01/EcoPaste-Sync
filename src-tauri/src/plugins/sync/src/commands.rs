@@ -170,43 +170,6 @@ pub async fn test_webdav_connection(
     test_connection_with_config(&config).await
 }
 
-/// 通知数据变更（用于变更跟踪器）
-/// 根据优化方案，当本地数据发生以下变更时设置状态为已变更：
-/// [收藏状态变更] [内容变更] [类型变更] [子类型变更] [备注变更] [文件哈希变更]
-#[tauri::command]
-pub async fn notify_data_changed(
-    item_id: String,
-    change_type: String, // 变更类型：favorite, content, type, subtype, note, file_hash
-    state: State<'_, Arc<Mutex<CloudSyncEngine>>>,
-) -> Result<(), String> {
-    let engine = state.lock().await;
-
-    // 直接访问同步核心引擎
-    let core = engine.sync_core.clone();
-    let data_manager = {
-        let core_locked = core.lock().await;
-        core_locked.data_manager.clone()
-    };
-
-    // 调用变更跟踪器标记为已变更
-    let mut manager = data_manager.lock().await;
-
-    // 验证变更类型并记录日志
-    match change_type.as_str() {
-        "favorite" => log::info!("🔔 收到收藏状态变更通知: {}", item_id),
-        "content" => log::info!("🔔 收到内容变更通知: {}", item_id),
-        "type" => log::info!("🔔 收到类型变更通知: {}", item_id),
-        "subtype" => log::info!("🔔 收到子类型变更通知: {}", item_id),
-        "note" => log::info!("🔔 收到备注变更通知: {}", item_id),
-        "file_hash" => log::info!("🔔 收到文件哈希变更通知: {}", item_id),
-        _ => log::warn!("⚠️ 未知的变更类型: {}", change_type),
-    }
-
-    manager.mark_item_as_changed(&item_id);
-
-    Ok(())
-}
-
 /// 使用指定配置测试连接
 async fn test_connection_with_config(config: &WebDAVConfig) -> Result<ConnectionTestResult, String> {
     let start_time = Instant::now();
@@ -306,10 +269,9 @@ pub async fn update_sync_config(
 
 /// 获取当前同步配置
 #[tauri::command]
-pub fn get_sync_config(_state: State<'_, Arc<Mutex<CloudSyncEngine>>>) -> Result<(), String> {
-    // 简化实现，返回空结果
-    // 实际实现需要 UnifiedConfig 实现 Serialize trait
-    Ok(())
+pub fn get_sync_config(_state: State<'_, Arc<Mutex<CloudSyncEngine>>>) -> Result<Option<SyncConfig>, String> {
+    // 从本地文件读取配置
+    read_config_from_file()
 }
 
 /// 上传单个文件
@@ -433,4 +395,140 @@ pub async fn set_bookmark_sync_data(
         success: true,
         message: "✅ 书签数据已设置".to_string(),
     })
+}
+
+/// 从本地文件重新加载配置
+#[tauri::command]
+pub async fn reload_config_from_file(
+    state: State<'_, Arc<Mutex<CloudSyncEngine>>>,
+    db_state: State<'_, DatabaseState>,
+) -> Result<SyncResult, String> {
+    let mut engine = state.lock().await;
+
+    // 从本地文件读取配置
+    match read_config_from_file() {
+        Ok(Some(config)) => {
+            // 重新初始化引擎
+            match engine.init(config, &db_state).await {
+                Ok(result) => {
+                    log::info!("✅ 从本地文件重新加载配置成功");
+                    Ok(result)
+                }
+                Err(e) => {
+                    log::error!("❌ 初始化引擎失败: {}", e);
+                    Err(format!("初始化引擎失败: {}", e))
+                }
+            }
+        }
+        Ok(None) => {
+            log::warn!("⚠️ 本地配置文件不存在或格式错误");
+            Err("本地配置文件不存在".to_string())
+        }
+        Err(e) => {
+            log::error!("❌ 读取本地配置文件失败: {}", e);
+            Err(format!("读取配置文件失败: {}", e))
+        }
+    }
+}
+
+/// 从本地文件读取配置
+fn read_config_from_file() -> Result<Option<SyncConfig>, String> {
+    use std::fs;
+
+    // 获取应用数据目录
+    let data_dir = dirs::data_dir()
+        .or_else(|| dirs::config_dir())
+        .or_else(|| dirs::home_dir().map(|p| p.join(".local/share")))
+        .ok_or_else(|| "无法获取数据目录".to_string())?;
+
+    let bundle_id = "com.Rains.EcoPaste-Sync";
+    let _app_name = "EcoPaste-Sync";
+
+    // 构建配置文件路径
+    let config_path = data_dir.join(bundle_id);
+    let config_file = if cfg!(debug_assertions) {
+        config_path.join(".store.dev.json")
+    } else {
+        config_path.join(".store.json")
+    };
+
+    log::info!("🔍 读取配置文件: {:?}", config_file);
+
+    // 检查文件是否存在
+    if !config_path.exists() {
+        log::warn!("⚠️ 配置文件目录不存在: {:?}", config_path);
+        return Ok(None);
+    }
+
+    if !config_file.exists() {
+        log::warn!("⚠️ 配置文件不存在: {:?}", config_file);
+        return Ok(None);
+    }
+
+    // 读取并解析文件
+    match fs::read_to_string(&config_file) {
+        Ok(content) => {
+            match serde_json::from_str::<serde_json::Value>(&content) {
+                Ok(json_value) => {
+                    // 从 JSON 中提取 cloudSync.serverConfig
+                    if let Some(cloud_sync) = json_value.get("globalStore").and_then(|v| v.get("cloudSync")) {
+                        if let Some(server_config) = cloud_sync.get("serverConfig") {
+                            let config = SyncConfig {
+                                server_url: server_config.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                                username: server_config.get("username").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                                password: server_config.get("password").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                                path: server_config.get("path").and_then(|v| v.as_str()).unwrap_or("/EcoPaste-Sync").to_string(),
+                                auto_sync: false,
+                                auto_sync_interval_minutes: 60,
+                                only_favorites: false,
+                                include_files: false,
+                                timeout: server_config.get("timeout").and_then(|v| v.as_u64()).unwrap_or(60000),
+                            };
+
+                            // 尝试读取自动同步设置
+                            if let Some(auto_sync) = cloud_sync.get("autoSyncSettings") {
+                                if let (Some(enabled), Some(interval)) = (
+                                    auto_sync.get("enabled").and_then(|v| v.as_bool()),
+                                    auto_sync.get("intervalHours").and_then(|v| v.as_f64())
+                                ) {
+                                    return Ok(Some(SyncConfig {
+                                        auto_sync: enabled,
+                                        auto_sync_interval_minutes: (interval * 60.0) as u64,
+                                        only_favorites: auto_sync.get("syncModeConfig")
+                                            .and_then(|v| v.get("settings"))
+                                            .and_then(|v| v.get("onlyFavorites"))
+                                            .and_then(|v| v.as_bool())
+                                            .unwrap_or(false),
+                                        include_files: auto_sync.get("syncModeConfig")
+                                            .and_then(|v| v.get("settings"))
+                                            .and_then(|v| v.get("includeFiles"))
+                                            .and_then(|v| v.as_bool())
+                                            .unwrap_or(false) || auto_sync.get("syncModeConfig")
+                                            .and_then(|v| v.get("settings"))
+                                            .and_then(|v| v.get("includeImages"))
+                                            .and_then(|v| v.as_bool())
+                                            .unwrap_or(false),
+                                        ..config
+                                    }));
+                                }
+                            }
+
+                            return Ok(Some(config));
+                        }
+                    }
+
+                    log::warn!("⚠️ 配置文件中没有找到有效的 serverConfig");
+                    Ok(None)
+                }
+                Err(e) => {
+                    log::error!("❌ 解析配置文件失败: {}", e);
+                    Err(format!("解析配置文件失败: {}", e))
+                }
+            }
+        }
+        Err(e) => {
+            log::error!("❌ 读取配置文件失败: {}", e);
+            Err(format!("读取配置文件失败: {}", e))
+        }
+    }
 }

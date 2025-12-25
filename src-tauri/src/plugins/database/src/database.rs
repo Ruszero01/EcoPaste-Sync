@@ -39,7 +39,7 @@ impl DatabaseManager {
         let conn = Connection::open(&db_path_clone)
             .map_err(|e| format!("打开数据库失败: {}", e))?;
 
-        // 创建 history 表
+        // 创建 history 表（包含所有字段）
         conn.execute_batch(r#"
             CREATE TABLE IF NOT EXISTS history (
                 id TEXT PRIMARY KEY,
@@ -47,16 +47,14 @@ impl DatabaseManager {
                 [group] TEXT,
                 value TEXT,
                 search TEXT,
-                count INTEGER,
+                count INTEGER DEFAULT 1,
                 width INTEGER,
                 height INTEGER,
                 favorite INTEGER DEFAULT 0,
-                time INTEGER,
+                time INTEGER DEFAULT 0,
                 note TEXT,
                 subtype TEXT,
-                lazyDownload INTEGER DEFAULT 0,
                 fileSize INTEGER,
-                fileType TEXT,
                 deleted INTEGER DEFAULT 0,
                 syncStatus TEXT DEFAULT 'none',
                 isCloudData INTEGER DEFAULT 0,
@@ -71,9 +69,10 @@ impl DatabaseManager {
             CREATE INDEX IF NOT EXISTS idx_history_favorite ON history(favorite);
             CREATE INDEX IF NOT EXISTS idx_history_syncStatus ON history(syncStatus);
             CREATE INDEX IF NOT EXISTS idx_history_isCloudData ON history(isCloudData);
+            CREATE INDEX IF NOT EXISTS idx_history_time ON history(time);
         "#).map_err(|e| format!("创建数据库表失败: {}", e))?;
 
-        // 检查并添加缺失的字段（向后兼容）
+        // 检查并添加缺失的字段（向后兼容旧数据库）
         let mut stmt = conn.prepare("PRAGMA table_info(history)")
             .map_err(|e| format!("查询表结构失败: {}", e))?;
 
@@ -84,24 +83,31 @@ impl DatabaseManager {
             existing_columns.insert(name);
         }
 
-        // 添加 time 字段（如果不存在）
-        if !existing_columns.contains("time") {
-            conn.execute_batch("ALTER TABLE history ADD COLUMN time INTEGER;")
-                .map_err(|e| format!("添加 time 字段失败: {}", e))?;
+        // 需要迁移的字段列表
+        let fields_to_migrate = [
+            ("time", "INTEGER DEFAULT 0"),
+            ("sourceAppName", "TEXT"),
+            ("sourceAppIcon", "TEXT"),
+            ("position", "INTEGER DEFAULT 0"),
+        ];
+
+        for (field_name, field_type) in fields_to_migrate {
+            if !existing_columns.contains(field_name) {
+                let sql = format!("ALTER TABLE history ADD COLUMN {} {}", field_name, field_type);
+                conn.execute_batch(&sql)
+                    .map_err(|e| format!("添加 {} 字段失败: {}", field_name, e))?;
+            }
         }
 
-        // 添加完成后，再创建 time 字段的索引
-        conn.execute_batch("CREATE INDEX IF NOT EXISTS idx_history_time ON history(time);")
-            .map_err(|e| format!("创建索引失败: {}", e))?;
-
-        self.db_path = Some(db_path);
+        self.db_path = Some(db_path.clone());
         self.initialized = true;
+
         log::info!("数据库管理器已初始化: {:?}", self.db_path);
         Ok(())
     }
 
-    /// 获取数据库连接
-    fn get_connection(&self) -> Result<Connection, String> {
+    /// 获取数据库连接（公开方法，供外部使用）
+    pub fn get_connection(&self) -> Result<Connection, String> {
         let path = self.db_path.as_ref()
             .ok_or_else(|| "数据库路径未设置".to_string())?;
 
@@ -183,17 +189,15 @@ impl DatabaseManager {
                 time: row.get(9).unwrap_or(0),
                 note: row.get(10).ok(),
                 subtype: row.get(11).ok(),
-                lazy_download: row.get(12).ok(),
-                file_size: row.get(13).ok(),
-                file_type: row.get(14).ok(),
-                deleted: row.get(15).ok(),
-                sync_status: row.get(16).ok(),
-                is_cloud_data: row.get(17).ok(),
-                code_language: row.get::<_, Option<String>>(18).ok().flatten(),
-                is_code: row.get::<_, Option<i32>>(19).ok().flatten(),
-                source_app_name: row.get::<_, Option<String>>(20).ok().flatten(),
-                source_app_icon: row.get::<_, Option<String>>(21).ok().flatten(),
-                position: row.get::<_, Option<i32>>(22).ok().flatten(),
+                file_size: row.get(12).ok(),
+                deleted: row.get(13).ok(),
+                sync_status: row.get(14).ok(),
+                is_cloud_data: row.get(15).ok(),
+                code_language: row.get::<_, Option<String>>(16).ok().flatten(),
+                is_code: row.get::<_, Option<i32>>(17).ok().flatten(),
+                source_app_name: row.get::<_, Option<String>>(18).ok().flatten(),
+                source_app_icon: row.get::<_, Option<String>>(19).ok().flatten(),
+                position: row.get::<_, Option<i32>>(20).ok().flatten(),
             })
         }).map_err(|e| format!("查询失败: {}", e))?;
 
@@ -493,11 +497,11 @@ impl DatabaseManager {
                         type = ?1, value = ?2, search = ?3, count = ?4,
                         width = ?5, height = ?6, favorite = ?7,
                         time = ?8, note = ?9, subtype = ?10,
-                        lazyDownload = ?11, fileSize = ?12, fileType = ?13,
-                        deleted = ?14, syncStatus = ?15, isCloudData = ?16,
-                        codeLanguage = ?17, isCode = ?18,
-                        sourceAppName = ?19, sourceAppIcon = ?20, position = ?21
-                    WHERE id = ?22",
+                        fileSize = ?11,
+                        deleted = ?12, syncStatus = ?13, isCloudData = ?14,
+                        codeLanguage = ?15, isCode = ?16,
+                        sourceAppName = ?17, sourceAppIcon = ?18, position = ?19
+                    WHERE id = ?20",
                     params![
                         item.item_type,
                         item.value,
@@ -509,9 +513,7 @@ impl DatabaseManager {
                         item.time,
                         item.note,
                         item.subtype,
-                        item.lazy_download.unwrap_or(0),
                         item.file_size,
-                        item.file_type,
                         item.deleted.unwrap_or(0),
                         item.sync_status.clone().unwrap_or_else(|| "not_synced".to_string()),
                         item.is_cloud_data.unwrap_or(0),
@@ -524,8 +526,9 @@ impl DatabaseManager {
                     ],
                 ).map_err(|e| format!("更新数据失败: {}", e))?;
 
-                // 标记为已变更
-                self.change_tracker.mark_changed(&item.id);
+                // 使用统一变更跟踪器
+                let conn = self.get_connection()?;
+                let _ = self.change_tracker.mark_item_changed(&conn, &item.id, "update");
 
                 return Ok(InsertResult {
                     is_update: true,
@@ -548,11 +551,11 @@ impl DatabaseManager {
                     [group] = ?1, search = ?2, count = ?3,
                     width = ?4, height = ?5, favorite = ?6,
                     time = ?7, note = ?8, subtype = ?9,
-                    lazyDownload = ?10, fileSize = ?11, fileType = ?12,
-                    deleted = ?13, syncStatus = ?14, isCloudData = ?15,
-                    codeLanguage = ?16, isCode = ?17,
-                    sourceAppName = ?18, sourceAppIcon = ?19, position = ?20
-                WHERE id = ?21",
+                    fileSize = ?10,
+                    deleted = ?11, syncStatus = ?12, isCloudData = ?13,
+                    codeLanguage = ?14, isCode = ?15,
+                    sourceAppName = ?16, sourceAppIcon = ?17, position = ?18
+                WHERE id = ?19",
                 params![
                     item.group,
                     item.search,
@@ -563,9 +566,7 @@ impl DatabaseManager {
                     item.time,
                     item.note,
                     item.subtype,
-                    item.lazy_download.unwrap_or(0),
                     item.file_size,
-                    item.file_type,
                     item.deleted.unwrap_or(0),
                     item.sync_status.clone().unwrap_or_else(|| "not_synced".to_string()),
                     item.is_cloud_data.unwrap_or(0),
@@ -578,8 +579,9 @@ impl DatabaseManager {
                 ],
             ).map_err(|e| format!("更新相同内容失败: {}", e))?;
 
-            // 标记为已变更
-            self.change_tracker.mark_changed(&existing_id);
+            // 使用统一变更跟踪器
+            let conn = self.get_connection()?;
+            let _ = self.change_tracker.mark_item_changed(&conn, &existing_id, "dedup");
 
             return Ok(InsertResult {
                 is_update: true,
@@ -599,15 +601,15 @@ impl DatabaseManager {
             "INSERT INTO history (
                 id, type, [group], value, search, count,
                 width, height, favorite, time, note, subtype,
-                lazyDownload, fileSize, fileType, deleted,
+                fileSize, deleted,
                 syncStatus, isCloudData, codeLanguage, isCode,
                 sourceAppName, sourceAppIcon, position
             ) VALUES (
                 ?1, ?2, ?3, ?4, ?5, ?6,
                 ?7, ?8, ?9, ?10, ?11, ?12,
-                ?13, ?14, ?15, ?16,
-                ?17, ?18, ?19, ?20,
-                ?21, ?22, ?23
+                ?13, ?14,
+                ?15, ?16, ?17, ?18,
+                ?19, ?20, ?21
             )",
             params![
                 item.id,
@@ -622,9 +624,7 @@ impl DatabaseManager {
                 item.time,
                 item.note,
                 item.subtype,
-                item.lazy_download.unwrap_or(0),
                 item.file_size,
-                item.file_type,
                 item.deleted.unwrap_or(0),
                 item.sync_status.clone().unwrap_or_else(|| "not_synced".to_string()),
                 item.is_cloud_data.unwrap_or(0),
@@ -636,8 +636,9 @@ impl DatabaseManager {
             ],
         ).map_err(|e| format!("插入数据失败: {}", e))?;
 
-        // 标记为已变更（新项目需要同步）
-        self.change_tracker.mark_changed(&item.id);
+        // 使用统一变更跟踪器
+        let conn = self.get_connection()?;
+        let _ = self.change_tracker.mark_item_changed(&conn, &item.id, "insert");
 
         Ok(InsertResult {
             is_update: false,

@@ -43,6 +43,7 @@ pub struct ContentTypeConfig {
     pub include_text: bool,
     pub include_html: bool,
     pub include_rtf: bool,
+    pub include_markdown: bool,
 }
 
 /// 冲突解决策略
@@ -321,11 +322,11 @@ impl SyncCore {
         // 步骤 3: 数据比对判断是否需要同步
         self.update_progress(0.3);
         log::info!("🔄 步骤 3/8: 数据比对判断是否需要同步...");
-        let data_manager = self.data_manager.lock().await;
 
         // 从database的内部状态跟踪器获取已变更的数据
-        let db = database_state.lock().await;
+        let mut db = database_state.lock().await;
         let changed_items = db.get_change_tracker().get_changed_items();
+        let changed_items_set: std::collections::HashSet<&str> = changed_items.iter().map(|s| s.as_str()).collect();
         drop(db);
 
         let filtered_local = self.filter_data_for_sync(&local_data, &mode_config);
@@ -335,15 +336,14 @@ impl SyncCore {
         let items_to_sync: Vec<String> = filtered_local
             .iter()
             .filter(|item| {
-                let status = data_manager.get_item_sync_status(&item.id);
-                status == SyncDataStatus::NotSynced || status == SyncDataStatus::Changed
+                // 检查是否在已变更列表中，或根据其他条件判断需要同步
+                changed_items_set.contains(item.id.as_str())
             })
             .map(|item| item.id.clone())
             .collect();
 
-        log::info!("✅ 数据比对完成: 需要同步 {} 项 (本地变更 {} 项，未同步 {} 项)",
-            items_to_sync.len(), changed_items.len(), items_to_sync.len() - changed_items.len());
-        drop(data_manager);
+        log::info!("✅ 数据比对完成: 需要同步 {} 项 (本地变更 {} 项)",
+            items_to_sync.len(), changed_items.len());
 
         // 步骤 4: 根据比对结果执行双向合并更新云端索引
         self.update_progress(0.4);
@@ -424,12 +424,18 @@ impl SyncCore {
         self.update_progress(0.8);
         log::info!("🔄 步骤 7/8: 更新本地同步状态...");
         {
-            let mut data_manager = self.data_manager.lock().await;
-            // 清除变更记录
-            data_manager.clear_changed_items();
+            let mut db = database_state.lock().await;
+            let tracker = db.get_change_tracker();
+
             // 标记已上传/下载的项目为已同步
-            for item_id in result.uploaded_items.iter().chain(result.downloaded_items.iter()) {
-                data_manager.mark_item_as_synced(item_id);
+            let all_synced_items: Vec<String> = result.uploaded_items.iter()
+                .chain(result.downloaded_items.iter())
+                .cloned()
+                .collect();
+
+            let conn = db.get_connection()?;
+            if let Err(e) = tracker.mark_items_synced(&conn, &all_synced_items) {
+                log::error!("标记同步状态失败: {}", e);
             }
         }
         log::info!("✅ 本地同步状态更新完成");
@@ -656,7 +662,6 @@ impl SyncCore {
     #[allow(dead_code)]
     async fn load_local_deleted_items(&self, database_state: &DatabaseState) -> Result<Vec<(String, SyncDataStatus)>, String> {
         let db = database_state.lock().await;
-        let data_manager = self.data_manager.clone();
 
         // 查询软删除的数据
         let options = tauri_plugin_eco_database::QueryOptions {
@@ -681,9 +686,17 @@ impl SyncCore {
 
         // 检查每个软删除项目的同步状态
         let mut deleted_items_with_status = Vec::new();
-        let manager = data_manager.lock().await;
         for item in history_items {
-            let sync_status = manager.get_item_sync_status(&item.id);
+            // 从数据库查询同步状态
+            let sync_status = if let Some(status) = &item.sync_status {
+                match status.as_str() {
+                    "synced" => SyncDataStatus::Synced,
+                    "changed" => SyncDataStatus::Changed,
+                    _ => SyncDataStatus::NotSynced,
+                }
+            } else {
+                SyncDataStatus::NotSynced
+            };
             deleted_items_with_status.push((item.id, sync_status));
         }
 
@@ -815,6 +828,7 @@ impl SyncCore {
                     "text" => mode_config.content_types.include_text,
                     "html" => mode_config.content_types.include_html,
                     "rtf" => mode_config.content_types.include_rtf,
+                    "markdown" => mode_config.content_types.include_markdown,
                     "image" => mode_config.include_images,
                     "files" => mode_config.include_files,
                     _ => true,
@@ -1329,21 +1343,13 @@ impl SyncCore {
         let client = webdav_client.lock().await;
         match client.upload_sync_data("sync-data.json", &sync_json).await {
             Ok(_) => {
-                // 上传成功，更新DataManager状态
+                // 上传成功，使用数据库变更跟踪器标记为已同步
                 {
-                    let mut manager = data_manager.lock().await;
-                    for item_id in &actually_uploaded {
-                        manager.mark_item_as_synced(item_id);
-                    }
-                }
-
-                // 更新数据库状态为"synced"
-                {
-                    let db = database_state.lock().await;
-                    for item_id in &actually_uploaded {
-                        if let Err(e) = db.update_sync_status(item_id, "synced") {
-                            self.report_error(format!("更新数据库同步状态失败: {}", e));
-                        }
+                    let mut db = database_state.lock().await;
+                    let tracker = db.get_change_tracker();
+                    let conn = db.get_connection()?;
+                    if let Err(e) = tracker.mark_items_synced(&conn, &actually_uploaded) {
+                        self.report_error(format!("标记同步状态失败: {}", e));
                     }
                 }
 
@@ -1354,9 +1360,13 @@ impl SyncCore {
                 self.report_error(format!("上传同步数据失败: {}", e));
                 // 更新为已变更状态（等待重试）
                 {
-                    let mut manager = data_manager.lock().await;
+                    let mut db = database_state.lock().await;
+                    let tracker = db.get_change_tracker();
+                    let conn = db.get_connection()?;
                     for item_id in items {
-                        manager.mark_item_as_changed(item_id);
+                        if let Err(err) = tracker.mark_item_changed(&conn, item_id, "upload_failed") {
+                            log::error!("标记变更失败: {}", err);
+                        }
                     }
                 }
                 return Err(e);
@@ -1599,13 +1609,10 @@ impl SyncCore {
             }
         }
 
-        // 3. 更新本地DataManager状态
+        // 3. 更新本地DataManager缓存（从缓存中移除已删除的项目）
         {
-            let data_manager = self.data_manager.clone();
-            let mut manager = data_manager.lock().await;
-            for item_id in &synced_deleted_items {
-                manager.mark_item_as_deleted(item_id);
-            }
+            let mut data_manager = self.data_manager.lock().await;
+            data_manager.remove_deleted_items(&synced_deleted_items);
         }
 
         log::info!("✅ 删除操作完成，共处理 {} 项", deleted_items.len());

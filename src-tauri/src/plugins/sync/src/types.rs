@@ -32,6 +32,10 @@ pub struct SyncConfig {
     pub auto_sync: bool,
     /// 自动同步间隔（分钟）
     pub auto_sync_interval_minutes: u64,
+    /// 是否仅同步收藏项目
+    pub only_favorites: bool,
+    /// 是否包含文件同步
+    pub include_files: bool,
     /// 连接超时（毫秒）
     #[serde(default = "default_timeout")]
     pub timeout: u64,

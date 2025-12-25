@@ -9,7 +9,6 @@ import { initializeMicaEffect } from "@/plugins/window";
 import type { HistoryTablePayload, TablePayload } from "@/types/database";
 import type { Store } from "@/types/store";
 import { formatDate } from "@/utils/dayjs";
-import { invoke } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
 import { useReactive } from "ahooks";
 import type { EventEmitter } from "ahooks/lib/useEventEmitter";
@@ -128,7 +127,6 @@ const Main = () => {
 					favorite: data.favorite ? 1 : 0,
 					deleted: data.deleted ? 1 : 0,
 					isCloudData: data.isCloudData ? 1 : 0,
-					lazyDownload: data.lazyDownload ? 1 : 0,
 					isCode: data.isCode ? 1 : 0,
 				});
 
@@ -351,12 +349,12 @@ const Main = () => {
 
 				if (currentAutoSort) {
 					// 自动排序模式：更新时间，让系统重新排序
-					await invoke("update_time", { id: data.id, time: currentTime });
+					await backendUpdateField(data.id, "time", currentTime.toString());
 					// 刷新列表以获取新的排序
 					await getList();
 				} else {
 					// 手动排序模式：只更新时间，不改变位置
-					await invoke("update_time", { id: data.id, time: currentTime });
+					await backendUpdateField(data.id, "time", currentTime.toString());
 					// 更新本地列表中的时间，但保持位置不变
 					state.list[itemIndex] = {
 						...state.list[itemIndex],
@@ -504,7 +502,6 @@ const Main = () => {
 				...item,
 				favorite: Boolean(item.favorite),
 				deleted: Boolean(item.deleted),
-				lazyDownload: Boolean(item.lazyDownload),
 				isCloudData: Boolean(item.isCloudData),
 				isCode: Boolean(item.isCode),
 				position: Number(item.position || 0),
@@ -534,7 +531,6 @@ const Main = () => {
 				...item,
 				favorite: Boolean(item.favorite),
 				deleted: Boolean(item.deleted),
-				lazyDownload: Boolean(item.lazyDownload),
 				isCloudData: Boolean(item.isCloudData),
 				isCode: Boolean(item.isCode),
 				position: Number(item.position || 0),
@@ -584,7 +580,6 @@ const Main = () => {
 				...item,
 				favorite: Boolean(item.favorite),
 				deleted: Boolean(item.deleted),
-				lazyDownload: Boolean(item.lazyDownload),
 				isCloudData: Boolean(item.isCloudData),
 				isCode: Boolean(item.isCode),
 				position: Number(item.position || 0),

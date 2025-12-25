@@ -1,6 +1,6 @@
 import { MainContext } from "@/pages/Main";
+import { backendUpdateField } from "@/plugins/database";
 import type { HistoryTablePayload } from "@/types/database";
-import { invoke } from "@tauri-apps/api/core";
 import { Form, Input, type InputRef, Modal } from "antd";
 import { find } from "lodash-es";
 import { useTranslation } from "react-i18next";
@@ -42,53 +42,17 @@ const NoteModal = forwardRef<NoteModalRef>((_, ref) => {
 			const { id, favorite } = item;
 			const currentTime = Date.now();
 
-			// 检测备注变更
-			if (item.note !== note) {
-				// 通知后端变更跟踪器（备注变更）
-				try {
-					invoke("notify_data_changed", {
-						item_id: id,
-						change_type: "note",
-					});
-				} catch (notifyError) {
-					console.warn("通知后端变更跟踪器失败:", notifyError);
-					// 不影响主要功能继续执行
-				}
-			}
-
 			item.note = note;
 			item.lastModified = currentTime;
 
-			// 调用database插件更新备注
-			await invoke("update_note", { id, note });
-
-			// 通知后端变更跟踪器（备注变更）
-			try {
-				invoke("notify_data_changed", {
-					item_id: id,
-					change_type: "note",
-				});
-			} catch (notifyError) {
-				console.warn("通知后端变更跟踪器失败:", notifyError);
-				// 不影响主要功能继续执行
-			}
+			// 调用database插件更新备注（后端会自动标记为已变更）
+			await backendUpdateField(id, "note", note);
 
 			if (clipboardStore.content.autoFavorite && !favorite) {
 				item.favorite = true;
 
-				// 调用database插件更新收藏状态
-				invoke("update_favorite", { id, favorite: true });
-
-				// 通知后端变更跟踪器（收藏状态变更）
-				try {
-					invoke("notify_data_changed", {
-						item_id: id,
-						change_type: "favorite",
-					});
-				} catch (notifyError) {
-					console.warn("通知后端变更跟踪器失败:", notifyError);
-					// 不影响主要功能继续执行
-				}
+				// 调用database插件更新收藏状态（后端会自动标记为已变更）
+				await backendUpdateField(id, "favorite", "true");
 			}
 		}
 

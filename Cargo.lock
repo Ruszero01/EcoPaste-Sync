@@ -1385,14 +1385,12 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-drag",
  "tauri-plugin-eco-active-window",
- "tauri-plugin-eco-auto-sync",
  "tauri-plugin-eco-autostart",
  "tauri-plugin-eco-clipboard",
  "tauri-plugin-eco-database",
  "tauri-plugin-eco-ocr",
  "tauri-plugin-eco-paste",
  "tauri-plugin-eco-sync",
- "tauri-plugin-eco-webdav",
  "tauri-plugin-eco-window",
  "tauri-plugin-fs",
  "tauri-plugin-fs-pro",
@@ -6208,18 +6206,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tauri-plugin-eco-auto-sync"
-version = "0.1.0"
-dependencies = [
- "log",
- "serde",
- "serde_json",
- "tauri",
- "tauri-plugin",
- "tokio",
-]
-
-[[package]]
 name = "tauri-plugin-eco-autostart"
 version = "0.1.0"
 dependencies = [
@@ -6298,21 +6284,6 @@ dependencies = [
  "tauri",
  "tauri-plugin",
  "tauri-plugin-eco-database",
- "tokio",
-]
-
-[[package]]
-name = "tauri-plugin-eco-webdav"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "base64 0.21.7",
- "dirs 5.0.1",
- "reqwest 0.11.27",
- "serde",
- "serde_json",
- "tauri",
- "tauri-plugin",
  "tokio",
 ]
 
