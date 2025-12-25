@@ -8,7 +8,6 @@ import {
 import { initializeMicaEffect } from "@/plugins/window";
 import type { HistoryTablePayload, TablePayload } from "@/types/database";
 import type { Store } from "@/types/store";
-import { formatDate } from "@/utils/dayjs";
 import { emit } from "@tauri-apps/api/event";
 import { useReactive } from "ahooks";
 import type { EventEmitter } from "ahooks/lib/useEventEmitter";
@@ -89,8 +88,6 @@ const Main = () => {
 				audioRef.current?.play();
 			}
 
-			const createTime = formatDate();
-
 			// 额外检查：防止短时间内处理相同内容
 			const now = Date.now();
 			if (state.lastProcessedTime && now - state.lastProcessedTime < 100) {
@@ -112,7 +109,6 @@ const Main = () => {
 			try {
 				const data: HistoryTablePayload = {
 					...payload,
-					createTime,
 					id: nanoid(),
 					favorite: false,
 					syncStatus: "not_synced", // 新项目默认为未同步状态
@@ -185,7 +181,6 @@ const Main = () => {
 									...existingItem,
 									...dataWithoutSource,
 									id: updatedItemId, // 确保使用数据库中的ID
-									createTime: data.createTime,
 									// 明确保留原始来源应用信息
 									sourceAppName: existingItem.sourceAppName,
 									sourceAppIcon: existingItem.sourceAppIcon,
@@ -503,7 +498,6 @@ const Main = () => {
 				isCode: Boolean(item.isCode),
 				position: Number(item.position || 0),
 				syncStatus: item.syncStatus || "none",
-				createTime: item.time, // 统一使用createTime字段
 			})) as HistoryTablePayload[];
 		} else if (colorTab) {
 			// 颜色分组查询：查询 type 为 'color' 的数据
@@ -531,7 +525,6 @@ const Main = () => {
 				isCode: Boolean(item.isCode),
 				position: Number(item.position || 0),
 				syncStatus: item.syncStatus || "none",
-				createTime: item.time, // 统一使用createTime字段
 			})) as HistoryTablePayload[];
 		} else {
 			// 特殊处理纯文本和代码分组的查询
@@ -579,7 +572,6 @@ const Main = () => {
 				isCode: Boolean(item.isCode),
 				position: Number(item.position || 0),
 				syncStatus: item.syncStatus || "none",
-				createTime: item.time, // 统一使用createTime字段
 			})) as HistoryTablePayload[];
 		}
 
