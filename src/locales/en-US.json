@@ -100,7 +100,7 @@
 			"history": {
 				"title": "History",
 				"button": {
-					"goto_delete": "Delete History",
+					"cleanup": "Cleanup Expired Records",
 					"confirm_delete": "Confirm",
 					"cancel_delete": "Cancel"
 				},

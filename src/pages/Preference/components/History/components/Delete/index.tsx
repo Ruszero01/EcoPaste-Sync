@@ -5,7 +5,7 @@ import { Button, message } from "antd";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-const Delete = () => {
+const Cleanup = () => {
 	const [loading, setLoading] = useState(false);
 	const { t } = useTranslation();
 
@@ -43,9 +43,9 @@ const Delete = () => {
 			loading={loading}
 			onClick={handleCleanup}
 		>
-			{t("preference.history.history.button.goto_delete")}
+			{t("preference.history.history.button.cleanup")}
 		</Button>
 	);
 };
 
-export default Delete;
+export default Cleanup;

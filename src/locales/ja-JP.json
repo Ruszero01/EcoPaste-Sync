@@ -100,7 +100,7 @@
 			"history": {
 				"title": "履歴",
 				"button": {
-					"goto_delete": "履歴を削除",
+					"cleanup": "期限切れ履歴を清理",
 					"confirm_delete": "確認",
 					"cancel_delete": "キャンセル"
 				},

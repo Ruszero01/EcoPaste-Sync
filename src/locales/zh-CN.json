@@ -100,7 +100,7 @@
 			"history": {
 				"title": "历史记录",
 				"button": {
-					"goto_delete": "删除历史记录",
+					"cleanup": "清理过时记录",
 					"confirm_delete": "确定",
 					"cancel_delete": "取消"
 				},
