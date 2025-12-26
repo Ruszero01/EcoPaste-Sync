@@ -18,6 +18,7 @@ pub use change_tracker::*;
 pub use filter::*;
 pub use debug::*;
 pub use cleanup::*;
+pub use config::*;
 
 use std::sync::Arc;
 use tauri::{

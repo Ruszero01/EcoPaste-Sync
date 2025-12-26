@@ -215,42 +215,16 @@ const Item: FC<ItemProps> = (props) => {
 		clipboardStore.multiSelect.lastSelectedId = itemId;
 	};
 
-	// 公共函数：更新项目位置和时间
-	const updateItemsPositionAndTime = (
-		items: HistoryTablePayload[],
-		autoSort?: boolean,
-	) => {
-		const currentAutoSort = autoSort ?? clipboardStore.content.autoSort;
+	// 公共函数：更新项目时间（排序由后端处理）
+	const updateItemsPositionAndTime = (items: HistoryTablePayload[]) => {
 		const currentTime = Date.now();
 		const updatedItems = items.map((item) => ({
 			...item,
 			time: currentTime,
 		}));
 
-		if (currentAutoSort) {
-			// 自动排序开启：移动到顶部
-			// 从原位置移除所有项目
-			for (const item of items) {
-				const index = findIndex(state.list, { id: item.id });
-				if (index !== -1) {
-					state.list.splice(index, 1);
-				}
-			}
-
-			// 将更新后的项目添加到顶部（保持原有顺序）
-			for (let i = updatedItems.length - 1; i >= 0; i--) {
-				state.list.unshift(updatedItems[i]);
-			}
-		} else {
-			// 自动排序关闭：保持原位置，只更新时间
-			for (const item of items) {
-				const index = findIndex(state.list, { id: item.id });
-				if (index !== -1) {
-					state.list[index] = { ...state.list[index], time: currentTime };
-				}
-			}
-		}
-
+		// 只更新时间，不处理位置（后端在去重时已根据 autoSort 设置处理 position）
+		// 前端通过刷新列表获取最新数据
 		return { updatedItems, currentTime };
 	};
 
@@ -786,25 +760,16 @@ const Item: FC<ItemProps> = (props) => {
 			// 单个粘贴逻辑
 			await smartPasteClipboard(data);
 
-			// 粘贴已有条目后，也触发移动到顶部并更新时间
+			// 粘贴已有条目后，只更新时间（由后端决定是否更新 position）
 			const index = findIndex(state.list, { id });
 
 			if (index !== -1) {
 				const currentTime = Date.now();
 
-				// 获取当前的自动排序设置
-				const currentAutoSort = clipboardStore.content.autoSort;
+				// 只更新时间，不修改本地列表顺序（后端根据 autoSort 设置处理 position）
+				state.list[index] = { ...state.list[index], time: currentTime };
 
-				if (currentAutoSort) {
-					// 自动排序开启：移动到顶部
-					const [targetItem] = state.list.splice(index, 1);
-					state.list.unshift({ ...targetItem, time: currentTime });
-				} else {
-					// 自动排序关闭：保持原位置，只更新时间
-					state.list[index] = { ...state.list[index], time: currentTime };
-				}
-
-				// 更新数据库
+				// 更新数据库（后端根据 autoSort 决定是否更新 position）
 				await backendUpdateField(id, "time", currentTime.toString());
 
 				// 无论是否在多选状态，都清除多选状态，确保聚焦框正常显示

@@ -85,12 +85,12 @@ pub fn query_history_with_filter(
 
 /// 插入数据（带去重功能）
 #[tauri::command]
-pub async fn insert_with_deduplication(
+pub fn insert_with_deduplication(
     item: InsertItem,
     state: State<'_, DatabaseState>,
 ) -> Result<InsertResult, String> {
-    let db = state.lock().await;
-    db.insert_with_deduplication(&item).await
+    let db = state.blocking_lock();
+    db.insert_with_deduplication(&item)
 }
 
 /// 标记删除（软删除）
@@ -99,7 +99,7 @@ pub fn mark_deleted(
     id: String,
     state: State<'_, DatabaseState>,
 ) -> Result<(), String> {
-    let mut db = state.blocking_lock();
+    let db = state.blocking_lock();
     let current_time = chrono::Utc::now().timestamp_millis();
 
     db.update_field(&id, "deleted", "1")?;
@@ -150,7 +150,7 @@ pub fn update_field(
     value: String,
     state: State<'_, DatabaseState>,
 ) -> Result<(), String> {
-    let mut db = state.blocking_lock();
+    let db = state.blocking_lock();
     let current_time = chrono::Utc::now().timestamp_millis();
 
     // 验证字段名并更新
@@ -170,6 +170,7 @@ pub fn update_field(
         }
         "content" => {
             db.update_field(&id, "value", &value)?;
+            db.update_field(&id, "count", &value.len().to_string())?;
             db.update_field(&id, "time", &current_time.to_string())?;
             let conn = db.get_connection()?;
             db.get_change_tracker().mark_item_changed(&conn, &id, "content")?;
@@ -221,7 +222,7 @@ pub fn mark_changed(
     id: String,
     state: State<'_, DatabaseState>,
 ) -> Result<(), String> {
-    let mut db = state.blocking_lock();
+    let db = state.blocking_lock();
     let current_time = chrono::Utc::now().timestamp_millis();
 
     db.update_field(&id, "syncStatus", "changed")?;
@@ -240,7 +241,7 @@ pub fn batch_mark_changed(
     ids: Vec<String>,
     state: State<'_, DatabaseState>,
 ) -> Result<usize, String> {
-    let mut db = state.blocking_lock();
+    let db = state.blocking_lock();
     let current_time = chrono::Utc::now().timestamp_millis();
     let mut count = 0;
 
@@ -268,7 +269,7 @@ pub fn batch_mark_deleted(
     ids: Vec<String>,
     state: State<'_, DatabaseState>,
 ) -> Result<usize, String> {
-    let mut db = state.blocking_lock();
+    let db = state.blocking_lock();
     let current_time = chrono::Utc::now().timestamp_millis();
     let mut count = 0;
 
@@ -295,7 +296,7 @@ pub fn batch_mark_deleted(
 pub fn get_changed_items_count(
     state: State<'_, DatabaseState>,
 ) -> usize {
-    let mut db = state.blocking_lock();
+    let db = state.blocking_lock();
     db.get_change_tracker().count()
 }
 
@@ -304,7 +305,7 @@ pub fn get_changed_items_count(
 pub fn get_changed_items_list(
     state: State<'_, DatabaseState>,
 ) -> Vec<String> {
-    let mut db = state.blocking_lock();
+    let db = state.blocking_lock();
     db.get_change_tracker().get_changed_items()
 }
 

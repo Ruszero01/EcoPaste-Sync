@@ -1,12 +1,12 @@
 [package]
-name = "tauri-plugin-eco-active-window"
+name = "tauri-plugin-eco-source-app"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.77.2"
-links = "tauri-plugin-eco-active-window"
+links = "tauri-plugin-eco-source-app"
 
 [lib]
-name = "tauri_plugin_eco_active_window"
+name = "tauri_plugin_eco_source_app"
 crate-type = ["staticlib", "cdylib", "lib"]
 
 [dependencies]
@@ -24,6 +24,7 @@ windows = { version = "0.58", features = [
     "Win32_Foundation",
     "Win32_UI_WindowsAndMessaging",
     "Win32_System_Threading",
+    "Win32_System_DataExchange",
 ] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -32,4 +33,3 @@ objc = "0.2"
 
 [build-dependencies]
 tauri-plugin.workspace = true
-

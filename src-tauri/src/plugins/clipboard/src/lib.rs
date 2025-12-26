@@ -7,6 +7,7 @@ use tauri::{
 
 mod commands;
 
+
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("eco-clipboard")
         .setup(move |app, _api| {

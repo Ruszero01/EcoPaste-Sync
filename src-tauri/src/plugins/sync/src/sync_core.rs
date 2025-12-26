@@ -324,7 +324,7 @@ impl SyncCore {
         log::info!("🔄 步骤 3/8: 数据比对判断是否需要同步...");
 
         // 从database的内部状态跟踪器获取已变更的数据
-        let mut db = database_state.lock().await;
+        let db = database_state.lock().await;
         let changed_items = db.get_change_tracker().get_changed_items();
         let changed_items_set: std::collections::HashSet<&str> = changed_items.iter().map(|s| s.as_str()).collect();
         drop(db);
@@ -424,7 +424,7 @@ impl SyncCore {
         self.update_progress(0.8);
         log::info!("🔄 步骤 7/8: 更新本地同步状态...");
         {
-            let mut db = database_state.lock().await;
+            let db = database_state.lock().await;
             let tracker = db.get_change_tracker();
 
             // 标记已上传/下载的项目为已同步
@@ -1345,7 +1345,7 @@ impl SyncCore {
             Ok(_) => {
                 // 上传成功，使用数据库变更跟踪器标记为已同步
                 {
-                    let mut db = database_state.lock().await;
+                    let db = database_state.lock().await;
                     let tracker = db.get_change_tracker();
                     let conn = db.get_connection()?;
                     if let Err(e) = tracker.mark_items_synced(&conn, &actually_uploaded) {
@@ -1360,7 +1360,7 @@ impl SyncCore {
                 self.report_error(format!("上传同步数据失败: {}", e));
                 // 更新为已变更状态（等待重试）
                 {
-                    let mut db = database_state.lock().await;
+                    let db = database_state.lock().await;
                     let tracker = db.get_change_tracker();
                     let conn = db.get_connection()?;
                     for item_id in items {

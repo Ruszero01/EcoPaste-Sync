@@ -2,8 +2,8 @@
 //! 提供 SQLite 数据库的统一访问接口
 
 use crate::models::{HistoryItem, QueryOptions, SyncDataItem, InsertItem, InsertResult, DatabaseStatistics};
-use crate::source_app::get_source_app_info;
-use crate::config::should_fetch_source_app;
+use crate::source_app::fetch_source_app_info_impl;
+use crate::config::{should_fetch_source_app, should_auto_sort};
 use crate::ChangeTracker;
 use rusqlite::{params, Connection};
 use std::path::PathBuf;
@@ -158,7 +158,8 @@ impl DatabaseManager {
         if let Some(order_by) = &options.order_by {
             sql.push_str(&format!(" ORDER BY {}", order_by));
         } else {
-            sql.push_str(" ORDER BY time DESC");
+            // 默认使用 position 排序（后端根据 autoSort 设置决定是否更新 position）
+            sql.push_str(" ORDER BY position DESC");
         }
 
         // 限制
@@ -462,7 +463,7 @@ impl DatabaseManager {
     ///
     /// # Arguments
     /// * `item` - 要插入的数据项
-    pub async fn insert_with_deduplication(&self, item: &InsertItem) -> Result<InsertResult, String> {
+    pub fn insert_with_deduplication(&self, item: &InsertItem) -> Result<InsertResult, String> {
         let conn = self.get_connection()?;
 
         // 检查是否已存在（优先使用ID去重）
@@ -546,37 +547,30 @@ impl DatabaseManager {
             // 使用后端当前时间，确保时间戳准确性
             let current_time = chrono::Utc::now().timestamp_millis();
 
-            conn.execute(
-                "UPDATE history SET
-                    [group] = ?1, search = ?2, count = ?3,
-                    width = ?4, height = ?5, favorite = ?6,
-                    time = ?7, note = ?8, subtype = ?9,
-                    fileSize = ?10,
-                    deleted = ?11, syncStatus = ?12,
-                    codeLanguage = ?13, isCode = ?14,
-                    sourceAppName = ?15, sourceAppIcon = ?16, position = ?17
-                WHERE id = ?18",
-                params![
-                    item.group,
-                    item.search,
-                    item.count.unwrap_or(1),
-                    item.width,
-                    item.height,
-                    item.favorite,
-                    current_time,  // 使用后端当前时间
-                    item.note,
-                    item.subtype,
-                    item.file_size,
-                    item.deleted.unwrap_or(0),
-                    item.sync_status.clone().unwrap_or_else(|| "not_synced".to_string()),
-                    item.code_language,
-                    item.is_code.unwrap_or(0),
-                    item.source_app_name,
-                    item.source_app_icon,
-                    item.position.unwrap_or(0),
-                    existing_id,
-                ],
-            ).map_err(|e| format!("更新相同内容失败: {}", e))?;
+            // 根据自动排序设置决定是否更新 position
+            // 自动排序开启：更新 position 为新最大值（移动到顶部）
+            // 自动排序关闭：保持原有 position 不变（不更新 position 字段）
+            let auto_sort = should_auto_sort();
+
+            if auto_sort {
+                // 获取新的 max_position 并更新
+                let max_position: i32 = conn.query_row(
+                    "SELECT COALESCE(MAX(position), 0) FROM history",
+                    params![],
+                    |row| row.get(0),
+                ).unwrap_or(0);
+
+                conn.execute(
+                    "UPDATE history SET time = ?1, position = ?2 WHERE id = ?3",
+                    params![current_time, max_position + 1, existing_id],
+                ).map_err(|e| format!("更新相同内容失败: {}", e))?;
+            } else {
+                // 只更新 time，position 保持不变（不更新该字段）
+                conn.execute(
+                    "UPDATE history SET time = ?1 WHERE id = ?2",
+                    params![current_time, existing_id],
+                ).map_err(|e| format!("更新相同内容失败: {}", e))?;
+            }
 
             // 使用统一变更跟踪器
             let conn = self.get_connection()?;
@@ -597,12 +591,17 @@ impl DatabaseManager {
 
         // 新记录，根据配置获取来源应用信息
         let source_info = if should_fetch_source_app() {
-            get_source_app_info().await.ok()
+            match fetch_source_app_info_impl() {
+                Ok(info) => Some(info),
+                Err(e) => {
+                    log::warn!("获取来源应用信息失败: {}", e);
+                    None
+                }
+            }
         } else {
             None
         };
 
-        // 插入新记录
         conn.execute(
             "INSERT INTO history (
                 id, type, [group], value, search, count,

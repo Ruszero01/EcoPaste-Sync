@@ -94,13 +94,31 @@ pub struct HistoryConfig {
 
 /// 获取配置文件路径
 fn get_config_path() -> Result<std::path::PathBuf, String> {
+    let bundle_id = "com.Rains.EcoPaste-Sync";
+    let is_dev = cfg!(debug_assertions);
+
+    // 根据开发/发布模式选择配置文件名（与前端 path.ts 保持一致）
+    // 开发环境: .store.dev.json
+    // 生产环境: .store.json
+    let config_filename = if is_dev { ".store.dev.json" } else { ".store.json" };
+
+    // 优先使用 APPDATA 环境变量（与前端的 appDataDir 对应）
+    // 在 Windows 上通常是 C:\Users\<user>\AppData\Roaming
+    if let Some(app_data_dir) = std::env::var_os("APPDATA") {
+        let config_path = std::path::PathBuf::from(app_data_dir)
+            .join(bundle_id)
+            .join(config_filename);
+
+        return Ok(config_path);
+    }
+
+    // 备用方案：使用 dirs crate
     let save_data_dir = dirs::data_dir()
         .or_else(|| dirs::config_dir())
         .or_else(|| dirs::home_dir().map(|p| p.join(".local/share")))
         .ok_or_else(|| "无法获取数据目录".to_string())?;
 
-    let bundle_id = "com.Rains.EcoPaste-Sync";
-    let config_path = save_data_dir.join(bundle_id).join("store.json");
+    let config_path = save_data_dir.join(bundle_id).join(config_filename);
 
     Ok(config_path)
 }
@@ -125,6 +143,16 @@ pub fn should_fetch_source_app() -> bool {
         .and_then(|c| c.clipboard_store)
         .and_then(|c| c.content)
         .and_then(|c| c.show_source_app)
+        .unwrap_or(true) // 默认为 true
+}
+
+/// 检查是否开启自动排序
+pub fn should_auto_sort() -> bool {
+    read_config()
+        .ok()
+        .and_then(|c| c.clipboard_store)
+        .and_then(|c| c.content)
+        .and_then(|c| c.auto_sort)
         .unwrap_or(true) // 默认为 true
 }
 

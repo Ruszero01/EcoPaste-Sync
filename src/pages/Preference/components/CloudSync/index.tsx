@@ -328,13 +328,7 @@ const CloudSync = () => {
 		} finally {
 			setIsConfigLoading(false);
 		}
-	}, [
-		form,
-		appMessage.error,
-		t,
-		cloudSyncStore.autoSyncSettings.enabled,
-		cloudSyncStore.autoSyncSettings.intervalHours,
-	]);
+	}, [form, appMessage.error, t, cloudSyncStore]);
 
 	// 处理收藏模式开关变更（使用防抖优化）
 	const handleFavoritesModeChange = useCallback(

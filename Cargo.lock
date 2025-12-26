@@ -1384,7 +1384,6 @@ dependencies = [
  "tauri-plugin-autostart",
  "tauri-plugin-dialog",
  "tauri-plugin-drag",
- "tauri-plugin-eco-active-window",
  "tauri-plugin-eco-autostart",
  "tauri-plugin-eco-clipboard",
  "tauri-plugin-eco-database",
@@ -6191,21 +6190,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tauri-plugin-eco-active-window"
-version = "0.1.0"
-dependencies = [
- "base64 0.21.7",
- "cocoa 0.26.0",
- "file_icon_provider 0.4.0",
- "image",
- "objc",
- "serde",
- "tauri",
- "tauri-plugin",
- "windows 0.58.0",
-]
-
-[[package]]
 name = "tauri-plugin-eco-autostart"
 version = "0.1.0"
 dependencies = [
@@ -6218,10 +6202,14 @@ dependencies = [
 name = "tauri-plugin-eco-clipboard"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "clipboard-rs",
+ "log",
  "serde",
+ "serde_json",
  "tauri",
  "tauri-plugin",
+ "tauri-plugin-eco-database",
  "windows 0.58.0",
 ]
 
@@ -6229,9 +6217,14 @@ dependencies = [
 name = "tauri-plugin-eco-database"
 version = "0.1.0"
 dependencies = [
+ "base64 0.21.7",
  "chrono",
+ "cocoa 0.26.0",
  "dirs 5.0.1",
+ "file_icon_provider 0.4.0",
+ "image",
  "log",
+ "objc",
  "rusqlite",
  "serde",
  "serde_json",

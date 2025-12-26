@@ -102,8 +102,6 @@ pub fn run() {
         .plugin(tauri_plugin_eco_paste::init())
         // 自定义判断是否自动启动的插件
         .plugin(tauri_plugin_eco_autostart::init())
-        // 自定义活动窗口插件
-        .plugin(tauri_plugin_eco_active_window::init())
         // 统一数据库插件
         .plugin(tauri_plugin_eco_database::init())
         // 云同步引擎插件

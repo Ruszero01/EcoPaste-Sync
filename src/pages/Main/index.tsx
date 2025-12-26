@@ -1,19 +1,15 @@
 import type { AudioRef } from "@/components/Audio";
 import Audio from "@/components/Audio";
 import { LISTEN_KEY } from "@/constants";
-import {
-	backendInsertWithDeduplication,
-	backendQueryHistoryWithFilter,
-} from "@/plugins/database";
+import { backendQueryHistoryWithFilter } from "@/plugins/database";
 import { initializeMicaEffect } from "@/plugins/window";
 import type { HistoryTablePayload, TablePayload } from "@/types/database";
 import type { Store } from "@/types/store";
-import { emit } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import { useReactive } from "ahooks";
 import type { EventEmitter } from "ahooks/lib/useEventEmitter";
 import { findIndex, last, range } from "lodash-es";
-import { nanoid } from "nanoid";
-import { createContext } from "react";
+import { createContext, useCallback, useRef } from "react";
 import { useSnapshot } from "valtio";
 import Dock from "./components/Dock";
 import Float from "./components/Float";
@@ -63,131 +59,61 @@ const Main = () => {
 	const $eventBus = useEventEmitter<string>();
 	const windowHideTimer = useRef<NodeJS.Timeout>();
 
+	// 监听后端数据库更新事件
+	const handleDatabaseUpdated = useCallback(
+		async (event: { payload: { duplicate_id: string | null } }) => {
+			// 检查是否是应用内部复制操作
+			if (clipboardStore.internalCopy.isCopying) {
+				return;
+			}
+
+			// 播放音效
+			if (clipboardStore.audio.copy) {
+				audioRef.current?.play();
+			}
+
+			// 清除缓存并刷新列表
+			getListCache.current.clear();
+			lastQueryParams = "";
+			await getList();
+
+			// 如果是重复数据，设置聚焦到被重复的项目
+			if (event.payload?.duplicate_id) {
+				state.activeId = event.payload.duplicate_id;
+			}
+
+			// 触发滚动到对应项目
+			emit(LISTEN_KEY.ACTIVATE_BACK_TOP, "updated-content");
+		},
+		[state], // 依赖 state，确保能访问最新的 activeId
+	);
+
+	// 使用 useEffect 管理监听器生命周期
+	useEffect(() => {
+		let unlisten: (() => void) | null = null;
+
+		const initListen = async () => {
+			unlisten = await listen<{ duplicate_id: string | null }>(
+				"plugin:eco-clipboard://database_updated",
+				handleDatabaseUpdated,
+			);
+		};
+
+		initListen();
+
+		return () => {
+			unlisten?.();
+		};
+	}, [handleDatabaseUpdated]);
+
 	useMount(() => {
 		state.$eventBus = $eventBus;
 
 		// 初始化 Windows 11 Mica 材质效果
 		initializeMicaEffect();
 
-		// 开启剪贴板监听
+		// 开启剪贴板监听（后端会自动处理数据插入）
 		startListen();
-
-		// 监听剪贴板更新
-		onClipboardUpdate(async (payload) => {
-			const { type, value, group } = payload;
-
-			// 检查是否是应用内部复制操作
-			const isInternalCopy = clipboardStore.internalCopy.isCopying;
-
-			// 如果是内部复制操作，跳过处理
-			if (isInternalCopy) {
-				return;
-			}
-
-			if (clipboardStore.audio.copy) {
-				audioRef.current?.play();
-			}
-
-			// 额外检查：防止短时间内处理相同内容
-			const now = Date.now();
-			if (state.lastProcessedTime && now - state.lastProcessedTime < 100) {
-				const lastProcessed = state.lastProcessedPayload;
-				if (
-					lastProcessed &&
-					lastProcessed.type === type &&
-					lastProcessed.value === value
-				) {
-					return; // 跳过重复处理
-				}
-			}
-
-			// 更新处理时间和内容
-			state.lastProcessedTime = now;
-			state.lastProcessedPayload = { type, value, group };
-
-			// 数据库层面已经处理了去重，直接插入新数据
-			try {
-				const data: HistoryTablePayload = {
-					...payload,
-					id: nanoid(),
-					favorite: false,
-					time: Date.now(), // 添加必需的时间字段
-					syncStatus: "not_synced", // 新项目默认为未同步状态
-				};
-
-				// 调用后端数据库插件插入数据
-				// 注意：后端期待的是 i32 类型，需要转换布尔值为 0/1
-				const result = await backendInsertWithDeduplication({
-					...data,
-					time: Date.now(), // Rust端需要time字段为毫秒时间戳
-					favorite: data.favorite ? 1 : 0,
-					deleted: data.deleted ? 1 : 0,
-					isCode: data.isCode ? 1 : 0,
-				});
-
-				// 清除缓存，因为数据已更新
-				getListCache.current.clear();
-				lastQueryParams = "";
-
-				// 获取当前的自动排序设置
-				const currentAutoSort = clipboardStore.content.autoSort;
-
-				// 如果是插入新记录（不是更新现有记录）
-				if (!result.is_update) {
-					if (currentAutoSort) {
-						// 自动排序模式下：刷新列表，新记录会自动排在顶部
-						await getList();
-						// 设置活动ID为新添加的记录
-						state.activeId = data.id;
-						// 触发滚动到顶部
-						emit(LISTEN_KEY.ACTIVATE_BACK_TOP, "new-content");
-					} else {
-						// 手动排序模式下：直接在顶部插入新记录，不刷新整个列表
-						state.list.unshift({ ...data, id: data.id });
-						// 设置活动ID为新添加的记录
-						state.activeId = data.id;
-						// 触发滚动到顶部
-						emit(LISTEN_KEY.ACTIVATE_BACK_TOP, "new-content");
-					}
-				} else {
-					// 如果是更新现有记录
-					const updatedItemId = result.insert_id;
-
-					if (currentAutoSort) {
-						// 自动排序模式下：刷新列表，更新的记录会根据时间重新排序
-						await getList();
-						if (updatedItemId) {
-							// 设置活动ID为更新的记录
-							state.activeId = updatedItemId;
-						}
-						// 触发滚动到顶部，显示更新的记录
-						emit(LISTEN_KEY.ACTIVATE_BACK_TOP, "updated-content");
-					} else {
-						// 手动排序模式下：只更新记录信息，保持原位置
-						if (updatedItemId) {
-							// 找到要更新的记录在列表中的位置
-							const itemIndex = state.list.findIndex(
-								(item) => item.id === updatedItemId,
-							);
-							if (itemIndex !== -1) {
-								// 更新该记录的信息，但保持位置不变
-								state.list[itemIndex] = {
-									...state.list[itemIndex],
-									...data,
-									id: updatedItemId,
-								};
-								// 设置活动ID为更新的记录
-								state.activeId = updatedItemId;
-								// 触发滚动到对应条目位置
-								emit(LISTEN_KEY.ACTIVATE_BACK_TOP, "updated-content");
-							}
-						}
-					}
-				}
-			} catch (error) {
-				console.error("处理剪贴板数据失败:", error);
-			}
-		});
 	});
 
 	// 监听快速粘贴的启用状态变更
@@ -322,29 +248,20 @@ const Main = () => {
 				};
 			}
 
-			// 快速粘贴已有条目后，也触发移动到顶部并更新时间
+			// 快速粘贴已有条目后，只更新时间（由后端决定是否更新 position）
 			const itemIndex = findIndex(state.list, { id: data.id });
 
 			if (itemIndex !== -1) {
 				const currentTime = Date.now();
 
-				// 获取当前的自动排序设置
-				const currentAutoSort = clipboardStore.content.autoSort;
+				// 只更新时间，不修改本地列表顺序（后端根据 autoSort 设置处理 position）
+				state.list[itemIndex] = {
+					...state.list[itemIndex],
+					time: currentTime,
+				};
 
-				if (currentAutoSort) {
-					// 自动排序模式：更新时间，让系统重新排序
-					await backendUpdateField(data.id, "time", currentTime.toString());
-					// 刷新列表以获取新的排序
-					await getList();
-				} else {
-					// 手动排序模式：只更新时间，不改变位置
-					await backendUpdateField(data.id, "time", currentTime.toString());
-					// 更新本地列表中的时间，但保持位置不变
-					state.list[itemIndex] = {
-						...state.list[itemIndex],
-						time: currentTime,
-					};
-				}
+				// 更新数据库（后端根据 autoSort 设置决定是否更新 position）
+				await backendUpdateField(data.id, "time", currentTime.toString());
 
 				// 自动聚焦到快速粘贴的条目
 				state.activeId = data.id;
@@ -430,10 +347,7 @@ const Main = () => {
 	const getList = async () => {
 		const { group, search, favorite, linkTab, isCode, colorTab } = state;
 
-		// 获取当前的自动排序设置
-		const currentAutoSort = clipboardStore.content.autoSort;
-
-		// 生成查询参数的字符串标识（包含自动排序状态）
+		// 生成查询参数的字符串标识
 		const queryParams = JSON.stringify({
 			group,
 			search,
@@ -441,7 +355,6 @@ const Main = () => {
 			linkTab,
 			isCode,
 			colorTab,
-			autoSort: currentAutoSort,
 		});
 
 		// 如果查询参数相同，使用缓存结果
@@ -454,29 +367,20 @@ const Main = () => {
 			return;
 		}
 
-		// 根据自动排序设置决定排序方式
-		// 自动排序：按时间排序；手动排序：按位置倒序（新的在上面）
-		const orderBy = currentAutoSort
-			? "ORDER BY time DESC"
-			: "ORDER BY position DESC, time DESC";
-
 		let rawData: HistoryTablePayload[];
 
 		// 如果是链接分组，查询所有链接类型和路径类型的数据，同时考虑书签筛选
 		if (linkTab) {
 			let whereClause =
 				"(subtype = 'url' OR subtype = 'path') AND (deleted IS NULL OR deleted = 0)";
-			const searchParams: any = {};
 
 			// 如果有搜索条件（书签分组筛选），添加到查询中
 			if (search) {
 				whereClause += " AND (search LIKE ? OR note LIKE ?)";
-				searchParams.search = `%${search}%`;
 			}
 
 			const list = await backendQueryHistoryWithFilter({
 				where_clause: whereClause,
-				order_by: orderBy,
 				limit: undefined,
 				offset: undefined,
 			});
@@ -493,17 +397,14 @@ const Main = () => {
 		} else if (colorTab) {
 			// 颜色分组查询：查询 type 为 'color' 的数据
 			let whereClause = "type = 'color' AND (deleted IS NULL OR deleted = 0)";
-			const searchParams: any = {};
 
 			// 如果有搜索条件，添加到查询中
 			if (search) {
 				whereClause += " AND (search LIKE ? OR note LIKE ?)";
-				searchParams.search = `%${search}%`;
 			}
 
 			const list = await backendQueryHistoryWithFilter({
 				where_clause: whereClause,
-				order_by: orderBy,
 				limit: undefined,
 				offset: undefined,
 			});
@@ -520,22 +421,18 @@ const Main = () => {
 		} else {
 			// 特殊处理纯文本和代码分组的查询
 			let whereClause = "(deleted IS NULL OR deleted = 0)";
-			const searchParams: any = {};
 
 			// 添加基本条件
 			if (group) {
 				whereClause += " AND [group] = ?";
-				searchParams.group = group;
 			}
 
 			if (search) {
 				whereClause += " AND (search LIKE ? OR note LIKE ?)";
-				searchParams.search = `%${search}%`;
 			}
 
 			if (favorite !== undefined) {
 				whereClause += " AND favorite = ?";
-				searchParams.favorite = favorite ? 1 : 0;
 			}
 
 			// 如果是代码分组，添加 isCode = true 条件
@@ -550,7 +447,6 @@ const Main = () => {
 
 			const list = await backendQueryHistoryWithFilter({
 				where_clause: whereClause,
-				order_by: orderBy,
 				limit: undefined,
 				offset: undefined,
 			});
@@ -571,6 +467,11 @@ const Main = () => {
 		getListCache.current.set(queryParams, rawData);
 		lastQueryParams = queryParams;
 		state.list = rawData;
+
+		// 自动选中第一个项目（最新插入的）
+		if (rawData.length > 0) {
+			state.activeId = rawData[0].id;
+		}
 	};
 
 	// 防抖版本的getList，避免频繁调用

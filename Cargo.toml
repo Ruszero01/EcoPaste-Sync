@@ -20,7 +20,6 @@ tauri-plugin-eco-clipboard = { path = "./src-tauri/src/plugins/clipboard" }
 tauri-plugin-eco-ocr = { path = "./src-tauri/src/plugins/ocr" }
 tauri-plugin-eco-paste = { path = "./src-tauri/src/plugins/paste" }
 tauri-plugin-eco-autostart = { path = "./src-tauri/src/plugins/autostart" }
-tauri-plugin-eco-active-window = { path = "./src-tauri/src/plugins/active_window" }
 tauri-plugin-eco-database = { path = "./src-tauri/src/plugins/database" }
 tauri-plugin-eco-sync = { path = "./src-tauri/src/plugins/sync" }
 

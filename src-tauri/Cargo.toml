@@ -43,7 +43,6 @@ tauri-plugin-eco-clipboard.workspace = true
 tauri-plugin-eco-ocr.workspace = true
 tauri-plugin-eco-paste.workspace = true
 tauri-plugin-eco-autostart.workspace = true
-tauri-plugin-eco-active-window.workspace = true
 tauri-plugin-eco-database.workspace = true
 tauri-plugin-eco-sync.workspace = true
 

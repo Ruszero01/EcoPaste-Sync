@@ -2,7 +2,6 @@ use clipboard_rs::{
     common::RustImage, Clipboard, ClipboardContent, ClipboardContext, ClipboardHandler,
     ClipboardWatcher, ClipboardWatcherContext, ContentFormat, RustImageData, WatcherShutdown,
 };
-use serde::{Deserialize, Serialize};
 use std::{
     fs::create_dir_all,
     hash::{DefaultHasher, Hash, Hasher},
@@ -10,7 +9,20 @@ use std::{
     sync::{Arc, Mutex},
     thread::spawn,
 };
-use tauri::{command, AppHandle, Emitter, Runtime, State};
+use tauri::{command, AppHandle, Emitter, Manager, Runtime, State};
+
+// 引入 database 插件
+use tauri_plugin_eco_database::{DatabaseState, InsertItem};
+
+// 用于生成唯一 ID
+fn generate_id() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    format!("{:x}", timestamp)
+}
 
 pub struct ClipboardManager {
     context: Arc<Mutex<ClipboardContext>>,
@@ -51,10 +63,134 @@ where
     R: Runtime,
 {
     fn on_clipboard_change(&mut self) {
-        let _ = self
-            .app_handle
-            .emit("plugin:eco-clipboard://clipboard_update", ())
-            .map_err(|err| err.to_string());
+        let app_handle = self.app_handle.clone();
+        let manager = app_handle.state::<ClipboardManager>();
+
+        // 获取数据库状态
+        let db_state = match app_handle.try_state::<DatabaseState>() {
+            Some(db) => db,
+            None => return,
+        };
+
+        // 读取剪贴板内容
+        let (item_type, group, value, search, count, subtype, file_size) = {
+            let context = manager.context.lock().unwrap();
+
+            if context.has(ContentFormat::Image) {
+                // 图片 - 暂时跳过
+                return;
+            } else if context.has(ContentFormat::Files) {
+                match context.get_files() {
+                    Ok(files) => (
+                        "files".to_string(),
+                        "files".to_string(),
+                        serde_json::to_string(&files).ok(),
+                        Some(files.join(" ")),
+                        Some(files.len() as i32),
+                        None,
+                        None,
+                    ),
+                    Err(_) => return,
+                }
+            } else if !context.has(ContentFormat::Html) && context.has(ContentFormat::Rtf) {
+                match context.get_rich_text() {
+                    Ok(rtf) => {
+                        let text = context.get_text().ok();
+                        (
+                            "rtf".to_string(),
+                            "text".to_string(),
+                            Some(rtf.clone()),
+                            text.clone(),
+                            text.as_ref().map(|s| s.len() as i32),
+                            Some("rtf".to_string()),
+                            None,
+                        )
+                    }
+                    Err(_) => return,
+                }
+            } else if context.has(ContentFormat::Html) {
+                match context.get_html() {
+                    Ok(html) => {
+                        let text = context.get_text().ok();
+                        (
+                            "html".to_string(),
+                            "text".to_string(),
+                            Some(html),
+                            text.clone(),
+                            text.as_ref().map(|s| s.len() as i32),
+                            None,
+                            None,
+                        )
+                    }
+                    Err(_) => return,
+                }
+            } else if context.has(ContentFormat::Text) {
+                match context.get_text() {
+                    Ok(text) => {
+                        if text.is_empty() {
+                            return;
+                        }
+                        let text_len = text.len() as i32;
+                        (
+                            "text".to_string(),
+                            "text".to_string(),
+                            Some(text.clone()),
+                            Some(text),
+                            Some(text_len),
+                            None,
+                            None,
+                        )
+                    }
+                    Err(_) => return,
+                }
+            } else {
+                return;
+            }
+        };
+
+        // 构建 InsertItem
+        let time = chrono::Utc::now().timestamp_millis();
+        let item = InsertItem {
+            id: generate_id(),
+            item_type: Some(item_type),
+            group: Some(group),
+            value,
+            search,
+            count,
+            width: None,
+            height: None,
+            favorite: 0,
+            time,
+            note: None,
+            subtype,
+            file_size,
+            deleted: Some(0),
+            sync_status: Some("not_synced".to_string()),
+            code_language: None,
+            is_code: Some(0),
+            source_app_name: None,
+            source_app_icon: None,
+            position: None,
+        };
+
+        // 同步插入数据库
+        let db = db_state.blocking_lock();
+        match db.insert_with_deduplication(&item) {
+            Ok(result) => {
+                // 发送事件通知前端，携带重复数据的 ID（如果是更新操作）
+                let payload = if result.is_update {
+                    serde_json::json!({ "duplicate_id": result.insert_id })
+                } else {
+                    serde_json::json!({ "duplicate_id": null })
+                };
+                let _ = app_handle
+                    .emit("plugin:eco-clipboard://database_updated", payload)
+                    .map_err(|err| err.to_string());
+            }
+            Err(e) => {
+                log::error!("插入剪贴板数据到数据库失败: {}", e);
+            }
+        }
     }
 }
 
@@ -63,14 +199,6 @@ pub struct ReadImage {
     width: u32,
     height: u32,
     image: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ClipboardSourceInfo {
-    pub app_name: String,
-    pub window_title: String,
-    pub process_name: String,
-    pub process_path: String,
 }
 
 #[command]
@@ -251,10 +379,8 @@ pub async fn write_image(
     manager: State<'_, ClipboardManager>,
     value: String,
 ) -> Result<(), String> {
-    // 尝试从路径创建 RustImageData，如果失败则返回错误信息
     let image = RustImageData::from_path(&value).map_err(|err| err.to_string())?;
 
-    // 尝试获取锁并设置图像，如果失败则返回错误信息
     manager
         .context
         .lock()
@@ -311,10 +437,7 @@ pub async fn write_text(manager: State<'_, ClipboardManager>, value: String) -> 
 
 #[command]
 pub async fn get_image_dimensions(path: String) -> Result<ReadImage, String> {
-    // 从文件路径创建 RustImageData
     let image = RustImageData::from_path(&path).map_err(|err| err.to_string())?;
-
-    // 获取图片尺寸
     let (width, height) = image.get_size();
 
     Ok(ReadImage {
@@ -324,86 +447,5 @@ pub async fn get_image_dimensions(path: String) -> Result<ReadImage, String> {
     })
 }
 
-#[cfg(target_os = "windows")]
-#[command]
-pub fn get_clipboard_source_info() -> Result<ClipboardSourceInfo, String> {
-    use windows::Win32::Foundation::{HWND, MAX_PATH};
-    use windows::Win32::System::DataExchange::GetClipboardOwner;
-    use windows::Win32::System::Threading::{
-        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
-    };
-    use windows::Win32::UI::WindowsAndMessaging::{
-        GetWindowTextW, GetWindowThreadProcessId,
-    };
-
-    unsafe {
-        // 1. 获取剪贴板所有者的窗口句柄
-        // 即使当前焦点已经变了，只要没发生新的复制，Owner 还是原来的
-        let hwnd_owner: HWND = GetClipboardOwner()
-            .map_err(|e| format!("Failed to get clipboard owner: {}", e))?;
-
-        if hwnd_owner.is_invalid() {
-            // 如果获取失败（极少数情况），回退到获取当前活动窗口
-            return Err("Failed to get clipboard owner".to_string());
-        }
-
-        // 2. 获取窗口标题
-        let mut window_title = vec![0u16; 512];
-        let title_len = GetWindowTextW(hwnd_owner, &mut window_title);
-        let window_title = if title_len > 0 {
-            String::from_utf16_lossy(&window_title[..title_len as usize])
-        } else {
-            String::new()
-        };
-
-        // 3. 通过句柄获取 PID
-        let mut process_id: u32 = 0;
-        GetWindowThreadProcessId(hwnd_owner, Some(&mut process_id as *mut u32));
-
-        if process_id == 0 {
-            return Err("Failed to get process ID from clipboard owner".to_string());
-        }
-
-        // 4. 打开进程以获取进程信息
-        let process_handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, process_id)
-            .map_err(|e| format!("Failed to open process: {}", e))?;
-
-        // 5. 获取进程可执行文件路径
-        let mut exe_path = vec![0u16; MAX_PATH as usize];
-        let mut exe_path_len = exe_path.len() as u32;
-
-        QueryFullProcessImageNameW(
-            process_handle,
-            PROCESS_NAME_WIN32,
-            windows::core::PWSTR(exe_path.as_mut_ptr()),
-            &mut exe_path_len,
-        )
-        .map_err(|e| format!("Failed to get process image name: {}", e))?;
-
-        let exe_path_str = String::from_utf16_lossy(&exe_path[..exe_path_len as usize]);
-
-        // 6. 从路径中提取文件名作为进程名
-        let process_name = std::path::Path::new(&exe_path_str)
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("Unknown")
-            .to_string();
-
-        // 7. 尝试从可执行文件中提取应用名称（使用进程名作为fallback）
-        let app_name = process_name.clone();
-
-        Ok(ClipboardSourceInfo {
-            app_name,
-            window_title,
-            process_name,
-            process_path: exe_path_str,
-        })
-    }
-}
-
-#[cfg(not(target_os = "windows"))]
-#[command]
-pub fn get_clipboard_source_info() -> Result<ClipboardSourceInfo, String> {
-    // 非 Windows 平台暂时返回错误，让前端回退到活动窗口获取方式
-    Err("GetClipboardOwner is only supported on Windows".to_string())
-}
+// get_clipboard_owner_process 已移至 database/source_app.rs
+// 避免循环依赖

@@ -140,10 +140,14 @@ const List = () => {
 			state.activeId = void 0;
 		}
 
-		// 如果不是批量删除进行中，才设置默认聚焦项
-		// 这样可以避免批量删除后自动聚焦到第一个项目
-		if (!state.batchDeleteInProgress) {
-			state.activeId ??= state.list[0]?.id;
+		// 如果不是批量删除进行中，且当前没有选中项，才设置默认聚焦项
+		// 这样可以避免批量删除后自动聚焦到第一个项目，同时保留手动粘贴后的聚焦位置
+		if (
+			!state.batchDeleteInProgress &&
+			!state.activeId &&
+			state.list.length > 0
+		) {
+			state.activeId = state.list[0]?.id;
 		}
 	}, [state.list.length, state.batchDeleteInProgress]);
 
