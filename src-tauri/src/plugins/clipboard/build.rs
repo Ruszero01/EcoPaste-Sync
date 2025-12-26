@@ -16,8 +16,7 @@ const COMMANDS: &[&str] = &[
     "write_html",
     "write_rtf",
     "write_text",
-    "get_image_dimensions",
-    "get_clipboard_source_info",
+    "get_image_dimensions"
 ];
 
 fn main() {

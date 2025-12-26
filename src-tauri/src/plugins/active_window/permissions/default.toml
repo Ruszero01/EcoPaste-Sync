@@ -4,5 +4,5 @@
 description = "Default permissions for the plugin"
 permissions = [
     "allow-get-active-window-info",
-	"allow-get-app-icon"
+    "allow-get-app-icon"
 ]

@@ -12,6 +12,7 @@ const COMMANDS: &[&str] = &[
     "get_sync_progress",
     "update_sync_config",
     "get_sync_config",
+    "reload_config_from_file",
     "upload_file",
     "download_file",
     "delete_file",
@@ -19,6 +20,11 @@ const COMMANDS: &[&str] = &[
     "delete_files",
     "get_file_sync_config",
     "update_file_sync_config",
+    "upload_local_config",
+    "apply_remote_config",
+    "sync_bookmarks",
+    "download_bookmarks",
+    "set_bookmark_sync_data",
 ];
 
 fn main() {

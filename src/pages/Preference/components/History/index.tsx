@@ -1,9 +1,9 @@
 import ProList from "@/components/ProList";
+import { backendCleanupHistory } from "@/plugins/database";
 import type { Interval } from "@/types/shared";
 import Cleanup from "./components/Delete";
 import Duration from "./components/Duration";
 import MaxCount from "./components/MaxCount";
-import { backendCleanupHistory } from "@/plugins/database";
 
 const History = () => {
 	const { t } = useTranslation();
@@ -31,7 +31,10 @@ const History = () => {
 	});
 
 	return (
-		<ProList header={t("preference.history.history.title")} footer={<Cleanup />}>
+		<ProList
+			header={t("preference.history.history.title")}
+			footer={<Cleanup />}
+		>
 			<Duration />
 
 			<MaxCount />

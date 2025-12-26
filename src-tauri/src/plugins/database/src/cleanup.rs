@@ -19,11 +19,11 @@ pub struct CleanupRule {
 
 /// 执行历史记录自动清理
 #[tauri::command]
-pub fn cleanup_history(
+pub async fn cleanup_history(
     rule: CleanupRule,
     state: State<'_, DatabaseState>,
 ) -> Result<(), String> {
-    let mut db = state.blocking_lock();
+    let mut db = state.lock().await;
     let mut deleted_count = 0usize;
 
     // 1. 清理超过保留天数的记录（不影响收藏）

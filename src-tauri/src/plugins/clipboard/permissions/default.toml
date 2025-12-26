@@ -20,6 +20,5 @@ permissions = [
     "allow-write-html", 
     "allow-write-rtf", 
     "allow-write-text", 
-    "allow-get-image-dimensions",
-    "allow-get-clipboard-source-info"]
+    "allow-get-image-dimensions"]
     

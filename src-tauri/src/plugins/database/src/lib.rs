@@ -8,6 +8,8 @@ mod change_tracker;
 mod filter;
 mod debug;
 mod cleanup;
+mod source_app;
+mod config;
 
 pub use database::*;
 pub use models::*;
@@ -55,9 +57,8 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::query_by_group,
             commands::get_all_groups,
             commands::get_filtered_statistics,
-            // 清理命令
             cleanup::cleanup_history,
-            // 调试命令
+            source_app::get_source_app_info,
             debug::get_database_info,
             debug::reset_database
         ])

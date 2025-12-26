@@ -1,6 +1,6 @@
-import { DeleteOutlined } from "@ant-design/icons";
 import { backendCleanupHistory } from "@/plugins/database";
 import { clipboardStore } from "@/stores/clipboard";
+import { DeleteOutlined } from "@ant-design/icons";
 import { Button, message } from "antd";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";

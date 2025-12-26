@@ -310,24 +310,8 @@ const Item: FC<ItemProps> = (props) => {
 	// 复制
 	const copy = async () => {
 		try {
-			// 步骤1：设置内部复制标志，防止复制操作后触发重复处理
-			clipboardStore.internalCopy = {
-				isCopying: true,
-				itemId: id,
-			};
-
-			// 步骤2：写入剪贴板
+			// 写入剪贴板，后端去重时会自动更新时间戳
 			await writeClipboard(data);
-
-			// 步骤3：更新数据库时间戳（使用后端变更跟踪器）
-			const currentTime = Date.now();
-			await backendUpdateField(id, "time", currentTime.toString());
-
-			// 步骤4：清除内部复制标志
-			clipboardStore.internalCopy = {
-				isCopying: false,
-				itemId: null,
-			};
 		} catch (error) {
 			// 如果是图片复制失败且文件不存在，提示用户
 			if (data.type === "image" && error instanceof Error) {
@@ -344,14 +328,6 @@ const Item: FC<ItemProps> = (props) => {
 			message.error(
 				`复制失败: ${error instanceof Error ? error.message : "未知错误"}`,
 			);
-		} finally {
-			// 延迟清除内部复制标志，避免在剪贴板更新处理过程中尝试获取来源应用信息
-			setTimeout(() => {
-				clipboardStore.internalCopy = {
-					isCopying: false,
-					itemId: null,
-				};
-			}, 200);
 		}
 	};
 

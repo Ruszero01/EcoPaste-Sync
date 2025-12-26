@@ -18,6 +18,8 @@ const COMMANDS: &[&str] = &[
     "query_by_group",
     "get_all_groups",
     "get_filtered_statistics",
+    "cleanup_history",
+    "get_source_app_info",
     "get_database_info",
     "reset_database"
 ];

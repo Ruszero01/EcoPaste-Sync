@@ -1,7 +1,3 @@
-import {
-	type ActiveWindowInfo,
-	getActiveWindowInfo,
-} from "@/plugins/activeWindow";
 import { systemOCR } from "@/plugins/ocr";
 import { clipboardStore } from "@/stores/clipboard";
 import type { HistoryTablePayload } from "@/types/database";
@@ -580,53 +576,7 @@ export const readClipboard = async (skipTypeDetection = false) => {
 			};
 		}
 
-		// 获取来源应用信息（仅在开启显示来源应用且非内部复制时）
-		if (
-			clipboardStore.content.showSourceApp &&
-			!clipboardStore.internalCopy.isCopying
-		) {
-			try {
-				let windowInfo: ActiveWindowInfo;
-
-				// Windows平台优先使用GetClipboardOwner获取剪贴板来源
-				if (isWin) {
-					try {
-						windowInfo = await invoke<ActiveWindowInfo>(
-							COMMAND.GET_CLIPBOARD_SOURCE_INFO,
-						);
-						// 成功使用GetClipboardOwner获取剪贴板来源
-					} catch (clipboardOwnerError) {
-						console.warn(
-							"GetClipboardOwner失败，回退到活动窗口方式:",
-							clipboardOwnerError,
-						);
-						// 回退到原有的活动窗口获取方式
-						windowInfo = await getActiveWindowInfo();
-					}
-				} else {
-					// 其他平台使用原有的活动窗口获取方式
-					windowInfo = await getActiveWindowInfo();
-				}
-
-				payload.sourceAppName = windowInfo.app_name;
-
-				// 获取应用图标（仅在Windows上有进程路径）
-				if (windowInfo.process_path) {
-					try {
-						const { getAppIcon } = await import("@/plugins/activeWindow");
-						const iconBase64 = await getAppIcon(windowInfo.process_path);
-						payload.sourceAppIcon = iconBase64;
-					} catch (iconError) {
-						console.warn("获取应用图标失败:", iconError);
-						// 即使获取失败也不影响剪贴板内容的正常读取
-					}
-				}
-			} catch (error) {
-				console.warn("获取来源应用信息失败:", error);
-				// 即使失败也不影响剪贴板内容的正常读取
-			}
-		}
-
+		// 来源应用信息由后端在插入新记录时统一获取
 		return payload;
 	} catch (error) {
 		// 如果是批量粘贴过程中的错误，返回一个空的文本payload

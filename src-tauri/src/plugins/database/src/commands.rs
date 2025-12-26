@@ -85,12 +85,12 @@ pub fn query_history_with_filter(
 
 /// 插入数据（带去重功能）
 #[tauri::command]
-pub fn insert_with_deduplication(
+pub async fn insert_with_deduplication(
     item: InsertItem,
     state: State<'_, DatabaseState>,
 ) -> Result<InsertResult, String> {
-    let db = state.blocking_lock();
-    db.insert_with_deduplication(&item)
+    let db = state.lock().await;
+    db.insert_with_deduplication(&item).await
 }
 
 /// 标记删除（软删除）

@@ -2,6 +2,8 @@
 //! 提供 SQLite 数据库的统一访问接口
 
 use crate::models::{HistoryItem, QueryOptions, SyncDataItem, InsertItem, InsertResult, DatabaseStatistics};
+use crate::source_app::get_source_app_info;
+use crate::config::should_fetch_source_app;
 use crate::ChangeTracker;
 use rusqlite::{params, Connection};
 use std::path::PathBuf;
@@ -460,7 +462,7 @@ impl DatabaseManager {
     ///
     /// # Arguments
     /// * `item` - 要插入的数据项
-    pub fn insert_with_deduplication(&self, item: &InsertItem) -> Result<InsertResult, String> {
+    pub async fn insert_with_deduplication(&self, item: &InsertItem) -> Result<InsertResult, String> {
         let conn = self.get_connection()?;
 
         // 检查是否已存在（优先使用ID去重）
@@ -541,6 +543,9 @@ impl DatabaseManager {
 
         if let Some(existing_id) = existing_id {
             // 如果存在相同内容的记录，更新该记录
+            // 使用后端当前时间，确保时间戳准确性
+            let current_time = chrono::Utc::now().timestamp_millis();
+
             conn.execute(
                 "UPDATE history SET
                     [group] = ?1, search = ?2, count = ?3,
@@ -558,7 +563,7 @@ impl DatabaseManager {
                     item.width,
                     item.height,
                     item.favorite,
-                    item.time,
+                    current_time,  // 使用后端当前时间
                     item.note,
                     item.subtype,
                     item.file_size,
@@ -589,6 +594,13 @@ impl DatabaseManager {
             params![],
             |row| row.get(0),
         ).unwrap_or(0);
+
+        // 新记录，根据配置获取来源应用信息
+        let source_info = if should_fetch_source_app() {
+            get_source_app_info().await.ok()
+        } else {
+            None
+        };
 
         // 插入新记录
         conn.execute(
@@ -623,8 +635,8 @@ impl DatabaseManager {
                 item.sync_status.clone().unwrap_or_else(|| "not_synced".to_string()),
                 item.code_language,
                 item.is_code.unwrap_or(0),
-                item.source_app_name,
-                item.source_app_icon,
+                source_info.as_ref().map(|s| s.app_name.clone()),
+                source_info.as_ref().and_then(|s| s.app_icon.clone()),
                 max_position + 1,
             ],
         ).map_err(|e| format!("插入数据失败: {}", e))?;

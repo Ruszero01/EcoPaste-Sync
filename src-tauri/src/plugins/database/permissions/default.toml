@@ -22,6 +22,8 @@ permissions = [
     "allow-query-by-group",
     "allow-get-all-groups",
     "allow-get-filtered-statistics",
+    "allow-cleanup-history",
+    "allow-get-source-app-info",
     "allow-get-database-info",
     "allow-reset-database"
 ]
