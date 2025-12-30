@@ -449,7 +449,7 @@ const Main = () => {
 			// 如果是纯文本分组，只显示纯文本（无子类型）和格式文本
 			else if (group === "text") {
 				whereClause +=
-					" AND (type = 'text' OR type = 'formatted') AND (subtype IS NULL OR subtype = '')";
+					" AND ((type = 'text' AND (subtype IS NULL OR subtype = '')) OR type = 'formatted')";
 			}
 
 			const list = await invoke(
