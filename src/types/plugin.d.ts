@@ -16,7 +16,15 @@ export interface ClipboardPayload {
 		| "color"
 		| "code";
 	group: "text" | "image" | "files";
-	subtype?: "url" | "email" | "color" | "path" | "html" | "rtf" | string; // string for code language
+	subtype?:
+		| "url"
+		| "email"
+		| "color"
+		| "path"
+		| "html"
+		| "rtf"
+		| "markdown"
+		| string; // string for code language
 	count: number;
 	value: string;
 	search: string;
