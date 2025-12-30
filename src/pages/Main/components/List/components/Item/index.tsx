@@ -1,22 +1,13 @@
-import { createDragPreview } from "@/components/DragPreview";
 import UnoIcon from "@/components/UnoIcon";
 import { LISTEN_KEY } from "@/constants";
 import { MainContext } from "@/pages/Main";
-import { smartPasteClipboard } from "@/plugins/clipboard";
+import { convertColor, smartPasteClipboard } from "@/plugins/clipboard";
 import { batchPasteClipboard, writeClipboard } from "@/plugins/clipboard";
 import { backendUpdateField } from "@/plugins/database";
 import { clipboardStore } from "@/stores/clipboard";
 import { globalStore } from "@/stores/global";
-import type { HistoryTablePayload } from "@/types/database";
-import {
-	cmykToRgb,
-	cmykToVector,
-	hexToRgb,
-	parseColorString,
-	rgbToCmyk,
-	rgbToHex,
-	rgbToVector,
-} from "@/utils/color";
+import type { DeleteResult, HistoryTablePayload } from "@/types/database";
+import { parseColorString } from "@/utils/color";
 import { isMac } from "@/utils/is";
 import { joinPath } from "@/utils/path";
 import { startDrag } from "@crabnebula/tauri-plugin-drag";
@@ -367,114 +358,54 @@ const Item: FC<ItemProps> = (props) => {
 
 			if (!confirmed) return;
 
-			// 执行批量删除
-			try {
-				// 使用删除管理器执行批量删除
-				// 使用后端数据库命令执行批量删除
-				const result = await invoke("delete_items", { ids: selectedIds });
+			// 使用统一的删除命令
+			const result = (await invoke("delete_items", {
+				ids: selectedIds,
+			})) as DeleteResult;
 
-				if (result.success) {
-					// 清除多选状态
-					clearMultiSelectState();
-
-					// 先保存当前的激活项状态和列表快照
-					const currentActiveId = state.activeId;
-					const listBeforeDelete = [...state.list];
-
-					// 获取被删除项目在原列表中的索引
-					const deletedItemIndexes = selectedIds
-						.map((id) => listBeforeDelete.findIndex((item) => item.id === id))
-						.filter((index) => index !== -1)
-						.sort((a, b) => a - b);
-
-					// 从本地状态中移除（直接操作本地状态，避免刷新导致跳转）
-					for (const selectedId of selectedIds) {
-						remove(state.list, { id: selectedId });
-					}
-
-					// 改进的聚焦逻辑：保持位置在选中范围附近
-					if (state.list.length > 0) {
-						// 如果当前激活项被删除，智能选择下一个或上一个项目
-						if (selectedIds.includes(currentActiveId || "")) {
-							if (deletedItemIndexes.length > 0) {
-								// 计算被删除范围的中间位置
-								const minDeletedIndex = deletedItemIndexes[0];
-								const maxDeletedIndex =
-									deletedItemIndexes[deletedItemIndexes.length - 1];
-								const deletedRangeCenter =
-									(minDeletedIndex + maxDeletedIndex) / 2;
-
-								// 优先选择最接近删除范围中心的项目
-								let targetIndex = Math.floor(deletedRangeCenter);
-
-								// 确保索引在有效范围内
-								if (targetIndex >= state.list.length) {
-									targetIndex = state.list.length - 1;
-								}
-
-								// 设置新的激活项
-								state.activeId = state.list[targetIndex]?.id;
-
-								// 如果计算的位置没有项目，尝试找到最近的项目
-								if (!state.activeId && state.list.length > 0) {
-									// 从删除范围的中间位置向两边搜索
-									let searchRadius = 1;
-									while (searchRadius < state.list.length && !state.activeId) {
-										const upIndex =
-											Math.floor(deletedRangeCenter) - searchRadius;
-										const downIndex =
-											Math.floor(deletedRangeCenter) + searchRadius;
-
-										if (upIndex >= 0 && state.list[upIndex]) {
-											state.activeId = state.list[upIndex].id;
-										} else if (
-											downIndex < state.list.length &&
-											state.list[downIndex]
-										) {
-											state.activeId = state.list[downIndex].id;
-										}
-
-										searchRadius++;
-									}
-
-									// 如果还是没找到，选择第一个剩余项目
-									if (!state.activeId) {
-										state.activeId = state.list[0]?.id;
-									}
-								}
-							} else {
-								// 如果找不到被删除的索引，选择第一个剩余项目
-								state.activeId = state.list[0]?.id;
-							}
-						} else {
-							// 如果当前激活项未被删除，保持不变
-							state.activeId = currentActiveId;
-						}
-					} else {
-						state.activeId = undefined;
-					}
-
-					// 显示成功提示
-					const softDeletedCount = result.softDeletedIds?.length || 0;
-					const hardDeletedCount = result.hardDeletedIds?.length || 0;
-					let deleteMessage = `成功删除 ${result.deletedCount} 个项目`;
-
-					if (softDeletedCount > 0 && hardDeletedCount > 0) {
-						deleteMessage += `（其中 ${softDeletedCount} 个已同步项目将在下次同步时从云端删除）`;
-					} else if (softDeletedCount > 0) {
-						deleteMessage += "（这些项目将在下次同步时从云端删除）";
-					}
-
-					message.success(deleteMessage);
-				} else {
-					message.error(
-						`批量删除失败: ${result.errors?.join("; ") ?? "未知错误"}`,
-					);
-				}
-			} catch (error) {
-				console.error("❌ 批量删除失败:", error);
-				message.error("批量删除操作失败");
+			if (!result.success) {
+				message.error(
+					`批量删除失败: ${result.errors?.join("; ") ?? "未知错误"}`,
+				);
+				return;
 			}
+
+			// 清除多选状态
+			clearMultiSelectState();
+
+			// 保存当前激活项
+			const currentActiveId = state.activeId;
+			const isCurrentActiveDeleted = selectedIds.includes(
+				currentActiveId || "",
+			);
+
+			// 从本地状态中移除
+			for (const selectedId of selectedIds) {
+				remove(state.list, { id: selectedId });
+			}
+
+			// 聚焦管理：如果当前激活项被删除，选择下一个可用的项目
+			if (isCurrentActiveDeleted && state.list.length > 0) {
+				// 找到被删除项在原列表中的位置
+				const deletedIndex = state.list.findIndex(
+					(item) => item.id === currentActiveId,
+				);
+				// 选择删除位置后面的第一项，如果没有则选择前面的
+				state.activeId = state.list[deletedIndex]?.id || state.list[0]?.id;
+			}
+
+			// 显示成功提示
+			const softDeletedCount = result.softDeletedIds?.length || 0;
+			let deleteMessage = `成功删除 ${result.deletedCount} 个项目`;
+
+			if (softDeletedCount > 0) {
+				deleteMessage += `（${softDeletedCount} 个已同步项目将在下次同步时从云端删除）`;
+			}
+
+			message.success(deleteMessage);
+		} catch (error) {
+			console.error("❌ 批量删除失败:", error);
+			message.error("批量删除操作失败");
 		} finally {
 			// 清除批量操作进行中标志
 			clipboardStore.batchOperationInProgress = false;
@@ -681,6 +612,7 @@ const Item: FC<ItemProps> = (props) => {
 
 		if (!confirmed) return;
 
+		// 先处理焦点，再执行删除
 		if (state.activeId === id) {
 			const nextIndex = selectNextOrPrev();
 
@@ -690,16 +622,17 @@ const Item: FC<ItemProps> = (props) => {
 		}
 
 		try {
-			// 使用删除管理器执行删除
-			// 使用后端数据库命令执行删除
-			const result = await invoke("delete_item", { id });
+			// 使用统一的删除命令
+			const result = (await invoke("delete_items", {
+				ids: [id],
+			})) as DeleteResult;
 
 			if (!result.success) {
 				message.error(`删除失败: ${result.errors?.join("; ") ?? "未知错误"}`);
 				return;
 			}
 
-			// 从本地状态中移除（直接操作本地状态，避免刷新导致跳转）
+			// 从本地状态中移除
 			remove(state.list, { id });
 
 			// 显示成功提示
@@ -784,57 +717,18 @@ const Item: FC<ItemProps> = (props) => {
 	const pasteColorAsRGB = async () => {
 		try {
 			const actualValue = getActualValue(value);
-			const parsedColor = parseColorString(actualValue);
+			const result = await convertColor(actualValue, "rgbVector");
 
-			if (!parsedColor) {
-				message.error("无效的颜色格式");
+			if (!result.success) {
+				message.error(result.error ?? "颜色格式转换失败");
 				return;
 			}
 
-			let rgbString = "";
-
-			if (parsedColor.format === "hex") {
-				const rgb = hexToRgb(actualValue);
-				if (rgb) {
-					// 使用向量格式，不带rgb()前缀
-					rgbString = rgbToVector(rgb.r, rgb.g, rgb.b);
-				}
-			} else if (parsedColor.format === "rgb") {
-				// 如果已经是RGB格式，转换为向量格式
-				const { r, g, b } = parsedColor.values;
-				rgbString = rgbToVector(r, g, b);
-			} else if (parsedColor.format === "cmyk") {
-				// 如果是CMYK格式，先转换为RGB，再转换为向量格式
-				const { c, m, y, k } = parsedColor.values;
-				const rgb = cmykToRgb(c, m, y, k);
-				rgbString = rgbToVector(rgb.r, rgb.g, rgb.b);
-			}
-
-			if (rgbString) {
-				// 直接粘贴到目标窗口，而不是写入剪贴板
-				const { writeText } = await import("@/plugins/clipboard");
-				const { paste } = await import("@/plugins/paste");
-
-				// 设置内部复制标志，防止粘贴操作后触发重复处理
-				clipboardStore.internalCopy = {
-					isCopying: true,
-					itemId: "color-convert",
-				};
-
-				try {
-					await writeText(rgbString);
-					await paste();
-					message.success("已粘贴RGB向量格式颜色值");
-				} finally {
-					// 清除内部复制标志
-					clipboardStore.internalCopy = {
-						isCopying: false,
-						itemId: null,
-					};
-				}
-			} else {
-				message.error("颜色格式转换失败");
-			}
+			const { writeText } = await import("@/plugins/clipboard");
+			const { paste } = await import("@/plugins/paste");
+			await writeText(result.value);
+			await paste();
+			message.success("已粘贴RGB向量格式颜色值");
 		} catch (error) {
 			console.error("颜色格式转换失败:", error);
 			message.error("颜色格式转换失败");
@@ -844,47 +738,18 @@ const Item: FC<ItemProps> = (props) => {
 	const pasteColorAsHEX = async () => {
 		try {
 			const actualValue = getActualValue(value);
-			const parsedColor = parseColorString(actualValue);
+			const result = await convertColor(actualValue, "hex");
 
-			if (!parsedColor) {
-				message.error("无效的颜色格式");
+			if (!result.success) {
+				message.error(result.error ?? "颜色格式转换失败");
 				return;
 			}
 
-			let hexString = "";
-
-			if (parsedColor.format === "hex") {
-				hexString = actualValue;
-			} else if (parsedColor.format === "rgb") {
-				const { r, g, b } = parsedColor.values;
-				hexString = rgbToHex(r, g, b);
-			}
-
-			if (hexString) {
-				// 直接粘贴到目标窗口，而不是写入剪贴板
-				const { writeText } = await import("@/plugins/clipboard");
-				const { paste } = await import("@/plugins/paste");
-
-				// 设置内部复制标志，防止粘贴操作后触发重复处理
-				clipboardStore.internalCopy = {
-					isCopying: true,
-					itemId: "color-convert",
-				};
-
-				try {
-					await writeText(hexString);
-					await paste();
-					message.success("已粘贴HEX格式颜色值");
-				} finally {
-					// 清除内部复制标志
-					clipboardStore.internalCopy = {
-						isCopying: false,
-						itemId: null,
-					};
-				}
-			} else {
-				message.error("颜色格式转换失败");
-			}
+			const { writeText } = await import("@/plugins/clipboard");
+			const { paste } = await import("@/plugins/paste");
+			await writeText(result.value);
+			await paste();
+			message.success("已粘贴HEX格式颜色值");
 		} catch (error) {
 			console.error("颜色格式转换失败:", error);
 			message.error("颜色格式转换失败");
@@ -894,55 +759,18 @@ const Item: FC<ItemProps> = (props) => {
 	const pasteColorAsCMYK = async () => {
 		try {
 			const actualValue = getActualValue(value);
-			const parsedColor = parseColorString(actualValue);
+			const result = await convertColor(actualValue, "cmyk");
 
-			if (!parsedColor) {
-				message.error("无效的颜色格式");
+			if (!result.success) {
+				message.error(result.error ?? "颜色格式转换失败");
 				return;
 			}
 
-			let cmykString = "";
-
-			if (parsedColor.format === "hex") {
-				const rgb = hexToRgb(actualValue);
-				if (rgb) {
-					const cmyk = rgbToCmyk(rgb.r, rgb.g, rgb.b);
-					cmykString = cmykToVector(cmyk.c, cmyk.m, cmyk.y, cmyk.k);
-				}
-			} else if (parsedColor.format === "rgb") {
-				const { r, g, b } = parsedColor.values;
-				const cmyk = rgbToCmyk(r, g, b);
-				cmykString = cmykToVector(cmyk.c, cmyk.m, cmyk.y, cmyk.k);
-			} else if (parsedColor.format === "cmyk") {
-				// 如果已经是CMYK格式，直接使用原始值
-				cmykString = actualValue;
-			}
-
-			if (cmykString) {
-				// 直接粘贴到目标窗口，而不是写入剪贴板
-				const { writeText } = await import("@/plugins/clipboard");
-				const { paste } = await import("@/plugins/paste");
-
-				// 设置内部复制标志，防止粘贴操作后触发重复处理
-				clipboardStore.internalCopy = {
-					isCopying: true,
-					itemId: "color-convert",
-				};
-
-				try {
-					await writeText(cmykString);
-					await paste();
-					message.success("已粘贴CMYK向量格式颜色值");
-				} finally {
-					// 清除内部复制标志
-					clipboardStore.internalCopy = {
-						isCopying: false,
-						itemId: null,
-					};
-				}
-			} else {
-				message.error("颜色格式转换失败");
-			}
+			const { writeText } = await import("@/plugins/clipboard");
+			const { paste } = await import("@/plugins/paste");
+			await writeText(result.value);
+			await paste();
+			message.success("已粘贴CMYK向量格式颜色值");
 		} catch (error) {
 			console.error("颜色格式转换失败:", error);
 			message.error("颜色格式转换失败");

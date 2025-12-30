@@ -9,6 +9,7 @@ mod filter;
 mod debug;
 mod cleanup;
 mod source_app;
+mod delete;
 pub mod config;
 
 pub use database::*;
@@ -19,6 +20,7 @@ pub use filter::*;
 pub use debug::*;
 pub use cleanup::*;
 pub use config::*;
+pub use delete::*;
 
 use std::sync::Arc;
 use tauri::{
@@ -43,10 +45,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::query_history,
             commands::query_history_with_filter,
             commands::insert_with_deduplication,
-            commands::mark_deleted,
-            commands::batch_mark_deleted,
-            commands::hard_delete,
-            commands::batch_hard_delete,
+            commands::delete_items,
             commands::get_statistics,
             commands::update_field,
             commands::mark_changed,

@@ -10,6 +10,8 @@ mod detectors;
 
 pub use commands::detect_content;
 pub use commands::run_detection;
+pub use commands::convert_color;
+pub use commands::ColorConvertResult;
 pub use models::TypeDetectionResult;
 pub use detectors::{DetectionOptions, DetectionResult, detect_color, get_color_format, conversion};
 
@@ -55,6 +57,6 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             app.manage(DetectorState::new());
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![commands::detect_content])
+        .invoke_handler(tauri::generate_handler![commands::detect_content, commands::convert_color])
         .build()
 }

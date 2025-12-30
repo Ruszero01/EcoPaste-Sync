@@ -2,7 +2,7 @@
 //!
 //! 提供内容类型检测功能
 
-use crate::{models::TypeDetectionResult, detectors::{DetectionOptions, DetectionResult}};
+use crate::{models::TypeDetectionResult, detectors::{DetectionOptions, DetectionResult, TargetType, conversion}};
 use serde::{Deserialize, Serialize};
 
 /// 检测内容类型
@@ -129,5 +129,55 @@ impl From<LegacyDetectionOptions> for DetectionOptions {
             detect_markdown: opt.detect_markdown,
             code_min_length: 10,
         }
+    }
+}
+
+/// 颜色转换类型
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ColorConvertType {
+    /// 转换为 RGB 向量格式 (r, g, b)
+    RgbVector,
+    /// 转换为 HEX 格式 (#RRGGBB)
+    Hex,
+    /// 转换为 CMYK 格式 (c, m, y, k)
+    Cmyk,
+    /// 转换为 RGB 格式 (r, g, b)
+    Rgb,
+}
+
+impl From<ColorConvertType> for TargetType {
+    fn from(t: ColorConvertType) -> Self {
+        match t {
+            ColorConvertType::RgbVector => TargetType::RgbVector,
+            ColorConvertType::Hex => TargetType::Hex,
+            ColorConvertType::Cmyk => TargetType::Cmyk,
+            ColorConvertType::Rgb => TargetType::Rgb,
+        }
+    }
+}
+
+/// 颜色转换结果
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ColorConvertResult {
+    /// 转换后的值
+    pub value: String,
+    /// 是否转换成功
+    pub success: bool,
+    /// 错误信息（如果失败）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// 转换颜色格式
+///
+/// 接受颜色值和转换类型，返回转换后的字符串
+#[tauri::command]
+pub fn convert_color(color: String, convert_type: ColorConvertType) -> ColorConvertResult {
+    let target: TargetType = convert_type.into();
+    match conversion::convert(&color, target) {
+        Some(value) => ColorConvertResult { value, success: true, error: None },
+        None => ColorConvertResult { value: String::new(), success: false, error: Some("无法转换颜色格式".to_string()) },
     }
 }

@@ -1,6 +1,6 @@
+import { useAppTheme } from "@/hooks/useTheme";
 import hljs from "highlight.js";
 import { useEffect, useState } from "react";
-import { useAppTheme } from "@/hooks/useTheme";
 import "highlight.js/styles/vs2015.css";
 import "./styles.css";
 import clsx from "clsx";

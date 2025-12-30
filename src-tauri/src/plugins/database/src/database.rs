@@ -385,15 +385,8 @@ impl DatabaseManager {
         let placeholders: String = ids.iter().map(|_| "?").collect();
         let query = format!("DELETE FROM history WHERE id IN ({})", placeholders);
 
-        let mut statement = conn.prepare(&query).map_err(|e| e.to_string())?;
-        let mut count = 0;
-
-        for (i, id) in ids.iter().enumerate() {
-            statement.execute(rusqlite::params![i as u32, id]).map_err(|e| e.to_string())?;
-            count += 1;
-        }
-
-        Ok(count)
+        conn.execute(&query, rusqlite::params_from_iter(ids))
+            .map_err(|e| format!("批量硬删除失败: {}", e))
     }
 
     /// 获取统计信息

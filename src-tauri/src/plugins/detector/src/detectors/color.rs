@@ -108,8 +108,23 @@ pub fn get_color_format(s: &str) -> Option<String> {
 
 /// 颜色格式转换
 pub mod conversion {
+    use super::get_color_format;
+
+    /// 目标颜色类型
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum TargetType {
+        /// RGB 向量格式 (r, g, b)
+        RgbVector,
+        /// HEX 格式 (#RRGGBB)
+        Hex,
+        /// CMYK 格式 (c, m, y, k)
+        Cmyk,
+        /// RGB 元组 (r, g, b)
+        Rgb,
+    }
+
     /// HEX 转 RGB
-    pub fn hex_to_rgb(hex: &str) -> Option<(u8, u8, u8)> {
+    fn hex_to_rgb(hex: &str) -> Option<(u8, u8, u8)> {
         let clean_hex = hex.trim().trim_start_matches('#');
 
         if clean_hex.len() != 6 && clean_hex.len() != 3 {
@@ -133,12 +148,12 @@ pub mod conversion {
     }
 
     /// RGB 转 HEX
-    pub fn rgb_to_hex(r: u8, g: u8, b: u8) -> String {
+    fn rgb_to_hex(r: u8, g: u8, b: u8) -> String {
         format!("#{:02x}{:02x}{:02x}", r, g, b)
     }
 
     /// RGB 转 CMYK
-    pub fn rgb_to_cmyk(r: u8, g: u8, b: u8) -> (u8, u8, u8, u8) {
+    fn rgb_to_cmyk(r: u8, g: u8, b: u8) -> (u8, u8, u8, u8) {
         let r_dec = r as f64 / 255.0;
         let g_dec = g as f64 / 255.0;
         let b_dec = b as f64 / 255.0;
@@ -158,7 +173,7 @@ pub mod conversion {
     }
 
     /// CMYK 转 RGB
-    pub fn cmyk_to_rgb(c: u8, m: u8, y: u8, k: u8) -> (u8, u8, u8) {
+    fn cmyk_to_rgb(c: u8, m: u8, y: u8, k: u8) -> (u8, u8, u8) {
         let c_dec = c as f64 / 100.0;
         let m_dec = m as f64 / 100.0;
         let y_dec = y as f64 / 100.0;
@@ -171,42 +186,13 @@ pub mod conversion {
         (r, g, b)
     }
 
-    /// 颜色值转 RGB 向量字符串
-    pub fn rgb_to_vector_string(r: u8, g: u8, b: u8) -> String {
-        format!("{}, {}, {}", r, g, b)
-    }
-
-    /// CMYK 值转向量字符串
-    pub fn cmyk_to_vector_string(c: u8, m: u8, y: u8, k: u8) -> String {
-        format!("{}, {}, {}, {}", c, m, y, k)
-    }
-
-    /// 将任意颜色格式转换为 RGB 向量字符串（用于去重）
-    pub fn color_to_rgb_vector(color: &str) -> Option<String> {
-        let format = super::get_color_format(color)?;
-        match format.as_str() {
-            "hex" => {
-                let rgb = hex_to_rgb(color)?;
-                Some(rgb_to_vector_string(rgb.0, rgb.1, rgb.2))
-            }
-            "rgb" => {
-                // 解析 rgb(r, g, b) 或 rgba(r, g, b, a) 格式
-                let rgb = parse_rgb_color(color)?;
-                Some(rgb_to_vector_string(rgb.0, rgb.1, rgb.2))
-            }
-            "cmyk" => {
-                let rgb = parse_cmyk_color(color)?;
-                Some(rgb_to_vector_string(rgb.0, rgb.1, rgb.2))
-            }
-            _ => None,
-        }
-    }
-
     /// 解析 rgb(r, g, b) 或 rgba(r, g, b, a) 格式
     fn parse_rgb_color(s: &str) -> Option<(u8, u8, u8)> {
         let s = s.trim();
-        // 移除 rgba 或 rgb 前缀和括号
-        let content = s.trim_start_matches("rgba").trim_start_matches("rgb").trim_start_matches('(').trim_end_matches(')');
+        let content = s.trim_start_matches("rgba")
+            .trim_start_matches("rgb")
+            .trim_start_matches('(')
+            .trim_end_matches(')');
         let parts: Vec<&str> = content.split(',').collect();
         if parts.len() < 3 {
             return None;
@@ -220,7 +206,9 @@ pub mod conversion {
     /// 解析 cmyk(c, m, y, k) 格式
     fn parse_cmyk_color(s: &str) -> Option<(u8, u8, u8)> {
         let s = s.trim();
-        let content = s.trim_start_matches("cmyk").trim_start_matches('(').trim_end_matches(')');
+        let content = s.trim_start_matches("cmyk")
+            .trim_start_matches('(')
+            .trim_end_matches(')');
         let parts: Vec<&str> = content.split(',').collect();
         if parts.len() != 4 {
             return None;
@@ -230,6 +218,46 @@ pub mod conversion {
         let y = parts[2].trim().parse().ok()?;
         let k = parts[3].trim().parse().ok()?;
         Some(cmyk_to_rgb(c, m, y, k))
+    }
+
+    /// 将任意颜色格式转换为 RGB
+    fn color_to_rgb(color: &str) -> Option<(u8, u8, u8)> {
+        let format = get_color_format(color)?;
+        match format.as_str() {
+            "hex" => hex_to_rgb(color),
+            "rgb" => parse_rgb_color(color),
+            "cmyk" => parse_cmyk_color(color),
+            _ => None,
+        }
+    }
+
+    /// 通用颜色转换函数
+    ///
+    /// 将任意格式的颜色转换为指定的目标格式
+    ///
+    /// # Arguments
+    /// * `color` - 输入颜色值
+    /// * `target` - 目标格式类型
+    ///
+    /// # Returns
+    /// 转换后的字符串，失败返回 None
+    pub fn convert(color: &str, target: TargetType) -> Option<String> {
+        let rgb = color_to_rgb(color)?;
+
+        match target {
+            TargetType::RgbVector => Some(format!("{}, {}, {}", rgb.0, rgb.1, rgb.2)),
+            TargetType::Hex => Some(rgb_to_hex(rgb.0, rgb.1, rgb.2)),
+            TargetType::Cmyk => {
+                let (c, m, y, k) = rgb_to_cmyk(rgb.0, rgb.1, rgb.2);
+                Some(format!("{}, {}, {}, {}", c, m, y, k))
+            }
+            TargetType::Rgb => Some(format!("{}, {}, {}", rgb.0, rgb.1, rgb.2)),
+        }
+    }
+
+    /// 将任意颜色格式转换为 RGB 向量字符串（用于去重）
+    pub fn color_to_rgb_vector(color: &str) -> Option<String> {
+        convert(color, TargetType::RgbVector)
     }
 }
 
@@ -266,28 +294,26 @@ mod tests {
 
     #[test]
     fn test_color_conversion() {
-        // HEX 转 RGB
-        assert_eq!(hex_to_rgb("#FF0000"), Some((255, 0, 0)));
-        assert_eq!(hex_to_rgb("#f00"), Some((255, 0, 0)));
-        assert_eq!(hex_to_rgb("#00FF00"), Some((0, 255, 0)));
+        // 使用统一的 convert 函数
+        assert_eq!(convert("#FF0000", TargetType::RgbVector), Some("255, 0, 0".to_string()));
+        assert_eq!(convert("#f00", TargetType::RgbVector), Some("255, 0, 0".to_string()));
+        assert_eq!(convert("#00FF00", TargetType::RgbVector), Some("0, 255, 0".to_string()));
 
-        // RGB 转 HEX
-        assert_eq!(rgb_to_hex(255, 0, 0), "#ff0000");
-        assert_eq!(rgb_to_hex(0, 255, 0), "#00ff00");
+        // 转 HEX
+        assert_eq!(convert("rgb(255, 0, 0)", TargetType::Hex), Some("#ff0000".to_string()));
+        assert_eq!(convert("cmyk(0, 100, 100, 0)", TargetType::Hex), Some("#ff0000".to_string()));
 
-        // RGB 转 CMYK
-        assert_eq!(rgb_to_cmyk(255, 0, 0), (0, 100, 100, 0)); // 红色
-        assert_eq!(rgb_to_cmyk(0, 255, 0), (100, 0, 100, 0)); // 绿色
-        assert_eq!(rgb_to_cmyk(0, 0, 0), (0, 0, 0, 100)); // 黑色
+        // 转 CMYK
+        assert_eq!(convert("#FF0000", TargetType::Cmyk), Some("0, 100, 100, 0".to_string()));
+        assert_eq!(convert("rgb(0, 255, 0)", TargetType::Cmyk), Some("100, 0, 100, 0".to_string()));
 
-        // CMYK 转 RGB
-        assert_eq!(cmyk_to_rgb(0, 100, 100, 0), (255, 0, 0)); // 红色
-        assert_eq!(cmyk_to_rgb(0, 0, 0, 100), (0, 0, 0)); // 黑色
-        assert_eq!(cmyk_to_rgb(100, 100, 100, 0), (0, 0, 0)); // 纯青
+        // 转 RGB
+        assert_eq!(convert("#FF0000", TargetType::Rgb), Some("255, 0, 0".to_string()));
 
-        // 向量字符串转换
-        assert_eq!(rgb_to_vector_string(255, 128, 64), "255, 128, 64");
-        assert_eq!(cmyk_to_vector_string(100, 50, 0, 25), "100, 50, 0, 25");
+        // 去重函数复用 convert
+        assert_eq!(color_to_rgb_vector("#FF0000"), Some("255, 0, 0".to_string()));
+        assert_eq!(color_to_rgb_vector("rgb(0, 255, 0)"), Some("0, 255, 0".to_string()));
+        assert_eq!(color_to_rgb_vector("cmyk(0, 0, 0, 100)"), Some("0, 0, 0".to_string()));
     }
 
     #[test]

@@ -15,6 +15,7 @@ pub use url::detect_url;
 pub use email::detect_email;
 pub use path::detect_path;
 pub use color::{detect_color, get_color_format, conversion};
+pub use color::conversion::TargetType;
 pub use code::detect_code;
 pub use markdown::detect_markdown;
 

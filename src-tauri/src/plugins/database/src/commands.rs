@@ -100,43 +100,23 @@ pub fn insert_with_deduplication(
     db.insert_with_deduplication(&item)
 }
 
-/// 标记删除（软删除）
+/// 统一删除命令
+///
+/// 根据同步状态决定删除方式：
+/// - 已同步 (sync_status == "synced")：软删除，标记 deleted=1，等待云端同步时删除
+/// - 未同步 (sync_status != "synced")：硬删除，直接从数据库删除
+///
+/// # Arguments
+/// * `ids` - 要删除的项目ID列表（单个或批量）
+/// * `hard_delete` - 可选，是否强制硬删除（true=全部硬删除，false=全部软删除，None=根据sync_status自动判断）
 #[tauri::command]
-pub fn mark_deleted(
-    id: String,
-    state: State<'_, DatabaseState>,
-) -> Result<(), String> {
-    let db = state.blocking_lock();
-    let current_time = chrono::Utc::now().timestamp_millis();
-
-    db.update_field(&id, "deleted", "1")?;
-    db.update_field(&id, "time", &current_time.to_string())?;
-
-    // 使用新的统一变更跟踪器
-    let conn = db.get_connection()?;
-    db.get_change_tracker().mark_item_changed(&conn, &id, "delete")?;
-
-    Ok(())
-}
-
-/// 硬删除
-#[tauri::command]
-pub fn hard_delete(
-    id: String,
-    state: State<'_, DatabaseState>,
-) -> Result<(), String> {
-    let db = state.blocking_lock();
-    db.hard_delete(&id)
-}
-
-/// 批量硬删除
-#[tauri::command]
-pub fn batch_hard_delete(
+pub fn delete_items(
     ids: Vec<String>,
     state: State<'_, DatabaseState>,
-) -> Result<usize, String> {
-    let db = state.blocking_lock();
-    db.batch_hard_delete(&ids)
+    hard_delete: Option<bool>,
+) -> Result<crate::delete::DeleteResult, String> {
+    let mut db = state.blocking_lock();
+    crate::delete::DeleteManager::delete_items(&mut db, &ids, crate::delete::DeleteStrategy::from_option(hard_delete))
 }
 
 /// 获取统计信息
@@ -247,34 +227,6 @@ pub fn batch_mark_changed(
                 let conn = db.get_connection()?;
                 if let Err(e) = db.get_change_tracker().mark_item_changed(&conn, id, "manual") {
                     log::warn!("标记变更失败: {}", e);
-                } else {
-                    count += 1;
-                }
-            }
-        }
-    }
-
-    Ok(count)
-}
-
-/// 批量标记删除（软删除）
-#[tauri::command]
-pub fn batch_mark_deleted(
-    ids: Vec<String>,
-    state: State<'_, DatabaseState>,
-) -> Result<usize, String> {
-    let db = state.blocking_lock();
-    let current_time = chrono::Utc::now().timestamp_millis();
-    let mut count = 0;
-
-    for id in &ids {
-        if db.update_field(id, "deleted", "1").is_ok() {
-            // 同时更新时间
-            if db.update_field(id, "time", &current_time.to_string()).is_ok() {
-                // 使用新的统一变更跟踪器
-                let conn = db.get_connection()?;
-                if let Err(e) = db.get_change_tracker().mark_item_changed(&conn, id, "delete") {
-                    log::warn!("标记删除失败: {}", e);
                 } else {
                     count += 1;
                 }

@@ -2,6 +2,14 @@ import type { ClipboardPayload } from "./plugin";
 
 export type TableName = "history";
 
+export interface DeleteResult {
+	success: boolean;
+	deletedCount: number;
+	softDeletedIds: string[];
+	hardDeletedIds: string[];
+	errors?: string[];
+}
+
 export interface HistoryTablePayload extends ClipboardPayload {
 	id: string;
 	favorite: boolean;

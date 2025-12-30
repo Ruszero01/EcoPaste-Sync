@@ -852,3 +852,24 @@ export const batchPasteClipboard = async (
 		};
 	}
 };
+
+/// 颜色转换类型
+export type ColorConvertType = "rgbVector" | "hex" | "cmyk" | "rgb";
+
+/// 颜色转换结果
+export interface ColorConvertResult {
+	value: string;
+	success: boolean;
+	error?: string;
+}
+
+/// 转换颜色格式（调用后端命令）
+export const convertColor = async (
+	color: string,
+	convertType: ColorConvertType,
+): Promise<ColorConvertResult> => {
+	return (await invoke("convert_color", {
+		color,
+		convertType,
+	})) as ColorConvertResult;
+};
