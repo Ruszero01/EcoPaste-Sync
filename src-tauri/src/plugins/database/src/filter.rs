@@ -327,13 +327,8 @@ impl DataFilter {
         match item_type {
             "text" => self.base_filter.content_types.include_text,
             "formatted" => {
-                // 格式文本匹配：需要对应的子类型开关开启
-                match item.subtype.as_deref() {
-                    Some("html") => self.base_filter.content_types.include_html,
-                    Some("rtf") => self.base_filter.content_types.include_rtf,
-                    _ => self.base_filter.content_types.include_html
-                        || self.base_filter.content_types.include_rtf,
-                }
+                // 格式文本统一使用 HTML 渲染，检查 include_html 开关
+                self.base_filter.content_types.include_html
             }
             "image" => self.base_filter.content_types.include_images,
             "file" | "files" => self.base_filter.content_types.include_files,
@@ -386,13 +381,8 @@ impl DataFilter {
         let matches_type = match item_type {
             "text" => sync_filter.content_types.include_text,
             "formatted" => {
-                // 格式文本匹配：需要对应的子类型开关开启
-                match item.subtype.as_deref() {
-                    Some("html") => sync_filter.content_types.include_html,
-                    Some("rtf") => sync_filter.content_types.include_rtf,
-                    _ => sync_filter.content_types.include_html
-                        || sync_filter.content_types.include_rtf,
-                }
+                // 格式文本统一使用 HTML 渲染，检查 include_html 开关
+                sync_filter.content_types.include_html
             }
             "image" => sync_filter.include_images,
             "file" | "files" => sync_filter.include_files,

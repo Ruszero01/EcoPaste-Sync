@@ -112,13 +112,8 @@ impl DataManager {
         match item.item_type.as_str() {
             "text" => filter.include_text && mode_config.content_types.include_text,
             "formatted" => {
-                // 格式文本匹配：需要对应的子类型开关开启
-                match item.subtype.as_deref() {
-                    Some("html") => filter.include_html && mode_config.content_types.include_html,
-                    Some("rtf") => filter.include_rtf && mode_config.content_types.include_rtf,
-                    _ => (filter.include_html && mode_config.content_types.include_html)
-                        || (filter.include_rtf && mode_config.content_types.include_rtf),
-                }
+                // 格式文本统一使用 HTML 渲染，检查 include_html 开关
+                filter.include_html && mode_config.content_types.include_html
             }
             "image" => filter.include_images && mode_config.include_images,
             "file" => filter.include_files && mode_config.include_files,

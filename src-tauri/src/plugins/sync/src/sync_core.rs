@@ -830,13 +830,8 @@ impl SyncCore {
                 match item.item_type.as_str() {
                     "text" => mode_config.content_types.include_text,
                     "formatted" => {
-                        // 格式文本匹配：需要对应的子类型开关开启
-                        match item.subtype.as_deref() {
-                            Some("html") => mode_config.content_types.include_html,
-                            Some("rtf") => mode_config.content_types.include_rtf,
-                            _ => mode_config.content_types.include_html
-                                || mode_config.content_types.include_rtf,
-                        }
+                        // 格式文本统一使用 HTML 渲染，检查 include_html 开关
+                        mode_config.content_types.include_html
                     }
                     "markdown" => mode_config.content_types.include_markdown,
                     "image" => mode_config.include_images,
