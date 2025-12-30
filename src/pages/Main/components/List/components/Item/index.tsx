@@ -1019,8 +1019,7 @@ const Item: FC<ItemProps> = (props) => {
 				text: t("clipboard.button.context_menu.edit"),
 				hide:
 					type !== "text" &&
-					type !== "html" &&
-					type !== "rtf" &&
+					type !== "formatted" &&
 					type !== "code" &&
 					subtype !== "markdown" &&
 					subtype !== "color",
@@ -1032,7 +1031,7 @@ const Item: FC<ItemProps> = (props) => {
 			},
 			{
 				text: t("clipboard.button.context_menu.paste_as_plain_text"),
-				hide: type !== "html" && type !== "rtf",
+				hide: type !== "formatted",
 				action: pastePlain,
 			},
 			{
