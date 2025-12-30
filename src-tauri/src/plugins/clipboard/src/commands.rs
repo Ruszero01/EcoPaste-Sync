@@ -292,6 +292,12 @@ where
 
                 match result {
                     Ok(detection) => {
+                        log::trace!("[Clipboard] 类型检测结果: value={}, subtype={:?}, is_code={}, is_markdown={}",
+                            &value.clone().unwrap_or_default().chars().take(50).collect::<String>(),
+                            detection.subtype,
+                            detection.is_code,
+                            detection.is_markdown);
+
                         // Markdown 合并到 formatted 类型（与 HTML/RTF 类似）
                         // Markdown 是格式文本，通过 type='formatted', subtype='markdown' 标识
                         if detection.is_markdown {
@@ -322,6 +328,8 @@ where
                     }
                 }
             } else {
+                // Detector 插件未初始化，跳过检测
+                log::trace!("[Clipboard] Detector 插件未初始化，跳过类型检测");
                 (item_type.clone(), None, None)
             }
         } else {

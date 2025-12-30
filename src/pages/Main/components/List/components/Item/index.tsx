@@ -732,11 +732,14 @@ const Item: FC<ItemProps> = (props) => {
 		}
 	};
 
-	// 颜色格式转换函数
-	const pasteColorAsRGB = async () => {
+	// 通用颜色格式转换函数
+	const pasteColorAs = async (
+		format: "rgbVector" | "hex" | "cmyk",
+		successMessage: string,
+	) => {
 		try {
 			const actualValue = getActualValue(value);
-			const result = await convertColor(actualValue, "rgbVector");
+			const result = await convertColor(actualValue, format);
 
 			if (!result.success) {
 				message.error(result.error ?? "颜色格式转换失败");
@@ -747,49 +750,7 @@ const Item: FC<ItemProps> = (props) => {
 			const { paste } = await import("@/plugins/paste");
 			await writeText(result.value);
 			await paste();
-			message.success("已粘贴RGB向量格式颜色值");
-		} catch (error) {
-			console.error("颜色格式转换失败:", error);
-			message.error("颜色格式转换失败");
-		}
-	};
-
-	const pasteColorAsHEX = async () => {
-		try {
-			const actualValue = getActualValue(value);
-			const result = await convertColor(actualValue, "hex");
-
-			if (!result.success) {
-				message.error(result.error ?? "颜色格式转换失败");
-				return;
-			}
-
-			const { writeText } = await import("@/plugins/clipboard");
-			const { paste } = await import("@/plugins/paste");
-			await writeText(result.value);
-			await paste();
-			message.success("已粘贴HEX格式颜色值");
-		} catch (error) {
-			console.error("颜色格式转换失败:", error);
-			message.error("颜色格式转换失败");
-		}
-	};
-
-	const pasteColorAsCMYK = async () => {
-		try {
-			const actualValue = getActualValue(value);
-			const result = await convertColor(actualValue, "cmyk");
-
-			if (!result.success) {
-				message.error(result.error ?? "颜色格式转换失败");
-				return;
-			}
-
-			const { writeText } = await import("@/plugins/clipboard");
-			const { paste } = await import("@/plugins/paste");
-			await writeText(result.value);
-			await paste();
-			message.success("已粘贴CMYK向量格式颜色值");
+			message.success(successMessage);
 		} catch (error) {
 			console.error("颜色格式转换失败:", error);
 			message.error("颜色格式转换失败");
@@ -893,21 +854,21 @@ const Item: FC<ItemProps> = (props) => {
 				hide:
 					!(type === "text" && subtype === "color") ||
 					parseColorString(getActualValue(value))?.format === "rgb",
-				action: pasteColorAsRGB,
+				action: () => pasteColorAs("rgbVector", "已粘贴RGB向量格式颜色值"),
 			},
 			{
 				text: t("clipboard.button.context_menu.paste_as_hex"),
 				hide:
 					!(type === "text" && subtype === "color") ||
 					parseColorString(getActualValue(value))?.format === "hex",
-				action: pasteColorAsHEX,
+				action: () => pasteColorAs("hex", "已粘贴HEX格式颜色值"),
 			},
 			{
 				text: t("clipboard.button.context_menu.paste_as_cmyk"),
 				hide:
 					!(type === "text" && subtype === "color") ||
 					parseColorString(getActualValue(value))?.format === "cmyk",
-				action: pasteColorAsCMYK,
+				action: () => pasteColorAs("cmyk", "已粘贴CMYK向量格式颜色值"),
 			},
 			{
 				text: favorite
@@ -1465,10 +1426,6 @@ const Item: FC<ItemProps> = (props) => {
 			case "files":
 				return <Files {...data} />;
 			default:
-				// 文本类型：通过 subtype 进一步判断
-				if (subtype === "color") {
-					return <Text {...data} />;
-				}
 				return <Text {...data} />;
 		}
 	};

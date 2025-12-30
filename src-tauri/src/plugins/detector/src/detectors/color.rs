@@ -5,28 +5,31 @@ use regex::Regex;
 
 /// 检测是否为颜色值（支持 Hex/RGB/CMYK 格式）
 pub fn detect_color(s: &str) -> bool {
+    // 先修剪空白字符
+    let trimmed = s.trim();
+
     // Hex 格式: #RGB, #RRGGBB, #RRGGBBAA
     let hex_re = Regex::new(r"^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3}|[A-Fa-f0-9]{4}|[A-Fa-f0-9]{8})$").unwrap();
-    if hex_re.is_match(s) {
+    if hex_re.is_match(trimmed) {
         return true;
     }
 
     // RGB 格式: rgb(r, g, b) 或 rgba(r, g, b, a)
     let rgb_re = Regex::new(r"^rgba?\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*(,\s*[\d.]+)?\s*\)$").unwrap();
-    if rgb_re.is_match(s) {
+    if rgb_re.is_match(trimmed) {
         return true;
     }
 
     // CMYK 格式: cmyk(c, m, y, k)
     let cmyk_re = Regex::new(r"^cmyk\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\)$").unwrap();
-    if cmyk_re.is_match(s) {
+    if cmyk_re.is_match(trimmed) {
         return true;
     }
 
     // 向量格式: r,g,b (0-255)
     let rgb_vector_re = Regex::new(r"^\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}$").unwrap();
-    if rgb_vector_re.is_match(s) {
-        let parts: Vec<&str> = s.split(',').collect();
+    if rgb_vector_re.is_match(trimmed) {
+        let parts: Vec<&str> = trimmed.split(',').collect();
         if parts.len() == 3 {
             if let (Ok(_), Ok(_), Ok(_)) = (
                 parts[0].trim().parse::<u8>(),
@@ -41,8 +44,8 @@ pub fn detect_color(s: &str) -> bool {
 
     // 向量格式: c,m,y,k (0-100)
     let cmyk_vector_re = Regex::new(r"^\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}$").unwrap();
-    if cmyk_vector_re.is_match(s) {
-        let parts: Vec<&str> = s.split(',').collect();
+    if cmyk_vector_re.is_match(trimmed) {
+        let parts: Vec<&str> = trimmed.split(',').collect();
         if parts.len() == 4 {
             if let (Ok(c), Ok(m), Ok(y), Ok(k)) = (
                 parts[0].trim().parse::<u8>(),
