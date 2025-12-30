@@ -1,4 +1,3 @@
-import CodeEditor from "@/components/CodeEditor";
 import ColorPicker from "@/components/ColorPicker";
 import { useAppTheme } from "@/hooks/useTheme";
 import { MainContext } from "@/pages/Main";
@@ -20,18 +19,16 @@ interface FormFields {
 	content: string;
 }
 
-// 支持的文本类型选项（markdown/color 作为 text 的子类型）
+// 支持的文本类型选项
 // 使用复合 key 格式 "type|subtype" 来区分同 type 不同 subtype 的选项
-// subtype 为空字符串表示没有子类型（如纯文本）
 const TEXT_TYPE_OPTIONS = [
 	{ value: "text|", label: "纯文本" },
+	{ value: "formatted|", label: "格式文本" },
 	{ value: "text|markdown", label: "Markdown" },
 	{ value: "text|url", label: "链接" },
 	{ value: "text|email", label: "邮箱" },
 	{ value: "text|path", label: "路径" },
 	{ value: "text|color", label: "颜色" },
-	{ value: "html|", label: "HTML" },
-	{ value: "rtf|", label: "富文本" },
 	{ value: "code|", label: "代码" },
 ];
 
@@ -57,7 +54,6 @@ const getSelectValue = (type: string, subtype?: string): string => {
 		return "text|color";
 	}
 
-	// 确保返回值是字符串
 	if (option) {
 		return option.value;
 	}
@@ -114,21 +110,18 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 	const getEditableContent = (item: HistoryTablePayload): string => {
 		if (!item) return "";
 
-		const { type, subtype, value } = item;
+		const { type, value } = item;
 
 		switch (type) {
 			case "text":
 				// 如果是颜色子类型，返回颜色值
-				if (subtype === "color") {
+				if (item.subtype === "color") {
 					return value;
 				}
 				return value;
-			case "html":
-				// HTML类型直接返回原始HTML，让CodeEditor以HTML语法高亮显示
+			case "formatted":
+				// 格式文本直接返回原始内容（HTML 或 RTF）
 				return value;
-			case "rtf":
-				// 去除RTF标记获取纯文本进行编辑
-				return value.replace(/\\[a-zA-Z]+\d*/g, "").replace(/[{}]/g, "");
 			case "color":
 				// 颜色类型直接返回颜色值
 				return value;
@@ -148,7 +141,7 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 			setSelectedCodeLanguage(item.subtype || "");
 			setSelectedSubtype(undefined);
 		} else {
-			// text/html/rtf 类型使用 getSelectValue 获取复合 value
+			// text/formatted 类型使用 getSelectValue 获取复合 value
 			setSelectedType(getSelectValue(item.type || "text", item.subtype));
 			setSelectedSubtype(item.subtype || undefined);
 			setSelectedCodeLanguage("");
@@ -175,11 +168,6 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 		setSelectedCodeLanguage(language);
 	};
 
-	// 判断是否使用代码编辑器
-	const shouldUseCodeEditor = () => {
-		return selectedType.startsWith("code|") && selectedCodeLanguage;
-	};
-
 	// 判断是否使用Markdown编辑器
 	const shouldUseMarkdownEditor = () => {
 		return selectedType === "text|markdown";
@@ -188,17 +176,6 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 	// 判断是否使用颜色选择器
 	const shouldUseColorPicker = () => {
 		return selectedType === "text|color";
-	};
-
-	// 获取当前代码语言
-	const getCurrentCodeLanguage = () => {
-		if (selectedType.startsWith("code|") && selectedCodeLanguage) {
-			return selectedCodeLanguage;
-		}
-		if (item?.type === "html") {
-			return "html";
-		}
-		return undefined;
 	};
 
 	useImperativeHandle(ref, () => ({
@@ -242,8 +219,8 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 				updateType = "code"; // 代码类型使用 type='code'
 				updateSubtype = selectedCodeLanguage; // 语言存储在 subtype 中
 			} else {
-				// text/html/rtf 类型
-				updateType = parsedType as "text" | "html" | "rtf";
+				// text/formatted 类型
+				updateType = parsedType as "text" | "formatted";
 				updateSubtype = parsedSubtype; // markdown/color/url/email/path 或 undefined
 			}
 
@@ -330,13 +307,7 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 
 				{/* 编辑器区域 */}
 				<Form.Item name="content" className="mb-0!">
-					{shouldUseCodeEditor() ? (
-						<CodeEditor
-							value={content}
-							onChange={setContent}
-							codeLanguage={getCurrentCodeLanguage() || undefined}
-						/>
-					) : shouldUseMarkdownEditor() ? (
+					{shouldUseMarkdownEditor() ? (
 						<div data-color-mode={isDark ? "dark" : "light"}>
 							<MDEditor
 								value={content}

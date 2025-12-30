@@ -14,7 +14,14 @@ interface GroupItem extends Partial<HistoryTablePayload> {
 	key: string;
 	label: string;
 	icon: string;
-	type?: "text" | "image" | "files" | "color" | "rtf" | "html" | "markdown"; // 添加type属性，使用正确的类型
+	type?:
+		| "text"
+		| "image"
+		| "files"
+		| "color"
+		| "formatted"
+		| "code"
+		| "markdown";
 }
 
 const Group = () => {

@@ -829,8 +829,15 @@ impl SyncCore {
                 // 内容类型检查
                 match item.item_type.as_str() {
                     "text" => mode_config.content_types.include_text,
-                    "html" => mode_config.content_types.include_html,
-                    "rtf" => mode_config.content_types.include_rtf,
+                    "formatted" => {
+                        // 格式文本匹配：需要对应的子类型开关开启
+                        match item.subtype.as_deref() {
+                            Some("html") => mode_config.content_types.include_html,
+                            Some("rtf") => mode_config.content_types.include_rtf,
+                            _ => mode_config.content_types.include_html
+                                || mode_config.content_types.include_rtf,
+                        }
+                    }
                     "markdown" => mode_config.content_types.include_markdown,
                     "image" => mode_config.include_images,
                     "files" => mode_config.include_files,

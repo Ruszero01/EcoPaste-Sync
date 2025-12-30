@@ -217,12 +217,12 @@ where
                     Ok(rtf) => {
                         let text = context.get_text().ok();
                         (
+                            "formatted".to_string(),
                             "rtf".to_string(),
-                            "text".to_string(),
                             Some(rtf.clone()),
                             text.clone(),
                             text.as_ref().map(|s| s.len() as i32),
-                            Some("rtf".to_string()),
+                            None,
                             None,
                             None,
                         )
@@ -235,8 +235,8 @@ where
                     Ok(html) => {
                         let text = context.get_text().ok();
                         (
+                            "formatted".to_string(),
                             "html".to_string(),
-                            "text".to_string(),
                             Some(html),
                             text.clone(),
                             text.as_ref().map(|s| s.len() as i32),

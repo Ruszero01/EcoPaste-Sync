@@ -447,10 +447,10 @@ const Main = () => {
 				whereClause += " AND type = 'code'";
 			}
 			// 如果是纯文本分组，排除有专门分组的子类型（url, email, path, color）
-			// 没有单独分组的子类型（markdown）放进文本分组
+			// 没有单独分组的子类型（markdown）和格式文本（formatted）放进文本分组
 			else if (group === "text") {
 				whereClause +=
-					" AND type = 'text' AND (subtype IS NULL OR subtype = '' OR subtype = 'markdown')";
+					" AND (type = 'text' OR type = 'formatted') AND (subtype IS NULL OR subtype = '' OR subtype = 'markdown')";
 			}
 
 			const list = await invoke(

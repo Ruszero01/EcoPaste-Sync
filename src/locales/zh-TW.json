@@ -414,8 +414,7 @@
 			"color": "顏色",
 			"path": "路徑",
 			"plain_text": "純文字",
-			"rtf": "富文字",
-			"html": "HTML",
+			"formatted": "格式文字",
 			"image": "圖片",
 			"n_files": "{{0}}個檔案",
 			"n_chars": "{{0}}個字元"

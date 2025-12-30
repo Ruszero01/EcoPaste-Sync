@@ -418,8 +418,7 @@
 			"color": "Color",
 			"path": "Path",
 			"plain_text": "Plain Text",
-			"rtf": "Rich Text",
-			"html": "HTML",
+			"formatted": "Formatted Text",
 			"image": "Image",
 			"n_files": "{{0}} File(s)",
 			"n_chars": "{{0}} Character(s)"

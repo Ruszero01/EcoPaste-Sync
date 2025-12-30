@@ -60,15 +60,14 @@ const Header: FC<HeaderProps> = (props) => {
 			case "pastePlain":
 				// 只在文本类条目和图片包含OCR文字时显示
 				return (
-					type === "html" ||
-					type === "rtf" ||
+					type === "formatted" ||
 					(type === "image" &&
 						typeof search === "string" &&
 						!/^[\s]*$/.test(search))
 				);
 			case "edit":
 				// 在文本类条目上显示（包括 markdown、color 等 text 子类型）
-				return type === "text" || type === "html" || type === "rtf";
+				return type === "text" || type === "formatted";
 			case "copy":
 			case "note":
 			case "star":
@@ -108,10 +107,8 @@ const Header: FC<HeaderProps> = (props) => {
 					default:
 						return t("clipboard.label.plain_text");
 				}
-			case "rtf":
-				return t("clipboard.label.rtf");
-			case "html":
-				return t("clipboard.label.html");
+			case "formatted":
+				return t("clipboard.label.formatted");
 			case "image":
 				return t("clipboard.label.image");
 			case "files": {

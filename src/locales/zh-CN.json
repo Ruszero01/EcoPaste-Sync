@@ -414,8 +414,7 @@
 			"color": "颜色",
 			"path": "路径",
 			"plain_text": "纯文本",
-			"rtf": "富文本",
-			"html": "HTML",
+			"formatted": "格式文本",
 			"image": "图片",
 			"n_files": "{{0}}个文件（夹）",
 			"n_chars": "{{0}}个字符"

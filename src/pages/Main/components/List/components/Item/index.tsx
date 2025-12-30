@@ -1476,32 +1476,36 @@ const Item: FC<ItemProps> = (props) => {
 
 				dataTransfer.effectAllowed = "copy";
 
-				if (type === "html") {
-					let plainTextValue = actualValue;
-					try {
-						const tempDiv = document.createElement("div");
-						tempDiv.innerHTML = actualValue;
-						plainTextValue =
-							tempDiv.textContent || tempDiv.innerText || actualValue;
-					} catch {
-						// 如果HTML解析失败，使用原值
-					}
+				// 格式文本类型：根据子类型设置对应的拖拽数据
+				if (type === "formatted") {
+					if (subtype === "html") {
+						let plainTextValue = actualValue;
+						try {
+							const tempDiv = document.createElement("div");
+							tempDiv.innerHTML = actualValue;
+							plainTextValue =
+								tempDiv.textContent || tempDiv.innerText || actualValue;
+						} catch {
+							// 如果HTML解析失败，使用原值
+						}
 
-					dataTransfer.setData("text/plain", plainTextValue);
-					dataTransfer.setData("text/html", actualValue);
+						dataTransfer.setData("text/plain", plainTextValue);
+						dataTransfer.setData("text/html", actualValue);
+					} else if (subtype === "rtf") {
+						dataTransfer.setData("text/plain", actualValue);
+						dataTransfer.setData("text/rtf", actualValue);
+					} else {
+						dataTransfer.setData("text/plain", actualValue);
+					}
 				} else {
 					dataTransfer.setData("text/plain", actualValue);
-				}
-
-				if (type === "rtf") {
-					dataTransfer.setData("text/rtf", actualValue);
 				}
 
 				dataTransfer.setData("application/x-ecopaste-clipboard", actualValue);
 
 				// 创建拖拽预览
 				let previewContent = actualValue.trim();
-				if (type === "html") {
+				if (subtype === "html") {
 					const tempDiv = document.createElement("div");
 					tempDiv.innerHTML = previewContent;
 					previewContent =
