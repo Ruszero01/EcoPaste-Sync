@@ -1,3 +1,4 @@
+import CodeEditor from "@/components/CodeEditor";
 import ColorPicker from "@/components/ColorPicker";
 import { useAppTheme } from "@/hooks/useTheme";
 import { MainContext } from "@/pages/Main";
@@ -172,7 +173,12 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 		setSelectedCodeLanguage(language);
 	};
 
-	// 判断是否使用Markdown编辑器（格式文本和 Markdown 子类型都用 Markdown 编辑器）
+	// 判断是否使用代码编辑器
+	const shouldUseCodeEditor = () => {
+		return selectedType.startsWith("code|") && selectedCodeLanguage;
+	};
+
+	// 判断是否使用Markdown编辑器（格式文本用 Markdown 编辑器）
 	const shouldUseMarkdownEditor = () => {
 		return selectedType.startsWith("formatted|");
 	};
@@ -180,6 +186,14 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 	// 判断是否使用颜色选择器
 	const shouldUseColorPicker = () => {
 		return selectedType === "text|color";
+	};
+
+	// 获取当前代码语言
+	const getCurrentCodeLanguage = () => {
+		if (selectedType.startsWith("code|") && selectedCodeLanguage) {
+			return selectedCodeLanguage;
+		}
+		return undefined;
 	};
 
 	useImperativeHandle(ref, () => ({
@@ -311,7 +325,13 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 
 				{/* 编辑器区域 */}
 				<Form.Item name="content" className="mb-0!">
-					{shouldUseMarkdownEditor() ? (
+					{shouldUseCodeEditor() ? (
+						<CodeEditor
+							value={content}
+							onChange={setContent}
+							codeLanguage={getCurrentCodeLanguage()}
+						/>
+					) : shouldUseMarkdownEditor() ? (
 						<div data-color-mode={isDark ? "dark" : "light"}>
 							<MDEditor
 								value={content}
