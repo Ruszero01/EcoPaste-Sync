@@ -326,9 +326,10 @@ export const readText = async (
 	if (!skipTypeDetection) {
 		const subtype = await getClipboardSubtype(data);
 
-		// 如果是颜色，直接设置type为color，而不是subtype
+		// 如果是颜色，设置type为text，subtype为color
 		if (subtype === "color") {
-			data.type = "color";
+			data.type = "text";
+			data.subtype = "color";
 		} else {
 			data.subtype = subtype;
 		}
@@ -466,10 +467,10 @@ export const readClipboard = async (skipTypeDetection = false) => {
 		// 处理富文本内容
 		else if (!copyPlain && has.html) {
 			const htmlPayload = await readHTML();
-			payload = { ...htmlPayload, type: "html" };
+			payload = { ...htmlPayload, type: "formatted", subtype: "html" };
 		} else if (!copyPlain && has.rtf) {
 			const rtfPayload = await readRTF();
-			payload = { ...rtfPayload, type: "rtf" };
+			payload = { ...rtfPayload, type: "formatted", subtype: "rtf" };
 		}
 		// 处理Markdown内容
 		else if (has.text) {
@@ -499,7 +500,8 @@ export const readClipboard = async (skipTypeDetection = false) => {
 				if (subtype === "color") {
 					payload = {
 						...basePayload,
-						type: "color",
+						type: "text",
+						subtype: "color",
 						group: "text",
 					};
 				} else {
@@ -650,18 +652,29 @@ export const onClipboardUpdate = (fn: (payload: ClipboardPayload) => void) => {
 export const writeClipboard = async (data?: HistoryTablePayload) => {
 	if (!data) return;
 
-	const { type, value, search } = data;
+	const { type, subtype, value, search } = data;
 
 	switch (type) {
 		case "text":
-		case "markdown":
+			// 处理markdown subtype
+			if (subtype === "markdown") {
+				return writeText(value);
+			}
+			// 处理color subtype
+			if (subtype === "color") {
+				return writeText(value);
+			}
 			return writeText(value);
-		case "rtf":
-			return writeRTF(search, value);
-		case "html":
+		case "formatted":
+			// 根据subtype选择写入方式
+			if (subtype === "rtf") {
+				return writeRTF(search, value);
+			}
+			if (subtype === "html") {
+				return writeHTML(search, value);
+			}
+			// 默认按HTML格式写入
 			return writeHTML(search, value);
-		case "color":
-			return writeText(value);
 		case "image":
 			return await writeImage(resolveImagePath(value));
 		case "files":

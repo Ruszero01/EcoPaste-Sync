@@ -7,6 +7,17 @@ import type { SyncModeConfig } from "@/types/sync.d";
 import { isDev } from "@/utils/is";
 import { invoke } from "@tauri-apps/api/core";
 
+// 数据库信息类型（与后端 DatabaseInfo 对应）
+interface DatabaseInfo {
+	total_count: number;
+	active_count: number;
+	deleted_count: number;
+	favorite_count: number;
+	type_counts: Record<string, number>;
+	sync_status_counts: Record<string, number>;
+	recent_records_count: number;
+}
+
 // WebDAV配置类型（与后端 BackendSyncConfig 对应）
 type WebDAVConfig = {
 	url: string;
@@ -910,7 +921,9 @@ const CloudSync = () => {
 	// 开发环境专用：显示数据库信息
 	const handleShowDatabaseInfo = async () => {
 		try {
-			const dbInfo = await invoke("plugin:eco-database|get_database_info");
+			const dbInfo = await invoke<DatabaseInfo>(
+				"plugin:eco-database|get_database_info",
+			);
 			if (dbInfo) {
 				console.group("📊 数据库信息");
 				console.info("=== 基本统计 ===");

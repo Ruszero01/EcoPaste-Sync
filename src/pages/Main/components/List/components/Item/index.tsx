@@ -1,3 +1,4 @@
+import { createDragPreview } from "@/components/DragPreview";
 import UnoIcon from "@/components/UnoIcon";
 import { LISTEN_KEY } from "@/constants";
 import { MainContext } from "@/pages/Main";
@@ -796,7 +797,7 @@ const Item: FC<ItemProps> = (props) => {
 	};
 
 	// 右键菜单
-	const handleContextMenu = async (event: MouseEvent) => {
+	const handleContextMenu = async (event: React.MouseEvent) => {
 		event.preventDefault();
 
 		state.activeId = id;
@@ -974,7 +975,7 @@ const Item: FC<ItemProps> = (props) => {
 	};
 
 	// 处理多选逻辑
-	const handleMultiSelect = (event: MouseEvent) => {
+	const handleMultiSelect = (event: React.MouseEvent) => {
 		const { multiSelect } = clipboardStore;
 
 		// 如果是双击事件，不处理多选逻辑，直接返回
@@ -1157,7 +1158,10 @@ const Item: FC<ItemProps> = (props) => {
 	};
 
 	// 点击事件
-	const handleClick = (type: typeof content.autoPaste, event: MouseEvent) => {
+	const handleClick = (
+		type: typeof content.autoPaste,
+		event: React.MouseEvent,
+	) => {
 		// 先处理多选逻辑
 		handleMultiSelect(event);
 
@@ -1184,7 +1188,7 @@ const Item: FC<ItemProps> = (props) => {
 	};
 
 	// 拖拽事件
-	const handleDragStart = async (event: DragEvent) => {
+	const handleDragStart = async (event: React.DragEvent) => {
 		// 检查是否在多选模式且有选中的项目
 		const isMultiSelectMode =
 			clipboardStore.multiSelect.isMultiSelecting &&
@@ -1223,7 +1227,7 @@ const Item: FC<ItemProps> = (props) => {
 
 			// 使用第一条数据的信息进行拖拽
 			const {
-				type: firstType,
+				subtype: firstSubtype,
 				value: firstValue,
 				group: firstGroup,
 			} = firstItem;
@@ -1237,7 +1241,7 @@ const Item: FC<ItemProps> = (props) => {
 				dataTransfer.effectAllowed = "copy";
 
 				// 根据内容类型设置适当的格式
-				if (firstType === "html") {
+				if (firstSubtype === "html") {
 					let plainTextValue = actualValue;
 					try {
 						const tempDiv = document.createElement("div");
@@ -1254,7 +1258,7 @@ const Item: FC<ItemProps> = (props) => {
 					dataTransfer.setData("text/plain", actualValue);
 				}
 
-				if (firstType === "rtf") {
+				if (firstSubtype === "rtf") {
 					dataTransfer.setData("text/rtf", actualValue);
 				}
 
@@ -1460,9 +1464,11 @@ const Item: FC<ItemProps> = (props) => {
 				return <Image {...data} />;
 			case "files":
 				return <Files {...data} />;
-			case "color":
-				return <Text {...data} />;
 			default:
+				// 文本类型：通过 subtype 进一步判断
+				if (subtype === "color") {
+					return <Text {...data} />;
+				}
 				return <Text {...data} />;
 		}
 	};

@@ -15,6 +15,7 @@ interface GroupItem extends Partial<HistoryTablePayload> {
 	label: string;
 	icon: string;
 	type?: "text" | "image" | "files" | "formatted" | "code";
+	subtype?: string;
 }
 
 const Group = () => {
@@ -55,7 +56,7 @@ const Group = () => {
 		{
 			key: "color",
 			label: t("clipboard.label.tab.color"),
-			type: "color",
+			subtype: "color",
 			icon: "i-lucide:palette",
 		},
 		{
@@ -97,7 +98,7 @@ const Group = () => {
 	});
 
 	const handleChange = (item: GroupItem) => {
-		const { key, group, favorite, type } = item;
+		const { key, group, favorite, type, subtype } = item;
 
 		setChecked(key);
 
@@ -107,6 +108,8 @@ const Group = () => {
 		state.type = type;
 		// 代码分组通过 type = 'code' 识别
 		state.isCode = type === "code";
+		// 颜色分组通过 subtype = 'color' 识别
+		state.colorTab = subtype === "color";
 
 		// 针对链接分组，特殊处理（包含 url, path, email）
 		if (key === "link") {
@@ -114,13 +117,6 @@ const Group = () => {
 			// 不清除搜索，保留书签分组筛选
 		} else {
 			state.linkTab = false;
-		}
-
-		// 针对颜色分组，特殊处理
-		if (key === "color") {
-			state.colorTab = true;
-		} else {
-			state.colorTab = false;
 		}
 
 		// 强制触发列表刷新 - 清除缓存并重新加载
