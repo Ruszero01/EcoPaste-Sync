@@ -1021,8 +1021,9 @@ const Item: FC<ItemProps> = (props) => {
 					type !== "text" &&
 					type !== "html" &&
 					type !== "rtf" &&
-					type !== "markdown" &&
-					type !== "color",
+					type !== "code" &&
+					subtype !== "markdown" &&
+					subtype !== "color",
 				action: () => openEditModal?.(),
 			},
 			{

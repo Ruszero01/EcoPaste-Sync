@@ -61,6 +61,7 @@ interface CodeEditorProps extends Partial<HistoryTablePayload> {
 	value: string;
 	onChange?: (value: string) => void;
 	editable?: boolean;
+	codeLanguage?: string;
 }
 
 const CodeEditor: FC<CodeEditorProps> = ({

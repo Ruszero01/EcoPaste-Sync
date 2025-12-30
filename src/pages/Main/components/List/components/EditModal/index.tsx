@@ -1,6 +1,7 @@
 import CodeEditor from "@/components/CodeEditor";
 import ColorPicker from "@/components/ColorPicker";
 import { LISTEN_KEY } from "@/constants";
+import { useAppTheme } from "@/hooks/useTheme";
 import { MainContext } from "@/pages/Main";
 import { backendUpdateField } from "@/plugins/database";
 import { clipboardStore } from "@/stores/clipboard";
@@ -27,7 +28,7 @@ interface FormFields {
 const TEXT_TYPE_OPTIONS = [
 	{ value: "text|", label: "纯文本" },
 	{ value: "text|markdown", label: "Markdown" },
-	{ value: "text|url", label: "URL" },
+	{ value: "text|url", label: "链接" },
 	{ value: "text|email", label: "邮箱" },
 	{ value: "text|path", label: "路径" },
 	{ value: "text|color", label: "颜色" },
@@ -52,7 +53,17 @@ const getSelectValue = (type: string, subtype?: string): string => {
 		const [optType, optSubtype] = opt.value.split("|");
 		return optType === type && optSubtype === subtypeStr;
 	});
-	return option?.value || `${type}|`;
+
+	// 兼容处理：如果颜色类型存储为 type=text, subtype=color
+	if (!option && type === "text" && subtype === "color") {
+		return "text|color";
+	}
+
+	// 确保返回值是字符串
+	if (option) {
+		return option.value;
+	}
+	return `${type}|`;
 };
 
 // 支持的代码语言选项
@@ -85,6 +96,7 @@ const CODE_LANGUAGE_OPTIONS = [
 const EditModal = forwardRef<EditModalRef>((_, ref) => {
 	const { t } = useTranslation();
 	const { state } = useContext(MainContext);
+	const { isDark } = useAppTheme();
 	const [open, { toggle }] = useBoolean();
 	const [item, setItem] = useState<HistoryTablePayload>();
 	const [form] = Form.useForm<FormFields>();
@@ -92,7 +104,7 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 	// 当前选择的文本类型
 	const [selectedType, setSelectedType] = useState<string>("text");
 	// 当前选择的子类型（用于 text 类型下的 markdown/color/url 等）
-	const [selectedSubtype, setSelectedSubtype] = useState<string | undefined>();
+	const [_selectedSubtype, setSelectedSubtype] = useState<string | undefined>();
 	// 当前选择的代码语言（仅当类型为代码时使用）
 	const [selectedCodeLanguage, setSelectedCodeLanguage] = useState<string>("");
 	// 当前选择的颜色格式（仅当类型为颜色时使用）
@@ -104,10 +116,14 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 	const getEditableContent = (item: HistoryTablePayload): string => {
 		if (!item) return "";
 
-		const { type, value } = item;
+		const { type, subtype, value } = item;
 
 		switch (type) {
 			case "text":
+				// 如果是颜色子类型，返回颜色值
+				if (subtype === "color") {
+					return value;
+				}
 				return value;
 			case "html":
 				// HTML类型直接返回原始HTML，让CodeEditor以HTML语法高亮显示
@@ -119,6 +135,7 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 				// 颜色类型直接返回颜色值
 				return value;
 			default:
+				// 如果 type 为 undefined 或其他类型，直接返回原始值
 				return value;
 		}
 	};
@@ -134,7 +151,7 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 			setSelectedSubtype(undefined);
 		} else {
 			// text/html/rtf 类型使用 getSelectValue 获取复合 value
-			setSelectedType(getSelectValue(item.type, item.subtype));
+			setSelectedType(getSelectValue(item.type || "text", item.subtype));
 			setSelectedSubtype(item.subtype || undefined);
 			setSelectedCodeLanguage("");
 		}
@@ -162,22 +179,22 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 
 	// 判断是否使用代码编辑器
 	const shouldUseCodeEditor = () => {
-		return selectedType === "code" && selectedCodeLanguage;
+		return selectedType.startsWith("code|") && selectedCodeLanguage;
 	};
 
 	// 判断是否使用Markdown编辑器
 	const shouldUseMarkdownEditor = () => {
-		return selectedType === "text" && selectedSubtype === "markdown";
+		return selectedType === "text|markdown";
 	};
 
 	// 判断是否使用颜色选择器
 	const shouldUseColorPicker = () => {
-		return selectedType === "text" && selectedSubtype === "color";
+		return selectedType === "text|color";
 	};
 
 	// 获取当前代码语言
 	const getCurrentCodeLanguage = () => {
-		if (selectedType === "code" && selectedCodeLanguage) {
+		if (selectedType.startsWith("code|") && selectedCodeLanguage) {
 			return selectedCodeLanguage;
 		}
 		if (item?.type === "html") {
@@ -219,7 +236,7 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 				parseTypeValue(selectedType);
 
 			// 设置默认值
-			let updateType = item.type;
+			let updateType = item.type || "text";
 			let updateSubtype: string | undefined = item.subtype;
 
 			// 根据选择的类型更新对应的值
@@ -326,18 +343,19 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 						<CodeEditor
 							value={content}
 							onChange={setContent}
-							language={getCurrentCodeLanguage()}
+							codeLanguage={getCurrentCodeLanguage() || undefined}
 						/>
 					) : shouldUseMarkdownEditor() ? (
-						<div data-color-mode="light">
+						<div data-color-mode={isDark ? "dark" : "light"}>
 							<MDEditor
 								value={content}
 								onChange={(val) => setContent(val || "")}
+								height={350}
 							/>
 						</div>
 					) : shouldUseColorPicker() ? (
 						<ColorPicker
-							color={content}
+							value={content}
 							onChange={setContent}
 							format={selectedColorFormat}
 						/>

@@ -14,7 +14,7 @@ mod markdown;
 pub use url::detect_url;
 pub use email::detect_email;
 pub use path::detect_path;
-pub use color::detect_color;
+pub use color::{detect_color, get_color_format, conversion};
 pub use code::detect_code;
 pub use markdown::detect_markdown;
 
@@ -25,12 +25,6 @@ pub struct DetectionResult {
     pub is_code: bool,
     pub code_language: Option<String>,
     pub is_markdown: bool,
-}
-
-/// 检测器 trait
-pub trait Detector {
-    fn detect(&self, content: &str) -> Option<String>;
-    fn name(&self) -> &'static str;
 }
 
 /// 检测选项

@@ -50,8 +50,8 @@ const Text: FC<HistoryTablePayload> = (props) => {
 	};
 
 	const renderContent = () => {
-		// 检查是否为颜色类型（只检查type字段）
-		if (type === "color") {
+		// 检查是否为颜色类型（通过 type 或 subtype 判断）
+		if (type === "color" || subtype === "color") {
 			return renderColor();
 		}
 
