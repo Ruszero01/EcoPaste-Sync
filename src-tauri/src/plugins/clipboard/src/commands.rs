@@ -251,7 +251,8 @@ where
                 // 其他情况（包括复制为纯文本开启时）读取纯文本
                 match context.get_text() {
                     Ok(text) => {
-                        if text.is_empty() {
+                        // 过滤掉纯换行符和空白字符（批量粘贴时换行操作会产生这些内容）
+                        if text.trim().is_empty() {
                             return;
                         }
                         let text_len = text.len() as i32;
