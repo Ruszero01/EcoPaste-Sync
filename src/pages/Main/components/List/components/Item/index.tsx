@@ -1622,10 +1622,12 @@ const Item: FC<ItemProps> = (props) => {
 	// 渲染内容
 	const renderContent = () => {
 		switch (type) {
-			case "rtf":
+			case "formatted":
+				// 格式文本根据子类型渲染
+				if (subtype === "html") {
+					return <HTML {...data} />;
+				}
 				return <RTF {...data} />;
-			case "html":
-				return <HTML {...data} />;
 			case "image":
 				return <Image {...data} />;
 			case "files":
