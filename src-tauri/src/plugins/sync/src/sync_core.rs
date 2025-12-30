@@ -604,6 +604,7 @@ impl SyncCore {
             offset: None,
             only_favorites: false,
             exclude_deleted: false, // 包含软删除数据，用于删除检测和冲突处理
+            params: None,
         };
 
         log::info!("🔄 正在查询历史数据...");
@@ -671,6 +672,7 @@ impl SyncCore {
             offset: None,
             only_favorites: false,
             exclude_deleted: false, // 包含软删除数据
+            params: None,
         };
 
         let history_items = match db.query_history(options) {
@@ -738,6 +740,7 @@ impl SyncCore {
             offset: None,
             only_favorites: false,
             exclude_deleted: false,
+            params: None,
         };
 
         let history_items = match db.query_history(options) {
@@ -905,6 +908,7 @@ impl SyncCore {
             offset: None,
             only_favorites: false,
             exclude_deleted: false,
+            params: None,
         };
 
         match db.query_history(options) {

@@ -22,6 +22,11 @@ tauri-plugin-eco-paste = { path = "./src-tauri/src/plugins/paste" }
 tauri-plugin-eco-autostart = { path = "./src-tauri/src/plugins/autostart" }
 tauri-plugin-eco-database = { path = "./src-tauri/src/plugins/database" }
 tauri-plugin-eco-sync = { path = "./src-tauri/src/plugins/sync" }
+tauri-plugin-eco-detector = { path = "./src-tauri/src/plugins/detector" }
+
+# 依赖版本统一
+thiserror = "2"
+regex = "1"
 
 # 依赖版本统一 - 使用较新版本
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif"] }

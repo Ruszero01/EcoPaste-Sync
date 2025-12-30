@@ -15,9 +15,7 @@ export interface HistoryTablePayload extends ClipboardPayload {
 	deleted?: boolean;
 	// 同步状态字段
 	syncStatus?: "not_synced" | "synced" | "changed";
-	// 代码检测相关字段
-	isCode?: boolean;
-	codeLanguage?: string;
+	// 注意：isCode 和 codeLanguage 已移除，代码类型通过 type='code' 标识
 	// 来源应用相关字段
 	sourceAppName?: string;
 	sourceAppIcon?: string;

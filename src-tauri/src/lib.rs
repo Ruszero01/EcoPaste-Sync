@@ -106,6 +106,8 @@ pub fn run() {
         .plugin(tauri_plugin_eco_database::init())
         // 云同步引擎插件
         .plugin(tauri_plugin_eco_sync::init())
+        // 类型检测插件
+        .plugin(tauri_plugin_eco_detector::init())
         // Shell 插件：https://github.com/tauri-apps/plugins-workspace/tree/v2/plugins/shell
         .plugin(tauri_plugin_shell::init())
         .on_window_event(|window, event| match event {

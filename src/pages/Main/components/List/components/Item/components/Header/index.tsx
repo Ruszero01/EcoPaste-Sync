@@ -24,21 +24,13 @@ interface HeaderProps {
 	previewImage?: () => void;
 	showInExplorer?: () => void;
 	openInBrowser?: () => void;
+	sendEmail?: () => void;
 }
 
 const Header: FC<HeaderProps> = (props) => {
 	const { data } = props;
-	const {
-		id,
-		type,
-		favorite,
-		subtype,
-		search,
-		isCode,
-		codeLanguage,
-		sourceAppName,
-		sourceAppIcon,
-	} = data;
+	const { id, type, favorite, subtype, search, sourceAppName, sourceAppIcon } =
+		data;
 	const { state } = useContext(MainContext);
 	const { t } = useTranslation();
 	const { content } = useSnapshot(clipboardStore);
@@ -62,6 +54,9 @@ const Header: FC<HeaderProps> = (props) => {
 			case "openInBrowser":
 				// 只在链接类型条目上显示
 				return subtype === "url";
+			case "sendEmail":
+				// 只在邮箱类型条目上显示
+				return subtype === "email";
 			case "pastePlain":
 				// 只在文本类条目和图片包含OCR文字时显示
 				return (
@@ -72,14 +67,8 @@ const Header: FC<HeaderProps> = (props) => {
 						!/^[\s]*$/.test(search))
 				);
 			case "edit":
-				// 在文本类条目和颜色类型上显示
-				return (
-					type === "text" ||
-					type === "html" ||
-					type === "rtf" ||
-					type === "markdown" ||
-					type === "color"
-				);
+				// 在文本类条目上显示（包括 markdown、color 等 text 子类型）
+				return type === "text" || type === "html" || type === "rtf";
 			case "copy":
 			case "note":
 			case "star":
@@ -97,14 +86,14 @@ const Header: FC<HeaderProps> = (props) => {
 		// 优先检查type字段，而不是subtype字段
 		// 这样可以确保当用户修改类型后，标题能正确更新
 		switch (type) {
-			case "color":
-				return t("clipboard.label.color");
-			case "text":
-				// 如果是代码，显示编程语言名称
-				if (isCode && codeLanguage) {
-					return getLanguageDisplayName(codeLanguage);
+			case "code":
+				// 代码类型，subtype 存储编程语言名称
+				if (subtype) {
+					return getLanguageDisplayName(subtype);
 				}
-				// 对于文本类型，再检查subtype以显示更具体的信息
+				return t("clipboard.label.code");
+			case "text":
+				// 对于文本类型，检查subtype以显示更具体的信息
 				switch (subtype) {
 					case "url":
 						return t("clipboard.label.link");
@@ -112,6 +101,10 @@ const Header: FC<HeaderProps> = (props) => {
 						return t("clipboard.label.email");
 					case "path":
 						return t("clipboard.label.path");
+					case "markdown":
+						return "Markdown";
+					case "color":
+						return t("clipboard.label.color");
 					default:
 						return t("clipboard.label.plain_text");
 				}
@@ -119,8 +112,6 @@ const Header: FC<HeaderProps> = (props) => {
 				return t("clipboard.label.rtf");
 			case "html":
 				return t("clipboard.label.html");
-			case "markdown":
-				return "Markdown";
 			case "image":
 				return t("clipboard.label.image");
 			case "files": {
@@ -176,6 +167,7 @@ const Header: FC<HeaderProps> = (props) => {
 			previewImage,
 			showInExplorer,
 			openInBrowser,
+			sendEmail,
 		} = props;
 
 		event.stopPropagation();
@@ -221,6 +213,8 @@ const Header: FC<HeaderProps> = (props) => {
 				return previewImage?.();
 			case "openInBrowser":
 				return openInBrowser?.();
+			case "sendEmail":
+				return sendEmail?.();
 			case "delete":
 				return deleteItem();
 		}

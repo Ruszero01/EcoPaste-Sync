@@ -146,6 +146,16 @@ pub fn should_fetch_source_app() -> bool {
         .unwrap_or(true) // 默认为 true
 }
 
+/// 检查是否开启"复制为纯文本"模式
+pub fn should_copy_plain() -> bool {
+    read_config()
+        .ok()
+        .and_then(|c| c.clipboard_store)
+        .and_then(|c| c.content)
+        .and_then(|c| c.copy_plain)
+        .unwrap_or(false) // 默认为 false
+}
+
 /// 检查是否开启自动排序
 pub fn should_auto_sort() -> bool {
     read_config()

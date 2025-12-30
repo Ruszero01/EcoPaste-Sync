@@ -21,15 +21,39 @@ interface FormFields {
 	content: string;
 }
 
-// 支持的文本类型选项
+// 支持的文本类型选项（markdown/color 作为 text 的子类型）
+// 使用复合 key 格式 "type|subtype" 来区分同 type 不同 subtype 的选项
+// subtype 为空字符串表示没有子类型（如纯文本）
 const TEXT_TYPE_OPTIONS = [
-	{ value: "text", label: "纯文本" },
-	{ value: "html", label: "HTML" },
-	{ value: "rtf", label: "富文本" },
-	{ value: "markdown", label: "Markdown" },
-	{ value: "code", label: "代码" },
-	{ value: "color", label: "颜色" },
+	{ value: "text|", label: "纯文本" },
+	{ value: "text|markdown", label: "Markdown" },
+	{ value: "text|url", label: "URL" },
+	{ value: "text|email", label: "邮箱" },
+	{ value: "text|path", label: "路径" },
+	{ value: "text|color", label: "颜色" },
+	{ value: "html|", label: "HTML" },
+	{ value: "rtf|", label: "富文本" },
+	{ value: "code|", label: "代码" },
 ];
+
+// 从复合 value 中解析 type 和 subtype（用于保存到数据库）
+const parseTypeValue = (value: string): { type: string; subtype?: string } => {
+	const [type, subtype] = value.split("|");
+	return {
+		type,
+		subtype: subtype || undefined,
+	};
+};
+
+// 从数据库的 type 和 subtype 获取对应的 Select value
+const getSelectValue = (type: string, subtype?: string): string => {
+	const subtypeStr = subtype || "";
+	const option = TEXT_TYPE_OPTIONS.find((opt) => {
+		const [optType, optSubtype] = opt.value.split("|");
+		return optType === type && optSubtype === subtypeStr;
+	});
+	return option?.value || `${type}|`;
+};
 
 // 支持的代码语言选项
 const CODE_LANGUAGE_OPTIONS = [
@@ -67,6 +91,8 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 	const [content, setContent] = useState<string>("");
 	// 当前选择的文本类型
 	const [selectedType, setSelectedType] = useState<string>("text");
+	// 当前选择的子类型（用于 text 类型下的 markdown/color/url 等）
+	const [selectedSubtype, setSelectedSubtype] = useState<string | undefined>();
 	// 当前选择的代码语言（仅当类型为代码时使用）
 	const [selectedCodeLanguage, setSelectedCodeLanguage] = useState<string>("");
 	// 当前选择的颜色格式（仅当类型为颜色时使用）
@@ -102,31 +128,29 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 		if (!item) return;
 
 		// 如果是代码类型，设置对应的选项
-		if (item.isCode && item.codeLanguage) {
-			setSelectedType("code");
-			setSelectedCodeLanguage(item.codeLanguage);
-		} else if (item.type === "markdown") {
-			setSelectedType("markdown");
-			setSelectedCodeLanguage("");
-		} else if (item.type === "color") {
-			setSelectedType("color");
-			setSelectedCodeLanguage("");
+		if (item.type === "code") {
+			setSelectedType("code|");
+			setSelectedCodeLanguage(item.subtype || "");
+			setSelectedSubtype(undefined);
 		} else {
-			// 其他情况使用保存的类型或默认为文本
-			setSelectedType(item.type || "text");
+			// text/html/rtf 类型使用 getSelectValue 获取复合 value
+			setSelectedType(getSelectValue(item.type, item.subtype));
+			setSelectedSubtype(item.subtype || undefined);
 			setSelectedCodeLanguage("");
 		}
 	};
 
 	// 处理文本类型变化
-	const handleTypeChange = (type: string) => {
-		setSelectedType(type);
+	const handleTypeChange = (value: string) => {
+		const { type, subtype } = parseTypeValue(value);
+		setSelectedType(value);
+		setSelectedSubtype(subtype);
 		// 如果不是代码类型，清空代码语言选择
 		if (type !== "code") {
 			setSelectedCodeLanguage("");
 		}
 		// 如果不是颜色类型，重置颜色格式
-		if (type !== "color") {
+		if (subtype !== "color") {
 			setSelectedColorFormat("hex");
 		}
 	};
@@ -143,12 +167,12 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 
 	// 判断是否使用Markdown编辑器
 	const shouldUseMarkdownEditor = () => {
-		return selectedType === "markdown";
+		return selectedType === "text" && selectedSubtype === "markdown";
 	};
 
 	// 判断是否使用颜色选择器
 	const shouldUseColorPicker = () => {
-		return selectedType === "color";
+		return selectedType === "text" && selectedSubtype === "color";
 	};
 
 	// 获取当前代码语言
@@ -190,49 +214,32 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 			const { id, favorite } = item;
 			const currentTime = Date.now();
 
+			// 从复合 value 中解析出 type 和 subtype
+			const { type: parsedType, subtype: parsedSubtype } =
+				parseTypeValue(selectedType);
+
 			// 设置默认值
 			let updateType = item.type;
-			let updateIsCode = item.isCode || false;
-			let updateCodeLanguage = item.codeLanguage || "";
 			let updateSubtype: string | undefined = item.subtype;
 
 			// 根据选择的类型更新对应的值
-			if (selectedType === "code") {
-				updateType = "text"; // 代码在数据库中存储为text类型
-				updateIsCode = true;
-				updateCodeLanguage = selectedCodeLanguage;
-				updateSubtype = undefined; // 代码类型不需要subtype
-			} else if (selectedType === "markdown") {
-				updateType = "markdown"; // Markdown直接存储为markdown类型
-				updateIsCode = false;
-				updateCodeLanguage = "";
-				updateSubtype = undefined; // Markdown类型不需要subtype
-			} else if (selectedType === "color") {
-				updateType = "color"; // 颜色存储为color类型
-				updateIsCode = false;
-				updateCodeLanguage = "";
-				updateSubtype = undefined; // 颜色类型不再需要设置subtype
+			if (parsedType === "code") {
+				updateType = "code"; // 代码类型使用 type='code'
+				updateSubtype = selectedCodeLanguage; // 语言存储在 subtype 中
 			} else {
-				// 确保类型是有效的ClipboardPayload类型
-				updateType = selectedType as "text" | "html" | "rtf";
-				updateIsCode = false;
-				updateCodeLanguage = "";
-				updateSubtype = undefined; // 其他文本类型不需要subtype
+				// text/html/rtf 类型
+				updateType = parsedType as "text" | "html" | "rtf";
+				updateSubtype = parsedSubtype; // markdown/color/url/email/path 或 undefined
 			}
 
 			// 保存原始值用于比较（避免被提前修改）
 			const originalValue = item.value;
 			const originalType = item.type;
 			const originalSubtype = item.subtype;
-			const originalIsCode = item.isCode;
-			const originalCodeLanguage = item.codeLanguage;
 
 			// 更新本地数据
 			item.type = updateType;
-			item.isCode = updateIsCode;
-			item.codeLanguage = updateCodeLanguage;
-			// 当类型改变时，清除subtype以避免渲染问题
-			item.subtype = updateType === "color" ? undefined : updateSubtype;
+			item.subtype = updateSubtype;
 			item.value = formContent;
 			item.time = currentTime;
 			// 更新字符计数
@@ -258,17 +265,8 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 			if (originalType !== updateType) {
 				await backendUpdateField(id, "type", updateType);
 			}
-			// 只有当 updateSubtype 有值时才更新
-			if (updateSubtype !== undefined && originalSubtype !== updateSubtype) {
-				await backendUpdateField(id, "subtype", updateSubtype);
-			}
-
-			// 3. 更新代码相关字段
-			if (originalIsCode !== updateIsCode) {
-				await backendUpdateField(id, "isCode", updateIsCode.toString());
-			}
-			if (originalCodeLanguage !== updateCodeLanguage) {
-				await backendUpdateField(id, "codeLanguage", updateCodeLanguage || "");
+			if (originalSubtype !== updateSubtype) {
+				await backendUpdateField(id, "subtype", updateSubtype || "");
 			}
 
 			// 如果自动收藏功能开启，更新收藏状态
@@ -310,7 +308,7 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 							style={{ width: 120 }}
 							options={TEXT_TYPE_OPTIONS}
 						/>
-						{selectedType === "code" && (
+						{selectedType.startsWith("code|") && (
 							<Select
 								value={selectedCodeLanguage}
 								onChange={handleCodeLanguageChange}

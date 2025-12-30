@@ -103,7 +103,8 @@ export type OperationButton =
 	| "delete"
 	| "showInExplorer"
 	| "previewImage"
-	| "openInBrowser";
+	| "openInBrowser"
+	| "sendEmail";
 
 export interface ClipboardStore {
 	// 窗口设置

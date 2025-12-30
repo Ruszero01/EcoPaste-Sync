@@ -70,6 +70,7 @@
 						"show_in_explorer": "Show in Explorer",
 						"preview_image": "Preview Image",
 						"open_in_browser": "Open in Browser",
+						"send_email": "Send Email",
 						"delete": "Delete"
 					},
 					"auto_favorite": "Auto Favorite",

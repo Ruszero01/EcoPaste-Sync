@@ -63,6 +63,12 @@ export const transferData: TransferData[] = [
 		icon: "i-lucide:globe",
 	},
 	{
+		key: "sendEmail",
+		title:
+			"preference.clipboard.content_settings.label.operation_button_option.send_email",
+		icon: "i-lucide:mail",
+	},
+	{
 		key: "delete",
 		title:
 			"preference.clipboard.content_settings.label.operation_button_option.delete",

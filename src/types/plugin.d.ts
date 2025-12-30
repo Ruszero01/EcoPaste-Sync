@@ -7,17 +7,22 @@ export interface ReadImage {
 }
 
 export interface ClipboardPayload {
-	type?: "text" | "rtf" | "html" | "markdown" | "image" | "files" | "color";
+	type?:
+		| "text"
+		| "rtf"
+		| "html"
+		| "markdown"
+		| "image"
+		| "files"
+		| "color"
+		| "code";
 	group: "text" | "image" | "files";
-	subtype?: "url" | "email" | "color" | "path" | "image";
+	subtype?: "url" | "email" | "color" | "path" | "image" | string; // string for code language
 	count: number;
 	value: string;
 	search: string;
 	width?: number;
 	height?: number;
-	// 代码检测相关字段
-	isCode?: boolean;
-	codeLanguage?: string;
 	// 来源应用相关字段
 	sourceAppName?: string;
 	sourceAppIcon?: string;

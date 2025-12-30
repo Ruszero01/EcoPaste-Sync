@@ -70,6 +70,7 @@
 						"show_in_explorer": "在檔案總管中顯示",
 						"preview_image": "預覽圖片",
 						"open_in_browser": "在瀏覽器開啟",
+						"send_email": "發送郵件",
 						"delete": "刪除"
 					},
 					"auto_favorite": "自動收藏",

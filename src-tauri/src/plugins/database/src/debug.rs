@@ -45,6 +45,7 @@ pub async fn get_database_info(
         offset: None,
         only_favorites: false,
         exclude_deleted: false,
+        params: None,
     })?;
 
     Ok(DatabaseInfo {

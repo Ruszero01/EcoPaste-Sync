@@ -2,7 +2,6 @@ import { systemOCR } from "@/plugins/ocr";
 import { clipboardStore } from "@/stores/clipboard";
 import type { HistoryTablePayload } from "@/types/database";
 import type { ClipboardPayload, ReadImage, WindowsOCR } from "@/types/plugin";
-import { detectCode, detectMarkdown } from "@/utils/codeDetector";
 import { parseColorString } from "@/utils/color";
 import { isColor, isEmail, isURL } from "@/utils/is";
 import { resolveImagePath } from "@/utils/path";
@@ -342,7 +341,7 @@ export const readText = async (
  * 读取 Markdown 内容
  */
 export const readMarkdown = async (): Promise<ClipboardPayload> => {
-	const { value, count, subtype, isCode, codeLanguage } = await readText(true); // 跳过类型检测，保持原有类型
+	const { value, count, subtype } = await readText(true); // 跳过类型检测，保持原有类型
 
 	return {
 		value,
@@ -350,8 +349,6 @@ export const readMarkdown = async (): Promise<ClipboardPayload> => {
 		search: value,
 		group: "text",
 		subtype,
-		isCode,
-		codeLanguage,
 	};
 };
 
@@ -479,32 +476,10 @@ export const readClipboard = async (skipTypeDetection = false) => {
 			const text = await invoke<string>(COMMAND.READ_TEXT);
 
 			// 只有在不跳过类型检测时才进行自动类型检测
+			// 注意：后端已接管类型检测，这里不再进行前端检测
+			// 后端会将检测结果直接存储到数据库
 			if (!skipTypeDetection) {
-				// 统一检测逻辑：先检测markdown，再检测代码
-				let isMarkdown = false;
-				let isCodeContent = false;
-				let codeLanguage = "";
-
-				// 首先检测是否为Markdown内容
-				if (detectMarkdown(text)) {
-					isMarkdown = true;
-				}
-				// 如果不是markdown，再进行代码检测
-				else if (clipboardStore.content.codeDetection) {
-					const codeDetection = detectCode(text);
-					if (codeDetection.isCode) {
-						if (codeDetection.language === "markdown") {
-							// 代码检测返回markdown语言，将其作为markdown类型处理
-							isMarkdown = true;
-						} else {
-							// 普通代码
-							isCodeContent = true;
-							codeLanguage = codeDetection.language;
-						}
-					}
-				}
-
-				// 获取子类型
+				// 获取子类型（URL、邮箱、路径等）
 				const subtype = await getClipboardSubtype({
 					value: text,
 					search: text,
@@ -518,38 +493,20 @@ export const readClipboard = async (skipTypeDetection = false) => {
 					search: text,
 					count: text.length,
 					group: "text",
-					subtype,
 				};
 
-				// 根据检测结果设置type和相关字段
+				// 根据子类型设置type
 				if (subtype === "color") {
 					payload = {
 						...basePayload,
 						type: "color",
-						group: "text", // 颜色类型保持group为text，但type为color，通过colorTab状态控制显示
-						isCode: false,
-						codeLanguage: "",
-					};
-				} else if (isMarkdown) {
-					payload = {
-						...basePayload,
-						type: "markdown",
-						isCode: false,
-						codeLanguage: "",
-					};
-				} else if (isCodeContent) {
-					payload = {
-						...basePayload,
-						type: "text",
-						isCode: true,
-						codeLanguage,
+						group: "text",
 					};
 				} else {
 					payload = {
 						...basePayload,
 						type: "text",
-						isCode: false,
-						codeLanguage: "",
+						subtype,
 					};
 				}
 			} else {
@@ -560,8 +517,6 @@ export const readClipboard = async (skipTypeDetection = false) => {
 					count: text.length,
 					group: "text",
 					type: "text",
-					isCode: false,
-					codeLanguage: "",
 				};
 			}
 		}

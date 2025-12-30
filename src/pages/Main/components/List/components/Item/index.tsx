@@ -1672,6 +1672,7 @@ const Item: FC<ItemProps> = (props) => {
 				previewImage={preview}
 				showInExplorer={openFinder}
 				openInBrowser={openBrowser}
+				sendEmail={sendEmail}
 			/>
 
 			<div className="relative flex-1 select-auto overflow-hidden break-words children:transition">

@@ -1,0 +1,22 @@
+[package]
+name = "tauri-plugin-eco-detector"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.77.2"
+links = "tauri-plugin-eco-detector"
+
+[lib]
+name = "tauri_plugin_eco_detector"
+crate-type = ["staticlib", "cdylib", "lib"]
+
+[dependencies]
+tauri.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# 用于正则表达式
+regex.workspace = true
+# 用于代码检测的静态正则初始化
+once_cell = "1"
+
+[build-dependencies]
+tauri-plugin.workspace = true

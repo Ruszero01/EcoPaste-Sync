@@ -70,6 +70,7 @@
 						"show_in_explorer": "エクスプローラーで表示",
 						"preview_image": "画像プレビュー",
 						"open_in_browser": "ブラウザで開く",
+						"send_email": "メール送信",
 						"delete": "削除"
 					},
 					"auto_favorite": "自動コレクション",

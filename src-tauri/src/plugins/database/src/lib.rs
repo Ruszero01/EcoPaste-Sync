@@ -9,7 +9,7 @@ mod filter;
 mod debug;
 mod cleanup;
 mod source_app;
-mod config;
+pub mod config;
 
 pub use database::*;
 pub use models::*;

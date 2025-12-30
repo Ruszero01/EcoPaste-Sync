@@ -24,8 +24,6 @@ export interface HistoryItem {
 	fileSize?: number;
 	deleted?: boolean;
 	syncStatus?: string;
-	codeLanguage?: string;
-	isCode?: number;
 	sourceAppName?: string;
 	sourceAppIcon?: string;
 	position?: number;

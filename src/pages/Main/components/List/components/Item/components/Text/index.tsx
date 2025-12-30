@@ -7,7 +7,7 @@ import type { CSSProperties, FC } from "react";
 import { memo } from "react";
 
 const Text: FC<HistoryTablePayload> = (props) => {
-	const { value, type, isCode, codeLanguage } = props;
+	const { value, type, subtype } = props;
 
 	const renderColor = () => {
 		const className = "absolute rounded-full";
@@ -55,13 +55,13 @@ const Text: FC<HistoryTablePayload> = (props) => {
 			return renderColor();
 		}
 
-		// 如果是代码，根据是否可编辑决定显示方式
-		if (isCode && codeLanguage) {
+		// 如果是代码类型，使用subtype作为语言
+		if (type === "code" && subtype) {
 			// 在剪贴板界面中显示语法高亮的纯文本
 			return (
 				<SyntaxHighlighter
 					value={value}
-					language={codeLanguage}
+					language={subtype}
 					className="line-clamp-4"
 				/>
 			);
