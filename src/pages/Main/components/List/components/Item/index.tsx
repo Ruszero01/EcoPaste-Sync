@@ -1016,11 +1016,7 @@ const Item: FC<ItemProps> = (props) => {
 			},
 			{
 				text: t("clipboard.button.context_menu.edit"),
-				hide:
-					type !== "text" &&
-					type !== "formatted" &&
-					type !== "code" &&
-					subtype !== "color",
+				hide: type !== "text" && type !== "formatted" && type !== "code",
 				action: () => openEditModal?.(),
 			},
 			{
