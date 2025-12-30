@@ -218,7 +218,7 @@ where
                         let text = context.get_text().ok();
                         (
                             "formatted".to_string(),
-                            "rtf".to_string(),
+                            "text".to_string(),  // group = "text" 表示文本分组
                             Some(rtf.clone()),
                             text.clone(),
                             text.as_ref().map(|s| s.len() as i32),
@@ -236,7 +236,7 @@ where
                         let text = context.get_text().ok();
                         (
                             "formatted".to_string(),
-                            "html".to_string(),
+                            "text".to_string(),  // group = "text" 表示文本分组
                             Some(html),
                             text.clone(),
                             text.as_ref().map(|s| s.len() as i32),
@@ -261,7 +261,7 @@ where
                             Some(text.clone()),
                             Some(text),
                             Some(text_len),
-                            None,
+                            None, // 纯文本的 subtype 为 None
                             None,
                             None,
                         )
@@ -291,14 +291,13 @@ where
 
                 match result {
                     Ok(detection) => {
-                        // Markdown 作为 text 的子类型（与 HTML/RTF 类似，通过剪贴板内容检测）
-                        // Markdown 是纯文本格式，通过 subtype 标识
+                        // Markdown 合并到 formatted 类型（与 HTML/RTF 类似）
+                        // Markdown 是格式文本，通过 type='formatted', subtype='markdown' 标识
                         if detection.is_markdown {
-                            // Markdown 类型：item_type 保持 "text"，subtype 设置为 "markdown"
-                            (item_type.clone(), Some("markdown".to_string()))
+                            ("formatted".to_string(), Some("markdown".to_string()))
                         } else if detection.code_language.as_deref() == Some("markdown") {
                             // 也支持通过代码检测返回 markdown 语言的方式
-                            (item_type.clone(), Some("markdown".to_string()))
+                            ("formatted".to_string(), Some("markdown".to_string()))
                         } else if detection.is_code {
                             // 代码类型：type = "code", subtype = 语言
                             ("code".to_string(), detection.code_language)

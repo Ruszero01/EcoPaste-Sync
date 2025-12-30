@@ -100,8 +100,6 @@ const Header: FC<HeaderProps> = (props) => {
 						return t("clipboard.label.email");
 					case "path":
 						return t("clipboard.label.path");
-					case "markdown":
-						return "Markdown";
 					case "color":
 						return t("clipboard.label.color");
 					default:
