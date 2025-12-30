@@ -1623,11 +1623,11 @@ const Item: FC<ItemProps> = (props) => {
 	const renderContent = () => {
 		switch (type) {
 			case "formatted":
-				// 格式文本根据子类型渲染
-				if (subtype === "html") {
-					return <HTML {...data} />;
+				// 格式文本根据子类型渲染，默认渲染 HTML
+				if (subtype === "rtf") {
+					return <RTF {...data} />;
 				}
-				return <RTF {...data} />;
+				return <HTML {...data} />;
 			case "image":
 				return <Image {...data} />;
 			case "files":
