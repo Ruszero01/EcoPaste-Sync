@@ -1,12 +1,10 @@
 import CodeEditor from "@/components/CodeEditor";
 import ColorPicker from "@/components/ColorPicker";
-import { LISTEN_KEY } from "@/constants";
 import { useAppTheme } from "@/hooks/useTheme";
 import { MainContext } from "@/pages/Main";
 import { backendUpdateField } from "@/plugins/database";
 import { clipboardStore } from "@/stores/clipboard";
 import type { HistoryTablePayload } from "@/types/database";
-import { emit } from "@tauri-apps/api/event";
 import MDEditor from "@uiw/react-md-editor";
 import { useBoolean } from "ahooks";
 import { Form, Input, Modal, Select } from "antd";
@@ -292,13 +290,6 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 
 				// 调用database插件更新收藏状态
 				await backendUpdateField(id, "favorite", "true");
-			}
-
-			// 触发列表刷新事件，确保前端显示与数据库中的类型保持一致
-			try {
-				await emit(LISTEN_KEY.REFRESH_CLIPBOARD_LIST);
-			} catch (error) {
-				console.error("触发列表刷新事件失败:", error);
 			}
 		}
 
