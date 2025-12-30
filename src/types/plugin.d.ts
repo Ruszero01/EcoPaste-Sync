@@ -9,15 +9,14 @@ export interface ReadImage {
 export interface ClipboardPayload {
 	type?:
 		| "text"
-		| "rtf"
-		| "html"
+		| "formatted"
 		| "markdown"
 		| "image"
 		| "files"
 		| "color"
 		| "code";
 	group: "text" | "image" | "files";
-	subtype?: "url" | "email" | "color" | "path" | "image" | string; // string for code language
+	subtype?: "url" | "email" | "color" | "path" | "html" | "rtf" | string; // string for code language
 	count: number;
 	value: string;
 	search: string;
