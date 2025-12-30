@@ -58,29 +58,36 @@ pub fn query_history(
         offset,
         order_by: Some("time DESC".to_string()),
         where_clause: None,
+        params: None,
     };
     db.query_history(options)
 }
 
+use serde::Deserialize;
+
 /// 查询历史记录（带自定义筛选条件）
 #[tauri::command]
 pub fn query_history_with_filter(
-    where_clause: Option<String>,
-    order_by: Option<String>,
-    limit: Option<i32>,
-    offset: Option<i32>,
+    args: QueryFilterArgs,
     state: State<'_, DatabaseState>,
 ) -> Result<Vec<HistoryItem>, String> {
     let db = state.blocking_lock();
     let options = QueryOptions {
         only_favorites: false,
         exclude_deleted: true,
-        limit,
-        offset,
-        order_by,
-        where_clause,
+        limit: None,
+        offset: None,
+        order_by: None,
+        where_clause: args.where_clause,
+        params: args.params,
     };
     db.query_history(options)
+}
+
+#[derive(Deserialize, Debug)]
+pub struct QueryFilterArgs {
+    where_clause: Option<String>,
+    params: Option<Vec<String>>,
 }
 
 /// 插入数据（带去重功能）
@@ -196,19 +203,6 @@ pub fn update_field(
             db.update_field(&id, "syncStatus", &value)?;
             let conn = db.get_connection()?;
             db.get_change_tracker().mark_item_changed(&conn, &id, "sync_status")?;
-        }
-        "isCode" => {
-            let bool_value = value == "1" || value.to_lowercase() == "true";
-            db.update_field(&id, "isCode", if bool_value { "1" } else { "0" })?;
-            db.update_field(&id, "time", &current_time.to_string())?;
-            let conn = db.get_connection()?;
-            db.get_change_tracker().mark_item_changed(&conn, &id, "isCode")?;
-        }
-        "codeLanguage" => {
-            db.update_field(&id, "codeLanguage", &value)?;
-            db.update_field(&id, "time", &current_time.to_string())?;
-            let conn = db.get_connection()?;
-            db.get_change_tracker().mark_item_changed(&conn, &id, "codeLanguage")?;
         }
         _ => return Err(format!("不支持的字段名: {}", field)),
     }
@@ -327,6 +321,7 @@ pub fn query_with_filter(
         offset: None,
         only_favorites: filter.base_filter.only_favorites,
         exclude_deleted: filter.base_filter.exclude_deleted,
+        params: None,
     };
 
     let all_items = db.query_history(total_options)?;
@@ -431,6 +426,7 @@ pub fn search_data(
         offset: None,
         only_favorites: filter.base_filter.only_favorites,
         exclude_deleted: filter.base_filter.exclude_deleted,
+        params: None,
     };
 
     let total = db.query_history(total_options)?.len();
@@ -476,6 +472,7 @@ pub fn query_by_group(
         offset: None,
         only_favorites: filter.base_filter.only_favorites,
         exclude_deleted: filter.base_filter.exclude_deleted,
+        params: None,
     };
 
     let total = db.query_history(total_options)?.len();
@@ -501,6 +498,7 @@ pub fn get_all_groups(
         offset: None,
         only_favorites: false,
         exclude_deleted: true,
+        params: None,
     };
 
     let items = db.query_history(options)?;
@@ -536,6 +534,7 @@ pub fn get_filtered_statistics(
         offset: None,
         only_favorites: filter.base_filter.only_favorites,
         exclude_deleted: filter.base_filter.exclude_deleted,
+        params: None,
     };
 
     let items = db.query_history(options)?;

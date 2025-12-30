@@ -40,7 +40,7 @@ impl DatabaseManager {
         let conn = Connection::open(&db_path_clone)
             .map_err(|e| format!("打开数据库失败: {}", e))?;
 
-        // 创建 history 表（包含所有字段）
+        // 创建 history 表
         conn.execute_batch(r#"
             CREATE TABLE IF NOT EXISTS history (
                 id TEXT PRIMARY KEY,
@@ -55,11 +55,8 @@ impl DatabaseManager {
                 time INTEGER DEFAULT 0,
                 note TEXT,
                 subtype TEXT,
-                fileSize INTEGER,
                 deleted INTEGER DEFAULT 0,
                 syncStatus TEXT DEFAULT 'none',
-                codeLanguage TEXT,
-                isCode INTEGER DEFAULT 0,
                 sourceAppName TEXT,
                 sourceAppIcon TEXT,
                 position INTEGER DEFAULT 0
@@ -70,33 +67,6 @@ impl DatabaseManager {
             CREATE INDEX IF NOT EXISTS idx_history_syncStatus ON history(syncStatus);
             CREATE INDEX IF NOT EXISTS idx_history_time ON history(time);
         "#).map_err(|e| format!("创建数据库表失败: {}", e))?;
-
-        // 检查并添加缺失的字段（向后兼容旧数据库）
-        let mut stmt = conn.prepare("PRAGMA table_info(history)")
-            .map_err(|e| format!("查询表结构失败: {}", e))?;
-
-        let mut existing_columns = std::collections::HashSet::new();
-        let mut rows = stmt.query([]).map_err(|e| format!("查询表结构失败: {}", e))?;
-        while let Some(row) = rows.next().map_err(|e| format!("读取表结构失败: {}", e))? {
-            let name: String = row.get(1).map_err(|e| format!("获取字段名失败: {}", e))?;
-            existing_columns.insert(name);
-        }
-
-        // 需要迁移的字段列表
-        let fields_to_migrate = [
-            ("time", "INTEGER DEFAULT 0"),
-            ("sourceAppName", "TEXT"),
-            ("sourceAppIcon", "TEXT"),
-            ("position", "INTEGER DEFAULT 0"),
-        ];
-
-        for (field_name, field_type) in fields_to_migrate {
-            if !existing_columns.contains(field_name) {
-                let sql = format!("ALTER TABLE history ADD COLUMN {} {}", field_name, field_type);
-                conn.execute_batch(&sql)
-                    .map_err(|e| format!("添加 {} 字段失败: {}", field_name, e))?;
-            }
-        }
 
         self.db_path = Some(db_path.clone());
         self.initialized = true;
@@ -175,7 +145,13 @@ impl DatabaseManager {
         let mut stmt = conn.prepare(&sql)
             .map_err(|e| format!("准备查询失败: {}", e))?;
 
-        let rows = stmt.query_map([], |row| {
+        // 构建查询参数
+        let params: Vec<&str> = options.params
+            .as_ref()
+            .map(|p| p.iter().map(|s| s.as_str()).collect())
+            .unwrap_or_default();
+
+        let rows = stmt.query_map(rusqlite::params_from_iter(params.iter()), |row| {
             Ok(HistoryItem {
                 id: row.get(0)?,
                 item_type: row.get(1).ok(),
@@ -189,14 +165,11 @@ impl DatabaseManager {
                 time: row.get(9).unwrap_or(0),
                 note: row.get(10).ok(),
                 subtype: row.get(11).ok(),
-                file_size: row.get(12).ok(),
-                deleted: row.get(13).ok(),
-                sync_status: row.get(14).ok(),
-                code_language: row.get::<_, Option<String>>(15).ok().flatten(),
-                is_code: row.get::<_, Option<i32>>(16).ok().flatten(),
-                source_app_name: row.get::<_, Option<String>>(17).ok().flatten(),
-                source_app_icon: row.get::<_, Option<String>>(18).ok().flatten(),
-                position: row.get::<_, Option<i32>>(19).ok().flatten(),
+                deleted: row.get(12).ok(),
+                sync_status: row.get(13).ok(),
+                source_app_name: row.get(14).ok().flatten(),
+                source_app_icon: row.get(15).ok().flatten(),
+                position: row.get(16).ok().flatten(),
             })
         }).map_err(|e| format!("查询失败: {}", e))?;
 
@@ -491,16 +464,15 @@ impl DatabaseManager {
                 });
             } else {
                 // ID相同但内容不同，执行更新
+                // 注意：codeLanguage 和 isCode 字段已移除，不再写入
                 conn.execute(
                     "UPDATE history SET
                         type = ?1, value = ?2, search = ?3, count = ?4,
                         width = ?5, height = ?6, favorite = ?7,
                         time = ?8, note = ?9, subtype = ?10,
-                        fileSize = ?11,
-                        deleted = ?12, syncStatus = ?13,
-                        codeLanguage = ?14, isCode = ?15,
-                        sourceAppName = ?16, sourceAppIcon = ?17, position = ?18
-                    WHERE id = ?19",
+                        deleted = ?11, syncStatus = ?12,
+                        sourceAppName = ?13, sourceAppIcon = ?14, position = ?15
+                    WHERE id = ?16",
                     params![
                         item.item_type,
                         item.value,
@@ -512,11 +484,8 @@ impl DatabaseManager {
                         item.time,
                         item.note,
                         item.subtype,
-                        item.file_size,
                         item.deleted.unwrap_or(0),
                         item.sync_status.clone().unwrap_or_else(|| "not_synced".to_string()),
-                        item.code_language,
-                        item.is_code.unwrap_or(0),
                         item.source_app_name,
                         item.source_app_icon,
                         item.position.unwrap_or(0),
@@ -606,15 +575,15 @@ impl DatabaseManager {
             "INSERT INTO history (
                 id, type, [group], value, search, count,
                 width, height, favorite, time, note, subtype,
-                fileSize, deleted,
-                syncStatus, codeLanguage, isCode,
+                deleted,
+                syncStatus,
                 sourceAppName, sourceAppIcon, position
             ) VALUES (
                 ?1, ?2, ?3, ?4, ?5, ?6,
                 ?7, ?8, ?9, ?10, ?11, ?12,
-                ?13, ?14,
-                ?15, ?16, ?17,
-                ?18, ?19, ?20
+                ?13,
+                ?14,
+                ?15, ?16, ?17
             )",
             params![
                 item.id,
@@ -629,11 +598,8 @@ impl DatabaseManager {
                 item.time,
                 item.note,
                 item.subtype,
-                item.file_size,
                 item.deleted.unwrap_or(0),
                 item.sync_status.clone().unwrap_or_else(|| "not_synced".to_string()),
-                item.code_language,
-                item.is_code.unwrap_or(0),
                 source_info.as_ref().map(|s| s.app_name.clone()),
                 source_info.as_ref().and_then(|s| s.app_icon.clone()),
                 max_position + 1,

@@ -62,7 +62,7 @@ const Group = () => {
 			key: "code",
 			label: t("clipboard.label.code"),
 			group: "text",
-			isCode: true,
+			type: "code",
 			icon: "i-lucide:code-2",
 		},
 		{
@@ -97,17 +97,18 @@ const Group = () => {
 	});
 
 	const handleChange = (item: GroupItem) => {
-		const { key, group, favorite, isCode, type } = item;
+		const { key, group, favorite, type } = item;
 
 		setChecked(key);
 
 		// 确保正确更新响应式状态
 		state.group = group;
 		state.favorite = favorite;
-		state.isCode = isCode;
 		state.type = type;
+		// 代码分组通过 type = 'code' 识别
+		state.isCode = type === "code";
 
-		// 针对链接分组，特殊处理
+		// 针对链接分组，特殊处理（包含 url, path, email）
 		if (key === "link") {
 			state.linkTab = true;
 			// 不清除搜索，保留书签分组筛选

@@ -1,10 +1,10 @@
 import type { AudioRef } from "@/components/Audio";
 import Audio from "@/components/Audio";
 import { LISTEN_KEY } from "@/constants";
-import { backendQueryHistoryWithFilter } from "@/plugins/database";
 import { initializeMicaEffect } from "@/plugins/window";
 import type { HistoryTablePayload, TablePayload } from "@/types/database";
 import type { Store } from "@/types/store";
+import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import { useReactive } from "ahooks";
 import type { EventEmitter } from "ahooks/lib/useEventEmitter";
@@ -159,6 +159,7 @@ const Main = () => {
 		state.favorite,
 		state.isCode,
 		state.colorTab,
+		state.linkTab,
 		clipboardStore.content.autoSort,
 	]);
 
@@ -369,94 +370,99 @@ const Main = () => {
 
 		let rawData: HistoryTablePayload[];
 
-		// 如果是链接分组，查询所有链接类型和路径类型的数据，同时考虑书签筛选
+		// 如果是链接分组，查询所有链接类型、路径和邮箱类型的数据，同时考虑书签筛选
 		if (linkTab) {
 			let whereClause =
-				"(subtype = 'url' OR subtype = 'path') AND (deleted IS NULL OR deleted = 0)";
+				"(subtype = 'url' OR subtype = 'path' OR subtype = 'email') AND (deleted IS NULL OR deleted = 0)";
+			const params: string[] = [];
 
 			// 如果有搜索条件（书签分组筛选），添加到查询中
 			if (search) {
 				whereClause += " AND (search LIKE ? OR note LIKE ?)";
+				params.push(`%${search}%`, `%${search}%`);
 			}
 
-			const list = await backendQueryHistoryWithFilter({
-				where_clause: whereClause,
-				limit: undefined,
-				offset: undefined,
-			});
+			const list = await invoke(
+				"plugin:eco-database|query_history_with_filter",
+				{ args: { where_clause: whereClause, params } },
+			);
 
 			// 转换数据类型，与 selectSQL 保持一致
 			rawData = (Array.isArray(list) ? list : []).map((item: any) => ({
 				...item,
 				favorite: Boolean(item.favorite),
 				deleted: Boolean(item.deleted),
-				isCode: Boolean(item.isCode),
 				position: Number(item.position || 0),
 				syncStatus: item.syncStatus || "none",
 			})) as HistoryTablePayload[];
 		} else if (colorTab) {
-			// 颜色分组查询：查询 type 为 'color' 的数据
-			let whereClause = "type = 'color' AND (deleted IS NULL OR deleted = 0)";
+			// 颜色分组查询：查询 type 为 'text' 且 subtype 为 'color' 的数据
+			let whereClause =
+				"type = 'text' AND subtype = 'color' AND (deleted IS NULL OR deleted = 0)";
+			const params: string[] = [];
 
 			// 如果有搜索条件，添加到查询中
 			if (search) {
 				whereClause += " AND (search LIKE ? OR note LIKE ?)";
+				params.push(`%${search}%`, `%${search}%`);
 			}
 
-			const list = await backendQueryHistoryWithFilter({
-				where_clause: whereClause,
-				limit: undefined,
-				offset: undefined,
-			});
+			const list = await invoke(
+				"plugin:eco-database|query_history_with_filter",
+				{ args: { where_clause: whereClause, params } },
+			);
 
 			// 转换数据类型，与 selectSQL 保持一致
 			rawData = (Array.isArray(list) ? list : []).map((item: any) => ({
 				...item,
 				favorite: Boolean(item.favorite),
 				deleted: Boolean(item.deleted),
-				isCode: Boolean(item.isCode),
 				position: Number(item.position || 0),
 				syncStatus: item.syncStatus || "none",
 			})) as HistoryTablePayload[];
 		} else {
 			// 特殊处理纯文本和代码分组的查询
 			let whereClause = "(deleted IS NULL OR deleted = 0)";
+			const params: string[] = [];
 
 			// 添加基本条件
 			if (group) {
 				whereClause += " AND [group] = ?";
+				params.push(group);
 			}
 
 			if (search) {
 				whereClause += " AND (search LIKE ? OR note LIKE ?)";
+				// LIKE 需要 % 包裹
+				params.push(`%${search}%`, `%${search}%`);
 			}
 
 			if (favorite !== undefined) {
 				whereClause += " AND favorite = ?";
+				params.push(favorite ? "1" : "0");
 			}
 
-			// 如果是代码分组，添加 isCode = true 条件
+			// 如果是代码分组，添加 type = 'code' 条件
 			if (isCode) {
-				whereClause += " AND isCode = 1";
+				whereClause += " AND type = 'code'";
 			}
-			// 如果是纯文本分组且不是"全部"，添加 isCode = false 条件，同时排除颜色类型
+			// 如果是纯文本分组，排除有专门分组的子类型（url, email, path, color）
+			// 没有单独分组的子类型（markdown）放进文本分组
 			else if (group === "text") {
 				whereClause +=
-					" AND (isCode = 0 OR isCode IS NULL) AND type != 'color'";
+					" AND type = 'text' AND (subtype IS NULL OR subtype = '' OR subtype = 'markdown')";
 			}
 
-			const list = await backendQueryHistoryWithFilter({
-				where_clause: whereClause,
-				limit: undefined,
-				offset: undefined,
-			});
+			const list = await invoke(
+				"plugin:eco-database|query_history_with_filter",
+				{ args: { where_clause: whereClause, params } },
+			);
 
 			// 转换数据类型，与 selectSQL 保持一致
 			rawData = (Array.isArray(list) ? list : []).map((item: any) => ({
 				...item,
 				favorite: Boolean(item.favorite),
 				deleted: Boolean(item.deleted),
-				isCode: Boolean(item.isCode),
 				position: Number(item.position || 0),
 				syncStatus: item.syncStatus || "none",
 			})) as HistoryTablePayload[];

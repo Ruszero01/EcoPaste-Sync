@@ -20,11 +20,9 @@ pub struct HistoryItem {
     pub time: i64,
     pub note: Option<String>,
     pub subtype: Option<String>,
-    pub file_size: Option<i64>,
     pub deleted: Option<i32>,
     pub sync_status: Option<String>,
-    pub code_language: Option<String>,
-    pub is_code: Option<i32>,
+    // 注意：code_language 和 is_code 已移除，代码类型通过 type='code' 标识
     pub source_app_name: Option<String>,
     pub source_app_icon: Option<String>,
     pub position: Option<i32>,
@@ -45,11 +43,8 @@ impl Default for HistoryItem {
             time: 0,
             note: None,
             subtype: None,
-            file_size: None,
             deleted: Some(0),
             sync_status: Some("none".to_string()),
-            code_language: None,
-            is_code: Some(0),
             source_app_name: None,
             source_app_icon: None,
             position: Some(0),
@@ -103,11 +98,9 @@ pub struct InsertItem {
     pub time: i64,
     pub note: Option<String>,
     pub subtype: Option<String>,
-    pub file_size: Option<i64>,
     pub deleted: Option<i32>,
     pub sync_status: Option<String>,
-    pub code_language: Option<String>,
-    pub is_code: Option<i32>,
+    // 注意：code_language 和 is_code 已移除，代码类型通过 type='code' 标识
     pub source_app_name: Option<String>,
     pub source_app_icon: Option<String>,
     pub position: Option<i32>,
@@ -125,6 +118,8 @@ pub struct InsertResult {
 pub struct QueryOptions {
     /// 筛选条件
     pub where_clause: Option<String>,
+    /// 筛选参数
+    pub params: Option<Vec<String>>,
     /// 排序
     pub order_by: Option<String>,
     /// 限制数量

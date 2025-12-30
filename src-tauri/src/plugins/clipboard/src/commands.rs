@@ -14,6 +14,9 @@ use tauri::{command, AppHandle, Emitter, Manager, Runtime, State};
 // 引入 database 插件
 use tauri_plugin_eco_database::{DatabaseState, InsertItem};
 
+// 引入 detector 插件
+use tauri_plugin_eco_detector::DetectorState;
+
 // 用于生成唯一 ID
 fn generate_id() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -72,27 +75,144 @@ where
             None => return,
         };
 
+        // 获取 detector 状态（可能不存在，检测是可选的）
+        let detector_state = app_handle.try_state::<DetectorState>();
+
         // 读取剪贴板内容
-        let (item_type, group, value, search, count, subtype, file_size) = {
+        // count 字段语义：
+        // - 文本/代码：字符数
+        // - 图片/文件：文件大小（字节数）
+        let (item_type, group, value, search, count, subtype, img_width, img_height) = {
             let context = manager.context.lock().unwrap();
 
-            if context.has(ContentFormat::Image) {
-                // 图片 - 暂时跳过
-                return;
-            } else if context.has(ContentFormat::Files) {
-                match context.get_files() {
-                    Ok(files) => (
-                        "files".to_string(),
-                        "files".to_string(),
-                        serde_json::to_string(&files).ok(),
-                        Some(files.join(" ")),
-                        Some(files.len() as i32),
-                        None,
-                        None,
-                    ),
+            // 检查是否开启"复制为纯文本"模式
+            let copy_plain = tauri_plugin_eco_database::config::should_copy_plain();
+
+            // 检查是否是图片类型
+            let has_image = context.has(ContentFormat::Image);
+            let has_files = context.has(ContentFormat::Files);
+
+            // 如果有图片数据，优先作为图片处理
+            if has_image {
+                match context.get_image() {
+                    Ok(image) => {
+                        let (width, height) = image.get_size();
+
+                        // 生成唯一 ID 和文件路径
+                        let id = generate_id();
+
+                        // 获取应用数据目录保存图片
+                        let app_data_dir = app_handle.path().data_dir()
+                            .unwrap_or_else(|_| PathBuf::from("./data"));
+                        let images_dir = app_data_dir.join("images");
+                        let _ = create_dir_all(&images_dir);
+
+                        let image_path = images_dir.join(format!("{}.png", id));
+
+                        // 保存图片
+                        if let Some(path) = image_path.to_str() {
+                            let _ = image.save_to_path(path);
+                        }
+
+                        // count 存储文件大小（用于前端显示）
+                        let file_size = std::fs::metadata(&image_path).ok().map(|m| m.len() as i32).unwrap_or(1);
+
+                        (
+                            "image".to_string(),
+                            "image".to_string(),
+                            Some(image_path.to_string_lossy().to_string()),
+                            Some(format!("{}x{} png", width, height)),
+                            Some(file_size),
+                            Some("image".to_string()),
+                            Some(width as i32),
+                            Some(height as i32),
+                        )
+                    }
                     Err(_) => return,
                 }
-            } else if !context.has(ContentFormat::Html) && context.has(ContentFormat::Rtf) {
+            } else if has_files {
+                // 检查是否都是图片文件
+                match context.get_files() {
+                    Ok(files) => {
+                        // 检查是否都是图片文件
+                        let image_extensions = ["png", "jpg", "jpeg", "gif", "bmp", "webp", "tiff"];
+                        let is_all_images = files.iter().all(|f| {
+                            let ext = std::path::Path::new(f)
+                                .extension()
+                                .and_then(|e| e.to_str())
+                                .map(|e| e.to_lowercase());
+                            ext.map(|e| image_extensions.contains(&e.as_str())).unwrap_or(false)
+                        });
+
+                        if is_all_images {
+                            // 所有文件都是图片，保存第一张作为主图片
+                            if let Some(first_file) = files.first() {
+                                let id = generate_id();
+                                let app_data_dir = app_handle.path().data_dir()
+                                    .unwrap_or_else(|_| PathBuf::from("./data"));
+                                let images_dir = app_data_dir.join("images");
+                                let _ = create_dir_all(&images_dir);
+
+                                // 复制图片到应用数据目录
+                                let image_path = images_dir.join(format!("{}.png", id));
+                                let _ = std::fs::copy(first_file, &image_path);
+
+                                // 获取图片尺寸
+                                let image_path_str = image_path.to_string_lossy().to_string();
+                                let (width, height) = RustImageData::from_path(&image_path_str)
+                                    .map(|img| img.get_size())
+                                    .unwrap_or((0, 0));
+
+                                // count 存储文件大小
+                                let file_size = std::fs::metadata(&image_path).ok().map(|m| m.len() as i32).unwrap_or(1);
+
+                                (
+                                    "image".to_string(),
+                                    "image".to_string(),
+                                    Some(image_path_str),
+                                    Some(format!("{}x{} png", width, height)),
+                                    Some(file_size),
+                                    Some("image".to_string()),
+                                    Some(width as i32),
+                                    Some(height as i32),
+                                )
+                            } else {
+                                // 空文件列表，返回默认值
+                                (
+                                    "files".to_string(),
+                                    "files".to_string(),
+                                    None,
+                                    Some(String::new()),
+                                    Some(0),
+                                    None,
+                                    None,
+                                    None,
+                                )
+                            }
+                        } else {
+                            // 有非图片文件，当作文件处理
+                            // count 存储第一个文件的大小
+                            let count = files.first()
+                                .and_then(|f| std::fs::metadata(f).ok())
+                                .map(|m| m.len() as i32)
+                                .unwrap_or(1);
+
+                            (
+                                "files".to_string(),
+                                "files".to_string(),
+                                serde_json::to_string(&files).ok(),
+                                Some(files.join(" ")),
+                                Some(count),
+                                None,
+                                None,
+                                None,
+                            )
+                        }
+                    }
+                    Err(_) => return,
+                }
+            } else if !copy_plain && !context.has(ContentFormat::Html) && context.has(ContentFormat::Rtf) {
+                // 复制为纯文本关闭时，检测 RTF 格式
                 match context.get_rich_text() {
                     Ok(rtf) => {
                         let text = context.get_text().ok();
@@ -104,11 +224,13 @@ where
                             text.as_ref().map(|s| s.len() as i32),
                             Some("rtf".to_string()),
                             None,
+                            None,
                         )
                     }
                     Err(_) => return,
                 }
-            } else if context.has(ContentFormat::Html) {
+            } else if !copy_plain && context.has(ContentFormat::Html) {
+                // 复制为纯文本关闭时，检测 HTML 格式
                 match context.get_html() {
                     Ok(html) => {
                         let text = context.get_text().ok();
@@ -120,11 +242,13 @@ where
                             text.as_ref().map(|s| s.len() as i32),
                             None,
                             None,
+                            None,
                         )
                     }
                     Err(_) => return,
                 }
-            } else if context.has(ContentFormat::Text) {
+            } else {
+                // 其他情况（包括复制为纯文本开启时）读取纯文本
                 match context.get_text() {
                     Ok(text) => {
                         if text.is_empty() {
@@ -139,35 +263,86 @@ where
                             Some(text_len),
                             None,
                             None,
+                            None,
                         )
                     }
                     Err(_) => return,
                 }
-            } else {
-                return;
             }
+        };
+
+        // 如果是文本类型，调用 detector 进行检测
+        let (final_type, final_subtype) = if item_type == "text" {
+            if let Some(detector_state) = detector_state {
+                let detector = detector_state.inner();
+                let result = detector.detect_content(
+                    value.clone().unwrap_or_default(),
+                    item_type.clone(),
+                    tauri_plugin_eco_detector::DetectionOptions {
+                        detect_url: true,
+                        detect_email: true,
+                        detect_path: true,
+                        detect_color: true,
+                        detect_code: true,
+                        detect_markdown: true,
+                        code_min_length: 10,
+                    },
+                );
+
+                match result {
+                    Ok(detection) => {
+                        // Markdown 作为 text 的子类型（与 HTML/RTF 类似，通过剪贴板内容检测）
+                        // Markdown 是纯文本格式，通过 subtype 标识
+                        if detection.is_markdown {
+                            // Markdown 类型：item_type 保持 "text"，subtype 设置为 "markdown"
+                            (item_type.clone(), Some("markdown".to_string()))
+                        } else if detection.code_language.as_deref() == Some("markdown") {
+                            // 也支持通过代码检测返回 markdown 语言的方式
+                            (item_type.clone(), Some("markdown".to_string()))
+                        } else if detection.is_code {
+                            // 代码类型：type = "code", subtype = 语言
+                            ("code".to_string(), detection.code_language)
+                        } else if let Some(s) = detection.subtype {
+                            // 其他子类型（url/email/path/color）
+                            (item_type.clone(), Some(s))
+                        } else {
+                            // 纯文本
+                            (item_type.clone(), None)
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!("类型检测失败: {}", e);
+                        (item_type.clone(), None)
+                    }
+                }
+            } else {
+                (item_type.clone(), None)
+            }
+        } else {
+            (item_type.clone(), subtype.clone())
         };
 
         // 构建 InsertItem
         let time = chrono::Utc::now().timestamp_millis();
+        let final_subtype_value = final_subtype.or(subtype);
+        log::debug!("[Clipboard] Insert item: type={}, subtype={}, group={}", final_type, final_subtype_value.as_deref().unwrap_or("null"), group);
+
         let item = InsertItem {
             id: generate_id(),
-            item_type: Some(item_type),
+            item_type: Some(final_type),
             group: Some(group),
             value,
             search,
             count,
-            width: None,
-            height: None,
+            width: img_width,
+            height: img_height,
             favorite: 0,
             time,
             note: None,
-            subtype,
-            file_size,
+            subtype: final_subtype_value,
             deleted: Some(0),
             sync_status: Some("not_synced".to_string()),
-            code_language: None,
-            is_code: Some(0),
+            // 注意：code_language 和 is_code 已移除，代码类型通过 type='code' 标识
             source_app_name: None,
             source_app_icon: None,
             position: None,
