@@ -382,7 +382,7 @@ impl DatabaseManager {
 
         let conn = self.get_connection().map_err(|e| e.to_string())?;
 
-        let placeholders: String = ids.iter().map(|_| "?").collect();
+        let placeholders: String = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
         let query = format!("DELETE FROM history WHERE id IN ({})", placeholders);
 
         conn.execute(&query, rusqlite::params_from_iter(ids))

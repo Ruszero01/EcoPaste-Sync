@@ -1,5 +1,8 @@
 "$schema" = "schemas/schema.json"
 
 [default]
-description = "Default permissions for the plugin"
-permissions = []
+description = "Default permissions for the detector plugin"
+permissions = [
+    "allow-detect-content",
+    "allow-convert-color"
+]

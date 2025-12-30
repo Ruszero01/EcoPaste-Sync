@@ -3,14 +3,11 @@
 [default]
 description = "Default permissions for the database plugin"
 permissions = [
-    "allow-query-history-with-filter",
-    "allow-insert-with-deduplication",
     "allow-set-database-path",
     "allow-query-history",
-    "allow-mark-deleted",
-    "allow-batch-mark-deleted",
-    "allow-hard-delete",
-    "allow-batch-hard-delete",
+    "allow-query-history-with-filter",
+    "allow-insert-with-deduplication",
+    "allow-delete-items",
     "allow-get-statistics",
     "allow-update-field",
     "allow-mark-changed",

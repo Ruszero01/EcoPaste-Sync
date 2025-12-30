@@ -359,7 +359,7 @@ const Item: FC<ItemProps> = (props) => {
 			if (!confirmed) return;
 
 			// 使用统一的删除命令
-			const result = (await invoke("delete_items", {
+			const result = (await invoke("plugin:eco-database|delete_items", {
 				ids: selectedIds,
 			})) as DeleteResult;
 
@@ -373,25 +373,43 @@ const Item: FC<ItemProps> = (props) => {
 			// 清除多选状态
 			clearMultiSelectState();
 
-			// 保存当前激活项
+			// 保存当前激活项及其位置
 			const currentActiveId = state.activeId;
 			const isCurrentActiveDeleted = selectedIds.includes(
 				currentActiveId || "",
 			);
+
+			// 先找到当前激活项在列表中的位置（删除前）
+			let targetId: string | undefined;
+			if (isCurrentActiveDeleted && state.list.length > 0) {
+				const deletedIndex = state.list.findIndex(
+					(item) => item.id === currentActiveId,
+				);
+				// 优先选择删除位置后面的第一项，如果没有则选择前面的
+				if (deletedIndex >= 0) {
+					targetId = state.list[deletedIndex + 1]?.id;
+				}
+				if (!targetId) {
+					targetId = state.list[deletedIndex - 1]?.id;
+				}
+				if (!targetId && state.list.length > 0) {
+					targetId = state.list[0]?.id;
+				}
+			}
 
 			// 从本地状态中移除
 			for (const selectedId of selectedIds) {
 				remove(state.list, { id: selectedId });
 			}
 
-			// 聚焦管理：如果当前激活项被删除，选择下一个可用的项目
-			if (isCurrentActiveDeleted && state.list.length > 0) {
-				// 找到被删除项在原列表中的位置
-				const deletedIndex = state.list.findIndex(
-					(item) => item.id === currentActiveId,
-				);
-				// 选择删除位置后面的第一项，如果没有则选择前面的
-				state.activeId = state.list[deletedIndex]?.id || state.list[0]?.id;
+			// 聚焦管理：设置新的激活项
+			if (targetId) {
+				state.activeId = targetId;
+			} else if (state.list.length > 0) {
+				// 如果没有找到目标项，选择列表第一个
+				state.activeId = state.list[0]?.id;
+			} else {
+				state.activeId = undefined;
 			}
 
 			// 显示成功提示
@@ -623,7 +641,7 @@ const Item: FC<ItemProps> = (props) => {
 
 		try {
 			// 使用统一的删除命令
-			const result = (await invoke("delete_items", {
+			const result = (await invoke("plugin:eco-database|delete_items", {
 				ids: [id],
 			})) as DeleteResult;
 

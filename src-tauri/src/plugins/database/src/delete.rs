@@ -97,11 +97,15 @@ impl DeleteManager {
         let mut errors = Vec::<String>::new();
 
         // 查询每个项目的同步状态
-        let placeholders: String = ids.iter().map(|_| "?").collect();
+        let placeholders: String = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
         let query = format!("SELECT id, syncStatus FROM history WHERE id IN ({})", placeholders);
+        log::debug!("批量删除查询SQL: {}, 参数数量: {}", query, ids.len());
 
         let mut stmt = conn.prepare(&query).map_err(|e| e.to_string())?;
-        let rows = stmt.query_map(rusqlite::params_from_iter(ids), |row| {
+
+        // 将 Vec<String> 转换为 Vec<&str> 以正确绑定参数
+        let params: Vec<&str> = ids.iter().map(|s| s.as_str()).collect();
+        let rows = stmt.query_map(rusqlite::params_from_iter(params.iter()), |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
         }).map_err(|e| e.to_string())?;
 

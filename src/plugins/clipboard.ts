@@ -868,7 +868,7 @@ export const convertColor = async (
 	color: string,
 	convertType: ColorConvertType,
 ): Promise<ColorConvertResult> => {
-	return (await invoke("convert_color", {
+	return (await invoke("plugin:eco-detector|convert_color", {
 		color,
 		convertType,
 	})) as ColorConvertResult;
