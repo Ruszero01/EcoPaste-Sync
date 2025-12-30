@@ -42,7 +42,6 @@ import Files from "./components/Files";
 import HTML from "./components/HTML";
 import Header from "./components/Header";
 import Image from "./components/Image";
-import RTF from "./components/RTF";
 import SyncStatus from "./components/SyncStatus";
 import Text from "./components/Text";
 
@@ -1021,7 +1020,6 @@ const Item: FC<ItemProps> = (props) => {
 					type !== "text" &&
 					type !== "formatted" &&
 					type !== "code" &&
-					subtype !== "markdown" &&
 					subtype !== "color",
 				action: () => openEditModal?.(),
 			},
@@ -1475,27 +1473,20 @@ const Item: FC<ItemProps> = (props) => {
 
 				dataTransfer.effectAllowed = "copy";
 
-				// 格式文本类型：根据子类型设置对应的拖拽数据
+				// 格式文本类型：设置 HTML 和纯文本数据
 				if (type === "formatted") {
-					if (subtype === "html") {
-						let plainTextValue = actualValue;
-						try {
-							const tempDiv = document.createElement("div");
-							tempDiv.innerHTML = actualValue;
-							plainTextValue =
-								tempDiv.textContent || tempDiv.innerText || actualValue;
-						} catch {
-							// 如果HTML解析失败，使用原值
-						}
-
-						dataTransfer.setData("text/plain", plainTextValue);
-						dataTransfer.setData("text/html", actualValue);
-					} else if (subtype === "rtf") {
-						dataTransfer.setData("text/plain", actualValue);
-						dataTransfer.setData("text/rtf", actualValue);
-					} else {
-						dataTransfer.setData("text/plain", actualValue);
+					let plainTextValue = actualValue;
+					try {
+						const tempDiv = document.createElement("div");
+						tempDiv.innerHTML = actualValue;
+						plainTextValue =
+							tempDiv.textContent || tempDiv.innerText || actualValue;
+					} catch {
+						// 如果HTML解析失败，使用原值
 					}
+
+					dataTransfer.setData("text/plain", plainTextValue);
+					dataTransfer.setData("text/html", actualValue);
 				} else {
 					dataTransfer.setData("text/plain", actualValue);
 				}
@@ -1504,12 +1495,10 @@ const Item: FC<ItemProps> = (props) => {
 
 				// 创建拖拽预览
 				let previewContent = actualValue.trim();
-				if (subtype === "html") {
-					const tempDiv = document.createElement("div");
-					tempDiv.innerHTML = previewContent;
-					previewContent =
-						tempDiv.textContent || tempDiv.innerText || previewContent;
-				}
+				const tempDiv = document.createElement("div");
+				tempDiv.innerHTML = previewContent;
+				previewContent =
+					tempDiv.textContent || tempDiv.innerText || previewContent;
 
 				createDragPreview(event, {
 					content: previewContent,
@@ -1622,10 +1611,7 @@ const Item: FC<ItemProps> = (props) => {
 	const renderContent = () => {
 		switch (type) {
 			case "formatted":
-				// 格式文本根据子类型渲染，默认渲染 HTML
-				if (subtype === "rtf") {
-					return <RTF {...data} />;
-				}
+				// 格式文本统一使用 HTML 组件渲染（可渲染 HTML 和 Markdown）
 				return <HTML {...data} />;
 			case "image":
 				return <Image {...data} />;

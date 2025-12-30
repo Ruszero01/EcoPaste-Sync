@@ -24,7 +24,6 @@ interface FormFields {
 const TEXT_TYPE_OPTIONS = [
 	{ value: "text|", label: "纯文本" },
 	{ value: "formatted|", label: "格式文本" },
-	{ value: "text|markdown", label: "Markdown" },
 	{ value: "text|url", label: "链接" },
 	{ value: "text|email", label: "邮箱" },
 	{ value: "text|path", label: "路径" },
@@ -43,6 +42,11 @@ const parseTypeValue = (value: string): { type: string; subtype?: string } => {
 
 // 从数据库的 type 和 subtype 获取对应的 Select value
 const getSelectValue = (type: string, subtype?: string): string => {
+	// formatted 类型统一使用 formatted|
+	if (type === "formatted") {
+		return "formatted|";
+	}
+
 	const subtypeStr = subtype || "";
 	const option = TEXT_TYPE_OPTIONS.find((opt) => {
 		const [optType, optSubtype] = opt.value.split("|");
@@ -120,7 +124,7 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 				}
 				return value;
 			case "formatted":
-				// 格式文本直接返回原始内容（HTML 或 RTF）
+				// 格式文本直接返回原始内容（HTML、RTF 或 Markdown）
 				return value;
 			case "color":
 				// 颜色类型直接返回颜色值
@@ -168,9 +172,9 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 		setSelectedCodeLanguage(language);
 	};
 
-	// 判断是否使用Markdown编辑器
+	// 判断是否使用Markdown编辑器（格式文本和 Markdown 子类型都用 Markdown 编辑器）
 	const shouldUseMarkdownEditor = () => {
-		return selectedType === "text|markdown";
+		return selectedType.startsWith("formatted|");
 	};
 
 	// 判断是否使用颜色选择器
