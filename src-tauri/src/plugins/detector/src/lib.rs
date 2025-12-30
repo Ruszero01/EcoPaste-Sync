@@ -44,6 +44,7 @@ impl DetectorState {
             is_code: result.is_code,
             code_language: result.code_language,
             is_markdown: result.is_markdown,
+            color_normalized: result.color_normalized,
         })
     }
 }

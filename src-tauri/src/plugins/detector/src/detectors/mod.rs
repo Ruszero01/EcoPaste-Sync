@@ -25,6 +25,8 @@ pub struct DetectionResult {
     pub is_code: bool,
     pub code_language: Option<String>,
     pub is_markdown: bool,
+    /// 颜色标准化值（RGB向量字符串），用于颜色去重
+    pub color_normalized: Option<String>,
 }
 
 /// 检测选项

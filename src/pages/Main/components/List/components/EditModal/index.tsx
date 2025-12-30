@@ -115,25 +115,8 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 	const getEditableContent = (item: HistoryTablePayload): string => {
 		if (!item) return "";
 
-		const { type, value } = item;
-
-		switch (type) {
-			case "text":
-				// 如果是颜色子类型，返回颜色值
-				if (item.subtype === "color") {
-					return value;
-				}
-				return value;
-			case "formatted":
-				// 格式文本直接返回原始内容（HTML、RTF 或 Markdown）
-				return value;
-			case "color":
-				// 颜色类型直接返回颜色值
-				return value;
-			default:
-				// 如果 type 为 undefined 或其他类型，直接返回原始值
-				return value;
-		}
+		const { value } = item;
+		return value || "";
 	};
 
 	// 初始化类型选择

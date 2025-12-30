@@ -13,6 +13,8 @@ pub struct TypeDetectionResult {
     pub code_language: Option<String>,
     /// 是否为 Markdown
     pub is_markdown: bool,
+    /// 颜色标准化值（RGB向量字符串），用于颜色去重
+    pub color_normalized: Option<String>,
 }
 
 impl Default for TypeDetectionResult {
@@ -22,6 +24,7 @@ impl Default for TypeDetectionResult {
             is_code: false,
             code_language: None,
             is_markdown: false,
+            color_normalized: None,
         }
     }
 }

@@ -504,12 +504,24 @@ impl DatabaseManager {
             }
         }
 
-        // 检查是否已存在相同内容（基于type + value组合）
-        let existing_id: Option<String> = conn.query_row(
-            "SELECT id FROM history WHERE type = ?1 AND value = ?2 AND deleted = 0 LIMIT 1",
-            params![item.item_type, item.value],
-            |row| row.get(0),
-        ).unwrap_or(None);
+        // 检查是否已存在相同内容
+        // 对于颜色类型（subtype='color'），同时检查 search 字段（RGB 向量）是否相同
+        // 这样 #FF0000、rgb(255,0,0)、cmyk(0,100,100,0) 会被识别为相同颜色
+        let existing_id: Option<String> = if item.subtype.as_deref() == Some("color") && item.search.is_some() {
+            // 颜色类型：基于 RGB 向量去重
+            conn.query_row(
+                "SELECT id FROM history WHERE type = ?1 AND subtype = 'color' AND search = ?2 AND deleted = 0 LIMIT 1",
+                params![item.item_type, item.search],
+                |row| row.get(0),
+            ).unwrap_or(None)
+        } else {
+            // 普通类型：基于 value 去重
+            conn.query_row(
+                "SELECT id FROM history WHERE type = ?1 AND value = ?2 AND deleted = 0 LIMIT 1",
+                params![item.item_type, item.value],
+                |row| row.get(0),
+            ).unwrap_or(None)
+        };
 
         if let Some(existing_id) = existing_id {
             // 如果存在相同内容的记录，更新该记录

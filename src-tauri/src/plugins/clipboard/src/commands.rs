@@ -272,7 +272,7 @@ where
         };
 
         // 如果是文本类型，调用 detector 进行检测
-        let (final_type, final_subtype) = if item_type == "text" {
+        let (final_type, final_subtype, color_normalized_for_search) = if item_type == "text" {
             if let Some(detector_state) = detector_state {
                 let detector = detector_state.inner();
                 let result = detector.detect_content(
@@ -294,36 +294,50 @@ where
                         // Markdown 合并到 formatted 类型（与 HTML/RTF 类似）
                         // Markdown 是格式文本，通过 type='formatted', subtype='markdown' 标识
                         if detection.is_markdown {
-                            ("formatted".to_string(), Some("markdown".to_string()))
+                            ("formatted".to_string(), Some("markdown".to_string()), None)
                         } else if detection.code_language.as_deref() == Some("markdown") {
                             // 也支持通过代码检测返回 markdown 语言的方式
-                            ("formatted".to_string(), Some("markdown".to_string()))
+                            ("formatted".to_string(), Some("markdown".to_string()), None)
                         } else if detection.is_code {
                             // 代码类型：type = "code", subtype = 语言
-                            ("code".to_string(), detection.code_language)
+                            ("code".to_string(), detection.code_language, None)
                         } else if let Some(s) = detection.subtype {
                             // 其他子类型（url/email/path/color）
-                            (item_type.clone(), Some(s))
+                            // 如果是颜色类型，使用 color_normalized 作为 search 字段用于去重
+                            let color_search = if s == "color" {
+                                detection.color_normalized
+                            } else {
+                                None
+                            };
+                            (item_type.clone(), Some(s), color_search)
                         } else {
                             // 纯文本
-                            (item_type.clone(), None)
+                            (item_type.clone(), None, None)
                         }
                     }
                     Err(e) => {
                         log::warn!("类型检测失败: {}", e);
-                        (item_type.clone(), None)
+                        (item_type.clone(), None, None)
                     }
                 }
             } else {
-                (item_type.clone(), None)
+                (item_type.clone(), None, None)
             }
         } else {
-            (item_type.clone(), subtype.clone())
+            (item_type.clone(), subtype.clone(), None)
         };
 
         // 构建 InsertItem
         let time = chrono::Utc::now().timestamp_millis();
         let final_subtype_value = final_subtype.or(subtype);
+
+        // 颜色类型使用标准化的 RGB 向量作为 search 字段用于去重
+        let final_search = if final_subtype_value.as_deref() == Some("color") {
+            color_normalized_for_search.or(search)
+        } else {
+            search
+        };
+
         log::debug!("[Clipboard] Insert item: type={}, subtype={}, group={}", final_type, final_subtype_value.as_deref().unwrap_or("null"), group);
 
         let item = InsertItem {
@@ -331,7 +345,7 @@ where
             item_type: Some(final_type),
             group: Some(group),
             value,
-            search,
+            search: final_search,
             count,
             width: img_width,
             height: img_height,

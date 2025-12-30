@@ -28,6 +28,7 @@ pub async fn detect_content(
         is_code: result.is_code,
         code_language: result.code_language,
         is_markdown: result.is_markdown,
+        color_normalized: result.color_normalized,
     })
 }
 
@@ -61,8 +62,11 @@ pub fn run_detection(content: &str, options: &DetectionOptions) -> DetectionResu
 
     // 颜色检测
     if options.detect_color && detect_color(content) {
+        // 将颜色转换为 RGB 向量字符串用于去重
+        let color_normalized = crate::detectors::conversion::color_to_rgb_vector(content);
         return DetectionResult {
             subtype: Some("color".to_string()),
+            color_normalized,
             ..Default::default()
         };
     }

@@ -180,6 +180,57 @@ pub mod conversion {
     pub fn cmyk_to_vector_string(c: u8, m: u8, y: u8, k: u8) -> String {
         format!("{}, {}, {}, {}", c, m, y, k)
     }
+
+    /// 将任意颜色格式转换为 RGB 向量字符串（用于去重）
+    pub fn color_to_rgb_vector(color: &str) -> Option<String> {
+        let format = super::get_color_format(color)?;
+        match format.as_str() {
+            "hex" => {
+                let rgb = hex_to_rgb(color)?;
+                Some(rgb_to_vector_string(rgb.0, rgb.1, rgb.2))
+            }
+            "rgb" => {
+                // 解析 rgb(r, g, b) 或 rgba(r, g, b, a) 格式
+                let rgb = parse_rgb_color(color)?;
+                Some(rgb_to_vector_string(rgb.0, rgb.1, rgb.2))
+            }
+            "cmyk" => {
+                let rgb = parse_cmyk_color(color)?;
+                Some(rgb_to_vector_string(rgb.0, rgb.1, rgb.2))
+            }
+            _ => None,
+        }
+    }
+
+    /// 解析 rgb(r, g, b) 或 rgba(r, g, b, a) 格式
+    fn parse_rgb_color(s: &str) -> Option<(u8, u8, u8)> {
+        let s = s.trim();
+        // 移除 rgba 或 rgb 前缀和括号
+        let content = s.trim_start_matches("rgba").trim_start_matches("rgb").trim_start_matches('(').trim_end_matches(')');
+        let parts: Vec<&str> = content.split(',').collect();
+        if parts.len() < 3 {
+            return None;
+        }
+        let r = parts[0].trim().parse().ok()?;
+        let g = parts[1].trim().parse().ok()?;
+        let b = parts[2].trim().parse().ok()?;
+        Some((r, g, b))
+    }
+
+    /// 解析 cmyk(c, m, y, k) 格式
+    fn parse_cmyk_color(s: &str) -> Option<(u8, u8, u8)> {
+        let s = s.trim();
+        let content = s.trim_start_matches("cmyk").trim_start_matches('(').trim_end_matches(')');
+        let parts: Vec<&str> = content.split(',').collect();
+        if parts.len() != 4 {
+            return None;
+        }
+        let c = parts[0].trim().parse().ok()?;
+        let m = parts[1].trim().parse().ok()?;
+        let y = parts[2].trim().parse().ok()?;
+        let k = parts[3].trim().parse().ok()?;
+        Some(cmyk_to_rgb(c, m, y, k))
+    }
 }
 
 #[cfg(test)]

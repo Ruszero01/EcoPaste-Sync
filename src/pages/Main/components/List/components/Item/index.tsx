@@ -1039,25 +1039,26 @@ const Item: FC<ItemProps> = (props) => {
 				action: pastePlain,
 			},
 			// 颜色类型专用的转换选项
+			// 颜色存储为 type="text", subtype="color"
 			// 根据当前颜色格式显示对应的转换选项
 			{
 				text: t("clipboard.button.context_menu.paste_as_rgb"),
 				hide:
-					type !== "color" ||
+					!(type === "text" && subtype === "color") ||
 					parseColorString(getActualValue(value))?.format === "rgb",
 				action: pasteColorAsRGB,
 			},
 			{
 				text: t("clipboard.button.context_menu.paste_as_hex"),
 				hide:
-					type !== "color" ||
+					!(type === "text" && subtype === "color") ||
 					parseColorString(getActualValue(value))?.format === "hex",
 				action: pasteColorAsHEX,
 			},
 			{
 				text: t("clipboard.button.context_menu.paste_as_cmyk"),
 				hide:
-					type !== "color" ||
+					!(type === "text" && subtype === "color") ||
 					parseColorString(getActualValue(value))?.format === "cmyk",
 				action: pasteColorAsCMYK,
 			},
