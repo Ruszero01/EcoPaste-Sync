@@ -90,55 +90,51 @@ pub fn get_previous_window() -> Option<isize> {
     return PREVIOUS_WINDOW.lock().unwrap().clone();
 }
 
-// 聚焦上一个窗口
-fn focus_previous_window() {
-    unsafe {
-        let hwnd = match get_previous_window() {
-            Some(hwnd) => hwnd as HWND,
-            None => {
-                log::warn!("没有记录的上一个窗口");
-                return;
-            }
-        };
-
-        if hwnd.is_null() {
-            log::warn!("上一个窗口句柄为空");
-            return;
-        }
-
-        // 尝试聚焦到上一个窗口
-        let result = SetForegroundWindow(hwnd);
-        if result == 0 {
-            log::warn!("无法聚焦到上一个窗口");
-        } else {
-            let window_title = get_window_title(hwnd);
-            log::debug!("成功聚焦到上一个窗口: {}", window_title);
-        }
-    }
-}
-
-// 粘贴
+// 快速粘贴 - 不获取焦点，直接执行粘贴操作
+// 用于快捷键触发的快速粘贴，用户焦点已在目标窗口上
 #[command]
 pub async fn paste() {
     let mut enigo = Enigo::new(&Settings::default()).unwrap();
 
-    // 先尝试聚焦到上一个窗口
-    focus_previous_window();
-    
-    // 减少等待时间，确保窗口切换完成
-    wait(50);
+    // 使用 Shift+Insert 粘贴（避免与快捷键冲突）
+    log::info!("[Paste] 执行粘贴操作 (Shift+Insert)");
+    enigo.key(Key::LShift, Press).unwrap();
+    enigo.key(Key::Insert, Click).unwrap();
+    enigo.key(Key::LShift, Release).unwrap();
 
-    // 再次检查并确保焦点在正确的窗口
-    if get_previous_window().is_none() {
-        // 如果没有记录的上一个窗口，尝试使用当前活动窗口
-        log::warn!("没有记录的上一个窗口，尝试使用当前活动窗口");
+    wait(20);
+    log::info!("[Paste] 粘贴操作完成");
+}
+
+// 带焦点切换的粘贴 - 用于前端粘贴（前端窗口会抢占焦点）
+#[command]
+pub async fn paste_with_focus() {
+    let mut enigo = Enigo::new(&Settings::default()).unwrap();
+
+    // 尝试聚焦到上一个窗口
+    if let Some(prev_hwnd) = get_previous_window() {
+        log::info!("[Paste] 尝试聚焦到上一个窗口: {:?}", prev_hwnd);
+        let result = unsafe { SetForegroundWindow(prev_hwnd as HWND) };
+        if result == 0 {
+            log::warn!("[Paste] 无法聚焦到上一个窗口");
+        } else {
+            log::info!("[Paste] 聚焦成功");
+        }
+    } else {
+        log::warn!("[Paste] 没有记录的上一个窗口");
     }
 
-    // 执行粘贴操作 - 使用 Ctrl+V 而不是 Shift+Insert，因为更通用
-    enigo.key(Key::Control, Press).unwrap();
-    enigo.key(Key::Unicode('v'), Click).unwrap();
-    enigo.key(Key::Control, Release).unwrap();
-    
-    // 减少等待粘贴操作完成的时间
+    // 等待窗口切换完成
+    wait(50);
+
+    // 执行粘贴操作
+    log::info!("[Paste] 执行带焦点切换的粘贴操作 (Shift+Insert)");
+    enigo.key(Key::LShift, Press).unwrap();
+    enigo.key(Key::Insert, Click).unwrap();
+    enigo.key(Key::LShift, Release).unwrap();
+
+    // 等待粘贴操作完成
     wait(20);
+
+    log::info!("[Paste] 带焦点切换的粘贴操作完成");
 }

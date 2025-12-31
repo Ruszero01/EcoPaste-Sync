@@ -2,4 +2,4 @@
 
 [default]
 description = "Default permissions for the plugin"
-permissions = ["allow-paste"]
+permissions = ["allow-paste", "allow-paste-with-focus", "allow-quick-paste"]

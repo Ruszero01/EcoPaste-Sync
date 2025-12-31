@@ -8,7 +8,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import { useReactive } from "ahooks";
 import type { EventEmitter } from "ahooks/lib/useEventEmitter";
-import { findIndex, last, range } from "lodash-es";
+import { range } from "lodash-es";
 import { createContext, useCallback, useRef } from "react";
 import { useSnapshot } from "valtio";
 import Dock from "./components/Dock";
@@ -90,10 +90,10 @@ const Main = () => {
 
 	// 使用 useEffect 管理监听器生命周期
 	useEffect(() => {
-		let unlisten: (() => void) | null = null;
+		let unlistenClipboard: (() => void) | null = null;
 
 		const initListen = async () => {
-			unlisten = await listen<{ duplicate_id: string | null }>(
+			unlistenClipboard = await listen<{ duplicate_id: string | null }>(
 				"plugin:eco-clipboard://database_updated",
 				handleDatabaseUpdated,
 			);
@@ -102,7 +102,7 @@ const Main = () => {
 		initListen();
 
 		return () => {
-			unlisten?.();
+			unlistenClipboard?.();
 		};
 	}, [handleDatabaseUpdated]);
 
@@ -210,69 +210,12 @@ const Main = () => {
 		},
 	});
 
-	// 监听窗口显隐的快捷键
-	useRegister(() => {
-		toggleWindowVisible();
-	}, [shortcut.clipboard]);
-
 	// 监听粘贴为纯文本的快捷键
 	useKeyPress(shortcut.pastePlain, (event) => {
 		event.preventDefault();
 
 		// const data = find(state.list, { id: state.activeId });
 	});
-
-	// 监听快速粘贴的快捷键
-	useRegister(
-		async (event) => {
-			if (!globalStore.shortcut.quickPaste.enable) return;
-
-			const index = Number(last(event.shortcut));
-
-			const data = state.list[index - 1];
-
-			if (!data) return;
-
-			// 设置内部复制标志，防止快速粘贴操作后触发重复处理
-			clipboardStore.internalCopy = {
-				isCopying: true,
-				itemId: data.id,
-			};
-
-			try {
-				await pasteClipboard(data);
-			} finally {
-				// 清除内部复制标志
-				clipboardStore.internalCopy = {
-					isCopying: false,
-					itemId: null,
-				};
-			}
-
-			// 快速粘贴已有条目后，只更新时间（由后端决定是否更新 position）
-			const itemIndex = findIndex(state.list, { id: data.id });
-
-			if (itemIndex !== -1) {
-				const currentTime = Date.now();
-
-				// 只更新时间，不修改本地列表顺序（后端根据 autoSort 设置处理 position）
-				state.list[itemIndex] = {
-					...state.list[itemIndex],
-					time: currentTime,
-				};
-
-				// 更新数据库（后端根据 autoSort 设置决定是否更新 position）
-				await backendUpdateField(data.id, "time", currentTime.toString());
-
-				// 自动聚焦到快速粘贴的条目
-				state.activeId = data.id;
-
-				// 触发滚动事件（发送到 List 组件）
-				emit(LISTEN_KEY.ACTIVATE_BACK_TOP, "main");
-			}
-		},
-		[state.quickPasteKeys],
-	);
 
 	// 打开偏好设置窗口
 	useKeyPress(PRESET_SHORTCUT.OPEN_PREFERENCES, () => {

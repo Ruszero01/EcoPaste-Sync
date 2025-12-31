@@ -1,4 +1,6 @@
+import { generateQuickPasteShortcuts } from "@/constants";
 import { useTray } from "@/hooks/useTray";
+import { registerAllShortcuts } from "@/plugins/hotkey";
 import { HappyProvider } from "@ant-design/happy-work-theme";
 import { error } from "@tauri-apps/plugin-log";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -24,6 +26,19 @@ const App = () => {
 
 		// 生成 antd 的颜色变量
 		generateColorVars();
+
+		// 注册全局快捷键（在托盘初始化之前）
+		try {
+			await registerAllShortcuts(
+				globalStore.shortcut.clipboard,
+				globalStore.shortcut.preference,
+				globalStore.shortcut.quickPaste.enable
+					? generateQuickPasteShortcuts(globalStore.shortcut.quickPaste.value)
+					: [],
+			);
+		} catch (err) {
+			console.error("快捷键注册失败:", err);
+		}
 
 		// 初始化托盘 - 使用更强的防护机制
 		try {

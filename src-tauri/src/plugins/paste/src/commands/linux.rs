@@ -116,19 +116,37 @@ fn focus_previous_window() {
     }
 }
 
-// 粘贴
+// 快速粘贴 - 不获取焦点，直接执行粘贴操作
+// 用于快捷键触发的快速粘贴，用户焦点已在目标窗口上
 #[command]
 pub async fn paste() {
     fn dispatch(event_type: &EventType) {
         wait(20);
-
         simulate(event_type).unwrap();
     }
 
+    // 直接执行粘贴，不切换焦点
+    dispatch(&EventType::KeyPress(Key::ShiftLeft));
+    dispatch(&EventType::KeyPress(Key::Insert));
+    dispatch(&EventType::KeyRelease(Key::Insert));
+    dispatch(&EventType::KeyRelease(Key::ShiftLeft));
+}
+
+// 带焦点切换的粘贴 - 用于前端粘贴（前端窗口会抢占焦点）
+#[command]
+pub async fn paste_with_focus() {
+    fn dispatch(event_type: &EventType) {
+        wait(20);
+        simulate(event_type).unwrap();
+    }
+
+    // 先聚焦到上一个窗口
     focus_previous_window();
 
+    // 等待焦点切换完成
     wait(100);
 
+    // 执行粘贴操作
     dispatch(&EventType::KeyPress(Key::ShiftLeft));
     dispatch(&EventType::KeyPress(Key::Insert));
     dispatch(&EventType::KeyRelease(Key::Insert));

@@ -747,9 +747,9 @@ const Item: FC<ItemProps> = (props) => {
 			}
 
 			const { writeText } = await import("@/plugins/clipboard");
-			const { paste } = await import("@/plugins/paste");
+			const { pasteWithFocus } = await import("@/plugins/paste");
 			await writeText(result.value);
-			await paste();
+			await pasteWithFocus();
 			message.success(successMessage);
 		} catch (error) {
 			console.error("颜色格式转换失败:", error);
@@ -1373,9 +1373,9 @@ const Item: FC<ItemProps> = (props) => {
 
 					try {
 						const { writeText } = await import("@/plugins/clipboard");
-						const { paste } = await import("@/plugins/paste");
+						const { pasteWithFocus } = await import("@/plugins/paste");
 						await writeText("\n");
-						await paste();
+						await pasteWithFocus();
 						// 添加短暂延迟，确保换行操作完成
 						await new Promise((resolve) => setTimeout(resolve, 50));
 					} finally {

@@ -50,3 +50,18 @@ export const PRESET_SHORTCUT = {
 	HIDE_WINDOW: isMac ? "meta.w" : "ctrl.w",
 	FIXED_WINDOW: isMac ? "meta.p" : "ctrl.p",
 };
+
+/**
+ * 生成快速粘贴的快捷键列表
+ * @param prefix 前缀，如 "Command+Shift"
+ * @returns 快捷键数组，如 ["Command+Shift+1", "Command+Shift+2", ...]
+ */
+export const generateQuickPasteShortcuts = (prefix: string): string[] => {
+	const shortcuts: string[] = [];
+
+	for (let i = 1; i <= 9; i++) {
+		shortcuts.push(`${prefix}+${i}`);
+	}
+
+	return shortcuts;
+};

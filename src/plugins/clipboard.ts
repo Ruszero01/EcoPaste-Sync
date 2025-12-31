@@ -11,7 +11,7 @@ import { listen } from "@tauri-apps/api/event";
 import { exists } from "@tauri-apps/plugin-fs";
 import { isEmpty, isEqual } from "lodash-es";
 import { fullName, metadata } from "tauri-plugin-fs-pro-api";
-import { paste } from "./paste";
+import { pasteWithFocus } from "./paste";
 
 const COMMAND = {
 	START_LISTEN: "plugin:eco-clipboard|start_listen",
@@ -729,7 +729,7 @@ export const pasteClipboard = async (
 		await new Promise((resolve) => setTimeout(resolve, 30));
 
 		// 执行粘贴操作
-		await paste();
+		await pasteWithFocus();
 
 		// 再减少一个短暂延迟，确保粘贴操作完成
 		await new Promise((resolve) => setTimeout(resolve, 20));
@@ -845,7 +845,7 @@ export const batchPasteClipboard = async (
 				try {
 					await writeText("\n");
 					await new Promise((resolve) => setTimeout(resolve, 20));
-					await paste();
+					await pasteWithFocus();
 					// 减少延迟，确保换行操作完成
 					await new Promise((resolve) => setTimeout(resolve, 20));
 				} finally {

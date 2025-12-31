@@ -78,11 +78,29 @@ pub fn get_previous_window() -> Option<i32> {
     return PREVIOUS_WINDOW.lock().unwrap().clone();
 }
 
-// 粘贴
+// 快速粘贴 - 不获取焦点，直接执行粘贴操作
+// 用于快捷键触发的快速粘贴，用户焦点已在目标窗口上
 #[command]
 pub async fn paste<R: Runtime>(app_handle: AppHandle<R>, window: WebviewWindow<R>) {
+    // 直接执行粘贴，不退出 panel
+    let script = r#"tell application "System Events" to keystroke "v" using command down"#;
+
+    Command::new("osascript")
+        .args(["-e", script])
+        .output()
+        .expect("failed to execute process");
+}
+
+// 带焦点切换的粘贴 - 用于前端粘贴（前端窗口会抢占焦点）
+#[command]
+pub async fn paste_with_focus<R: Runtime>(app_handle: AppHandle<R>, window: WebviewWindow<R>) {
+    // 先退出 panel，获取焦点
     set_macos_panel(&app_handle, &window, MacOSPanelStatus::Resign);
 
+    // 等待焦点切换完成
+    std::thread::sleep(std::time::Duration::from_millis(50));
+
+    // 执行粘贴操作
     let script = r#"tell application "System Events" to keystroke "v" using command down"#;
 
     Command::new("osascript")

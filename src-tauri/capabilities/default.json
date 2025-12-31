@@ -57,6 +57,7 @@
 		"eco-clipboard:default",
 		"eco-database:default",
 		"eco-detector:default",
+		"eco-hotkey:default",
 		"eco-ocr:default",
 		"eco-paste:default",
 		"eco-sync:default",

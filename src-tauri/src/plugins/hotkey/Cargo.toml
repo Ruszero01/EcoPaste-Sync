@@ -1,0 +1,20 @@
+[package]
+name = "tauri-plugin-eco-hotkey"
+version = "0.1.0"
+description = "Global hotkey plugin for EcoPaste"
+authors = ["EcoPaste"]
+edition = "2021"
+rust-version = "1.77.2"
+links = "tauri-plugin-eco-hotkey"
+
+[dependencies]
+tauri = { workspace = true, features = ["tray-icon", "protocol-asset", "macos-private-api", "image-ico"] }
+tauri-plugin-global-shortcut = { workspace = true }
+tauri-plugin-eco-window = { workspace = true }
+serde = { workspace = true }
+serde_json.workspace = true
+log = { workspace = true }
+tokio = { version = "1.0", features = ["sync"] }
+
+[build-dependencies]
+tauri-plugin.workspace = true
