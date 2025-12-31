@@ -12,8 +12,9 @@ use tauri_plugin_eco_window::MAIN_WINDOW_TITLE;
 use winapi::shared::minwindef::DWORD;
 use winapi::shared::windef::{HWINEVENTHOOK, HWND};
 use winapi::um::winuser::{
-    GetWindowTextLengthW, GetWindowTextW, SetForegroundWindow, SetWinEventHook,
-    EVENT_SYSTEM_FOREGROUND, WINEVENT_OUTOFCONTEXT,
+    GetAsyncKeyState, GetWindowTextLengthW, GetWindowTextW, SetForegroundWindow, SetWinEventHook,
+    EVENT_SYSTEM_FOREGROUND, VK_CONTROL, VK_LSHIFT, VK_MENU, VK_RSHIFT, VK_LWIN, VK_RWIN,
+    WINEVENT_OUTOFCONTEXT,
 };
 
 static PREVIOUS_WINDOW: Mutex<Option<isize>> = Mutex::new(None);
@@ -90,11 +91,39 @@ pub fn get_previous_window() -> Option<isize> {
     return PREVIOUS_WINDOW.lock().unwrap().clone();
 }
 
+// 释放所有按住的修饰键（类似 Ditto 的 PopUpShiftKeys）
+// 这样可以确保粘贴操作不会被用户按住的修饰键干扰
+fn release_all_modifier_keys(enigo: &mut Enigo) {
+    // 需要检查和释放的修饰键列表
+    // 注意：使用通用的 Key::Alt 而不是 LAlt/RAlt，因为 enigo 没有这些变体
+    let modifier_keys = [
+        (VK_LSHIFT, Key::Shift),
+        (VK_RSHIFT, Key::Shift),
+        (VK_CONTROL, Key::Control),
+        (VK_MENU, Key::Alt),
+        (VK_LWIN, Key::LWin),
+        (VK_RWIN, Key::RWin),
+    ];
+
+    for (vk_code, enigo_key) in modifier_keys.iter() {
+        // 检查按键是否被按住（高位为1表示按下）
+        let state = unsafe { GetAsyncKeyState(*vk_code) };
+        if (state & 0x8000u16 as i16) != 0 {
+            log::debug!("[Paste] 检测到按住的修饰键，释放 VK{:?}: {:?}", vk_code, enigo_key);
+            let _ = enigo.key(*enigo_key, Release);
+        }
+    }
+}
+
 // 快速粘贴 - 不获取焦点，直接执行粘贴操作
 // 用于快捷键触发的快速粘贴，用户焦点已在目标窗口上
 #[command]
 pub async fn paste() {
     let mut enigo = Enigo::new(&Settings::default()).unwrap();
+
+    // 释放所有按住的修饰键（Ditto 风格）
+    // 这样可以避免用户按住的 Alt/Ctrl 等键干扰粘贴操作
+    release_all_modifier_keys(&mut enigo);
 
     // 使用 Shift+Insert 粘贴（避免与快捷键冲突）
     log::info!("[Paste] 执行粘贴操作 (Shift+Insert)");
@@ -102,7 +131,7 @@ pub async fn paste() {
     enigo.key(Key::Insert, Click).unwrap();
     enigo.key(Key::LShift, Release).unwrap();
 
-    wait(20);
+    wait(5);
     log::info!("[Paste] 粘贴操作完成");
 }
 
@@ -127,10 +156,16 @@ pub async fn paste_with_focus() {
     // 等待窗口切换完成
     wait(50);
 
+    // 释放所有按住的修饰键
+    release_all_modifier_keys(&mut enigo);
+    wait(10);
+
     // 执行粘贴操作
     log::info!("[Paste] 执行带焦点切换的粘贴操作 (Shift+Insert)");
     enigo.key(Key::LShift, Press).unwrap();
+    wait(5);
     enigo.key(Key::Insert, Click).unwrap();
+    wait(5);
     enigo.key(Key::LShift, Release).unwrap();
 
     // 等待粘贴操作完成
