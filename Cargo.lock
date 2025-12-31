@@ -6250,6 +6250,7 @@ dependencies = [
  "serde_json",
  "tauri",
  "tauri-plugin",
+ "tauri-plugin-eco-detector",
  "tokio",
  "windows 0.58.0",
 ]

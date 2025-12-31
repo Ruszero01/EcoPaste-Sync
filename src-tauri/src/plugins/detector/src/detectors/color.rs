@@ -262,6 +262,52 @@ pub mod conversion {
     pub fn color_to_rgb_vector(color: &str) -> Option<String> {
         convert(color, TargetType::RgbVector)
     }
+
+    /// 在颜色列表中查找与目标颜色相似的记录
+    ///
+    /// # Arguments
+    /// * `new_search` - 新颜色的 search 字段（RGB 向量字符串）
+    /// * `records` - 现有颜色记录列表 (id, search)
+    ///
+    /// # Returns
+    /// 返回第一个相似颜色的 id（在容差范围内），如果没有相似的返回 None
+    pub fn find_similar_color(new_search: &str, records: &[(String, String)]) -> Option<String> {
+        let rgb_new = color_to_rgb_vector(new_search)?;
+
+        // 解析 RGB 向量
+        let parse_rgb = |s: &str| -> Option<(u8, u8, u8)> {
+            let parts: Vec<&str> = s.split(',').collect();
+            if parts.len() == 3 {
+                let r = parts[0].trim().parse().ok()?;
+                let g = parts[1].trim().parse().ok()?;
+                let b = parts[2].trim().parse().ok()?;
+                Some((r, g, b))
+            } else {
+                None
+            }
+        };
+
+        let rgb_new = parse_rgb(&rgb_new)?;
+
+        for (id, existing_search) in records {
+            if let Some(rgb_existing) = color_to_rgb_vector(existing_search) {
+                if let Some((r1, g1, b1)) = parse_rgb(&rgb_existing) {
+                    // 计算欧几里得距离
+                    let diff_r = rgb_new.0 as f64 - r1 as f64;
+                    let diff_g = rgb_new.1 as f64 - g1 as f64;
+                    let diff_b = rgb_new.2 as f64 - b1 as f64;
+                    let distance = (diff_r * diff_r + diff_g * diff_g + diff_b * diff_b).sqrt();
+
+                    // 容差阈值：距离 <= 10 视为相似颜色
+                    if distance <= 10.0 {
+                        return Some(id.clone());
+                    }
+                }
+            }
+        }
+
+        None
+    }
 }
 
 #[cfg(test)]

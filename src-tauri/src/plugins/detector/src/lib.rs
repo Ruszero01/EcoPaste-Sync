@@ -14,6 +14,7 @@ pub use commands::convert_color;
 pub use commands::ColorConvertResult;
 pub use models::TypeDetectionResult;
 pub use detectors::{DetectionOptions, DetectionResult, detect_color, get_color_format, conversion};
+pub use detectors::conversion::find_similar_color;
 
 /// Detector 插件状态
 pub struct DetectorState(Mutex<()>);
