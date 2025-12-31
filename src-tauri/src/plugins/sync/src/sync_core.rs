@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tauri_plugin_eco_database::DatabaseState;
+use tauri_plugin_eco_database::{DatabaseState, DeleteManager};
 
 /// 同步模式配置
 /// 前端踩坑：模式变更需要触发全量同步，否则状态会混乱
@@ -1604,14 +1604,15 @@ impl SyncCore {
 
         // 2. 本地硬删除软删除项目
         log::info!("🗑️ 开始本地硬删除软删除项目...");
-        let db = database_state.lock().await;
-        for item_id in &synced_deleted_items {
-            if let Err(e) = db.hard_delete(item_id) {
+        let mut db = database_state.lock().await;
+        match DeleteManager::batch_hard_delete(&mut *db, &synced_deleted_items) {
+            Ok(count) => {
+                log::info!("✅ 本地硬删除完成，共 {} 项", count);
+                deleted_items = synced_deleted_items.clone();
+            }
+            Err(e) => {
                 self.report_error(format!("本地硬删除失败: {}", e));
                 log::error!("❌ 本地硬删除失败: {}", e);
-            } else {
-                log::info!("✅ 本地硬删除完成: {}", item_id);
-                deleted_items.push(item_id.clone());
             }
         }
 

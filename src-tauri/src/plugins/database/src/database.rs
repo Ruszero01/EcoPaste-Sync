@@ -371,24 +371,6 @@ impl DatabaseManager {
         Ok(())
     }
 
-    /// 批量硬删除项目
-    ///
-    /// # Arguments
-    /// * `ids` - 项目ID列表
-    pub fn batch_hard_delete(&self, ids: &[String]) -> Result<usize, String> {
-        if ids.is_empty() {
-            return Ok(0);
-        }
-
-        let conn = self.get_connection().map_err(|e| e.to_string())?;
-
-        let placeholders: String = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-        let query = format!("DELETE FROM history WHERE id IN ({})", placeholders);
-
-        conn.execute(&query, rusqlite::params_from_iter(ids))
-            .map_err(|e| format!("批量硬删除失败: {}", e))
-    }
-
     /// 获取统计信息
     pub fn get_statistics(&self) -> Result<DatabaseStatistics, String> {
         let conn = self.get_connection()?;
