@@ -162,6 +162,12 @@ pub fn update_field(
             let conn = db.get_connection()?;
             db.get_change_tracker().mark_item_changed(&conn, &id, "content")?;
         }
+        "search" => {
+            db.update_field(&id, "search", &value)?;
+            db.update_field(&id, "time", &current_time.to_string())?;
+            let conn = db.get_connection()?;
+            db.get_change_tracker().mark_item_changed(&conn, &id, "search")?;
+        }
         "type" => {
             db.update_field(&id, "type", &value)?;
             db.update_field(&id, "time", &current_time.to_string())?;

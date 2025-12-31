@@ -480,13 +480,14 @@ impl DatabaseManager {
         }
 
         // 检查是否已存在相同内容
-        // 对于颜色类型（subtype='color'），同时检查 search 字段（RGB 向量）是否相同
-        // 这样 #FF0000、rgb(255,0,0)、cmyk(0,100,100,0) 会被识别为相同颜色
+        // 统一使用 search 字段去重：
+        // - 颜色类型：基于 RGB 向量容差去重（颜色转换可能有精度损失）
+        // - 格式文本：使用 search（纯文本版本），粘贴纯文本时能识别相同内容
+        // - 普通文本：search 等于 value，效果相同
         let item_type_str = item.item_type.as_deref().unwrap_or("text");
         let existing_id: Option<String> = if item.subtype.as_deref() == Some("color") && item.search.is_some() {
             // 颜色类型：基于 RGB 向量容差去重
             let new_search = item.search.as_deref().unwrap_or("");
-            // 查询所有同类型的颜色记录
             let mut stmt = conn.prepare(
                 "SELECT id, search FROM history WHERE type = ?1 AND subtype = 'color' AND deleted = 0",
             ).map_err(|e| format!("查询颜色记录失败: {}", e))?;
@@ -497,10 +498,16 @@ impl DatabaseManager {
                     color_records.push((id, search));
                 }
             }
-            // 使用 detector 插件的容差匹配函数
             tauri_plugin_eco_detector::find_similar_color(new_search, &color_records)
+        } else if item.search.is_some() {
+            // 其他类型：基于 search 字段精确匹配
+            conn.query_row(
+                "SELECT id FROM history WHERE type = ?1 AND search = ?2 AND deleted = 0 LIMIT 1",
+                params![item_type_str, item.search.as_deref().unwrap_or("")],
+                |row| row.get(0),
+            ).unwrap_or(None)
         } else {
-            // 普通类型：基于 value 去重
+            // Fallback: 基于 value 去重（兼容没有 search 字段的类型）
             conn.query_row(
                 "SELECT id FROM history WHERE type = ?1 AND value = ?2 AND deleted = 0 LIMIT 1",
                 params![item_type_str, item.value.as_deref().unwrap_or("")],

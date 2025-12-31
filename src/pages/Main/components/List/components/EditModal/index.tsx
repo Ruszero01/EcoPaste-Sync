@@ -2,6 +2,7 @@ import CodeEditor from "@/components/CodeEditor";
 import ColorPicker from "@/components/ColorPicker";
 import { useAppTheme } from "@/hooks/useTheme";
 import { MainContext } from "@/pages/Main";
+import { convertColor } from "@/plugins/clipboard";
 import { backendUpdateField } from "@/plugins/database";
 import { clipboardStore } from "@/stores/clipboard";
 import type { HistoryTablePayload } from "@/types/database";
@@ -252,6 +253,21 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 			// 1. 更新内容
 			if (originalValue !== formContent) {
 				await backendUpdateField(id, "content", formContent);
+				// 同时更新 search 字段（用于去重）
+				if (parsedSubtype === "color") {
+					// 颜色类型：search 是 RGB 向量
+					const rgbResult = await convertColor(formContent, "rgbVector");
+					if (rgbResult.success) {
+						await backendUpdateField(id, "search", rgbResult.value);
+					}
+				} else if (updateType === "formatted") {
+					// 格式文本：提取纯文本作为 search
+					const plainText = formContent.replace(/<[^>]*>/g, "").trim();
+					await backendUpdateField(id, "search", plainText);
+				} else {
+					// 其他类型：search 等于 value
+					await backendUpdateField(id, "search", formContent);
+				}
 			}
 
 			// 2. 更新类型和子类型
