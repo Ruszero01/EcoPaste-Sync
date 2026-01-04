@@ -54,7 +54,7 @@ unsafe extern "system" fn event_hook_callback(
             return;
         }
 
-        // 检查窗口是否有效（不是桌面等系统窗口）
+        // 检查窗口是否有效
         if hwnd.is_null() {
             return;
         }
@@ -68,7 +68,6 @@ unsafe extern "system" fn event_hook_callback(
 // 监听窗口切换
 pub fn observe_app() {
     unsafe {
-        // 设置事件钩子
         let hook = SetWinEventHook(
             EVENT_SYSTEM_FOREGROUND,
             EVENT_SYSTEM_FOREGROUND,
@@ -91,11 +90,8 @@ pub fn get_previous_window() -> Option<isize> {
     return PREVIOUS_WINDOW.lock().unwrap().clone();
 }
 
-// 释放所有按住的修饰键（类似 Ditto 的 PopUpShiftKeys）
-// 这样可以确保粘贴操作不会被用户按住的修饰键干扰
+// 释放所有按住的修饰键
 fn release_all_modifier_keys(enigo: &mut Enigo) {
-    // 需要检查和释放的修饰键列表
-    // 注意：使用通用的 Key::Alt 而不是 LAlt/RAlt，因为 enigo 没有这些变体
     let modifier_keys = [
         (VK_LSHIFT, Key::Shift),
         (VK_RSHIFT, Key::Shift),
@@ -106,70 +102,50 @@ fn release_all_modifier_keys(enigo: &mut Enigo) {
     ];
 
     for (vk_code, enigo_key) in modifier_keys.iter() {
-        // 检查按键是否被按住（高位为1表示按下）
         let state = unsafe { GetAsyncKeyState(*vk_code) };
         if (state & 0x8000u16 as i16) != 0 {
-            log::debug!("[Paste] 检测到按住的修饰键，释放 VK{:?}: {:?}", vk_code, enigo_key);
             let _ = enigo.key(*enigo_key, Release);
         }
     }
 }
 
 // 快速粘贴 - 不获取焦点，直接执行粘贴操作
-// 用于快捷键触发的快速粘贴，用户焦点已在目标窗口上
 #[command]
 pub async fn paste() {
     let mut enigo = Enigo::new(&Settings::default()).unwrap();
 
-    // 释放所有按住的修饰键（Ditto 风格）
-    // 这样可以避免用户按住的 Alt/Ctrl 等键干扰粘贴操作
     release_all_modifier_keys(&mut enigo);
 
-    // 使用 Shift+Insert 粘贴（避免与快捷键冲突）
-    log::info!("[Paste] 执行粘贴操作 (Shift+Insert)");
     enigo.key(Key::LShift, Press).unwrap();
     enigo.key(Key::Insert, Click).unwrap();
     enigo.key(Key::LShift, Release).unwrap();
 
     wait(5);
-    log::info!("[Paste] 粘贴操作完成");
 }
 
-// 带焦点切换的粘贴 - 用于前端粘贴（前端窗口会抢占焦点）
+// 带焦点切换的粘贴
 #[command]
 pub async fn paste_with_focus() {
     let mut enigo = Enigo::new(&Settings::default()).unwrap();
 
-    // 尝试聚焦到上一个窗口
     if let Some(prev_hwnd) = get_previous_window() {
-        log::info!("[Paste] 尝试聚焦到上一个窗口: {:?}", prev_hwnd);
         let result = unsafe { SetForegroundWindow(prev_hwnd as HWND) };
         if result == 0 {
             log::warn!("[Paste] 无法聚焦到上一个窗口");
-        } else {
-            log::info!("[Paste] 聚焦成功");
         }
     } else {
         log::warn!("[Paste] 没有记录的上一个窗口");
     }
 
-    // 等待窗口切换完成
     wait(50);
-
-    // 释放所有按住的修饰键
     release_all_modifier_keys(&mut enigo);
     wait(10);
 
-    // 执行粘贴操作
-    log::info!("[Paste] 执行带焦点切换的粘贴操作 (Shift+Insert)");
     enigo.key(Key::LShift, Press).unwrap();
     wait(5);
     enigo.key(Key::Insert, Click).unwrap();
     wait(5);
     enigo.key(Key::LShift, Release).unwrap();
 
-    // 等待粘贴操作完成
     wait(20);
-
-    log::info!("[Paste] 带焦点切换的粘贴操作完成");
 }
