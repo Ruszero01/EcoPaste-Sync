@@ -88,6 +88,10 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             // 构建数据目录：{saveDataDir}/{bundleId}
             let data_dir = save_data_dir.join(bundle_id);
 
+            // 确保数据目录存在
+            std::fs::create_dir_all(&data_dir)
+                .map_err(|e| format!("创建数据目录失败: {}", e))?;
+
             // 设置数据库路径并初始化 - 如果失败则应用启动失败
             db.set_database_path(
                 data_dir.to_string_lossy().to_string(),
