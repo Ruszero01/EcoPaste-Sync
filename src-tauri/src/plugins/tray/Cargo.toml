@@ -1,0 +1,20 @@
+[package]
+name = "tauri-plugin-eco-tray"
+version = "0.1.0"
+description = "System tray plugin for EcoPaste"
+authors = ["EcoPaste"]
+edition = "2021"
+rust-version = "1.77.2"
+links = "tauri-plugin-eco-tray"
+
+[dependencies]
+tauri = { workspace = true, features = ["tray-icon", "protocol-asset", "macos-private-api", "image-ico"] }
+serde = { workspace = true }
+serde_json.workspace = true
+log = { workspace = true }
+thiserror.workspace = true
+tauri-plugin-eco-window = { workspace = true }
+tauri-plugin-eco-clipboard = { workspace = true }
+
+[build-dependencies]
+tauri-plugin.workspace = true

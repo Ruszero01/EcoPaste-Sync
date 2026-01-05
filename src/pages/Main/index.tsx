@@ -111,9 +111,6 @@ const Main = () => {
 
 		// 初始化 Windows 11 Mica 材质效果
 		initializeMicaEffect();
-
-		// 开启剪贴板监听（后端会自动处理数据插入）
-		startListen();
 	});
 
 	// 监听快速粘贴的启用状态变更
@@ -181,11 +178,6 @@ const Main = () => {
 			lastQueryParams = "";
 			getListDebounced(50);
 		}
-	});
-
-	// 切换剪贴板监听状态
-	useTauriListen<boolean>(LISTEN_KEY.TOGGLE_LISTEN_CLIPBOARD, ({ payload }) => {
-		toggleListen(payload);
 	});
 
 	// 监听窗口焦点

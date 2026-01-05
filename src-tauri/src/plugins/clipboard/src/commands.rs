@@ -391,6 +391,83 @@ where
     }
 }
 
+/// 切换剪贴板监听状态
+pub fn toggle_listen<R: Runtime>(app_handle: &AppHandle<R>) {
+    let manager = match app_handle.try_state::<ClipboardManager>() {
+        Some(m) => m,
+        None => return,
+    };
+
+    let mut watcher_shutdown = manager.watcher_shutdown.lock().unwrap();
+
+    if (*watcher_shutdown).is_some() {
+        // 当前正在监听，停止
+        if let Some(shutdown) = (*watcher_shutdown).take() {
+            shutdown.stop();
+        }
+        *watcher_shutdown = None;
+    } else {
+        // 当前未监听，开始监听
+        let listener = ClipboardListen::new(app_handle.clone());
+
+        let mut watcher: ClipboardWatcherContext<ClipboardListen<R>> =
+            match ClipboardWatcherContext::new() {
+                Ok(w) => w,
+                Err(e) => {
+                    log::error!("[Clipboard] 创建监听器失败: {}", e);
+                    return;
+                }
+            };
+
+        let watcher_shutdown_chan = watcher.add_handler(listener).get_shutdown_channel();
+        *watcher_shutdown = Some(watcher_shutdown_chan);
+
+        spawn(move || {
+            watcher.start_watch();
+        });
+    }
+}
+
+/// 内部启动监听函数（供 setup 使用，不依赖 State）
+pub fn start_listen_inner<R: Runtime>(app_handle: &AppHandle<R>) -> Result<(), String> {
+    let manager = match app_handle.try_state::<ClipboardManager>() {
+        Some(m) => m,
+        None => return Err("ClipboardManager 未初始化".to_string()),
+    };
+
+    let mut watcher_shutdown_state = manager.watcher_shutdown.lock().unwrap();
+
+    if (*watcher_shutdown_state).is_some() {
+        return Ok(());
+    }
+
+    let listener = ClipboardListen::new(app_handle.clone());
+
+    let mut watcher: ClipboardWatcherContext<ClipboardListen<R>> =
+        ClipboardWatcherContext::new().map_err(|e| format!("创建监听器失败: {}", e))?;
+
+    let watcher_shutdown = watcher.add_handler(listener).get_shutdown_channel();
+
+    *watcher_shutdown_state = Some(watcher_shutdown);
+
+    spawn(move || {
+        watcher.start_watch();
+    });
+
+    Ok(())
+}
+
+/// 检查剪贴板监听是否已开启
+pub fn is_listen_enabled<R: Runtime>(app_handle: &AppHandle<R>) -> bool {
+    let manager = match app_handle.try_state::<ClipboardManager>() {
+        Some(m) => m,
+        None => return false,
+    };
+
+    let watcher_shutdown = manager.watcher_shutdown.lock().unwrap();
+    watcher_shutdown.is_some()
+}
+
 #[derive(Debug, serde::Serialize)]
 pub struct ReadImage {
     width: u32,

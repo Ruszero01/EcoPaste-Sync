@@ -1,10 +1,21 @@
 mod core;
 
 use core::{prevent_default, setup};
-use tauri::{generate_context, Builder, Manager, WindowEvent};
+use log::error;
+use std::sync::atomic::AtomicBool;
+use tauri::{generate_context, Builder, Listener, Manager, WindowEvent};
 use tauri_plugin_autostart::MacosLauncher;
+use tauri_plugin_eco_tray::create_tray;
 use tauri_plugin_eco_window::{show_main_window, MAIN_WINDOW_LABEL, PREFERENCE_WINDOW_LABEL};
 use tauri_plugin_log::{Target, TargetKind};
+
+/// 标志：是否允许应用退出（由 window 插件控制）
+static ALLOW_EXIT: AtomicBool = AtomicBool::new(false);
+
+/// 允许应用退出（供 window 插件使用）
+pub fn allow_exit() {
+    ALLOW_EXIT.store(true, std::sync::atomic::Ordering::SeqCst);
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -38,6 +49,25 @@ pub fn run() {
             }
 
             setup::default(&app_handle, main_window, preference_window);
+
+            // 监听托盘退出允许事件
+            {
+                let app_handle = app_handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    let _ = app_handle.listen("tray://allow-exit-and-exit", move |_event| {
+                        allow_exit();
+                        log::info!("[Lib] 收到退出允许事件");
+                    });
+                });
+            }
+
+            // 创建系统托盘（异步执行，不阻塞启动）
+            let tray_app_handle = app_handle.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = create_tray(tray_app_handle).await {
+                    error!("[Lib] 创建系统托盘失败: {}", e);
+                }
+            });
 
             Ok(())
         })
@@ -109,6 +139,8 @@ pub fn run() {
         .plugin(tauri_plugin_eco_detector::init())
         // 快捷键插件
         .plugin(tauri_plugin_eco_hotkey::init())
+        // 系统托盘插件
+        .plugin(tauri_plugin_eco_tray::init())
         // Shell 插件：https://github.com/tauri-apps/plugins-workspace/tree/v2/plugins/shell
         .plugin(tauri_plugin_shell::init())
         .on_window_event(|window, event| match event {
@@ -125,8 +157,11 @@ pub fn run() {
 
     app.run(|app_handle, event| match event {
         // 阻止应用在没有窗口时自动退出（轻量模式）
+        // 除非 ALLOW_EXIT 标志为 true（托盘菜单触发的退出）
         tauri::RunEvent::ExitRequested { api, .. } => {
-            api.prevent_exit();
+            if !ALLOW_EXIT.load(std::sync::atomic::Ordering::SeqCst) {
+                api.prevent_exit();
+            }
         }
         #[cfg(target_os = "macos")]
         tauri::RunEvent::Reopen {

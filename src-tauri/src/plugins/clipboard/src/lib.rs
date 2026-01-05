@@ -7,11 +7,19 @@ use tauri::{
 
 mod commands;
 
+pub use commands::toggle_listen;
+pub use commands::is_listen_enabled;
+
 
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("eco-clipboard")
         .setup(move |app, _api| {
             app.manage(ClipboardManager::new());
+
+            // 自动启动剪贴板监听（纯后端方案）
+            if let Err(e) = commands::start_listen_inner(&app) {
+                log::error!("[Clipboard] 自动启动监听失败: {}", e);
+            }
 
             Ok(())
         })

@@ -1390,6 +1390,7 @@ checksum = "1c7a8fb8a9fbf66c1f703fe16184d10ca0ee9d23be5b4436400408ba54a95005"
 name = "eco-paste-sync"
 version = "0.1.0"
 dependencies = [
+ "log",
  "serde",
  "serde_json",
  "tauri",
@@ -1406,6 +1407,7 @@ dependencies = [
  "tauri-plugin-eco-ocr",
  "tauri-plugin-eco-paste",
  "tauri-plugin-eco-sync",
+ "tauri-plugin-eco-tray",
  "tauri-plugin-eco-window",
  "tauri-plugin-fs",
  "tauri-plugin-fs-pro",
@@ -6355,6 +6357,20 @@ dependencies = [
  "tauri-plugin",
  "tauri-plugin-eco-database",
  "tokio",
+]
+
+[[package]]
+name = "tauri-plugin-eco-tray"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-plugin",
+ "tauri-plugin-eco-clipboard",
+ "tauri-plugin-eco-window",
+ "thiserror 2.0.12",
 ]
 
 [[package]]

@@ -14,6 +14,7 @@ cocoa = ">=0.25, <1"
 tauri-plugin-shell = "2"
 tauri-plugin-fs-pro = "2"
 tauri-plugin-global-shortcut = "2"
+tauri-plugin-window = "2"
 tauri-plugin = { version = "2", features = ["build"] }
 tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2" }
 tauri-plugin-eco-window = { path = "./src-tauri/src/plugins/window" }
@@ -25,6 +26,7 @@ tauri-plugin-eco-database = { path = "./src-tauri/src/plugins/database" }
 tauri-plugin-eco-sync = { path = "./src-tauri/src/plugins/sync" }
 tauri-plugin-eco-detector = { path = "./src-tauri/src/plugins/detector" }
 tauri-plugin-eco-hotkey = { path = "./src-tauri/src/plugins/hotkey" }
+tauri-plugin-eco-tray = { path = "./src-tauri/src/plugins/tray" }
 
 # 依赖版本统一
 thiserror = "2"

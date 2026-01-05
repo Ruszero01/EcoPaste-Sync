@@ -14,7 +14,6 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::show_window,
             commands::show_window_with_position,
             commands::destroy_window,
-            commands::exit_app, // 新增：退出应用
             commands::show_taskbar_icon,
             commands::show_main_window,
             commands::show_preference_window,

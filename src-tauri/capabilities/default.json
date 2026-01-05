@@ -61,6 +61,7 @@
 		"eco-ocr:default",
 		"eco-paste:default",
 		"eco-sync:default",
-		"eco-window:default"
+		"eco-window:default",
+		"eco-tray:default"
 	]
 }

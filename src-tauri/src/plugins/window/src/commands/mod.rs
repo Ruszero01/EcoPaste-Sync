@@ -7,6 +7,14 @@ pub static PREFERENCE_WINDOW_LABEL: &str = "preference";
 // 主窗口的title
 pub static MAIN_WINDOW_TITLE: &str = "EcoPaste";
 
+// 标志：是否允许应用退出（由退出命令控制）
+static ALLOW_EXIT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// 允许应用退出
+pub fn allow_exit() {
+    ALLOW_EXIT.store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
 #[cfg(target_os = "macos")]
 mod macos;
 
@@ -34,10 +42,8 @@ fn get_window_state_path<R: Runtime>(app_handle: &AppHandle<R>) -> Result<std::p
 // 读取保存的窗口状态 (x, y, width, height)
 pub fn get_saved_window_state<R: Runtime>(app_handle: &AppHandle<R>, label: &str) -> Result<Option<(i32, i32, u32, u32)>, String> {
     let path = get_window_state_path(app_handle)?;
-    log::debug!("[Window] 尝试读取窗口状态文件: {:?}", path);
 
     if !path.exists() {
-        log::debug!("[Window] 窗口状态文件不存在");
         return Ok(None);
     }
 
@@ -47,18 +53,14 @@ pub fn get_saved_window_state<R: Runtime>(app_handle: &AppHandle<R>, label: &str
     let states: serde_json::Value = serde_json::from_str(&content)
         .map_err(|e| format!("解析窗口状态文件失败: {}", e))?;
 
-    log::debug!("[Window] 解析后的状态内容: {}", states);
-
     if let Some(state) = states.get(label) {
         let x = state.get("x").and_then(|v| v.as_i64()).unwrap_or(0);
         let y = state.get("y").and_then(|v| v.as_i64()).unwrap_or(0);
         let width = state.get("width").and_then(|v| v.as_u64()).unwrap_or(0);
         let height = state.get("height").and_then(|v| v.as_u64()).unwrap_or(0);
-        log::info!("[Window] 读取到窗口状态: x={}, y={}, width={}, height={}", x, y, width, height);
         return Ok(Some((x as i32, y as i32, width as u32, height as u32)));
     }
 
-    log::warn!("[Window] 未找到标签 '{}' 的窗口状态", label);
     Ok(None)
 }
 
@@ -182,8 +184,6 @@ pub(crate) fn calculate_safe_position_in_monitor(
 // 显示主窗口
 #[tauri::command]
 pub async fn show_main_window<R: Runtime>(app_handle: AppHandle<R>, position_mode: Option<String>) {
-    log::info!("[Window] show_main_window called, position_mode: {:?}", position_mode);
-
     let app_handle_clone = app_handle.clone();
     let label = MAIN_WINDOW_LABEL.to_string();
 
@@ -193,18 +193,11 @@ pub async fn show_main_window<R: Runtime>(app_handle: AppHandle<R>, position_mod
     #[cfg(target_os = "windows")]
     {
         if window_opt.is_none() {
-            log::info!("[Window] 窗口不存在，开始创建: {}", label);
-            match super::create_window(app_handle_clone.clone(), label.clone(), position_mode.as_deref()).await {
-                Ok(()) => {
-                    log::info!("[Window] 创建成功，查询窗口");
-                    window_opt = app_handle_clone.get_webview_window(&label);
-                    log::info!("[Window] 窗口查询结果: {:?}", window_opt.is_some());
-                }
-                Err(e) => {
-                    log::error!("[Window] 创建失败: {}", e);
-                    return;
-                }
+            if let Err(e) = super::create_window(app_handle_clone.clone(), label.clone(), position_mode.as_deref()).await {
+                log::error!("[Window] 创建窗口失败: {}", e);
+                return;
             }
+            window_opt = app_handle_clone.get_webview_window(&label);
         }
     }
 
@@ -213,60 +206,42 @@ pub async fn show_main_window<R: Runtime>(app_handle: AppHandle<R>, position_mod
         match position_mode.as_deref() {
             Some("remember") => {
                 // 尝试应用保存的位置
-                match get_saved_window_state(&app_handle, &label) {
-                    Ok(Some(state)) => {
-                        let (x, y, saved_width, saved_height) = state;
-                        log::info!("[Window] 应用保存的窗口位置: x={}, y={}, width={}, height={}", x, y, saved_width, saved_height);
-                        let pos_result = window.set_position(tauri::PhysicalPosition::new(x, y));
-                        log::info!("[Window] set_position 结果: {:?}", pos_result);
-                        if saved_width > 0 && saved_height > 0 {
-                            let size_result = window.set_size(tauri::PhysicalSize::new(saved_width, saved_height));
-                            log::info!("[Window] set_size 结果: {:?}", size_result);
-                        }
-                    }
-                    Ok(None) => {
-                        log::warn!("[Window] 未找到保存的窗口状态，使用默认位置");
-                    }
-                    Err(e) => {
-                        log::error!("[Window] 读取窗口状态失败: {}", e);
+                if let Ok(Some(state)) = get_saved_window_state(&app_handle, &label) {
+                    let (x, y, saved_width, saved_height) = state;
+                    let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+                    if saved_width > 0 && saved_height > 0 {
+                        let _ = window.set_size(tauri::PhysicalSize::new(saved_width, saved_height));
                     }
                 }
             }
             Some("follow") => {
                 // 跟随鼠标位置（使用安全位置计算，不超出屏幕）
-                match app_handle.cursor_position() {
-                    Ok(cursor_pos) => {
-                        let mut window_width = 360;
-                        let mut window_height = 600;
+                if let Ok(cursor_pos) = app_handle.cursor_position() {
+                    let mut window_width = 360;
+                    let mut window_height = 600;
 
-                        if let Ok(size) = window.inner_size() {
-                            window_width = size.width;
-                            window_height = size.height;
-                        }
-
-                        // 计算安全的窗口位置
-                        let (safe_x, safe_y) = match find_monitor_at_position(&app_handle, cursor_pos.x, cursor_pos.y) {
-                            Some(monitor) => calculate_safe_position_in_monitor(
-                                cursor_pos.x as i32,
-                                cursor_pos.y as i32,
-                                window_width,
-                                window_height,
-                                &monitor,
-                            ),
-                            None => (cursor_pos.x as i32, cursor_pos.y as i32),
-                        };
-
-                        let _ = window.set_position(tauri::PhysicalPosition::new(safe_x, safe_y));
-                        log::info!("[Window] 跟随鼠标位置: 原始=({},{}), 安全位置=({},{})", cursor_pos.x, cursor_pos.y, safe_x, safe_y);
+                    if let Ok(size) = window.inner_size() {
+                        window_width = size.width;
+                        window_height = size.height;
                     }
-                    Err(e) => {
-                        log::error!("[Window] 获取鼠标位置失败: {}", e);
-                    }
+
+                    // 计算安全的窗口位置
+                    let (safe_x, safe_y) = match find_monitor_at_position(&app_handle, cursor_pos.x, cursor_pos.y) {
+                        Some(monitor) => calculate_safe_position_in_monitor(
+                            cursor_pos.x as i32,
+                            cursor_pos.y as i32,
+                            window_width,
+                            window_height,
+                            &monitor,
+                        ),
+                        None => (cursor_pos.x as i32, cursor_pos.y as i32),
+                    };
+
+                    let _ = window.set_position(tauri::PhysicalPosition::new(safe_x, safe_y));
                 }
             }
             Some("center") | None => {
                 // 居中显示 - 不设置位置，让窗口系统处理
-                log::info!("[Window] 居中显示（使用系统默认位置）");
             }
             _ => {
                 log::warn!("[Window] 未知的 position_mode: {:?}", position_mode);
@@ -297,9 +272,6 @@ pub async fn show_main_window<R: Runtime>(app_handle: AppHandle<R>, position_mod
                 let _ = window.set_always_on_top(false);
             }
         }
-        log::info!("[Window] 窗口显示成功");
-    } else {
-        log::warn!("[Window] 窗口不存在且无法创建");
     }
 }
 
@@ -315,30 +287,20 @@ fn show_window_by_label<R: Runtime>(app_handle: &AppHandle<R>, label: &str, posi
     let label_clone = label.to_string();
 
     spawn(async move {
-        log::info!("[Window] 显示窗口: {}", label_clone);
-
         // 首先尝试获取现有窗口
         let mut window_opt = app_handle_clone.get_webview_window(&label_clone);
-        log::info!("[Window] 初始窗口状态: {:?}", window_opt.is_some());
 
         // 在 Windows 上，如果窗口不存在，直接创建
         #[cfg(target_os = "windows")]
         {
             if window_opt.is_none() {
-                log::info!("[Window] 窗口不存在，创建新窗口: {}", label_clone);
-                let create_result = super::create_window(app_handle_clone.clone(), label_clone.clone(), position_mode.as_deref()).await;
-                log::info!("[Window] create_result: {:?}", create_result);
-
-                // 等待窗口管理器更新状态
-                std::thread::sleep(std::time::Duration::from_millis(100));
-
-                if let Ok(()) = create_result {
-                    window_opt = app_handle_clone.get_webview_window(&label_clone);
-                    log::info!("[Window] 窗口创建完成，再次查询: {:?}", window_opt.is_some());
-                } else {
-                    log::error!("[Window] 创建窗口失败: {}", label_clone);
+                if let Err(e) = super::create_window(app_handle_clone.clone(), label_clone.clone(), position_mode.as_deref()).await {
+                    log::error!("[Window] 创建窗口失败: {}", e);
                     return;
                 }
+                // 等待窗口管理器更新状态
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                window_opt = app_handle_clone.get_webview_window(&label_clone);
             }
         }
 
@@ -358,9 +320,6 @@ fn show_window_by_label<R: Runtime>(app_handle: &AppHandle<R>, label: &str, posi
                 let _ = window.unminimize();
                 let _ = window.set_focus();
             }
-            log::info!("[Window] 窗口显示成功: {}", label_clone);
-        } else {
-            log::warn!("[Window] 窗口不存在且无法创建: {}", label_clone);
         }
     });
 }

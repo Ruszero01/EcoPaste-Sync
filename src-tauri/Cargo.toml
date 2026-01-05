@@ -19,6 +19,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { workspace = true, features = ["tray-icon", "protocol-asset", "macos-private-api", "image-ico"] }
+log.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 tauri-plugin-shell.workspace = true
@@ -47,6 +48,7 @@ tauri-plugin-eco-database.workspace = true
 tauri-plugin-eco-sync.workspace = true
 tauri-plugin-eco-detector.workspace = true
 tauri-plugin-eco-hotkey.workspace = true
+tauri-plugin-eco-tray.workspace = true
 
 [target."cfg(target_os = \"macos\")".dependencies]
 tauri-nspanel.workspace = true

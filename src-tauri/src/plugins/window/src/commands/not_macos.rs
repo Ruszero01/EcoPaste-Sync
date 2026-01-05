@@ -46,16 +46,9 @@ pub async fn show_window_with_position<R: Runtime>(
 // 销毁窗口
 #[command]
 pub async fn destroy_window<R: Runtime>(window: WebviewWindow<R>) {
-    let label = window.label().to_string();
-    log::info!("[Window] 销毁窗口: {}", label);
-
     #[cfg(target_os = "windows")]
     {
-        if let Err(e) = window.destroy() {
-            log::warn!("[Window] destroy 失败: {}", e);
-        } else {
-            log::info!("[Window] destroy 成功");
-        }
+        let _ = window.destroy();
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -72,68 +65,48 @@ pub async fn create_window<R: Runtime>(
     label: String,
     position_mode: Option<&str>,
 ) -> Result<(), String> {
-    log::info!("[Window] 创建窗口: {}, position_mode: {:?}", label, position_mode);
-
     // 先检查窗口是否已存在，如果存在则销毁旧窗口
     if let Some(existing_window) = app_handle.get_webview_window(&label) {
-        log::info!("[Window] 窗口已存在，先销毁旧窗口: {}", label);
         let _ = existing_window.destroy();
     }
 
     let is_main = label == MAIN_WINDOW_LABEL;
-    log::info!("[Window] is_main={}", is_main);
 
     // 根据 position_mode 计算初始位置
     let initial_position = match position_mode {
         Some("remember") => {
             // 尝试读取保存的位置
-            match get_saved_window_state(&app_handle, &label) {
-                Ok(Some(state)) => {
-                    let (x, y, width, height) = state;
-                    log::info!("[Window] 创建时应用保存的位置: x={}, y={}, width={}, height={}", x, y, width, height);
-                    Some((x as f64, y as f64, width as f64, height as f64))
-                }
-                Ok(None) => {
-                    log::info!("[Window] 未找到保存的位置，使用居中");
-                    None
-                }
-                Err(e) => {
-                    log::error!("[Window] 读取保存位置失败: {}，使用居中", e);
-                    None
-                }
+            if let Ok(Some(state)) = get_saved_window_state(&app_handle, &label) {
+                let (x, y, width, height) = state;
+                Some((x as f64, y as f64, width as f64, height as f64))
+            } else {
+                None
             }
         }
         Some("follow") => {
             // 获取鼠标位置并计算安全的屏幕位置
-            match app_handle.cursor_position() {
-                Ok(cursor_pos) => {
-                    let window_width = if is_main { MAIN_WINDOW_WIDTH } else { PREFERENCE_WINDOW_WIDTH };
-                    let window_height = if is_main { MAIN_WINDOW_HEIGHT } else { PREFERENCE_WINDOW_HEIGHT };
+            if let Ok(cursor_pos) = app_handle.cursor_position() {
+                let window_width = if is_main { MAIN_WINDOW_WIDTH } else { PREFERENCE_WINDOW_WIDTH };
+                let window_height = if is_main { MAIN_WINDOW_HEIGHT } else { PREFERENCE_WINDOW_HEIGHT };
 
-                    // 计算安全的窗口位置（不超出屏幕）
-                    let (safe_x, safe_y) = match find_monitor_at_position(&app_handle, cursor_pos.x, cursor_pos.y) {
-                        Some(monitor) => calculate_safe_position_in_monitor(
-                            cursor_pos.x as i32,
-                            cursor_pos.y as i32,
-                            window_width,
-                            window_height,
-                            &monitor,
-                        ),
-                        None => (cursor_pos.x as i32, cursor_pos.y as i32),
-                    };
+                // 计算安全的窗口位置（不超出屏幕）
+                let (safe_x, safe_y) = match find_monitor_at_position(&app_handle, cursor_pos.x, cursor_pos.y) {
+                    Some(monitor) => calculate_safe_position_in_monitor(
+                        cursor_pos.x as i32,
+                        cursor_pos.y as i32,
+                        window_width,
+                        window_height,
+                        &monitor,
+                    ),
+                    None => (cursor_pos.x as i32, cursor_pos.y as i32),
+                };
 
-                    log::info!("[Window] 创建时跟随鼠标: 原始=({},{}), 安全位置=({},{})", cursor_pos.x, cursor_pos.y, safe_x, safe_y);
-                    Some((safe_x as f64, safe_y as f64, window_width as f64, window_height as f64))
-                }
-                Err(e) => {
-                    log::error!("[Window] 获取鼠标位置失败: {}，使用居中", e);
-                    None
-                }
+                Some((safe_x as f64, safe_y as f64, window_width as f64, window_height as f64))
+            } else {
+                None
             }
         }
         Some("center") | None | Some(_) => {
-            // 居中或不设置位置
-            log::info!("[Window] 使用居中位置");
             None
         }
     };
@@ -212,17 +185,14 @@ pub async fn create_window<R: Runtime>(
 
     // 监听窗口关闭事件，点击关闭按钮时直接销毁而不是隐藏
     let window_clone = _window.clone();
-    let label_clone = label.clone();
     _window.on_window_event(move |event: &tauri::WindowEvent| {
         if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-            log::info!("[Window] 收到关闭请求: {}", label_clone);
             // 阻止默认的隐藏行为，直接销毁窗口
             api.prevent_close();
             let _ = window_clone.destroy();
         }
     });
 
-    log::info!("[Window] 窗口创建成功: {}", label);
     Ok(())
 }
 
@@ -286,22 +256,4 @@ pub async fn is_mica_supported() -> bool {
     {
         false
     }
-}
-
-// 退出应用（真正关闭主进程）
-// TODO: 后续迁移到后端统一处理
-#[command]
-pub async fn exit_app<R: Runtime>(app_handle: AppHandle<R>) {
-    log::info!("[Window] 用户请求退出应用");
-
-    // 销毁所有窗口
-    if let Some(window) = app_handle.get_webview_window(MAIN_WINDOW_LABEL) {
-        let _ = window.destroy();
-    }
-    if let Some(window) = app_handle.get_webview_window(PREFERENCE_WINDOW_LABEL) {
-        let _ = window.destroy();
-    }
-
-    // 退出应用
-    std::process::exit(0);
 }
