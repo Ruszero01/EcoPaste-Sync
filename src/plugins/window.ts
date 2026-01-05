@@ -24,7 +24,6 @@ const COMMAND = {
 	SHOW_WINDOW: "plugin:eco-window|show_window",
 	SHOW_WINDOW_WITH_POSITION: "plugin:eco-window|show_window_with_position",
 	DESTROY_WINDOW: "plugin:eco-window|destroy_window",
-	EXIT_APP: "plugin:eco-window|exit_app",
 	SHOW_TASKBAR_ICON: "plugin:eco-window|show_taskbar_icon",
 	SHOW_MAIN_WINDOW: "plugin:eco-window|show_main_window",
 	SHOW_PREFERENCE_WINDOW: "plugin:eco-window|show_preference_window",
@@ -189,12 +188,4 @@ export const updateMicaTheme = async (isDark: boolean) => {
 	if (supported && isTauriEnvironment()) {
 		await applyMicaEffect(isDark);
 	}
-};
-
-/**
- * 退出应用（真正关闭主进程）
- * TODO: 后续迁移到后端统一处理
- */
-export const exitApp = async () => {
-	invoke(COMMAND.EXIT_APP);
 };
