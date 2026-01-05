@@ -1,6 +1,5 @@
 import { generateQuickPasteShortcuts } from "@/constants";
 import { registerAllShortcuts } from "@/plugins/hotkey";
-import { useEffect } from "react";
 import { subscribeKey } from "valtio/utils";
 
 type UnsubscribeFn = () => void;
@@ -44,17 +43,9 @@ export const useShortcutSubscription = (): UnsubscribeFn => {
 		}, 200);
 	};
 
-	useEffect(() => {
-		const timer = setTimeout(() => {
-			if (!isRegistering) {
-				isRegistering = true;
-				registerAllShortcutsSync().finally(() => {
-					isRegistering = false;
-				});
-			}
-		}, 200);
-		return () => clearTimeout(timer);
-	}, []);
+	// 注意：不再在 useEffect 中自动注册
+	// 后端在 setup 中会自动注册默认快捷键
+	// 前端只负责在快捷键配置变化时通知后端重新注册
 
 	const unsubClipboard = subscribeKey(
 		globalStore.shortcut,

@@ -13,13 +13,15 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
         .invoke_handler(generate_handler![
             commands::show_window,
             commands::show_window_with_position,
-            commands::hide_window,
+            commands::destroy_window,
+            commands::exit_app, // 新增：退出应用
             commands::show_taskbar_icon,
             commands::show_main_window,
             commands::show_preference_window,
             commands::apply_mica_effect,
             commands::clear_mica_effect,
-            commands::is_mica_supported
+            commands::is_mica_supported,
+            commands::create_window,
         ])
         .build()
 }

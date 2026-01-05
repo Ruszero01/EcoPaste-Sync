@@ -52,13 +52,45 @@ pub async fn show_window_with_position<R: Runtime>(
     }
 }
 
-// 隐藏窗口
+// 隐藏窗口（轻量模式：当所有窗口都隐藏时，关闭最后一个窗口会销毁所有窗口）
 #[command]
 pub async fn hide_window<R: Runtime>(app_handle: AppHandle<R>, window: WebviewWindow<R>) {
-    if is_main_window(&window) {
-        set_macos_panel(&app_handle, &window, MacOSPanelStatus::Hide);
+    let current_label = window.label().to_string();
+
+    // 获取所有窗口，检查是否有其他可见窗口
+    let windows = app_handle.webview_windows();
+    let other_windows: Vec<_> = windows
+        .iter()
+        .filter(|(label, _)| label.as_str() != current_label)
+        .collect();
+
+    let has_other_visible_window = other_windows
+        .iter()
+        .any(|(_, w)| w.is_visible().unwrap_or(false));
+
+    if has_other_visible_window {
+        // 还有其他窗口打开，只隐藏当前窗口
+        if is_main_window(&window) {
+            set_macos_panel(&app_handle, &window, MacOSPanelStatus::Hide);
+        } else {
+            shared_hide_window(&window);
+        }
     } else {
-        shared_hide_window(&window);
+        // 当前是最后一个可见窗口，隐藏当前窗口 + 隐藏所有其他已隐藏的窗口
+        for (label, _) in other_windows {
+            if label == MAIN_WINDOW_LABEL {
+                if let Some(panel) = app_handle.get_webview_panel(label) {
+                    panel.order_out(None);
+                    log::info!("[Window] 隐藏已隐藏窗口: {}", label);
+                }
+            }
+        }
+        // 隐藏当前窗口
+        if is_main_window(&window) {
+            set_macos_panel(&app_handle, &window, MacOSPanelStatus::Hide);
+        } else {
+            shared_hide_window(&window);
+        }
     }
 }
 

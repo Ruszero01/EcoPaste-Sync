@@ -1,5 +1,4 @@
-import { clipboardStore } from "@/stores/clipboard";
-import { PhysicalPosition, PhysicalSize } from "@tauri-apps/api/dpi";
+import { type PhysicalPosition, PhysicalSize } from "@tauri-apps/api/dpi";
 import type { Event } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { exists, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
@@ -12,7 +11,6 @@ export const useWindowState = () => {
 
 	useMount(() => {
 		appWindow.onMoved(onChange);
-
 		appWindow.onResized(onChange);
 	});
 
@@ -57,28 +55,25 @@ export const useWindowState = () => {
 
 		Object.assign(state, states[label]);
 
-		const { x, y, width, height } = state;
+		const { width, height } = state;
 
-		// 获取窗口位置设置
-		const windowPosition = clipboardStore.window.position;
-
-		// 根据设置处理窗口位置
-		if (windowPosition === "remember") {
-			// 记住位置：恢复上次的位置
-			if (x && y) {
-				appWindow.setPosition(new PhysicalPosition(x, y));
-			}
-		} else if (windowPosition === "center") {
-			// 居中显示：不恢复位置，让窗口居中
-			// 不设置位置，让Tauri使用默认的居中位置
-		}
-		// "follow" 模式：跟随鼠标，这会在显示窗口时处理
+		// 注意：窗口位置现在由 Rust 端在创建窗口时直接设置
+		// 这里只处理窗口大小的恢复
 
 		// 恢复窗口大小
 		if (width && height) {
 			appWindow.setSize(new PhysicalSize(width, height));
 		}
 	};
+
+	// 在窗口显示后恢复位置（不需要等待 focus 事件）
+	useEffect(() => {
+		// 加一个短暂的延迟，确保窗口已经显示
+		const timer = setTimeout(() => {
+			restoreState();
+		}, 50);
+		return () => clearTimeout(timer);
+	}, []);
 
 	return {
 		saveState,

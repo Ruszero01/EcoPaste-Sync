@@ -14,7 +14,7 @@ const WINDOW_RESIZED_EVENT: &str = "tauri://resize";
 pub fn platform(
     app_handle: &AppHandle,
     main_window: WebviewWindow,
-    _preference_window: WebviewWindow,
+    _preference_window: Option<WebviewWindow>,
 ) {
     // macos window 转 ns_panel 插件
     let _ = app_handle.plugin(tauri_nspanel::init());

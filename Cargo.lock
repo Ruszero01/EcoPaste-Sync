@@ -6361,7 +6361,10 @@ dependencies = [
 name = "tauri-plugin-eco-window"
 version = "0.1.0"
 dependencies = [
+ "log",
+ "scopeguard",
  "serde",
+ "serde_json",
  "tauri",
  "tauri-nspanel",
  "tauri-plugin",

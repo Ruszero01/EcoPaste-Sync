@@ -12,45 +12,6 @@
 	},
 	"app": {
 		"macOSPrivateApi": true,
-		"windows": [
-			{
-				"label": "main",
-				"title": "EcoPaste-Sync",
-				"url": "index.html/#/",
-				"width": 360,
-				"height": 600,
-				"minWidth": 360,
-				"minHeight": 600,
-				"maximizable": false,
-				"decorations": false,
-				"visible": false,
-				"transparent": true,
-				"alwaysOnTop": true,
-				"acceptFirstMouse": true,
-				"skipTaskbar": true,
-				"visibleOnAllWorkspaces": true
-			},
-			{
-				"label": "preference",
-				"url": "index.html/#/preference",
-				"width": 700,
-				"height": 480,
-				"minWidth": 700,
-				"minHeight": 480,
-				"center": true,
-				"visible": false,
-				"transparent": true,
-				"maximizable": false,
-				"hiddenTitle": true,
-				"skipTaskbar": true,
-				"titleBarStyle": "Overlay",
-				"dragDropEnabled": false,
-				"windowEffects": {
-					"effects": ["sidebar"],
-					"state": "active"
-				}
-			}
-		],
 		"security": {
 			"csp": null,
 			"dangerousDisableAssetCspModification": true,
@@ -89,13 +50,17 @@
 			"allow": [
 				"allow-show-window",
 				"allow-show-window-with-position",
-				"allow-hide-window",
+				"allow-destroy-window",
+				"allow-destroy-all-windows",
+				"allow-exit-app",
 				"allow-show-taskbar-icon",
 				"allow-show-main-window",
 				"allow-show-preference-window",
 				"allow-apply-mica-effect",
 				"allow-clear-mica-effect",
-				"allow-is-mica-supported"
+				"allow-is-mica-supported",
+				"allow-create-window",
+				"allow-close-webview-for-test"
 			]
 		}
 	}

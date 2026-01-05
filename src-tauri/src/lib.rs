@@ -12,33 +12,32 @@ pub fn run() {
         .setup(|app| {
             let app_handle = app.handle();
 
-            let main_window = app.get_webview_window(MAIN_WINDOW_LABEL).unwrap();
+            // 动态获取或创建主窗口
+            let main_window = app.get_webview_window(MAIN_WINDOW_LABEL);
 
-            let preference_window = app.get_webview_window(PREFERENCE_WINDOW_LABEL).unwrap();
+            // 动态获取或创建设置窗口
+            let preference_window = app.get_webview_window(PREFERENCE_WINDOW_LABEL);
 
-  // 在 Windows 11 上自动应用 Mica 效果
+            // 在 Windows 11 上自动应用 Mica 效果（如果窗口已存在）
             #[cfg(target_os = "windows")]
-            {
-                let main_window_clone = main_window.clone();
+            if let Some(ref main_win) = main_window {
+                let main_window_clone = main_win.clone();
                 std::thread::spawn(move || {
                     // 等待窗口完全初始化
                     std::thread::sleep(std::time::Duration::from_millis(500));
 
-                    #[cfg(target_os = "windows")]
-                    {
-                        use window_vibrancy::{apply_mica};
+                    use window_vibrancy::apply_mica;
 
-                        // 应用 Mica 效果，使用 None 自动匹配系统主题
-                        if let Err(e) = apply_mica(&main_window_clone, None) {
-                            eprintln!("❌ Failed to apply Mica effect: {}", e);
-                        } else {
-                            println!("✅ Mica effect applied to main window");
-                        }
+                    // 应用 Mica 效果，使用 None 自动匹配系统主题
+                    if let Err(e) = apply_mica(&main_window_clone, None) {
+                        eprintln!("Failed to apply Mica effect: {}", e);
+                    } else {
+                        println!("Mica effect applied to main window");
                     }
                 });
             }
 
-            setup::default(&app_handle, main_window.clone(), preference_window.clone());
+            setup::default(&app_handle, main_window, preference_window);
 
             Ok(())
         })
@@ -47,7 +46,7 @@ pub fn run() {
             |app_handle, _argv, _cwd| {
                 let app_handle = app_handle.clone();
                 tauri::async_runtime::spawn(async move {
-                    show_main_window(app_handle).await;
+                    show_main_window(app_handle, None).await;
                 });
             },
         ))
@@ -125,6 +124,10 @@ pub fn run() {
         .expect("error while running tauri application");
 
     app.run(|app_handle, event| match event {
+        // 阻止应用在没有窗口时自动退出（轻量模式）
+        tauri::RunEvent::ExitRequested { api, .. } => {
+            api.prevent_exit();
+        }
         #[cfg(target_os = "macos")]
         tauri::RunEvent::Reopen {
             has_visible_windows,
@@ -136,7 +139,7 @@ pub fn run() {
 
             let app_handle = app_handle.clone();
       tauri::async_runtime::spawn(async move {
-          tauri_plugin_eco_window::show_preference_window(app_handle).await;
+          tauri_plugin_eco_window::show_preference_window(app_handle, None).await;
       });
         }
         _ => {

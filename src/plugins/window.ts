@@ -23,28 +23,33 @@ const isTauriEnvironment = () => {
 const COMMAND = {
 	SHOW_WINDOW: "plugin:eco-window|show_window",
 	SHOW_WINDOW_WITH_POSITION: "plugin:eco-window|show_window_with_position",
-	HIDE_WINDOW: "plugin:eco-window|hide_window",
+	DESTROY_WINDOW: "plugin:eco-window|destroy_window",
+	EXIT_APP: "plugin:eco-window|exit_app",
 	SHOW_TASKBAR_ICON: "plugin:eco-window|show_taskbar_icon",
 	SHOW_MAIN_WINDOW: "plugin:eco-window|show_main_window",
 	SHOW_PREFERENCE_WINDOW: "plugin:eco-window|show_preference_window",
 	APPLY_MICA_EFFECT: "plugin:eco-window|apply_mica_effect",
 	CLEAR_MICA_EFFECT: "plugin:eco-window|clear_mica_effect",
 	IS_MICA_SUPPORTED: "plugin:eco-window|is_mica_supported",
+	CREATE_WINDOW: "plugin:eco-window|create_window",
 };
 
 /**
  * 显示窗口
  */
 export const showWindow = (label?: WindowLabel) => {
+	// 获取窗口位置设置
+	const windowPosition = clipboardStore.window.position;
+
 	if (label) {
 		// 根据标签调用相应的命令
 		if (label === "main") {
-			invoke(COMMAND.SHOW_MAIN_WINDOW);
+			invoke(COMMAND.SHOW_MAIN_WINDOW, { position_mode: windowPosition });
 		} else if (label === "preference") {
-			invoke(COMMAND.SHOW_PREFERENCE_WINDOW);
+			invoke(COMMAND.SHOW_PREFERENCE_WINDOW, { position_mode: windowPosition });
 		} else {
 			// 如果没有匹配的标签，默认显示主窗口
-			invoke(COMMAND.SHOW_MAIN_WINDOW);
+			invoke(COMMAND.SHOW_MAIN_WINDOW, { position_mode: windowPosition });
 		}
 
 		// 触发回到顶部事件
@@ -79,10 +84,18 @@ export const showWindowWithPosition = (
 };
 
 /**
- * 隐藏窗口
+ * 销毁当前窗口
  */
-export const hideWindow = () => {
-	invoke(COMMAND.HIDE_WINDOW);
+export const destroyWindow = async () => {
+	invoke(COMMAND.DESTROY_WINDOW);
+};
+
+/**
+ * 隐藏窗口（已废弃，请使用 destroyWindow）
+ * TODO: 后续迁移到后端统一处理
+ */
+export const hideWindow = async () => {
+	destroyWindow();
 };
 
 /**
@@ -176,4 +189,12 @@ export const updateMicaTheme = async (isDark: boolean) => {
 	if (supported && isTauriEnvironment()) {
 		await applyMicaEffect(isDark);
 	}
+};
+
+/**
+ * 退出应用（真正关闭主进程）
+ * TODO: 后续迁移到后端统一处理
+ */
+export const exitApp = async () => {
+	invoke(COMMAND.EXIT_APP);
 };

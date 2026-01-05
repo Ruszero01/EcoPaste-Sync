@@ -1,5 +1,4 @@
 import { useShortcutSubscription } from "@/hooks/useShortcutSubscription";
-import { useTray } from "@/hooks/useTray";
 import { HappyProvider } from "@ant-design/happy-work-theme";
 import { error } from "@tauri-apps/plugin-log";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -14,7 +13,6 @@ const { defaultAlgorithm, darkAlgorithm } = theme;
 const App = () => {
 	const { appearance } = useSnapshot(globalStore);
 	const { restoreState } = useWindowState();
-	const { createTray } = useTray();
 	const [ready, { toggle }] = useBoolean();
 
 	useMount(async () => {
@@ -28,6 +26,9 @@ const App = () => {
 		generateColorVars();
 
 		// 初始化托盘 - 使用更强的防护机制
+		// TODO: 临时注释掉托盘，测试 WebView2 进程能否正常关闭
+		// 后续托盘需要迁移到后端实现
+		/*
 		try {
 			const { TrayIcon } = await import("@tauri-apps/api/tray");
 
@@ -42,6 +43,7 @@ const App = () => {
 		} catch (error) {
 			console.error("托盘初始化失败:", error);
 		}
+		*/
 	});
 
 	// 监听快捷键变化并自动重新注册

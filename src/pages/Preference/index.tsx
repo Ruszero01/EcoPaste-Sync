@@ -1,8 +1,13 @@
 import UnoIcon from "@/components/UnoIcon";
 // import UpdateApp from "@/components/UpdateApp"; // fork分支不需要更新功能
-import { initializeMicaEffect, updateMicaTheme } from "@/plugins/window";
+import {
+	destroyWindow,
+	initializeMicaEffect,
+	updateMicaTheme,
+} from "@/plugins/window";
 import { isWin } from "@/utils/is";
 import { emit } from "@tauri-apps/api/event";
+import { useKeyPress } from "ahooks";
 import { Flex } from "antd";
 import clsx from "clsx";
 import { MacScrollbar } from "mac-scrollbar";
@@ -17,9 +22,14 @@ import Shortcut from "./components/Shortcut";
 
 const Preference = () => {
 	const { t } = useTranslation();
-	const { app, shortcut, appearance } = useSnapshot(globalStore);
+	const { app, appearance } = useSnapshot(globalStore);
 	const [activeKey, setActiveKey] = useState("clipboard");
 	const contentRef = useRef<HTMLElement>(null);
+
+	// ESC 销毁窗口
+	useKeyPress("esc", () => {
+		destroyWindow();
+	});
 
 	useMount(async () => {
 		const autostart = await isAutostart();
@@ -44,11 +54,6 @@ const Preference = () => {
 
 	// 监听剪贴板配置项变化
 	useSubscribe(clipboardStore, () => handleStoreChanged());
-
-	// 监听快捷键打开偏好设置窗口
-	useRegister(() => {
-		showWindow("preference");
-	}, [shortcut.preference]);
 
 	// 配置项变化通知其它窗口和本地存储
 	const handleStoreChanged = () => {
