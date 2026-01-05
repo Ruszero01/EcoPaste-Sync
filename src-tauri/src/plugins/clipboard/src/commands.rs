@@ -11,6 +11,9 @@ use std::{
 };
 use tauri::{command, AppHandle, Emitter, Manager, Runtime, State};
 
+mod audio;
+pub use audio::play_copy_audio;
+
 // 引入 database 插件
 use tauri_plugin_eco_database::{DatabaseState, InsertItem};
 
@@ -374,6 +377,9 @@ where
         let db = db_state.blocking_lock();
         match db.insert_with_deduplication(&item) {
             Ok(result) => {
+                // 播放复制音效（反馈用户复制操作已完成）
+                play_copy_audio();
+
                 // 发送事件通知前端，携带重复数据的 ID（如果是更新操作）
                 let payload = if result.is_update {
                     serde_json::json!({ "duplicate_id": result.insert_id })
@@ -723,3 +729,9 @@ pub async fn get_image_dimensions(path: String) -> Result<ReadImage, String> {
 
 // get_clipboard_owner_process 已移至 database/source_app.rs
 // 避免循环依赖
+
+/// 预览音效（供前端偏好设置页面使用）
+#[command]
+pub async fn preview_audio() {
+    play_copy_audio();
+}

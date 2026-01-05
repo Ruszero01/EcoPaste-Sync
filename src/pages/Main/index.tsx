@@ -1,10 +1,7 @@
-import type { AudioRef } from "@/components/Audio";
-import Audio from "@/components/Audio";
 import { LISTEN_KEY } from "@/constants";
 import { initializeMicaEffect } from "@/plugins/window";
 import type { HistoryTablePayload, TablePayload } from "@/types/database";
 import type { Store } from "@/types/store";
-import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import { useReactive } from "ahooks";
 import type { EventEmitter } from "ahooks/lib/useEventEmitter";
@@ -55,7 +52,6 @@ const Main = () => {
 	const { window } = useSnapshot(clipboardStore);
 
 	const state = useReactive<State>(INITIAL_STATE);
-	const audioRef = useRef<AudioRef>(null);
 	const $eventBus = useEventEmitter<string>();
 	const windowHideTimer = useRef<NodeJS.Timeout>();
 
@@ -65,11 +61,6 @@ const Main = () => {
 			// 检查是否是应用内部复制操作
 			if (clipboardStore.internalCopy.isCopying) {
 				return;
-			}
-
-			// 播放音效
-			if (clipboardStore.audio.copy) {
-				audioRef.current?.play();
 			}
 
 			// 清除缓存并刷新列表
@@ -484,21 +475,17 @@ const Main = () => {
 	};
 
 	return (
-		<>
-			<Audio ref={audioRef} />
-
-			<MainContext.Provider
-				value={{
-					state,
-					getList,
-					getListCache,
-					getListDebounced,
-					forceRefreshList,
-				}}
-			>
-				{window.style === "float" ? <Float /> : <Dock />}
-			</MainContext.Provider>
-		</>
+		<MainContext.Provider
+			value={{
+				state,
+				getList,
+				getListCache,
+				getListDebounced,
+				forceRefreshList,
+			}}
+		>
+			{window.style === "float" ? <Float /> : <Dock />}
+		</MainContext.Provider>
 	);
 };
 

@@ -9,6 +9,7 @@ mod commands;
 
 pub use commands::toggle_listen;
 pub use commands::is_listen_enabled;
+pub use commands::play_copy_audio;
 
 
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
@@ -41,7 +42,8 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::write_html,
             commands::write_rtf,
             commands::write_text,
-            commands::get_image_dimensions
+            commands::get_image_dimensions,
+            commands::preview_audio,
         ])
         .build()
 }

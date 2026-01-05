@@ -14,6 +14,8 @@ serde_json.workspace = true
 log.workspace = true
 clipboard-rs = ">=0.2, <1"
 chrono = "0.4"
+# 音频播放
+rodio = "0.18"
 # 依赖本地 database 插件
 tauri-plugin-eco-database = { path = "../database" }
 # 依赖本地 detector 插件

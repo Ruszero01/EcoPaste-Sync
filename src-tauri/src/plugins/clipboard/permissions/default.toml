@@ -19,6 +19,7 @@ permissions = [
     "allow-write-image", 
     "allow-write-html", 
     "allow-write-rtf", 
-    "allow-write-text", 
-    "allow-get-image-dimensions"]
+    "allow-write-text",
+    "allow-get-image-dimensions",
+    "allow-preview-audio"]
     
