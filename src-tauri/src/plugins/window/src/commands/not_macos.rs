@@ -131,7 +131,8 @@ pub async fn create_window<R: Runtime>(
         .accept_first_mouse(true)
         .skip_taskbar(true)
         .visible_on_all_workspaces(true)
-        .decorations(false); // 主窗口不显示标题栏
+        .decorations(false) // 主窗口不显示标题栏
+        .transparent(true); // 启用透明度以支持 Mica 效果
 
         // 如果有保存的位置，直接设置
         if let Some((x, y, w, h)) = initial_position {
@@ -162,7 +163,8 @@ pub async fn create_window<R: Runtime>(
         .visible(false)
         .always_on_top(true)
         .accept_first_mouse(true)
-        .skip_taskbar(true);
+        .skip_taskbar(true)
+        .transparent(true); // 启用透明度以支持 Mica 效果
 
         // 如果有保存的位置，直接设置
         if let Some((x, y, w, h)) = initial_position {
