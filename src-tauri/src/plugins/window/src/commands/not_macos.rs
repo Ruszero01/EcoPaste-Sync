@@ -78,6 +78,15 @@ pub async fn create_window<R: Runtime>(
     label: String,
     position_mode: Option<&str>,
 ) -> Result<(), String> {
+    // 先取消该标签的旧自动回收定时器
+    {
+        let timers = get_auto_recycle_timers();
+        let mut timers = timers.lock().unwrap();
+        if timers.remove(&label).is_some() {
+            log::info!("[Window] 已取消窗口 {} 的旧自动回收计时器", label);
+        }
+    }
+
     // 先检查窗口是否已存在，如果存在则销毁旧窗口
     if let Some(existing_window) = app_handle.get_webview_window(&label) {
         let _ = existing_window.destroy();
