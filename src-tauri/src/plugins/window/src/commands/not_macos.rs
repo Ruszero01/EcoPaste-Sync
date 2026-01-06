@@ -11,7 +11,7 @@ const PREFERENCE_WINDOW_WIDTH: u32 = 700;
 const PREFERENCE_WINDOW_HEIGHT: u32 = 480;
 
 /// 统一的自动回收定时器启动函数
-/// 取消旧定时器 -> 创建新定时器（检查窗口可见性后才销毁）
+/// 取消旧定时器 -> 创建新定时器（检查窗口不可见时才销毁）
 pub fn start_auto_recycle_timer<R: Runtime>(app_handle: &AppHandle<R>, label: &str, delay_ms: u64) {
     let timers = get_auto_recycle_timers();
     let app_inner = app_handle.clone();
@@ -29,18 +29,18 @@ pub fn start_auto_recycle_timer<R: Runtime>(app_handle: &AppHandle<R>, label: &s
         }
     }
 
-    // 延迟后销毁（只在窗口可见时才销毁）
+    // 延迟后销毁（只在窗口不可见时销毁，表示已被隐藏）
     let timer = std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(delay_ms));
 
-        // 检查窗口是否还存在且可见
+        // 检查窗口是否还存在且不可见（不可见表示已被隐藏，需要销毁）
         if let Some(win) = app_inner.get_webview_window(&label_inner) {
             if let Ok(visible) = win.is_visible() {
-                if visible {
+                if !visible {
                     let _ = win.destroy();
-                    log::info!("[Window] 自动回收：已销毁窗口 {}", label_inner);
+                    log::info!("[Window] 自动回收：窗口 {} 不可见，已销毁", label_inner);
                 } else {
-                    log::info!("[Window] 自动回收：窗口 {} 不可见，跳过销毁", label_inner);
+                    log::info!("[Window] 自动回收：窗口 {} 仍可见，跳过销毁", label_inner);
                 }
             }
         }

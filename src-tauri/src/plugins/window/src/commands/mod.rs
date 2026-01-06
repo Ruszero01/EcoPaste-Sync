@@ -398,14 +398,14 @@ pub async fn hide_window_with_behavior<R: Runtime>(
                     spawn(async move {
                         tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms as u64)).await;
 
-                        // 检查窗口是否还存在且可见
+                        // 检查窗口是否还存在且不可见（不可见表示已被隐藏，需要销毁）
                         if let Some(win) = app_handle_clone.get_webview_window(&label_clone) {
                             if let Ok(visible) = win.is_visible() {
-                                if visible {
+                                if !visible {
                                     let _ = win.destroy();
-                                    log::info!("[Window] 自动回收：已销毁窗口 {}", label_clone);
+                                    log::info!("[Window] 自动回收：窗口 {} 不可见，已销毁", label_clone);
                                 } else {
-                                    log::info!("[Window] 自动回收：窗口 {} 不可见，跳过销毁", label_clone);
+                                    log::info!("[Window] 自动回收：窗口 {} 仍可见，跳过销毁", label_clone);
                                 }
                             }
                         }
