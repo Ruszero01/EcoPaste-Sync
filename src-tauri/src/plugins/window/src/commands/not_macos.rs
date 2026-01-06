@@ -10,6 +10,52 @@ const PREFERENCE_WINDOW_URL: &str = "index.html/#/preference";
 const PREFERENCE_WINDOW_WIDTH: u32 = 700;
 const PREFERENCE_WINDOW_HEIGHT: u32 = 480;
 
+/// 统一的自动回收定时器启动函数
+/// 取消旧定时器 -> 创建新定时器（检查窗口可见性后才销毁）
+pub fn start_auto_recycle_timer<R: Runtime>(app_handle: &AppHandle<R>, label: &str, delay_ms: u64) {
+    let timers = get_auto_recycle_timers();
+    let app_inner = app_handle.clone();
+    let label_inner = label.to_string();
+    let label_for_insert = label_inner.clone();
+    let timers_inner = timers.clone();
+
+    // 取消该窗口之前的旧定时器
+    {
+        let mut timers = timers.lock().unwrap();
+        if let Some(old_timer) = timers.remove(&label_inner) {
+            // 尝试唤醒线程使其提前结束
+            let _ = old_timer.thread().unpark();
+            log::info!("[Window] 已取消窗口 {} 的旧自动回收计时器", label_inner);
+        }
+    }
+
+    // 延迟后销毁（只在窗口可见时才销毁）
+    let timer = std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+
+        // 检查窗口是否还存在且可见
+        if let Some(win) = app_inner.get_webview_window(&label_inner) {
+            if let Ok(visible) = win.is_visible() {
+                if visible {
+                    let _ = win.destroy();
+                    log::info!("[Window] 自动回收：已销毁窗口 {}", label_inner);
+                } else {
+                    log::info!("[Window] 自动回收：窗口 {} 不可见，跳过销毁", label_inner);
+                }
+            }
+        }
+
+        // 从状态中移除定时器
+        let mut timers = timers_inner.lock().unwrap();
+        timers.remove(&label_inner);
+    });
+
+    // 保存定时器到状态
+    let mut timers = timers.lock().unwrap();
+    timers.insert(label_for_insert, timer);
+    log::info!("[Window] 已为窗口 {} 启动自动回收计时器 ({}ms)", label, delay_ms);
+}
+
 #[cfg(target_os = "windows")]
 use window_vibrancy::{apply_mica, clear_mica};
 
@@ -207,9 +253,6 @@ pub async fn create_window<R: Runtime>(
         .build()
         .map_err(|e| format!("创建窗口失败: {}", e))?;
 
-    // 获取全局定时器状态
-    let timers = get_auto_recycle_timers();
-
     // 监听窗口关闭事件，根据窗口行为模式处理
     let window_clone = _window.clone();
     let app_handle_clone = app_handle.clone();
@@ -231,44 +274,9 @@ pub async fn create_window<R: Runtime>(
                     let _ = window_clone.hide();
                 }
                 "auto_recycle" => {
-                    // 自动回收模式：延迟后销毁
-                    let delay_ms = (delay_seconds as i64) * 1000;
-                    let app_inner = app_handle_clone.clone();
-                    let label_for_timer = label_clone.clone();
-                    let timers_inner = timers.clone();
-
-                    // 先隐藏窗口
+                    // 先隐藏窗口，然后启动统一的自动回收定时器
                     let _ = window_clone.hide();
-
-                    // 取消该窗口之前的旧定时器
-                    {
-                        let mut timers = timers.lock().unwrap();
-                        if let Some(old_timer) = timers.remove(&label_for_timer) {
-                                    // 尝试唤醒线程使其提前结束
-                                    let _ = old_timer.thread().unpark();
-                            log::info!("[Window] 已取消窗口 {} 的旧自动回收计时器", label_for_timer);
-                        }
-                    }
-
-                    // 延迟后销毁
-                    let timer = std::thread::spawn(move || {
-                        std::thread::sleep(std::time::Duration::from_millis(delay_ms as u64));
-
-                        // 检查窗口是否还存在
-                        if let Some(win) = app_inner.get_webview_window(&label_for_timer) {
-                            let _ = win.destroy();
-                            log::info!("[Window] 自动回收：已销毁窗口 {}", label_for_timer);
-                        }
-
-                        // 从状态中移除定时器
-                        let mut timers = timers_inner.lock().unwrap();
-                        timers.remove(&label_for_timer);
-                    });
-
-                    // 保存定时器到状态
-                    let mut timers = timers.lock().unwrap();
-                    timers.insert(label_clone.clone(), timer);
-                    log::info!("[Window] 已为窗口 {} 启动自动回收计时器 ({}ms)", label_clone, delay_ms);
+                    start_auto_recycle_timer(&app_handle_clone, &label_clone, (delay_seconds as u64) * 1000);
                 }
                 _ => {
                     let _ = window_clone.hide();

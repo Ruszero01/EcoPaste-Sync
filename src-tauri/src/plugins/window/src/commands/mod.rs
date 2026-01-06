@@ -9,7 +9,7 @@ pub static MAIN_WINDOW_TITLE: &str = "EcoPaste";
 
 // 声明来自 not_macos 的 cancel_auto_recycle 命令
 #[cfg(not(target_os = "macos"))]
-pub use not_macos::cancel_auto_recycle;
+pub use not_macos::{cancel_auto_recycle, start_auto_recycle_timer};
 
 // 标志：是否允许应用退出（由退出命令控制）
 static ALLOW_EXIT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
@@ -380,34 +380,16 @@ pub async fn hide_window_with_behavior<R: Runtime>(
                 let delay_ms = delay_seconds * 1000;
                 log::info!("[Window] 自动回收模式：{}ms 后销毁窗口 {}", delay_ms, label);
 
+                // 先隐藏窗口
+                let _ = win.hide();
+
+                // 使用统一的自动回收定时器（Windows）
                 #[cfg(not(target_os = "macos"))]
                 {
-                    use crate::get_auto_recycle_timers;
-                    let timers = get_auto_recycle_timers();
-                    let app_inner = app_handle.clone();
-                    let label_inner = label.clone();
-                    let timers_inner = timers.clone();
-
-                    // 延迟后销毁
-                    let timer = std::thread::spawn(move || {
-                        std::thread::sleep(std::time::Duration::from_millis(delay_ms as u64));
-
-                        // 检查窗口是否还存在（可能已被重新打开）
-                        if let Some(win) = app_inner.get_webview_window(&label_inner) {
-                            let _ = win.destroy();
-                        }
-
-                        // 从状态中移除定时器
-                        let mut timers = timers_inner.lock().unwrap();
-                        timers.remove(&label_inner);
-                        log::info!("[Window] 自动回收：已销毁窗口 {}", label_inner);
-                    });
-
-                    // 保存定时器到状态
-                    let mut timers = timers.lock().unwrap();
-                    timers.insert(label.clone(), timer);
+                    start_auto_recycle_timer(&app_handle, &label, delay_ms as u64);
                 }
 
+                // macOS 使用 tokio 异步定时器
                 #[cfg(target_os = "macos")]
                 {
                     let app_handle_clone = app_handle.clone();
@@ -416,16 +398,19 @@ pub async fn hide_window_with_behavior<R: Runtime>(
                     spawn(async move {
                         tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms as u64)).await;
 
-                        // 检查窗口是否还存在（可能已被重新打开）
+                        // 检查窗口是否还存在且可见
                         if let Some(win) = app_handle_clone.get_webview_window(&label_clone) {
-                            let _ = win.destroy();
-                            log::info!("[Window] 自动回收：已销毁窗口 {}", label_clone);
+                            if let Ok(visible) = win.is_visible() {
+                                if visible {
+                                    let _ = win.destroy();
+                                    log::info!("[Window] 自动回收：已销毁窗口 {}", label_clone);
+                                } else {
+                                    log::info!("[Window] 自动回收：窗口 {} 不可见，跳过销毁", label_clone);
+                                }
+                            }
                         }
                     });
                 }
-
-                // 先隐藏窗口，等待延迟后销毁
-                let _ = win.hide();
             }
             _ => {
                 // 默认行为：隐藏窗口
