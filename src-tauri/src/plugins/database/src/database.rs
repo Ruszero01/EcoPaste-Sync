@@ -2,6 +2,7 @@
 //! 提供 SQLite 数据库的统一访问接口
 
 use crate::models::{HistoryItem, QueryOptions, SyncDataItem, InsertItem, InsertResult, DatabaseStatistics};
+use crate::filter::{DataFilter, BaseFilter, ContentTypeFilter, SyncStatusFilter, SyncModeFilter};
 use crate::source_app::fetch_source_app_info_impl;
 use crate::config::{should_fetch_source_app, should_auto_sort};
 use crate::ChangeTracker;
@@ -184,23 +185,46 @@ impl DatabaseManager {
         Ok(items)
     }
 
-    /// 查询用于同步的数据
+    /// 根据同步模式和数据状态筛选查询数据（供同步引擎内部使用）
     ///
     /// # Arguments
     /// * `only_favorites` - 是否仅同步收藏项
-    /// * `limit` - 限制数量
-    pub fn query_sync_data(&self, only_favorites: bool, limit: Option<i32>) -> Result<Vec<SyncDataItem>, String> {
-        let options = QueryOptions {
-            only_favorites,
-            exclude_deleted: false, // 同步需要包含已删除的项目
-            limit,
-            order_by: Some("time DESC".to_string()),
-            ..Default::default()
+    /// * `include_images` - 是否包含图片
+    /// * `include_files` - 是否包含文件
+    /// * `content_types` - 内容类型筛选
+    /// * `sync_status_filter` - 同步状态筛选（None=不过滤）
+    pub fn query_for_sync(
+        &self,
+        only_favorites: bool,
+        include_images: bool,
+        include_files: bool,
+        content_types: ContentTypeFilter,
+        sync_status_filter: Option<SyncStatusFilter>,
+    ) -> Result<Vec<SyncDataItem>, String> {
+        // 构建筛选器
+        let filter = DataFilter {
+            base_filter: BaseFilter {
+                only_favorites,
+                exclude_deleted: false, // 同步需要包含已删除的项目
+                content_types: content_types.clone(),
+            },
+            group_filter: None,
+            search_filter: None,
+            sync_filter: Some(SyncModeFilter {
+                only_favorites,
+                include_images,
+                include_files,
+                content_types,
+            }),
+            sync_status_filter,
         };
 
+        let options = filter.to_query_options(None, None);
+        log::info!("🔍 查询SQL: where='{}'", options.where_clause.as_deref().unwrap_or("none"));
         let history_items = self.query_history(options)?;
 
-        log::info!("查询到 {} 条历史记录 (only_favorites={})", history_items.len(), only_favorites);
+        log::info!("🔍 同步查询: only_favorites={}, include_images={}, include_files={}, 结果={}",
+            only_favorites, include_images, include_files, history_items.len());
 
         Ok(history_items.into_iter().map(SyncDataItem::from).collect())
     }

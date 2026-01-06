@@ -16,6 +16,8 @@ pub struct DataFilter {
     pub search_filter: Option<SearchFilter>,
     /// 同步模式筛选
     pub sync_filter: Option<SyncModeFilter>,
+    /// 同步状态筛选（用于同步引擎）
+    pub sync_status_filter: Option<SyncStatusFilter>,
 }
 
 /// 基础筛选条件
@@ -80,6 +82,85 @@ pub struct SyncModeFilter {
     pub include_files: bool,
     /// 内容类型配置
     pub content_types: ContentTypeFilter,
+}
+
+/// 同步状态类型
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum SyncStatus {
+    /// 未同步 - 数据从未上传或已从云端删除
+    NotSynced,
+    /// 已同步 - 数据已成功同步到云端且一致
+    Synced,
+    /// 已变更 - 数据在本地被修改，需要同步到云端
+    Changed,
+}
+
+/// 同步状态筛选
+/// 用于同步引擎筛选需要同步的数据
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncStatusFilter {
+    /// 包含哪些同步状态
+    pub include: Vec<SyncStatus>,
+    /// 排除哪些同步状态
+    pub exclude: Vec<SyncStatus>,
+}
+
+impl Default for SyncStatusFilter {
+    fn default() -> Self {
+        Self {
+            include: vec![SyncStatus::NotSynced, SyncStatus::Changed],
+            exclude: vec![SyncStatus::Synced],
+        }
+    }
+}
+
+impl SyncStatusFilter {
+    /// 创建筛选仅未同步和已变更状态
+    pub fn unsynced_and_changed() -> Self {
+        Self {
+            include: vec![SyncStatus::NotSynced, SyncStatus::Changed],
+            exclude: vec![],
+        }
+    }
+
+    /// 创建筛选仅已变更状态
+    pub fn changed_only() -> Self {
+        Self {
+            include: vec![SyncStatus::Changed],
+            exclude: vec![],
+        }
+    }
+
+    /// 创建筛选所有状态（不过滤）
+    pub fn all() -> Self {
+        Self {
+            include: vec![],
+            exclude: vec![],
+        }
+    }
+
+    /// 检查状态是否匹配筛选条件
+    pub fn matches(&self, status: &str) -> bool {
+        let sync_status = match status {
+            "synced" => SyncStatus::Synced,
+            "changed" => SyncStatus::Changed,
+            _ => SyncStatus::NotSynced,
+        };
+
+        // 如果有排除列表，检查是否在排除列表中
+        if self.exclude.contains(&sync_status) {
+            return false;
+        }
+
+        // 如果有包含列表，检查是否在包含列表中
+        // 如果包含列表为空，表示不过滤
+        if !self.include.is_empty() && !self.include.contains(&sync_status) {
+            return false;
+        }
+
+        true
+    }
 }
 
 /// 分页信息
@@ -151,6 +232,7 @@ impl DataFilter {
             group_filter: None,
             search_filter: None,
             sync_filter: None,
+            sync_status_filter: None,
         }
     }
 
@@ -205,11 +287,56 @@ impl DataFilter {
 
         // 搜索筛选
         if let Some(search_filter) = &self.search_filter {
-            let search_conditions = self.build_search_conditions(&search_filter);
+            let search_conditions = self.build_search_conditions(search_filter);
             if let Some(existing_where) = &options.where_clause {
                 options.where_clause = Some(format!("{} AND {}", existing_where, search_conditions));
             } else {
                 options.where_clause = Some(search_conditions);
+            }
+        }
+
+        // 同步状态筛选
+        if let Some(sync_status_filter) = &self.sync_status_filter {
+            let status_conditions = self.build_sync_status_conditions(sync_status_filter);
+            if let Some(existing_where) = &options.where_clause {
+                options.where_clause = Some(format!("{} AND {}", existing_where, status_conditions));
+            } else {
+                options.where_clause = Some(status_conditions);
+            }
+        }
+
+        // 同步模式内容类型筛选（从 sync_filter 中获取）
+        if let Some(sync_filter) = &self.sync_filter {
+            // 构建内容类型条件
+            let mut type_conditions = Vec::new();
+
+            // 图片类型
+            if !sync_filter.include_images {
+                type_conditions.push("[type] != 'image'".to_string());
+            }
+
+            // 文件类型
+            if !sync_filter.include_files {
+                type_conditions.push("[type] != 'files'".to_string());
+            }
+
+            // 添加内容类型条件
+            if !type_conditions.is_empty() {
+                let type_condition = type_conditions.join(" AND ");
+                if let Some(existing_where) = &options.where_clause {
+                    options.where_clause = Some(format!("{} AND {}", existing_where, type_condition));
+                } else {
+                    options.where_clause = Some(type_condition);
+                }
+            }
+
+            // 处理收藏模式
+            if sync_filter.only_favorites {
+                if let Some(existing_where) = &options.where_clause {
+                    options.where_clause = Some(format!("{} AND [favorite] = 1", existing_where));
+                } else {
+                    options.where_clause = Some("[favorite] = 1".to_string());
+                }
             }
         }
 
@@ -224,6 +351,35 @@ impl DataFilter {
         }
 
         options
+    }
+
+    /// 构建同步状态筛选条件
+    fn build_sync_status_conditions(&self, filter: &SyncStatusFilter) -> String {
+        let mut conditions = Vec::new();
+
+        // 处理包含列表
+        if !filter.include.is_empty() {
+            let include_statuses: Vec<String> = filter.include.iter().map(|s| {
+                match s {
+                    SyncStatus::NotSynced => "'not_synced'".to_string(),
+                    SyncStatus::Synced => "'synced'".to_string(),
+                    SyncStatus::Changed => "'changed'".to_string(),
+                }
+            }).collect();
+            conditions.push(format!("syncStatus IN ({})", include_statuses.join(", ")));
+        }
+
+        // 处理排除列表
+        for status in &filter.exclude {
+            let condition = match status {
+                SyncStatus::NotSynced => "syncStatus != 'not_synced'".to_string(),
+                SyncStatus::Synced => "syncStatus != 'synced'".to_string(),
+                SyncStatus::Changed => "syncStatus != 'changed'".to_string(),
+            };
+            conditions.push(condition);
+        }
+
+        conditions.join(" AND ")
     }
 
     /// 构建搜索条件

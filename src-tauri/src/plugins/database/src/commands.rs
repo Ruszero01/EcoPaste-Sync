@@ -311,40 +311,18 @@ pub fn query_with_filter(
 }
 
 /// 根据同步模式筛选数据（供同步引擎使用）
+/// 直接委托给 database.rs 中的 query_for_sync，确保筛选逻辑统一
 #[tauri::command]
 pub fn query_for_sync(
     only_favorites: bool,
     include_images: bool,
     include_files: bool,
     content_types: crate::ContentTypeFilter,
+    sync_status_filter: Option<crate::SyncStatusFilter>,
     state: State<'_, DatabaseState>,
 ) -> Result<Vec<SyncDataItem>, String> {
     let db = state.blocking_lock();
-
-    // 构建筛选器
-    let filter = DataFilter {
-        base_filter: crate::BaseFilter {
-            only_favorites,
-            exclude_deleted: false, // 同步需要包含已删除的项目
-            content_types: content_types.clone(),
-        },
-        group_filter: None,
-        search_filter: None,
-        sync_filter: Some(crate::SyncModeFilter {
-            only_favorites,
-            include_images,
-            include_files,
-            content_types,
-        }),
-    };
-
-    let options = filter.to_query_options(None, None);
-    let history_items = db.query_history(options)?;
-
-    log::info!("🔍 同步模式筛选查询: only_favorites={}, include_images={}, include_files={}, 结果数量={}",
-        only_favorites, include_images, include_files, history_items.len());
-
-    Ok(history_items.into_iter().map(SyncDataItem::from).collect())
+    db.query_for_sync(only_favorites, include_images, include_files, content_types, sync_status_filter)
 }
 
 /// 搜索数据
@@ -370,6 +348,7 @@ pub fn search_data(
             search_fields: vec![crate::SearchField::All],
         }),
         sync_filter: None,
+        sync_status_filter: None,
     };
 
     let options = filter.to_query_options(pagination, None);
@@ -416,6 +395,7 @@ pub fn query_by_group(
         group_filter: Some(crate::GroupFilter { group_name }),
         search_filter: None,
         sync_filter: None,
+        sync_status_filter: None,
     };
 
     let options = filter.to_query_options(pagination, None);
