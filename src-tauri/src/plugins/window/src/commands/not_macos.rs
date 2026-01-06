@@ -1,5 +1,5 @@
 use super::{find_monitor_at_position, get_saved_window_state, calculate_safe_position_in_monitor, MAIN_WINDOW_LABEL, PREFERENCE_WINDOW_LABEL};
-use crate::{shared_show_window, set_window_follow_cursor};
+use crate::{shared_show_window, set_window_follow_cursor, get_auto_recycle_timers};
 use tauri::{command, AppHandle, Manager, Runtime, WebviewWindow};
 
 // 窗口配置
@@ -17,6 +17,19 @@ use window_vibrancy::{apply_mica, clear_mica};
 #[command]
 pub async fn show_window<R: Runtime>(_app_handle: AppHandle<R>, window: WebviewWindow<R>) {
     shared_show_window(&window);
+}
+
+// 取消窗口的自动回收计时器
+#[command]
+pub async fn cancel_auto_recycle<R: Runtime>(_app_handle: AppHandle<R>, label: String) {
+    let timers = get_auto_recycle_timers();
+    let mut timers = timers.lock().unwrap();
+
+    if let Some(timer) = timers.remove(&label) {
+        // 尝试唤醒线程使其提前结束
+        let _ = timer.thread().unpark();
+        log::info!("[Window] 已取消窗口 {} 的自动回收计时器", label);
+    }
 }
 
 // 显示窗口并设置位置
@@ -185,6 +198,9 @@ pub async fn create_window<R: Runtime>(
         .build()
         .map_err(|e| format!("创建窗口失败: {}", e))?;
 
+    // 获取全局定时器状态
+    let timers = get_auto_recycle_timers();
+
     // 监听窗口关闭事件，根据窗口行为模式处理
     let window_clone = _window.clone();
     let app_handle_clone = app_handle.clone();
@@ -209,18 +225,30 @@ pub async fn create_window<R: Runtime>(
                     // 自动回收模式：延迟后销毁
                     let delay_ms = (delay_seconds as i64) * 1000;
                     let app_inner = app_handle_clone.clone();
-                    let label_inner = label_clone.clone();
+                    let label_for_timer = label_clone.clone();
+                    let timers_inner = timers.clone();
 
                     // 先隐藏窗口
                     let _ = window_clone.hide();
 
                     // 延迟后销毁
-                    std::thread::spawn(move || {
+                    let timer = std::thread::spawn(move || {
                         std::thread::sleep(std::time::Duration::from_millis(delay_ms as u64));
-                        if let Some(win) = app_inner.get_webview_window(&label_inner) {
+
+                        // 检查窗口是否还存在
+                        if let Some(win) = app_inner.get_webview_window(&label_for_timer) {
                             let _ = win.destroy();
                         }
+
+                        // 从状态中移除定时器
+                        let mut timers = timers_inner.lock().unwrap();
+                        timers.remove(&label_for_timer);
                     });
+
+                    // 保存定时器到状态
+                    let mut timers = timers.lock().unwrap();
+                    timers.insert(label_clone.clone(), timer);
+                    log::info!("[Window] 已为窗口 {} 启动自动回收计时器 ({}ms)", label_clone, delay_ms);
                 }
                 _ => {
                     let _ = window_clone.hide();

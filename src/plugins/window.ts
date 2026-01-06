@@ -71,7 +71,7 @@ export const showWindowWithPosition = (
 ) => {
 	if (label) {
 		// 直接调用 Rust 命令，不通过事件系统
-		invoke(COMMAND.SHOW_WINDOW_WITH_POSITION, { position });
+		invoke(COMMAND.SHOW_WINDOW_WITH_POSITION, { position, label });
 
 		// 触发回到顶部事件
 		const LISTEN_KEY = {

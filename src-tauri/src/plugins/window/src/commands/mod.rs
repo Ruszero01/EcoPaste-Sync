@@ -7,6 +7,10 @@ pub static PREFERENCE_WINDOW_LABEL: &str = "preference";
 // 主窗口的title
 pub static MAIN_WINDOW_TITLE: &str = "EcoPaste";
 
+// 声明来自 not_macos 的 cancel_auto_recycle 命令
+#[cfg(not(target_os = "macos"))]
+pub use not_macos::cancel_auto_recycle;
+
 // 标志：是否允许应用退出（由退出命令控制）
 static ALLOW_EXIT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
@@ -186,6 +190,12 @@ pub(crate) fn calculate_safe_position_in_monitor(
 pub async fn show_main_window<R: Runtime>(app_handle: AppHandle<R>, position_mode: Option<String>) {
     let app_handle_clone = app_handle.clone();
     let label = MAIN_WINDOW_LABEL.to_string();
+
+    // 在 Windows 上，先取消该窗口的自动回收计时器
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = cancel_auto_recycle(app_handle_clone.clone(), label.clone()).await;
+    }
 
     // 直接在当前 async 上下文中执行，而不是 spawn
     let mut window_opt = app_handle.get_webview_window(&label);
@@ -370,18 +380,49 @@ pub async fn hide_window_with_behavior<R: Runtime>(
                 let delay_ms = delay_seconds * 1000;
                 log::info!("[Window] 自动回收模式：{}ms 后销毁窗口 {}", delay_ms, label);
 
-                let app_handle_clone = app_handle.clone();
-                let label_clone = label.clone();
+                #[cfg(not(target_os = "macos"))]
+                {
+                    use crate::get_auto_recycle_timers;
+                    let timers = get_auto_recycle_timers();
+                    let app_inner = app_handle.clone();
+                    let label_inner = label.clone();
+                    let timers_inner = timers.clone();
 
-                spawn(async move {
-                    tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms as u64)).await;
+                    // 延迟后销毁
+                    let timer = std::thread::spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_millis(delay_ms as u64));
 
-                    // 检查窗口是否还存在（可能已被重新打开）
-                    if let Some(win) = app_handle_clone.get_webview_window(&label_clone) {
-                        let _ = win.destroy();
-                        log::info!("[Window] 自动回收：已销毁窗口 {}", label_clone);
-                    }
-                });
+                        // 检查窗口是否还存在（可能已被重新打开）
+                        if let Some(win) = app_inner.get_webview_window(&label_inner) {
+                            let _ = win.destroy();
+                        }
+
+                        // 从状态中移除定时器
+                        let mut timers = timers_inner.lock().unwrap();
+                        timers.remove(&label_inner);
+                        log::info!("[Window] 自动回收：已销毁窗口 {}", label_inner);
+                    });
+
+                    // 保存定时器到状态
+                    let mut timers = timers.lock().unwrap();
+                    timers.insert(label.clone(), timer);
+                }
+
+                #[cfg(target_os = "macos")]
+                {
+                    let app_handle_clone = app_handle.clone();
+                    let label_clone = label.clone();
+
+                    spawn(async move {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms as u64)).await;
+
+                        // 检查窗口是否还存在（可能已被重新打开）
+                        if let Some(win) = app_handle_clone.get_webview_window(&label_clone) {
+                            let _ = win.destroy();
+                            log::info!("[Window] 自动回收：已销毁窗口 {}", label_clone);
+                        }
+                    });
+                }
 
                 // 先隐藏窗口，等待延迟后销毁
                 let _ = win.hide();
@@ -403,6 +444,12 @@ fn show_window_by_label<R: Runtime>(app_handle: &AppHandle<R>, label: &str, posi
     let label_clone = label.to_string();
 
     spawn(async move {
+        // 在 Windows 上，先取消该窗口的自动回收计时器
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = cancel_auto_recycle(app_handle_clone.clone(), label_clone.clone()).await;
+        }
+
         // 首先尝试获取现有窗口
         let mut window_opt = app_handle_clone.get_webview_window(&label_clone);
 
