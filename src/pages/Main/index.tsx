@@ -1,5 +1,5 @@
 import { LISTEN_KEY } from "@/constants";
-import { initializeMicaEffect } from "@/plugins/window";
+import { hideWindowWithBehavior, initializeMicaEffect } from "@/plugins/window";
 import type { HistoryTablePayload, TablePayload } from "@/types/database";
 import type { Store } from "@/types/store";
 import { invoke } from "@tauri-apps/api/core";
@@ -184,11 +184,11 @@ const Main = () => {
 		onBlur() {
 			if (state.pin) return;
 
-			// 固定延迟后隐藏窗口
+			// 固定延迟后隐藏/销毁窗口（根据窗口行为模式）
 			const delay = 300;
 
 			windowHideTimer.current = setTimeout(() => {
-				hideWindow();
+				hideWindowWithBehavior("main");
 				windowHideTimer.current = undefined;
 			}, delay);
 		},

@@ -31,6 +31,7 @@ const COMMAND = {
 	CLEAR_MICA_EFFECT: "plugin:eco-window|clear_mica_effect",
 	IS_MICA_SUPPORTED: "plugin:eco-window|is_mica_supported",
 	CREATE_WINDOW: "plugin:eco-window|create_window",
+	HIDE_WINDOW_WITH_BEHAVIOR: "plugin:eco-window|hide_window_with_behavior",
 };
 
 /**
@@ -188,4 +189,13 @@ export const updateMicaTheme = async (isDark: boolean) => {
 	if (supported && isTauriEnvironment()) {
 		await applyMicaEffect(isDark);
 	}
+};
+
+/**
+ * 根据窗口行为模式隐藏或销毁窗口
+ * 窗口行为设置从配置文件中读取
+ * @param label 窗口标签
+ */
+export const hideWindowWithBehavior = async (label: string) => {
+	invoke(COMMAND.HIDE_WINDOW_WITH_BEHAVIOR, { label });
 };

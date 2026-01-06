@@ -21,6 +21,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::clear_mica_effect,
             commands::is_mica_supported,
             commands::create_window,
+            commands::hide_window_with_behavior,
         ])
         .build()
 }

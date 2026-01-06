@@ -281,6 +281,122 @@ pub async fn show_preference_window<R: Runtime>(app_handle: AppHandle<R>, positi
     show_window_by_label(&app_handle, PREFERENCE_WINDOW_LABEL, position_mode);
 }
 
+// 窗口行为模式类型
+pub enum WindowBehavior {
+    Lightweight,     // 轻量模式：直接销毁
+    Resident,        // 常驻模式：隐藏
+    AutoRecycle,     // 自动回收：延迟销毁
+}
+
+/// 从配置文件中读取窗口行为设置
+/// 返回 (mode, delay_seconds)
+/// mode: "lightweight" | "resident" | "auto_recycle"
+/// delay_seconds: 延迟销毁的秒数（仅 auto_recycle 模式使用）
+pub fn get_window_behavior_from_config() -> (String, i32) {
+    let bundle_id = "com.Rains.EcoPaste-Sync";
+    let is_dev = cfg!(debug_assertions);
+
+    // 根据开发/发布模式选择配置文件名（与前端 path.ts 保持一致）
+    // 开发环境: .store.dev.json
+    // 生产环境: .store.json
+    let config_filename = if is_dev { ".store.dev.json" } else { ".store.json" };
+
+    // 优先使用 APPDATA 环境变量（与前端的 appDataDir 对应）
+    let config_path = if let Some(app_data_dir) = std::env::var_os("APPDATA") {
+        std::path::PathBuf::from(app_data_dir)
+            .join(bundle_id)
+            .join(config_filename)
+    } else {
+        // 备用方案：使用 dirs crate
+        let save_data_dir = dirs::data_dir()
+            .or_else(|| dirs::config_dir())
+            .or_else(|| dirs::home_dir().map(|p| p.join(".local/share")));
+
+        match save_data_dir {
+            Some(data_dir) => data_dir.join(bundle_id).join(config_filename),
+            None => return ("resident".to_string(), 60),
+        }
+    };
+
+    if config_path.exists() {
+        if let Ok(content) = std::fs::read_to_string(&config_path) {
+            // 解析 JSON，提取 windowBehavior 配置
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Some(app) = json.get("globalStore").and_then(|s| s.get("app")) {
+                    if let Some(wb) = app.get("windowBehavior") {
+                        let mode = wb.get("mode")
+                            .and_then(|m| m.as_str())
+                            .unwrap_or("resident")
+                            .to_string();
+                        let delay = wb.get("recycleDelaySeconds")
+                            .and_then(|d| d.as_i64())
+                            .unwrap_or(60) as i32;
+                        return (mode, delay);
+                    }
+                }
+            }
+        }
+    }
+
+    // 默认值
+    ("resident".to_string(), 60)
+}
+
+// 根据行为模式隐藏或销毁窗口
+#[tauri::command]
+pub async fn hide_window_with_behavior<R: Runtime>(
+    app_handle: AppHandle<R>,
+    label: String,
+) -> Result<(), String> {
+    // 从配置文件读取窗口行为设置
+    let (mode, delay_seconds) = get_window_behavior_from_config();
+
+    let window = app_handle.get_webview_window(&label);
+
+    if let Some(win) = window {
+        match mode.as_str() {
+            "lightweight" => {
+                // 轻量模式：直接销毁窗口
+                log::info!("[Window] 轻量模式：销毁窗口 {}", label);
+                let _ = win.destroy();
+            }
+            "resident" => {
+                // 常驻模式：隐藏窗口
+                log::info!("[Window] 常驻模式：隐藏窗口 {}", label);
+                let _ = win.hide();
+            }
+            "auto_recycle" => {
+                // 自动回收模式：延迟后销毁
+                let delay_ms = delay_seconds * 1000;
+                log::info!("[Window] 自动回收模式：{}ms 后销毁窗口 {}", delay_ms, label);
+
+                let app_handle_clone = app_handle.clone();
+                let label_clone = label.clone();
+
+                spawn(async move {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms as u64)).await;
+
+                    // 检查窗口是否还存在（可能已被重新打开）
+                    if let Some(win) = app_handle_clone.get_webview_window(&label_clone) {
+                        let _ = win.destroy();
+                        log::info!("[Window] 自动回收：已销毁窗口 {}", label_clone);
+                    }
+                });
+
+                // 先隐藏窗口，等待延迟后销毁
+                let _ = win.hide();
+            }
+            _ => {
+                // 默认行为：隐藏窗口
+                log::warn!("[Window] 未知的窗口行为模式：{}，使用默认隐藏", mode);
+                let _ = win.hide();
+            }
+        }
+    }
+
+    Ok(())
+}
+
 // 显示指定 label 的窗口（简化版：窗口不存在时直接创建）
 fn show_window_by_label<R: Runtime>(app_handle: &AppHandle<R>, label: &str, position_mode: Option<String>) {
     let app_handle_clone = app_handle.clone();

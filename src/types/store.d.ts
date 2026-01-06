@@ -9,13 +9,18 @@ export interface Store {
 	clipboardStore: ClipboardStore;
 }
 
+export type WindowBehaviorMode = "lightweight" | "resident" | "auto_recycle";
+
 export interface GlobalStore {
 	// 应用设置
 	app: {
 		autoStart: boolean;
-		silentStart: boolean;
 		showMenubarIcon: boolean;
 		showTaskbarIcon: boolean;
+		windowBehavior: {
+			mode: WindowBehaviorMode;
+			recycleDelaySeconds: number; // 仅 auto_recycle 模式使用
+		};
 	};
 
 	// 外观设置

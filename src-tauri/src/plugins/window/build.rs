@@ -11,6 +11,7 @@ const COMMANDS: &[&str] = &[
     "clear_mica_effect",
     "is_mica_supported",
     "create_window",
+    "hide_window_with_behavior",
     "close_webview_for_test",
 ];
 

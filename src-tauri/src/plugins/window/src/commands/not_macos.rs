@@ -185,13 +185,47 @@ pub async fn create_window<R: Runtime>(
         .build()
         .map_err(|e| format!("创建窗口失败: {}", e))?;
 
-    // 监听窗口关闭事件，点击关闭按钮时直接销毁而不是隐藏
+    // 监听窗口关闭事件，根据窗口行为模式处理
     let window_clone = _window.clone();
+    let app_handle_clone = app_handle.clone();
+    let label_clone = label.clone();
     _window.on_window_event(move |event: &tauri::WindowEvent| {
         if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-            // 阻止默认的隐藏行为，直接销毁窗口
             api.prevent_close();
-            let _ = window_clone.destroy();
+
+            // 从配置文件中读取窗口行为设置
+            let (mode, delay_seconds) = super::get_window_behavior_from_config();
+
+            match mode.as_str() {
+                "lightweight" => {
+                    // 轻量模式：直接销毁
+                    let _ = window_clone.destroy();
+                }
+                "resident" => {
+                    // 常驻模式：隐藏
+                    let _ = window_clone.hide();
+                }
+                "auto_recycle" => {
+                    // 自动回收模式：延迟后销毁
+                    let delay_ms = (delay_seconds as i64) * 1000;
+                    let app_inner = app_handle_clone.clone();
+                    let label_inner = label_clone.clone();
+
+                    // 先隐藏窗口
+                    let _ = window_clone.hide();
+
+                    // 延迟后销毁
+                    std::thread::spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_millis(delay_ms as u64));
+                        if let Some(win) = app_inner.get_webview_window(&label_inner) {
+                            let _ = win.destroy();
+                        }
+                    });
+                }
+                _ => {
+                    let _ = window_clone.hide();
+                }
+            }
         }
     });
 

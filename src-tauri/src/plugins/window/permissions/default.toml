@@ -15,5 +15,6 @@ permissions = [
     "allow-clear-mica-effect",
     "allow-is-mica-supported",
     "allow-create-window",
+    "allow-hide-window-with-behavior",
     "allow-close-webview-for-test"
 ]

@@ -1,7 +1,7 @@
 import UnoIcon from "@/components/UnoIcon";
 // import UpdateApp from "@/components/UpdateApp"; // fork分支不需要更新功能
 import {
-	destroyWindow,
+	hideWindowWithBehavior,
 	initializeMicaEffect,
 	updateMicaTheme,
 } from "@/plugins/window";
@@ -22,19 +22,19 @@ import Shortcut from "./components/Shortcut";
 
 const Preference = () => {
 	const { t } = useTranslation();
-	const { app, appearance } = useSnapshot(globalStore);
+	const { appearance } = useSnapshot(globalStore);
 	const [activeKey, setActiveKey] = useState("clipboard");
 	const contentRef = useRef<HTMLElement>(null);
 
 	// ESC 销毁窗口
 	useKeyPress("esc", () => {
-		destroyWindow();
+		hideWindowWithBehavior("preference");
 	});
 
 	useMount(async () => {
 		const autostart = await isAutostart();
 
-		if (!autostart && !app.silentStart) {
+		if (!autostart) {
 			showWindow();
 		}
 

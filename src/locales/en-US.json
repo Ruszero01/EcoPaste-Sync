@@ -153,12 +153,21 @@
 				"title": "App Settings",
 				"label": {
 					"auto_start": "Start at Login",
-					"silent_start": "Silent Start",
 					"show_menubar_icon": "Show Menubar Icon",
-					"show_taskbar_icon": "Show Taskbar Icon"
+					"show_taskbar_icon": "Show Taskbar Icon",
+					"window_behavior_mode": "Window Behavior",
+					"window_behavior_lightweight": "Lightweight",
+					"window_behavior_resident": "Resident",
+					"window_behavior_auto_recycle": "Auto Recycle",
+					"window_behavior_30s": "30 seconds",
+					"window_behavior_1min": "1 minute",
+					"window_behavior_3min": "3 minutes",
+					"window_behavior_5min": "5 minutes"
 				},
 				"hints": {
-					"silent_start": "Hide windows when launching applications manually"
+					"window_behavior_lightweight": "Destroy immediately, release webview2, rebuild window, slowest startup",
+					"window_behavior_resident": "Hide on close, webview2 keeps running, fast response, memory used",
+					"window_behavior_auto_recycle": "Auto destroy window after idle, release webview2, balances speed and memory"
 				}
 			},
 			"appearance_settings": {

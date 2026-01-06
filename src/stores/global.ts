@@ -4,9 +4,12 @@ import { proxy } from "valtio";
 export const globalStore = proxy<GlobalStore>({
 	app: {
 		autoStart: false,
-		silentStart: false,
 		showMenubarIcon: true,
 		showTaskbarIcon: false,
+		windowBehavior: {
+			mode: "resident",
+			recycleDelaySeconds: 60,
+		},
 	},
 
 	appearance: {

@@ -153,12 +153,21 @@
 				"title": "应用设置",
 				"label": {
 					"auto_start": "登录时启动",
-					"silent_start": "静默启动",
 					"show_menubar_icon": "显示菜单栏图标",
-					"show_taskbar_icon": "显示任务栏图标"
+					"show_taskbar_icon": "显示任务栏图标",
+					"window_behavior_mode": "窗口行为模式",
+					"window_behavior_lightweight": "轻量模式",
+					"window_behavior_resident": "常驻模式",
+					"window_behavior_auto_recycle": "自动回收",
+					"window_behavior_30s": "30秒",
+					"window_behavior_1min": "1分钟",
+					"window_behavior_3min": "3分钟",
+					"window_behavior_5min": "5分钟"
 				},
 				"hints": {
-					"silent_start": "手动启动应用时隐藏窗口"
+					"window_behavior_lightweight": "关闭立即销毁，释放webview2进程，需重建窗口，启动最慢",
+					"window_behavior_resident": "关闭时隐藏窗口，webview2进程常驻占用内存，但响应迅速",
+					"window_behavior_auto_recycle": "闲置后自动销毁窗口，释放webview2进程，兼顾响应与内存"
 				}
 			},
 			"appearance_settings": {

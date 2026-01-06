@@ -6,6 +6,7 @@ import Language from "./components/Language";
 import MacosPermissions from "./components/MacosPermissions";
 import RowHeight from "./components/RowHeight";
 import ThemeMode from "./components/ThemeMode";
+import WindowBehavior from "./components/WindowBehavior";
 
 const General = () => {
 	const { app } = useSnapshot(globalStore);
@@ -38,15 +39,6 @@ const General = () => {
 				/>
 
 				<ProSwitch
-					title={t("preference.settings.app_settings.label.silent_start")}
-					description={t("preference.settings.app_settings.hints.silent_start")}
-					value={app.silentStart}
-					onChange={(value) => {
-						globalStore.app.silentStart = value;
-					}}
-				/>
-
-				<ProSwitch
 					title={t("preference.settings.app_settings.label.show_menubar_icon")}
 					value={app.showMenubarIcon}
 					onChange={(value) => {
@@ -62,6 +54,8 @@ const General = () => {
 					}}
 				/>
 			</ProList>
+
+			<WindowBehavior />
 
 			<ProList header={t("preference.settings.appearance_settings.title")}>
 				<Language />
