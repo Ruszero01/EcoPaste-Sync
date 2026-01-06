@@ -246,7 +246,8 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 			);
 			if (itemIndex !== -1) {
 				// 创建一个新的对象引用，确保React能够检测到变化
-				state.list[itemIndex] = { ...item };
+				// 同时更新 syncStatus（后端也会更新）
+				state.list[itemIndex] = { ...item, syncStatus: "changed" };
 			}
 
 			// 调用database插件更新数据库

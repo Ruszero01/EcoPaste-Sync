@@ -82,10 +82,11 @@ const Main = () => {
 
 	// 使用 useEffect 管理监听器生命周期
 	useEffect(() => {
-		let unlistenClipboard: (() => void) | null = null;
+		let unlisten: (() => void) | null = null;
 
 		const initListen = async () => {
-			unlistenClipboard = await listen<{ duplicate_id: string | null }>(
+			// 监听剪贴板插件的数据库更新事件（包括同步成功后的刷新）
+			unlisten = await listen<{ duplicate_id: string | null }>(
 				"plugin:eco-clipboard://database_updated",
 				handleDatabaseUpdated,
 			);
@@ -94,7 +95,7 @@ const Main = () => {
 		initListen();
 
 		return () => {
-			unlistenClipboard?.();
+			unlisten?.();
 		};
 	}, [handleDatabaseUpdated]);
 

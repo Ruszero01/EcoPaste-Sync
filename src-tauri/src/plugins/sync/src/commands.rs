@@ -8,7 +8,7 @@ use crate::file_sync_manager::{FileUploadTask, FileDownloadTask, FileSyncBatch, 
 use base64::Engine;
 use std::sync::Arc;
 use std::time::Instant;
-use tauri::State;
+use tauri::{AppHandle, Emitter, Runtime, State};
 use tokio::sync::Mutex;
 use tauri_plugin_eco_database::DatabaseState;
 
@@ -64,7 +64,8 @@ pub fn get_sync_status(state: State<'_, Arc<Mutex<CloudSyncEngine>>>) -> Result<
 /// 手动触发同步（后端直接从数据库读取数据）
 /// 自动检查并初始化同步引擎（如果尚未初始化）
 #[tauri::command]
-pub async fn trigger_sync(
+pub async fn trigger_sync<R: Runtime>(
+    app_handle: AppHandle<R>,
     state: State<'_, Arc<Mutex<CloudSyncEngine>>>,
     db_state: State<'_, DatabaseState>,
 ) -> Result<SyncResult, String> {
@@ -100,6 +101,16 @@ pub async fn trigger_sync(
                 process_result.downloaded_items.len(),
                 process_result.deleted_items.len()
             );
+
+            // 如果有数据变更，通知前端刷新列表
+            if !process_result.uploaded_items.is_empty()
+                || !process_result.downloaded_items.is_empty()
+                || !process_result.deleted_items.is_empty()
+            {
+                let payload = serde_json::json!({ "duplicate_id": null });
+                let _ = app_handle.emit("plugin:eco-clipboard://database_updated", payload);
+            }
+
             Ok(SyncResult {
                 success: process_result.success,
                 message: if process_result.success {

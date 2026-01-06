@@ -240,6 +240,16 @@ pub async fn create_window<R: Runtime>(
                     // 先隐藏窗口
                     let _ = window_clone.hide();
 
+                    // 取消该窗口之前的旧定时器
+                    {
+                        let mut timers = timers.lock().unwrap();
+                        if let Some(old_timer) = timers.remove(&label_for_timer) {
+                                    // 尝试唤醒线程使其提前结束
+                                    let _ = old_timer.thread().unpark();
+                            log::info!("[Window] 已取消窗口 {} 的旧自动回收计时器", label_for_timer);
+                        }
+                    }
+
                     // 延迟后销毁
                     let timer = std::thread::spawn(move || {
                         std::thread::sleep(std::time::Duration::from_millis(delay_ms as u64));
@@ -247,6 +257,7 @@ pub async fn create_window<R: Runtime>(
                         // 检查窗口是否还存在
                         if let Some(win) = app_inner.get_webview_window(&label_for_timer) {
                             let _ = win.destroy();
+                            log::info!("[Window] 自动回收：已销毁窗口 {}", label_for_timer);
                         }
 
                         // 从状态中移除定时器
