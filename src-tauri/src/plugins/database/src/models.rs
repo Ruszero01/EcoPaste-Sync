@@ -44,7 +44,7 @@ impl Default for HistoryItem {
             note: None,
             subtype: None,
             deleted: Some(0),
-            sync_status: Some("none".to_string()),
+            sync_status: Some("not_synced".to_string()),
             source_app_name: None,
             source_app_icon: None,
             position: Some(0),

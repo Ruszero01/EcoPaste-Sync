@@ -4,7 +4,6 @@
 use crate::sync_engine::CloudSyncEngine;
 use crate::types::*;
 use crate::webdav::{WebDAVClientState, ConnectionTestResult, WebDAVConfig};
-use crate::file_sync_manager::{FileUploadTask, FileDownloadTask, FileSyncBatch, FileSyncConfig, FileOperationResult};
 use base64::Engine;
 use std::sync::Arc;
 use std::time::Instant;
@@ -38,20 +37,6 @@ pub async fn init_sync(
             Err(e)
         }
     }
-}
-
-/// 启动同步
-#[tauri::command]
-pub async fn start_sync(state: State<'_, Arc<Mutex<CloudSyncEngine>>>) -> Result<SyncResult, String> {
-    let mut engine = state.lock().await;
-    engine.start().await
-}
-
-/// 停止同步
-#[tauri::command]
-pub async fn stop_sync(state: State<'_, Arc<Mutex<CloudSyncEngine>>>) -> Result<SyncResult, String> {
-    let mut engine = state.lock().await;
-    engine.stop().await
 }
 
 /// 获取同步状态
@@ -88,11 +73,14 @@ pub async fn trigger_sync<R: Runtime>(
     }
 
     // 获取同步模式配置
-    let only_favorites = engine.get_sync_mode_only_favorites();
+    let config = engine.config.as_ref()
+        .ok_or_else(|| "同步引擎未初始化，请先保存服务器配置".to_string())?;
+    let only_favorites = config.only_favorites;
+    let include_files = config.include_files;
     log::info!("🔄 [TRIGGER] 触发同步: only_favorites={}", only_favorites);
 
     // 直接从数据库查询并执行同步
-    let result = engine.sync_with_database(&db, only_favorites).await;
+    let result = engine.sync_with_database(&db, only_favorites, include_files).await;
 
     match result {
         Ok(process_result) => {
@@ -260,13 +248,6 @@ async fn test_connection_with_config(config: &WebDAVConfig) -> Result<Connection
     }
 }
 
-/// 获取同步进度
-#[tauri::command]
-pub fn get_sync_progress(state: State<'_, Arc<Mutex<CloudSyncEngine>>>) -> Result<Option<SyncProgress>, String> {
-    let engine = state.blocking_lock();
-    Ok(engine.get_progress().cloned())
-}
-
 /// 更新同步配置
 #[tauri::command]
 pub async fn update_sync_config(
@@ -276,86 +257,6 @@ pub async fn update_sync_config(
 ) -> Result<SyncResult, String> {
     let mut engine = state.lock().await;
     engine.init(config, &db_state).await
-}
-
-/// 获取当前同步配置
-#[tauri::command]
-pub fn get_sync_config(_state: State<'_, Arc<Mutex<CloudSyncEngine>>>) -> Result<Option<SyncConfig>, String> {
-    // 从本地文件读取配置
-    read_config_from_file()
-}
-
-/// 上传单个文件
-#[tauri::command]
-pub async fn upload_file(
-    task: FileUploadTask,
-    state: State<'_, Arc<Mutex<CloudSyncEngine>>>,
-) -> Result<FileOperationResult, String> {
-    let engine = state.lock().await;
-    engine.upload_file(task).await
-}
-
-/// 下载单个文件
-#[tauri::command]
-pub async fn download_file(
-    task: FileDownloadTask,
-    state: State<'_, Arc<Mutex<CloudSyncEngine>>>,
-) -> Result<FileOperationResult, String> {
-    let engine = state.lock().await;
-    engine.download_file(task).await
-}
-
-/// 删除单个文件
-#[tauri::command]
-pub async fn delete_file(
-    file_id: String,
-    remote_path: String,
-    state: State<'_, Arc<Mutex<CloudSyncEngine>>>,
-) -> Result<FileOperationResult, String> {
-    let engine = state.lock().await;
-    engine.delete_file(file_id, remote_path).await
-}
-
-/// 批量文件同步
-#[tauri::command]
-pub async fn sync_file_batch(
-    batch: FileSyncBatch,
-    state: State<'_, Arc<Mutex<CloudSyncEngine>>>,
-) -> Result<FileOperationResult, String> {
-    let mut engine = state.lock().await;
-    engine.sync_file_batch(batch).await
-}
-
-/// 批量删除文件
-#[tauri::command]
-pub async fn delete_files(
-    file_ids: Vec<String>,
-    remote_paths: Vec<String>,
-    state: State<'_, Arc<Mutex<CloudSyncEngine>>>,
-) -> Result<FileOperationResult, String> {
-    let engine = state.lock().await;
-    engine.delete_files(file_ids, remote_paths).await
-}
-
-/// 获取文件同步配置
-#[tauri::command]
-pub fn get_file_sync_config(state: State<'_, Arc<Mutex<CloudSyncEngine>>>) -> Result<FileSyncConfig, String> {
-    let engine = state.blocking_lock();
-    Ok(engine.get_file_sync_config())
-}
-
-/// 更新文件同步配置
-#[tauri::command]
-pub async fn update_file_sync_config(
-    config: FileSyncConfig,
-    state: State<'_, Arc<Mutex<CloudSyncEngine>>>,
-) -> Result<SyncResult, String> {
-    let mut engine = state.lock().await;
-    engine.update_file_sync_config(config).await;
-    Ok(SyncResult {
-        success: true,
-        message: "文件同步配置已更新".to_string(),
-    })
 }
 
 /// 上传本地配置到云端
@@ -374,24 +275,6 @@ pub async fn apply_remote_config(
 ) -> Result<SyncResult, String> {
     let engine = state.lock().await;
     engine.apply_remote_config().await
-}
-
-/// 执行书签同步
-#[tauri::command]
-pub async fn sync_bookmarks(
-    state: State<'_, Arc<Mutex<CloudSyncEngine>>>,
-) -> Result<SyncResult, String> {
-    let engine = state.lock().await;
-    engine.sync_bookmarks().await
-}
-
-/// 下载书签数据
-#[tauri::command]
-pub async fn download_bookmarks(
-    state: State<'_, Arc<Mutex<CloudSyncEngine>>>,
-) -> Result<SyncResult, String> {
-    let engine = state.lock().await;
-    engine.download_bookmarks().await
 }
 
 /// 设置书签同步数据
@@ -417,129 +300,23 @@ pub async fn reload_config_from_file(
     let mut engine = state.lock().await;
 
     // 从本地文件读取配置
-    match read_config_from_file() {
-        Ok(Some(config)) => {
+    match crate::read_sync_config_from_file() {
+        Some(config) => {
             // 重新初始化引擎
             match engine.init(config, &db_state).await {
                 Ok(result) => {
-                    log::info!("✅ 从本地文件重新加载配置成功");
+                    log::info!("从本地文件重新加载配置成功");
                     Ok(result)
                 }
                 Err(e) => {
-                    log::error!("❌ 初始化引擎失败: {}", e);
+                    log::error!("初始化引擎失败: {}", e);
                     Err(format!("初始化引擎失败: {}", e))
                 }
             }
         }
-        Ok(None) => {
-            log::warn!("⚠️ 本地配置文件不存在或格式错误");
+        None => {
+            log::warn!("本地配置文件不存在或格式错误");
             Err("本地配置文件不存在".to_string())
-        }
-        Err(e) => {
-            log::error!("❌ 读取本地配置文件失败: {}", e);
-            Err(format!("读取配置文件失败: {}", e))
-        }
-    }
-}
-
-/// 从本地文件读取配置
-fn read_config_from_file() -> Result<Option<SyncConfig>, String> {
-    use std::fs;
-
-    // 获取应用数据目录
-    let data_dir = dirs::data_dir()
-        .or_else(|| dirs::config_dir())
-        .or_else(|| dirs::home_dir().map(|p| p.join(".local/share")))
-        .ok_or_else(|| "无法获取数据目录".to_string())?;
-
-    let bundle_id = "com.Rains.EcoPaste-Sync";
-    let _app_name = "EcoPaste-Sync";
-
-    // 构建配置文件路径
-    let config_path = data_dir.join(bundle_id);
-    let config_file = if cfg!(debug_assertions) {
-        config_path.join(".store.dev.json")
-    } else {
-        config_path.join(".store.json")
-    };
-
-    log::info!("🔍 读取配置文件: {:?}", config_file);
-
-    // 检查文件是否存在
-    if !config_path.exists() {
-        log::warn!("⚠️ 配置文件目录不存在: {:?}", config_path);
-        return Ok(None);
-    }
-
-    if !config_file.exists() {
-        log::warn!("⚠️ 配置文件不存在: {:?}", config_file);
-        return Ok(None);
-    }
-
-    // 读取并解析文件
-    match fs::read_to_string(&config_file) {
-        Ok(content) => {
-            match serde_json::from_str::<serde_json::Value>(&content) {
-                Ok(json_value) => {
-                    // 从 JSON 中提取 cloudSync.serverConfig
-                    if let Some(cloud_sync) = json_value.get("globalStore").and_then(|v| v.get("cloudSync")) {
-                        if let Some(server_config) = cloud_sync.get("serverConfig") {
-                            let config = SyncConfig {
-                                server_url: server_config.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                                username: server_config.get("username").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                                password: server_config.get("password").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                                path: server_config.get("path").and_then(|v| v.as_str()).unwrap_or("/EcoPaste-Sync").to_string(),
-                                auto_sync: false,
-                                auto_sync_interval_minutes: 60,
-                                only_favorites: false,
-                                include_files: false,
-                                timeout: server_config.get("timeout").and_then(|v| v.as_u64()).unwrap_or(60000),
-                            };
-
-                            // 尝试读取自动同步设置
-                            if let Some(auto_sync) = cloud_sync.get("autoSyncSettings") {
-                                if let (Some(enabled), Some(interval)) = (
-                                    auto_sync.get("enabled").and_then(|v| v.as_bool()),
-                                    auto_sync.get("intervalHours").and_then(|v| v.as_f64())
-                                ) {
-                                    return Ok(Some(SyncConfig {
-                                        auto_sync: enabled,
-                                        auto_sync_interval_minutes: (interval * 60.0) as u64,
-                                        only_favorites: auto_sync.get("syncModeConfig")
-                                            .and_then(|v| v.get("settings"))
-                                            .and_then(|v| v.get("onlyFavorites"))
-                                            .and_then(|v| v.as_bool())
-                                            .unwrap_or(false),
-                                        include_files: auto_sync.get("syncModeConfig")
-                                            .and_then(|v| v.get("settings"))
-                                            .and_then(|v| v.get("includeFiles"))
-                                            .and_then(|v| v.as_bool())
-                                            .unwrap_or(false) || auto_sync.get("syncModeConfig")
-                                            .and_then(|v| v.get("settings"))
-                                            .and_then(|v| v.get("includeImages"))
-                                            .and_then(|v| v.as_bool())
-                                            .unwrap_or(false),
-                                        ..config
-                                    }));
-                                }
-                            }
-
-                            return Ok(Some(config));
-                        }
-                    }
-
-                    log::warn!("⚠️ 配置文件中没有找到有效的 serverConfig");
-                    Ok(None)
-                }
-                Err(e) => {
-                    log::error!("❌ 解析配置文件失败: {}", e);
-                    Err(format!("解析配置文件失败: {}", e))
-                }
-            }
-        }
-        Err(e) => {
-            log::error!("❌ 读取配置文件失败: {}", e);
-            Err(format!("读取配置文件失败: {}", e))
         }
     }
 }
@@ -552,7 +329,6 @@ pub async fn save_connection_test_result(
 ) -> Result<(), String> {
     use std::fs;
 
-    // 获取应用数据目录
     let data_dir = dirs::data_dir()
         .or_else(|| dirs::config_dir())
         .or_else(|| dirs::home_dir().map(|p| p.join(".local/share")))
@@ -623,9 +399,9 @@ pub async fn save_connection_test_result(
         .map_err(|e| format!("写入配置文件失败: {}", e))?;
 
     if success {
-        log::info!("[Sync] ✅ 连接测试成功已保存到配置文件 (延迟: {}ms)", latency_ms);
+        log::info!("[Sync] 连接测试成功已保存 (延迟: {}ms)", latency_ms);
     } else {
-        log::info!("[Sync] ❌ 连接测试失败已保存到配置文件");
+        log::info!("[Sync] 连接测试失败已保存");
     }
 
     Ok(())

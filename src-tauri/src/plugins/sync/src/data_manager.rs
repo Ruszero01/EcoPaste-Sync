@@ -107,16 +107,13 @@ impl DataManager {
         &self,
         item: &SyncDataItem,
         filter: &ContentTypeFilter,
-        mode_config: &SyncModeConfig,
+        _mode_config: &SyncModeConfig,
     ) -> bool {
         match item.item_type.as_str() {
-            "text" => filter.include_text && mode_config.content_types.include_text,
-            "formatted" => {
-                // 格式文本统一使用 HTML 渲染，检查 include_html 开关
-                filter.include_html && mode_config.content_types.include_html
-            }
-            "image" => filter.include_images && mode_config.include_images,
-            "file" => filter.include_files && mode_config.include_files,
+            "text" => filter.include_text,
+            "formatted" => filter.include_html,
+            "image" => filter.include_images,
+            "file" => filter.include_files,
             _ => true,
         }
     }
@@ -140,23 +137,16 @@ impl DataManager {
         // 简化：不做复杂的状态验证
         StateValidationResult {
             is_valid: true,
-            abnormal_items: vec![],
-            items_to_fix: vec![],
             validation_details: HashMap::new(),
         }
     }
 
     /// 计算统计信息（简化版）
-    /// 注意：同步状态统计现在从数据库查询，不再从内存缓存
     pub fn calculate_statistics(&self) -> SyncStatistics {
-        // 简化：不做复杂的状态验证
         let total_items = self.local_data.len();
 
         SyncStatistics {
             total_items,
-            synced_items: 0, // 从数据库查询
-            unsynced_items: 0, // 从数据库查询
-            changed_items: 0, // 从数据库查询
         }
     }
 

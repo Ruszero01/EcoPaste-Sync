@@ -157,7 +157,7 @@ impl DeleteManager {
                 let sync_status = sync_status_map
                     .get(id)
                     .and_then(|s| s.as_deref())
-                    .unwrap_or("none");
+                    .unwrap_or("not_synced");
 
                 if sync_status == "synced" {
                     DeleteType::Soft
@@ -227,11 +227,21 @@ impl DeleteManager {
 
         let conn = db.get_connection()?;
 
-        let placeholders: String = ids.iter().map(|_| "?").collect();
+        // 使用 push_str 构建占位符，避免 collect 的特殊处理
+        let mut placeholders = String::new();
+        for _ in ids {
+            placeholders.push_str("?,");
+        }
+        if !placeholders.is_empty() {
+            placeholders.pop(); // 移除最后一个逗号
+        }
+
         let query = format!("DELETE FROM history WHERE id IN ({})", placeholders);
 
+        // 将 String slice 转换为 &dyn ToSql
+        let params: Vec<&str> = ids.iter().map(|s| s.as_str()).collect();
         let count = conn
-            .execute(&query, rusqlite::params_from_iter(ids))
+            .execute(&query, rusqlite::params_from_iter(params.iter().copied()))
             .map_err(|e| format!("批量硬删除失败: {}", e))?;
 
         Ok(count)

@@ -14,28 +14,25 @@ mod data_manager;
 mod file_sync_manager;
 mod config_sync_manager;
 mod bookmark_sync_manager;
-mod events;
 
 pub use sync_engine::{create_shared_engine, CloudSyncEngine};
 pub use types::*;
 pub use webdav::{create_shared_client, WebDAVClientState, WebDAVConfig};
 pub use auto_sync_manager::{create_shared_manager, AutoSyncManagerState};
 pub use sync_core::{
-    SyncCore, SyncModeConfig, SyncDataItem, SyncIndex, SyncProcessResult, SyncStatistics,
-    StateValidationResult
+    SyncCore, SyncModeConfig, SyncDataItem, SyncIndex, SyncProcessResult,
 };
 pub use data_manager::{DataManager, create_shared_manager as create_data_manager};
 pub use file_sync_manager::{
     FileSyncManager, FileMetadata, FileUploadTask, FileDownloadTask, FileOperationResult,
-    FileSyncBatch, FileSyncProgress, FileSyncStrategy, FileSyncConfig,
     create_shared_manager as create_file_sync_manager
 };
 pub use config_sync_manager::{ConfigSyncManager, ConfigSyncResult, AppConfig};
 pub use bookmark_sync_manager::{BookmarkSyncManager, BookmarkSyncData, BookmarkSyncResult};
-pub use events::{EventEmitter, SyncEvent, create_shared_emitter};
 
 /// 从本地文件读取同步配置
-fn read_sync_config_from_file() -> Option<types::SyncConfig> {
+/// 返回值：Some(SyncConfig) 表示配置有效且连接测试通过，None 表示无有效配置
+pub fn read_sync_config_from_file() -> Option<types::SyncConfig> {
     use std::fs;
 
     // 获取应用数据目录
@@ -92,12 +89,45 @@ fn read_sync_config_from_file() -> Option<types::SyncConfig> {
                         .and_then(|v| v.get("cloudSync"))
                         .and_then(|v| v.get("serverConfig"))
                     {
-                        // 提取同步模式配置
-                        let sync_mode_config = json
+                        // 读取自动同步设置
+                        let auto_sync_settings = json
+                            .get("globalStore")
+                            .and_then(|v| v.get("cloudSync"))
+                            .and_then(|v| v.get("autoSyncSettings"));
+
+                        // 读取同步模式配置（统一配置入口）
+                        let sync_mode_settings = json
                             .get("globalStore")
                             .and_then(|v| v.get("cloudSync"))
                             .and_then(|v| v.get("syncModeConfig"))
                             .and_then(|v| v.get("settings"));
+
+                        let (auto_sync, auto_sync_interval_minutes) = if let Some(settings) = auto_sync_settings {
+                            let enabled = settings
+                                .get("enabled")
+                                .and_then(|v| v.as_bool())
+                                .unwrap_or(false);
+                            let interval_hours = settings
+                                .get("intervalHours")
+                                .and_then(|v| v.as_f64())
+                                .unwrap_or(1.0);
+                            (enabled, (interval_hours * 60.0) as u64)
+                        } else {
+                            (false, 60)
+                        };
+
+                        // 从 syncModeConfig.settings 读取同步模式配置
+                        let only_favorites = sync_mode_settings
+                            .and_then(|v| v.get("onlyFavorites"))
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false);
+                        let include_files = sync_mode_settings
+                            .and_then(|v| v.get("includeFiles"))
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false) || sync_mode_settings
+                            .and_then(|v| v.get("includeImages"))
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false);
 
                         Some(types::SyncConfig {
                             server_url: server_config.get("url")
@@ -119,16 +149,10 @@ fn read_sync_config_from_file() -> Option<types::SyncConfig> {
                             timeout: server_config.get("timeout")
                                 .and_then(|v| v.as_u64())
                                 .unwrap_or(60000),
-                            auto_sync: false,
-                            auto_sync_interval_minutes: 60,
-                            only_favorites: sync_mode_config
-                                .and_then(|v| v.get("onlyFavorites"))
-                                .and_then(|v| v.as_bool())
-                                .unwrap_or(false),
-                            include_files: sync_mode_config
-                                .and_then(|v| v.get("includeFiles"))
-                                .and_then(|v| v.as_bool())
-                                .unwrap_or(false),
+                            auto_sync,
+                            auto_sync_interval_minutes,
+                            only_favorites,
+                            include_files,
                         })
                     } else {
                         None
@@ -145,8 +169,6 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("eco-sync")
         .invoke_handler(generate_handler![
             commands::init_sync,
-            commands::start_sync,
-            commands::stop_sync,
             commands::get_sync_status,
             commands::trigger_sync,
             commands::start_auto_sync,
@@ -154,22 +176,11 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::get_auto_sync_status,
             commands::update_auto_sync_interval,
             commands::test_webdav_connection,
-            commands::get_sync_progress,
             commands::update_sync_config,
-            commands::get_sync_config,
             commands::reload_config_from_file,
             commands::save_connection_test_result,
-            commands::upload_file,
-            commands::download_file,
-            commands::delete_file,
-            commands::sync_file_batch,
-            commands::delete_files,
-            commands::get_file_sync_config,
-            commands::update_file_sync_config,
             commands::upload_local_config,
             commands::apply_remote_config,
-            commands::sync_bookmarks,
-            commands::download_bookmarks,
             commands::set_bookmark_sync_data
         ])
         .setup(|app_handle, _webview_manager| {

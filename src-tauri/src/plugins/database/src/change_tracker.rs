@@ -39,7 +39,7 @@ impl ChangeTracker {
             "SELECT syncStatus FROM history WHERE id = ?1",
             params![item_id],
             |row| row.get(0),
-        ).unwrap_or_else(|_| "none".to_string());
+        ).unwrap_or_else(|_| "not_synced".to_string());
 
         Ok(status)
     }

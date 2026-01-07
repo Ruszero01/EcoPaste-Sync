@@ -57,7 +57,7 @@ impl DatabaseManager {
                 note TEXT,
                 subtype TEXT,
                 deleted INTEGER DEFAULT 0,
-                syncStatus TEXT DEFAULT 'none',
+                syncStatus TEXT DEFAULT 'not_synced',
                 sourceAppName TEXT,
                 sourceAppIcon TEXT,
                 position INTEGER DEFAULT 0
@@ -318,8 +318,40 @@ impl DatabaseManager {
     pub fn upsert_from_cloud(&self, item: &SyncDataItem) -> Result<(), String> {
         let conn = self.get_connection()?;
 
-        // 计算字符数 count（从云端同步时需要重新计算）
-        let count = item.value.as_ref().map(|v| v.chars().count() as i32).unwrap_or(0);
+        // 计算 count、width、height：从 JSON 提取 fileSize/width/height
+        let (count, width, height) = match &item.value {
+            Some(value) => {
+                // 尝试解析 JSON 提取元数据
+                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(value) {
+                    if item.item_type == "image" {
+                        // 图片类型：提取 fileSize、width、height
+                        let count = parsed.get("fileSize")
+                            .and_then(|v| v.as_i64())
+                            .unwrap_or(1) as i32;
+                        let width = parsed.get("width")
+                            .and_then(|v| v.as_i64())
+                            .unwrap_or(0) as i32;
+                        let height = parsed.get("height")
+                            .and_then(|v| v.as_i64())
+                            .unwrap_or(0) as i32;
+                        (count, width, height)
+                    } else if item.item_type == "files" {
+                        // 文件类型：提取 fileSize 作为 count
+                        let count = parsed.get("fileSize")
+                            .and_then(|v| v.as_i64())
+                            .unwrap_or(1) as i32;
+                        (count, 0, 0)
+                    } else {
+                        // 文本类型：计算字符数
+                        (value.chars().count() as i32, 0, 0)
+                    }
+                } else {
+                    // 非 JSON 格式，计算字符数
+                    (value.chars().count() as i32, 0, 0)
+                }
+            }
+            None => (1, 0, 0),
+        };
 
         // 检查是否存在
         let exists: bool = conn.query_row(
@@ -333,8 +365,9 @@ impl DatabaseManager {
             conn.execute(
                 "UPDATE history SET
                     type = ?1, value = ?2, favorite = ?3, note = ?4,
-                    syncStatus = ?5, deleted = ?6, time = ?7, count = ?8, subtype = ?9
-                WHERE id = ?10",
+                    syncStatus = ?5, deleted = ?6, time = ?7, count = ?8, subtype = ?9,
+                    width = ?10, height = ?11
+                WHERE id = ?12",
                 params![
                     item.item_type,
                     item.value,
@@ -345,14 +378,16 @@ impl DatabaseManager {
                     item.time,
                     count,
                     item.subtype,
+                    width,
+                    height,
                     item.id,
                 ],
             ).map_err(|e| format!("更新云端数据失败: {}", e))?;
         } else {
             // 插入
             conn.execute(
-                "INSERT INTO history (id, type, value, favorite, note, time, syncStatus, deleted, count, subtype)
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                "INSERT INTO history (id, type, value, favorite, note, time, syncStatus, deleted, count, subtype, width, height)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
                 params![
                     item.id,
                     item.item_type,
@@ -364,6 +399,8 @@ impl DatabaseManager {
                     0, // 🧹 云端数据不包含 deleted 字段，从云端同步的项目都是活跃的
                     count,
                     item.subtype,
+                    width,
+                    height,
                 ],
             ).map_err(|e| format!("插入云端数据失败: {}", e))?;
         }

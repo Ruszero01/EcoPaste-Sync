@@ -104,7 +104,7 @@ impl ConfigSyncManager {
             .or_else(|| dirs::home_dir().map(|p| p.join(".local/share")))
             .ok_or_else(|| "无法获取数据目录".to_string())?;
 
-        let bundle_id = "com.ecopaste.app"; // 应用标识符
+        let bundle_id = "com.Rains.EcoPaste-Sync";
         let app_data_dir = save_data_dir.join(bundle_id);
         let config_path = app_data_dir.join("store.json");
 
@@ -203,7 +203,7 @@ impl ConfigSyncManager {
                 .or_else(|| dirs::home_dir().map(|p| p.join(".local/share")))
                 .ok_or_else(|| "无法获取数据目录".to_string())?;
 
-            let bundle_id = "com.ecopaste.app"; // 应用标识符
+            let bundle_id = "com.Rains.EcoPaste-Sync";
             let app_data_dir = save_data_dir.join(bundle_id);
             let config_path = app_data_dir.join("store.json");
 
