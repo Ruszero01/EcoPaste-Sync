@@ -34,6 +34,100 @@ pub use config_sync_manager::{ConfigSyncManager, ConfigSyncResult, AppConfig};
 pub use bookmark_sync_manager::{BookmarkSyncManager, BookmarkSyncData, BookmarkSyncResult};
 pub use events::{EventEmitter, SyncEvent, create_shared_emitter};
 
+/// 从本地文件读取同步配置
+fn read_sync_config_from_file() -> Option<types::SyncConfig> {
+    use std::fs;
+
+    // 获取应用数据目录
+    let data_dir = dirs::data_dir()
+        .or_else(|| dirs::config_dir())
+        .or_else(|| dirs::home_dir().map(|p| p.join(".local/share")))
+        .map(|p| p.join("com.Rains.EcoPaste-Sync"));
+
+    let config_path = match data_dir {
+        Some(dir) if dir.exists() => {
+            if cfg!(debug_assertions) {
+                dir.join(".store.dev.json")
+            } else {
+                dir.join(".store.json")
+            }
+        }
+        _ => return None,
+    };
+
+    if !config_path.exists() {
+        return None;
+    }
+
+    match fs::read_to_string(&config_path) {
+        Ok(content) => {
+            match serde_json::from_str::<serde_json::Value>(&content) {
+                Ok(json) => {
+                    // 检查连接测试是否成功
+                    let connection_tested = json
+                        .get("globalStore")
+                        .and_then(|v| v.get("cloudSync"))
+                        .and_then(|v| v.get("connectionTest"))
+                        .and_then(|v| v.get("tested"))
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
+
+                    let connection_success = json
+                        .get("globalStore")
+                        .and_then(|v| v.get("cloudSync"))
+                        .and_then(|v| v.get("connectionTest"))
+                        .and_then(|v| v.get("success"))
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
+
+                    // 只有连接测试成功才读取配置
+                    if !connection_tested || !connection_success {
+                        log::info!("[Sync] 连接测试未通过，不自动初始化引擎");
+                        return None;
+                    }
+
+                    // 提取服务器配置
+                    if let Some(server_config) = json
+                        .get("globalStore")
+                        .and_then(|v| v.get("cloudSync"))
+                        .and_then(|v| v.get("serverConfig"))
+                    {
+                        Some(types::SyncConfig {
+                            server_url: server_config.get("url")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string(),
+                            username: server_config.get("username")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string(),
+                            password: server_config.get("password")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string(),
+                            path: server_config.get("path")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("/EcoPaste-Sync")
+                                .to_string(),
+                            timeout: server_config.get("timeout")
+                                .and_then(|v| v.as_u64())
+                                .unwrap_or(60000),
+                            auto_sync: false,
+                            auto_sync_interval_minutes: 60,
+                            only_favorites: false,
+                            include_files: false,
+                        })
+                    } else {
+                        None
+                    }
+                }
+                Err(_) => None,
+            }
+        }
+        Err(_) => None,
+    }
+}
+
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("eco-sync")
         .invoke_handler(generate_handler![
@@ -51,6 +145,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::update_sync_config,
             commands::get_sync_config,
             commands::reload_config_from_file,
+            commands::save_connection_test_result,
             commands::upload_file,
             commands::download_file,
             commands::delete_file,
@@ -74,6 +169,25 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             app_handle.manage(webdav_client.clone());
             app_handle.manage(auto_sync_manager.clone());
             app_handle.manage(sync_engine.clone());
+
+            // 尝试从本地配置文件自动初始化同步引擎
+            tauri::async_runtime::spawn(async move {
+                if let Some(config) = read_sync_config_from_file() {
+                    log::info!("[Sync] 检测到已保存的服务器配置，自动初始化同步引擎...");
+
+                    let mut engine = sync_engine.lock().await;
+                    match engine.init(config, &tauri_plugin_eco_database::DatabaseState::default()).await {
+                        Ok(result) => {
+                            log::info!("[Sync] ✅ 自动初始化成功: {}", result.message);
+                        }
+                        Err(e) => {
+                            log::error!("[Sync] ❌ 自动初始化失败: {}", e);
+                        }
+                    }
+                } else {
+                    log::info!("[Sync] 未找到有效的服务器配置，跳过自动初始化");
+                }
+            });
 
             log::info!("✅ 同步插件初始化成功");
             Ok(())

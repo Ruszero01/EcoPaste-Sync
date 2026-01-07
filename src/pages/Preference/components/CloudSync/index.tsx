@@ -141,26 +141,6 @@ const CloudSync = () => {
 		}
 	}, [saveLastSyncTime]);
 
-	// 保存连接状态到本地存储
-	const saveConnectionState = useCallback(
-		async (status: "success" | "failed", config: WebDAVConfig) => {
-			try {
-				const configHash = btoa(JSON.stringify(config)).substring(0, 16);
-				const connectionState = {
-					status,
-					configHash,
-				};
-				localStorage.setItem(
-					"ecopaste-connection-state",
-					JSON.stringify(connectionState),
-				);
-			} catch (_error) {
-				// 静默处理，避免控制台噪音
-			}
-		},
-		[],
-	);
-
 	// 验证连接状态（使用后端API）
 	const validateConnectionStatus = useCallback(
 		async (config: WebDAVConfig, showMessage = true) => {
@@ -182,8 +162,11 @@ const CloudSync = () => {
 				if (result.success) {
 					setConnectionStatus("success");
 
-					// 持久化连接状态
-					await saveConnectionState("success", config);
+					// 持久化连接状态到配置文件
+					await backendSync.backendSaveConnectionTestResult(
+						true,
+						result.latency_ms,
+					);
 
 					if (showMessage) {
 						appMessage.success(
@@ -192,7 +175,9 @@ const CloudSync = () => {
 					}
 				} else {
 					setConnectionStatus("failed");
-					await saveConnectionState("failed", config);
+
+					// 持久化连接失败状态到配置文件
+					await backendSync.backendSaveConnectionTestResult(false, 0);
 
 					if (showMessage) {
 						appMessage.error(
@@ -203,7 +188,10 @@ const CloudSync = () => {
 				}
 			} catch (testError) {
 				setConnectionStatus("failed");
-				await saveConnectionState("failed", config);
+
+				// 持久化连接失败状态到配置文件
+				await backendSync.backendSaveConnectionTestResult(false, 0);
+
 				console.error("❌ 连接验证出现异常", {
 					error:
 						testError instanceof Error ? testError.message : String(testError),
@@ -214,7 +202,7 @@ const CloudSync = () => {
 				}
 			}
 		},
-		[saveConnectionState, appMessage.success, appMessage.error, t],
+		[appMessage.success, appMessage.error, t],
 	);
 
 	// 加载同步模式配置
@@ -270,59 +258,13 @@ const CloudSync = () => {
 				setWebdavConfig(webdavConfig);
 				form.setFieldsValue(webdavConfig);
 
-				// 检查缓存的连接状态是否仍然有效
-				const savedConnectionState = localStorage.getItem(
-					"ecopaste-connection-state",
-				);
-				if (savedConnectionState) {
-					try {
-						const { status, configHash } = JSON.parse(savedConnectionState);
-
-						// 检查配置是否变化
-						const currentConfigHash = btoa(
-							JSON.stringify({
-								url: webdavConfig.url,
-								username: webdavConfig.username,
-								path: webdavConfig.path,
-							}),
-						).substring(0, 16);
-
-						if (configHash === currentConfigHash && status === "success") {
-							setConnectionStatus("success");
-
-							// 🚀 自动初始化同步引擎
-							// 🔧 从 globalStore 获取最新的同步模式配置（避免使用默认值）
-							const latestSyncModeConfig = globalStore.cloudSync.syncModeConfig;
-							const syncConfig = {
-								server_url: webdavConfig.url,
-								username: webdavConfig.username,
-								password: webdavConfig.password,
-								path: webdavConfig.path || "/EcoPaste-Sync",
-								auto_sync: cloudSyncStore.autoSyncSettings.enabled,
-								auto_sync_interval_minutes:
-									cloudSyncStore.autoSyncSettings.intervalHours * 60,
-								only_favorites: latestSyncModeConfig.settings.onlyFavorites,
-								include_files:
-									latestSyncModeConfig.settings.includeImages &&
-									latestSyncModeConfig.settings.includeFiles,
-								timeout: 30000,
-							};
-
-							try {
-								const result = await backendSync.backendInitSync(syncConfig);
-								if (!result.success) {
-									console.warn("⚠️ 自动初始化返回失败:", result.message);
-								}
-							} catch (initError) {
-								console.warn("⚠️ 自动初始化失败:", initError);
-							}
-						} else {
-							setConnectionStatus("idle");
-						}
-					} catch (_parseError) {
-						setConnectionStatus("idle");
-					}
-				} else {
+				// 检查后端同步引擎是否已初始化（由后端自动初始化）
+				try {
+					await backendSync.backendGetSyncStatus();
+					// 后端同步引擎已初始化（如果配置有效）
+					setConnectionStatus("success");
+				} catch {
+					// 后端可能还未初始化，跳过
 					setConnectionStatus("idle");
 				}
 			} else {

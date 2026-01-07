@@ -543,3 +543,90 @@ fn read_config_from_file() -> Result<Option<SyncConfig>, String> {
         }
     }
 }
+
+/// 保存连接测试结果到配置文件
+#[tauri::command]
+pub async fn save_connection_test_result(
+    success: bool,
+    latency_ms: u64,
+) -> Result<(), String> {
+    use std::fs;
+
+    // 获取应用数据目录
+    let data_dir = dirs::data_dir()
+        .or_else(|| dirs::config_dir())
+        .or_else(|| dirs::home_dir().map(|p| p.join(".local/share")))
+        .ok_or_else(|| "无法获取数据目录".to_string())?;
+
+    let bundle_id = "com.Rains.EcoPaste-Sync";
+    let config_path = if cfg!(debug_assertions) {
+        data_dir.join(bundle_id).join(".store.dev.json")
+    } else {
+        data_dir.join(bundle_id).join(".store.json")
+    };
+
+    // 读取现有配置或创建新配置
+    let mut config: serde_json::Value = if config_path.exists() {
+        let content = fs::read_to_string(&config_path)
+            .map_err(|e| format!("读取配置文件失败: {}", e))?;
+        serde_json::from_str(&content)
+            .map_err(|e| format!("解析配置文件失败: {}", e))?
+    } else {
+        serde_json::json!({
+            "globalStore": {
+                "cloudSync": {
+                    "serverConfig": {},
+                    "autoSyncSettings": {
+                        "enabled": false,
+                        "intervalHours": 1.0,
+                        "syncModeConfig": {
+                            "settings": {
+                                "onlyFavorites": false,
+                                "includeImages": false,
+                                "includeFiles": false
+                            }
+                        }
+                    },
+                    "syncModeConfig": {
+                        "settings": {
+                            "onlyFavorites": false,
+                            "includeImages": false,
+                            "includeFiles": false
+                        }
+                    },
+                    "connectionTest": {
+                        "tested": false,
+                        "success": false,
+                        "latencyMs": 0,
+                        "timestamp": 0
+                    }
+                }
+            }
+        })
+    };
+
+    // 更新连接测试结果
+    if let Some(cloud_sync) = config.get_mut("globalStore").and_then(|v| v.get_mut("cloudSync")) {
+        cloud_sync["connectionTest"] = serde_json::json!({
+            "tested": true,
+            "success": success,
+            "latencyMs": latency_ms,
+            "timestamp": chrono::Utc::now().timestamp()
+        });
+    }
+
+    // 写入配置文件
+    let content = serde_json::to_string_pretty(&config)
+        .map_err(|e| format!("序列化配置文件失败: {}", e))?;
+
+    fs::write(&config_path, content)
+        .map_err(|e| format!("写入配置文件失败: {}", e))?;
+
+    if success {
+        log::info!("[Sync] ✅ 连接测试成功已保存到配置文件 (延迟: {}ms)", latency_ms);
+    } else {
+        log::info!("[Sync] ❌ 连接测试失败已保存到配置文件");
+    }
+
+    Ok(())
+}
