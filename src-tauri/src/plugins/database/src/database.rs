@@ -318,6 +318,9 @@ impl DatabaseManager {
     pub fn upsert_from_cloud(&self, item: &SyncDataItem) -> Result<(), String> {
         let conn = self.get_connection()?;
 
+        // 计算字符数 count（从云端同步时需要重新计算）
+        let count = item.value.as_ref().map(|v| v.chars().count() as i32).unwrap_or(0);
+
         // 检查是否存在
         let exists: bool = conn.query_row(
             "SELECT 1 FROM history WHERE id = ?1",
@@ -330,8 +333,8 @@ impl DatabaseManager {
             conn.execute(
                 "UPDATE history SET
                     type = ?1, value = ?2, favorite = ?3, note = ?4,
-                    syncStatus = ?5, deleted = ?6, time = ?7
-                WHERE id = ?8",
+                    syncStatus = ?5, deleted = ?6, time = ?7, count = ?8, subtype = ?9
+                WHERE id = ?10",
                 params![
                     item.item_type,
                     item.value,
@@ -340,14 +343,16 @@ impl DatabaseManager {
                     "synced",
                     0, // 🧹 云端数据不包含 deleted 字段，从云端同步的项目都是活跃的
                     item.time,
+                    count,
+                    item.subtype,
                     item.id,
                 ],
             ).map_err(|e| format!("更新云端数据失败: {}", e))?;
         } else {
             // 插入
             conn.execute(
-                "INSERT INTO history (id, type, value, favorite, note, time, syncStatus, deleted)
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                "INSERT INTO history (id, type, value, favorite, note, time, syncStatus, deleted, count, subtype)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                 params![
                     item.id,
                     item.item_type,
@@ -357,6 +362,8 @@ impl DatabaseManager {
                     item.time,
                     "synced",
                     0, // 🧹 云端数据不包含 deleted 字段，从云端同步的项目都是活跃的
+                    count,
+                    item.subtype,
                 ],
             ).map_err(|e| format!("插入云端数据失败: {}", e))?;
         }
