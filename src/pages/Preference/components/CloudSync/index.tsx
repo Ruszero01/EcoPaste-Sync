@@ -141,70 +141,6 @@ const CloudSync = () => {
 		}
 	}, [saveLastSyncTime]);
 
-	// 验证连接状态（使用后端API）
-	const validateConnectionStatus = useCallback(
-		async (config: WebDAVConfig, showMessage = true) => {
-			if (!config || !config.url || !config.username || !config.password) {
-				return;
-			}
-
-			setConnectionStatus("testing");
-			try {
-				// 使用后端API测试连接
-				const result = await backendSync.backendTestWebdavConnection({
-					url: config.url,
-					username: config.username,
-					password: config.password,
-					path: config.path || "/EcoPaste-Sync",
-					timeout: 30000,
-				});
-
-				if (result.success) {
-					setConnectionStatus("success");
-
-					// 持久化连接状态到配置文件
-					await backendSync.backendSaveConnectionTestResult(
-						true,
-						result.latency_ms,
-					);
-
-					if (showMessage) {
-						appMessage.success(
-							`${t("preference.cloud_sync.connection_success")} (延迟: ${result.latency_ms}ms)`,
-						);
-					}
-				} else {
-					setConnectionStatus("failed");
-
-					// 持久化连接失败状态到配置文件
-					await backendSync.backendSaveConnectionTestResult(false, 0);
-
-					if (showMessage) {
-						appMessage.error(
-							t("preference.cloud_sync.connection_failed") +
-								(result.error_message ? `: ${result.error_message}` : ""),
-						);
-					}
-				}
-			} catch (testError) {
-				setConnectionStatus("failed");
-
-				// 持久化连接失败状态到配置文件
-				await backendSync.backendSaveConnectionTestResult(false, 0);
-
-				console.error("❌ 连接验证出现异常", {
-					error:
-						testError instanceof Error ? testError.message : String(testError),
-				});
-
-				if (showMessage) {
-					appMessage.error(t("preference.cloud_sync.connection_test_failed"));
-				}
-			}
-		},
-		[appMessage.success, appMessage.error, t],
-	);
-
 	// 加载同步模式配置
 	const loadSyncMode = useCallback(() => {
 		try {
@@ -577,43 +513,85 @@ const CloudSync = () => {
 
 	// 测试WebDAV连接 - 使用后端API
 	const testWebDAVConnection = async () => {
+		if (
+			!webdavConfig?.url ||
+			!webdavConfig?.username ||
+			!webdavConfig?.password
+		) {
+			appMessage.warning("请先填写服务器配置");
+			return;
+		}
+
 		setConnectionStatus("testing");
 		try {
 			// 使用后端API测试连接
 			const result = await backendSync.backendTestWebdavConnection({
-				url: webdavConfig?.url || "",
-				username: webdavConfig?.username || "",
-				password: webdavConfig?.password || "",
-				path: webdavConfig?.path || "/EcoPaste-Sync",
+				url: webdavConfig.url,
+				username: webdavConfig.username,
+				password: webdavConfig.password,
+				path: webdavConfig.path || "/EcoPaste-Sync",
 				timeout: 30000,
 			});
 
 			if (result.success) {
 				setConnectionStatus("success");
+
+				// 保存连接测试结果到配置文件
+				await backendSync.backendSaveConnectionTestResult(
+					true,
+					result.latency_ms,
+				);
+
+				// 初始化后端同步引擎
+				const syncConfig = {
+					server_url: webdavConfig.url,
+					username: webdavConfig.username,
+					password: webdavConfig.password,
+					path: webdavConfig.path || "/EcoPaste-Sync",
+					auto_sync: autoSyncEnabled,
+					auto_sync_interval_minutes: syncInterval,
+					only_favorites: syncModeConfig.onlyFavorites,
+					include_files:
+						syncModeConfig.includeImages && syncModeConfig.includeFiles,
+					timeout: 30000,
+				};
+				await backendSync.backendInitSync(syncConfig);
+
 				appMessage.success(
 					`${t("preference.cloud_sync.connection_success")} (延迟: ${result.latency_ms}ms)`,
 				);
 			} else {
 				setConnectionStatus("failed");
+
+				// 保存连接失败状态到配置文件
+				await backendSync.backendSaveConnectionTestResult(false, 0);
+
 				appMessage.error(
 					t("preference.cloud_sync.connection_failed") +
 						(result.error_message ? `: ${result.error_message}` : ""),
 				);
 			}
-		} catch (_error) {
+		} catch (error) {
 			setConnectionStatus("failed");
+
+			// 保存连接失败状态到配置文件
+			await backendSync.backendSaveConnectionTestResult(false, 0);
+
+			console.error("❌ 连接测试异常", {
+				error: error instanceof Error ? error.message : String(error),
+			});
 			appMessage.error(t("preference.cloud_sync.connection_test_failed"));
 		}
 	};
 
-	// 处理表单提交 - 优化版本：自动测试连接并持久化状态
+	// 处理表单提交 - 先保存配置，不自动测试连接
 	const handleConfigSubmit = async (values: any) => {
 		setIsConfigLoading(true);
 		try {
 			// 确保包含默认超时时间
 			const config: WebDAVConfig = {
 				...values,
-				timeout: 60000, // 增加默认超时时间到60秒，提高网络请求的可靠性
+				timeout: 60000, // 增加默认超时时间到60秒
 			};
 
 			// 保存配置到本地
@@ -623,28 +601,22 @@ const CloudSync = () => {
 				return;
 			}
 
-			// 自动测试连接并初始化后端同步引擎
-			await validateConnectionStatus(config);
+			// 通知后端重新加载配置
+			try {
+				await invoke("plugin:eco-sync|reload_config_from_file");
+			} catch (reloadError) {
+				// 后端可能还没有这个命令，静默处理
+				console.warn("通知后端重新加载配置失败:", reloadError);
+			}
 
-			// 初始化后端同步引擎
-			const syncConfig = {
-				server_url: config.url,
-				username: config.username,
-				password: config.password,
-				path: config.path || "/EcoPaste-Sync",
-				auto_sync: autoSyncEnabled,
-				auto_sync_interval_minutes: syncInterval,
-				only_favorites: syncModeConfig.onlyFavorites,
-				include_files:
-					syncModeConfig.includeImages && syncModeConfig.includeFiles,
-				timeout: 30000,
-			};
-			await backendSync.backendInitSync(syncConfig);
+			appMessage.success(t("preference.cloud_sync.config_saved"));
 		} catch (error) {
 			setConnectionStatus("failed");
 			appMessage.error(t("preference.cloud_sync.save_failed"));
+			// 详细打印错误信息
 			console.error("❌ 配置处理失败", {
-				error: error instanceof Error ? error.message : String(error),
+				errorMessage: error instanceof Error ? error.message : String(error),
+				errorStack: error instanceof Error ? error.stack : undefined,
 			});
 		} finally {
 			setIsConfigLoading(false);
