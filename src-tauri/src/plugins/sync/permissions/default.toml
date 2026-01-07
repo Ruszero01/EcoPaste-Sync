@@ -17,6 +17,7 @@ permissions = [
     "allow-update-sync-config",
     "allow-get-sync-config",
     "allow-reload-config-from-file",
+    "allow-save-connection-test-result",
     "allow-upload-file",
     "allow-download-file",
     "allow-delete-file",

@@ -13,6 +13,7 @@ const COMMANDS: &[&str] = &[
     "update_sync_config",
     "get_sync_config",
     "reload_config_from_file",
+    "save_connection_test_result",
     "upload_file",
     "download_file",
     "delete_file",
