@@ -7,9 +7,9 @@ pub static PREFERENCE_WINDOW_LABEL: &str = "preference";
 // 主窗口的title
 pub static MAIN_WINDOW_TITLE: &str = "EcoPaste";
 
-// 声明来自 not_macos 的 cancel_auto_recycle 命令
+// 声明来自 not_macos 的命令
 #[cfg(not(target_os = "macos"))]
-pub use not_macos::{cancel_auto_recycle, start_auto_recycle_timer};
+pub use not_macos::{cancel_auto_recycle, mark_window_hidden, clear_hidden_mark};
 
 // 标志：是否允许应用退出（由退出命令控制）
 static ALLOW_EXIT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
@@ -380,13 +380,13 @@ pub async fn hide_window_with_behavior<R: Runtime>(
                 let delay_ms = delay_seconds * 1000;
                 log::info!("[Window] 自动回收模式：{}ms 后销毁窗口 {}", delay_ms, label);
 
-                // 先隐藏窗口
+                // 隐藏窗口并标记为待回收
                 let _ = win.hide();
 
-                // 使用统一的自动回收定时器（Windows）
+                // 使用标记 + 回收器机制（Windows）
                 #[cfg(not(target_os = "macos"))]
                 {
-                    start_auto_recycle_timer(&app_handle, &label, delay_ms as u64);
+                    mark_window_hidden(&app_handle, &label);
                 }
 
                 // macOS 使用 tokio 异步定时器
@@ -398,7 +398,7 @@ pub async fn hide_window_with_behavior<R: Runtime>(
                     spawn(async move {
                         tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms as u64)).await;
 
-                        // 检查窗口是否还存在且不可见（不可见表示已被隐藏，需要销毁）
+                        // 检查窗口是否还存在且不可见
                         if let Some(win) = app_handle_clone.get_webview_window(&label_clone) {
                             if let Ok(visible) = win.is_visible() {
                                 if !visible {
@@ -453,6 +453,12 @@ fn show_window_by_label<R: Runtime>(app_handle: &AppHandle<R>, label: &str, posi
         }
 
         if let Some(window) = window_opt {
+            // 窗口显示时清除隐藏标记
+            #[cfg(not(target_os = "macos"))]
+            {
+                clear_hidden_mark(&label_clone);
+            }
+
             #[cfg(target_os = "macos")]
             {
                 if is_main_window(&window) {

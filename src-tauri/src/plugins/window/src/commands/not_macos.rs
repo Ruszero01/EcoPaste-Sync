@@ -1,6 +1,9 @@
 use super::{find_monitor_at_position, get_saved_window_state, calculate_safe_position_in_monitor, MAIN_WINDOW_LABEL, PREFERENCE_WINDOW_LABEL};
 use crate::{shared_show_window, set_window_follow_cursor, get_auto_recycle_timers};
 use tauri::{command, AppHandle, Manager, Runtime, WebviewWindow};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 // 窗口配置
 const MAIN_WINDOW_URL: &str = "index.html/#/";
@@ -10,50 +13,80 @@ const PREFERENCE_WINDOW_URL: &str = "index.html/#/preference";
 const PREFERENCE_WINDOW_WIDTH: u32 = 700;
 const PREFERENCE_WINDOW_HEIGHT: u32 = 480;
 
-/// 统一的自动回收定时器启动函数
-/// 取消旧定时器 -> 创建新定时器（检查窗口不可见时才销毁）
-pub fn start_auto_recycle_timer<R: Runtime>(app_handle: &AppHandle<R>, label: &str, delay_ms: u64) {
-    let timers = get_auto_recycle_timers();
-    let app_inner = app_handle.clone();
-    let label_inner = label.to_string();
-    let label_for_insert = label_inner.clone();
-    let timers_inner = timers.clone();
+/// 窗口隐藏时间戳映射
+static HIDDEN_WINDOWS: once_cell::sync::Lazy<Arc<Mutex<HashMap<String, Instant>>>> =
+    once_cell::sync::Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
 
-    // 取消该窗口之前的旧定时器
+/// 回收检查间隔（毫秒）
+const RECYCLE_CHECK_INTERVAL_MS: u64 = 1000;
+
+/// 记录窗口隐藏时间（用于延迟销毁）
+pub fn mark_window_hidden<R: Runtime>(app_handle: &AppHandle<R>, label: &str) {
+    let delay_ms = {
+        let (_, delay) = super::get_window_behavior_from_config();
+        (delay as u64) * 1000
+    };
+
+    // 记录隐藏时间和延迟时长
     {
-        let mut timers = timers.lock().unwrap();
-        if let Some(old_timer) = timers.remove(&label_inner) {
-            // 尝试唤醒线程使其提前结束
-            let _ = old_timer.thread().unpark();
-            log::info!("[Window] 已取消窗口 {} 的旧自动回收计时器", label_inner);
-        }
+        let mut hidden = HIDDEN_WINDOWS.lock().unwrap();
+        hidden.insert(label.to_string(), Instant::now());
+        log::info!("[Window] 标记窗口 {} 已隐藏，{}ms 后回收", label, delay_ms);
     }
 
-    // 延迟后销毁（只在窗口不可见时销毁，表示已被隐藏）
-    let timer = std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+    // 确保回收器已启动
+    let app_inner = app_handle.clone();
+    let hidden_inner = HIDDEN_WINDOWS.clone();
+    std::thread::spawn(move || {
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(RECYCLE_CHECK_INTERVAL_MS));
 
-        // 检查窗口是否还存在且不可见（不可见表示已被隐藏，需要销毁）
-        if let Some(win) = app_inner.get_webview_window(&label_inner) {
-            if let Ok(visible) = win.is_visible() {
-                if !visible {
-                    let _ = win.destroy();
-                    log::info!("[Window] 自动回收：窗口 {} 不可见，已销毁", label_inner);
-                } else {
-                    log::info!("[Window] 自动回收：窗口 {} 仍可见，跳过销毁", label_inner);
+            let delay_ms = {
+                let (_, delay) = super::get_window_behavior_from_config();
+                (delay as u64) * 1000
+            };
+            let delay_secs = delay_ms as f64 / 1000.0;
+
+            let mut to_remove = Vec::new();
+            {
+                let hidden = hidden_inner.lock().unwrap();
+                for (label, hidden_time) in hidden.iter() {
+                    if hidden_time.elapsed().as_secs_f64() >= delay_secs {
+                        to_remove.push(label.clone());
+                    }
+                }
+            }
+
+            for label in to_remove {
+                // 再次检查是否仍在隐藏状态
+                let should_destroy = {
+                    let hidden = hidden_inner.lock().unwrap();
+                    if let Some(hidden_time) = hidden.get(&label) {
+                        hidden_time.elapsed().as_secs_f64() >= delay_secs
+                    } else {
+                        false
+                    }
+                };
+
+                if should_destroy {
+                    if let Some(win) = app_inner.get_webview_window(&label) {
+                        let _ = win.destroy();
+                        log::info!("[Window] 自动回收：已销毁窗口 {}", label);
+                    }
+                    let mut hidden = hidden_inner.lock().unwrap();
+                    hidden.remove(&label);
                 }
             }
         }
-
-        // 从状态中移除定时器
-        let mut timers = timers_inner.lock().unwrap();
-        timers.remove(&label_inner);
     });
+}
 
-    // 保存定时器到状态
-    let mut timers = timers.lock().unwrap();
-    timers.insert(label_for_insert, timer);
-    log::info!("[Window] 已为窗口 {} 启动自动回收计时器 ({}ms)", label, delay_ms);
+/// 清除窗口隐藏标记（窗口重新显示时调用）
+pub fn clear_hidden_mark(label: &str) {
+    let mut hidden = HIDDEN_WINDOWS.lock().unwrap();
+    if hidden.remove(label).is_some() {
+        log::info!("[Window] 清除窗口 {} 的隐藏标记", label);
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -262,7 +295,7 @@ pub async fn create_window<R: Runtime>(
             api.prevent_close();
 
             // 从配置文件中读取窗口行为设置
-            let (mode, delay_seconds) = super::get_window_behavior_from_config();
+            let (mode, _delay_seconds) = super::get_window_behavior_from_config();
 
             match mode.as_str() {
                 "lightweight" => {
@@ -274,9 +307,9 @@ pub async fn create_window<R: Runtime>(
                     let _ = window_clone.hide();
                 }
                 "auto_recycle" => {
-                    // 先隐藏窗口，然后启动统一的自动回收定时器
+                    // 隐藏窗口并标记为待回收
                     let _ = window_clone.hide();
-                    start_auto_recycle_timer(&app_handle_clone, &label_clone, (delay_seconds as u64) * 1000);
+                    mark_window_hidden(&app_handle_clone, &label_clone);
                 }
                 _ => {
                     let _ = window_clone.hide();
