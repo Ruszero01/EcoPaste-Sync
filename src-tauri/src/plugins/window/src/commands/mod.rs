@@ -9,7 +9,7 @@ pub static MAIN_WINDOW_TITLE: &str = "EcoPaste";
 
 // 声明来自 not_macos 的命令
 #[cfg(not(target_os = "macos"))]
-pub use not_macos::{cancel_auto_recycle, mark_window_hidden, clear_hidden_mark};
+pub use not_macos::{mark_window_hidden, clear_hidden_mark};
 
 // 标志：是否允许应用退出（由退出命令控制）
 static ALLOW_EXIT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
@@ -191,10 +191,10 @@ pub async fn show_main_window<R: Runtime>(app_handle: AppHandle<R>, position_mod
     let app_handle_clone = app_handle.clone();
     let label = MAIN_WINDOW_LABEL.to_string();
 
-    // 在 Windows 上，先取消该窗口的自动回收计时器
+    // 清除隐藏标记（如果之前设置了）
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = cancel_auto_recycle(app_handle_clone.clone(), label.clone()).await;
+        clear_hidden_mark(&label);
     }
 
     // 直接在当前 async 上下文中执行，而不是 spawn
@@ -359,7 +359,7 @@ pub async fn hide_window_with_behavior<R: Runtime>(
     label: String,
 ) -> Result<(), String> {
     // 从配置文件读取窗口行为设置
-    let (mode, delay_seconds) = get_window_behavior_from_config();
+    let (mode, _delay_seconds) = get_window_behavior_from_config();
 
     let window = app_handle.get_webview_window(&label);
 
@@ -377,8 +377,7 @@ pub async fn hide_window_with_behavior<R: Runtime>(
             }
             "auto_recycle" => {
                 // 自动回收模式：延迟后销毁
-                let delay_ms = delay_seconds * 1000;
-                log::info!("[Window] 自动回收模式：{}ms 后销毁窗口 {}", delay_ms, label);
+                log::info!("[Window] 自动回收模式：隐藏窗口 {}", label);
 
                 // 隐藏窗口并标记为待回收
                 let _ = win.hide();
@@ -403,9 +402,7 @@ pub async fn hide_window_with_behavior<R: Runtime>(
                             if let Ok(visible) = win.is_visible() {
                                 if !visible {
                                     let _ = win.destroy();
-                                    log::info!("[Window] 自动回收：窗口 {} 不可见，已销毁", label_clone);
-                                } else {
-                                    log::info!("[Window] 自动回收：窗口 {} 仍可见，跳过销毁", label_clone);
+                                    log::info!("[Window] 自动回收：窗口 {} 已销毁", label_clone);
                                 }
                             }
                         }
@@ -429,12 +426,6 @@ fn show_window_by_label<R: Runtime>(app_handle: &AppHandle<R>, label: &str, posi
     let label_clone = label.to_string();
 
     spawn(async move {
-        // 在 Windows 上，先取消该窗口的自动回收计时器
-        #[cfg(not(target_os = "macos"))]
-        {
-            let _ = cancel_auto_recycle(app_handle_clone.clone(), label_clone.clone()).await;
-        }
-
         // 首先尝试获取现有窗口
         let mut window_opt = app_handle_clone.get_webview_window(&label_clone);
 

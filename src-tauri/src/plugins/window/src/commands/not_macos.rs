@@ -1,8 +1,8 @@
 use super::{find_monitor_at_position, get_saved_window_state, calculate_safe_position_in_monitor, MAIN_WINDOW_LABEL, PREFERENCE_WINDOW_LABEL};
-use crate::{shared_show_window, set_window_follow_cursor, get_auto_recycle_timers};
+use crate::{shared_show_window, set_window_follow_cursor};
 use tauri::{command, AppHandle, Manager, Runtime, WebviewWindow};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
 use std::time::Instant;
 
 // 窗口配置
@@ -17,76 +17,67 @@ const PREFERENCE_WINDOW_HEIGHT: u32 = 480;
 static HIDDEN_WINDOWS: once_cell::sync::Lazy<Arc<Mutex<HashMap<String, Instant>>>> =
     once_cell::sync::Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
 
+/// 回收器是否已启动
+static RECYCLER_STARTED: AtomicBool = AtomicBool::new(false);
+
 /// 回收检查间隔（毫秒）
 const RECYCLE_CHECK_INTERVAL_MS: u64 = 1000;
 
-/// 记录窗口隐藏时间（用于延迟销毁）
+/// 标记窗口隐藏（回收器会定期检查并销毁超时窗口）
 pub fn mark_window_hidden<R: Runtime>(app_handle: &AppHandle<R>, label: &str) {
-    let delay_ms = {
-        let (_, delay) = super::get_window_behavior_from_config();
-        (delay as u64) * 1000
-    };
-
-    // 记录隐藏时间和延迟时长
+    // 记录隐藏时间
     {
         let mut hidden = HIDDEN_WINDOWS.lock().unwrap();
         hidden.insert(label.to_string(), Instant::now());
-        log::info!("[Window] 标记窗口 {} 已隐藏，{}ms 后回收", label, delay_ms);
     }
 
-    // 确保回收器已启动
-    let app_inner = app_handle.clone();
-    let hidden_inner = HIDDEN_WINDOWS.clone();
-    std::thread::spawn(move || {
-        loop {
-            std::thread::sleep(std::time::Duration::from_millis(RECYCLE_CHECK_INTERVAL_MS));
+    // 只启动一个回收器线程
+    if RECYCLER_STARTED.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+        let app_inner = app_handle.clone();
+        let hidden_inner = HIDDEN_WINDOWS.clone();
+        std::thread::spawn(move || {
+            loop {
+                std::thread::sleep(std::time::Duration::from_millis(RECYCLE_CHECK_INTERVAL_MS));
 
-            let delay_ms = {
-                let (_, delay) = super::get_window_behavior_from_config();
-                (delay as u64) * 1000
-            };
-            let delay_secs = delay_ms as f64 / 1000.0;
-
-            let mut to_remove = Vec::new();
-            {
-                let hidden = hidden_inner.lock().unwrap();
-                for (label, hidden_time) in hidden.iter() {
-                    if hidden_time.elapsed().as_secs_f64() >= delay_secs {
-                        to_remove.push(label.clone());
-                    }
-                }
-            }
-
-            for label in to_remove {
-                // 再次检查是否仍在隐藏状态
-                let should_destroy = {
-                    let hidden = hidden_inner.lock().unwrap();
-                    if let Some(hidden_time) = hidden.get(&label) {
-                        hidden_time.elapsed().as_secs_f64() >= delay_secs
-                    } else {
-                        false
-                    }
+                let delay_secs = {
+                    let (_, delay) = super::get_window_behavior_from_config();
+                    delay as f64
                 };
 
-                if should_destroy {
-                    if let Some(win) = app_inner.get_webview_window(&label) {
-                        let _ = win.destroy();
-                        log::info!("[Window] 自动回收：已销毁窗口 {}", label);
+                let mut to_remove = Vec::new();
+                {
+                    let hidden = hidden_inner.lock().unwrap();
+                    for (label, hidden_time) in hidden.iter() {
+                        if hidden_time.elapsed().as_secs_f64() >= delay_secs {
+                            to_remove.push(label.clone());
+                        }
                     }
-                    let mut hidden = hidden_inner.lock().unwrap();
-                    hidden.remove(&label);
+                }
+
+                for label in to_remove {
+                    let should_destroy = {
+                        let hidden = hidden_inner.lock().unwrap();
+                        hidden.get(&label).map_or(false, |t| t.elapsed().as_secs_f64() >= delay_secs)
+                    };
+
+                    if should_destroy {
+                        if let Some(win) = app_inner.get_webview_window(&label) {
+                            let _ = win.destroy();
+                            log::info!("[Window] 自动回收：已销毁窗口 {}", label);
+                        }
+                        let mut hidden = hidden_inner.lock().unwrap();
+                        hidden.remove(&label);
+                    }
                 }
             }
-        }
-    });
+        });
+    }
 }
 
 /// 清除窗口隐藏标记（窗口重新显示时调用）
 pub fn clear_hidden_mark(label: &str) {
     let mut hidden = HIDDEN_WINDOWS.lock().unwrap();
-    if hidden.remove(label).is_some() {
-        log::info!("[Window] 清除窗口 {} 的隐藏标记", label);
-    }
+    hidden.remove(label);
 }
 
 #[cfg(target_os = "windows")]
@@ -96,19 +87,6 @@ use window_vibrancy::{apply_mica, clear_mica};
 #[command]
 pub async fn show_window<R: Runtime>(_app_handle: AppHandle<R>, window: WebviewWindow<R>) {
     shared_show_window(&window);
-}
-
-// 取消窗口的自动回收计时器
-#[command]
-pub async fn cancel_auto_recycle<R: Runtime>(_app_handle: AppHandle<R>, label: String) {
-    let timers = get_auto_recycle_timers();
-    let mut timers = timers.lock().unwrap();
-
-    if let Some(timer) = timers.remove(&label) {
-        // 尝试唤醒线程使其提前结束
-        let _ = timer.thread().unpark();
-        log::info!("[Window] 已取消窗口 {} 的自动回收计时器", label);
-    }
 }
 
 // 显示窗口并设置位置
@@ -157,15 +135,6 @@ pub async fn create_window<R: Runtime>(
     label: String,
     position_mode: Option<&str>,
 ) -> Result<(), String> {
-    // 先取消该标签的旧自动回收定时器
-    {
-        let timers = get_auto_recycle_timers();
-        let mut timers = timers.lock().unwrap();
-        if timers.remove(&label).is_some() {
-            log::info!("[Window] 已取消窗口 {} 的旧自动回收计时器", label);
-        }
-    }
-
     // 先检查窗口是否已存在，如果存在则销毁旧窗口
     if let Some(existing_window) = app_handle.get_webview_window(&label) {
         let _ = existing_window.destroy();
