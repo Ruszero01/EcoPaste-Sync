@@ -103,9 +103,14 @@ impl CloudSyncEngine {
         }
         drop(client);
 
-        // 转换并保存配置
-        self.config = Some(self.convert_config(config.clone()));
+        // 转换并保存配置（统一保存到 SyncCore）
+        let unified_config = self.convert_config(config.clone());
+        self.config = Some(unified_config.clone());
         self.status = SyncStatus::Idle;
+
+        // 同步配置到 SyncCore（统一配置入口）
+        let sync_core = self.sync_core.clone();
+        sync_core.lock().await.update_config(config.clone()).await;
 
         // 设置同步核心的回调
         let sync_core = self.sync_core.clone();
@@ -117,6 +122,10 @@ impl CloudSyncEngine {
             // TODO: 处理错误
         }));
         drop(core);
+
+        // 清理孤儿缓存文件
+        let file_sync_manager = self.file_sync_manager.clone();
+        file_sync_manager.lock().await.cleanup_stale_cache_files(database_state).await;
 
         // 如果配置中启用了自动同步，启动它
         if config.auto_sync {
@@ -225,7 +234,7 @@ impl CloudSyncEngine {
         let auto_sync_manager = self.auto_sync_manager.clone();
         let mut manager = auto_sync_manager.lock().await;
 
-        // 设置自动同步回调
+        // 设置自动同步回调（统一从 SyncCore 获取配置）
         let sync_core = self.sync_core.clone();
         let database_state_clone = database_state.clone();
         manager.set_sync_callback(Box::new(move || {
@@ -233,23 +242,24 @@ impl CloudSyncEngine {
             let database_state = database_state_clone.clone();
             tauri::async_runtime::spawn(async move {
                 let mut core = sync_core.lock().await;
-                let mode_config = // TODO: 获取当前模式配置
-                    crate::sync_core::SyncModeConfig {
-                        auto_sync: true,
-                        auto_sync_interval_minutes: 60,
-                        only_favorites: false,
-                        include_images: true,
-                        include_files: true,
-                        content_types: crate::sync_core::ContentTypeConfig {
-                            include_text: true,
-                            include_html: true,
-                            include_rtf: true,
-                            include_markdown: true,
-                        },
-                        conflict_resolution: crate::sync_core::ConflictResolutionStrategy::Merge,
-                        device_id: "device".to_string(),
-                        previous_mode: None,
-                    };
+                // 从 SyncCore 统一配置入口获取同步模式
+                let config = core.get_config().await;
+                let mode_config = crate::sync_core::SyncModeConfig {
+                    auto_sync: true,
+                    auto_sync_interval_minutes: 60,
+                    only_favorites: config.as_ref().map(|c| c.only_favorites).unwrap_or(false),
+                    include_images: true,
+                    include_files: config.as_ref().map(|c| c.include_files).unwrap_or(false),
+                    content_types: crate::sync_core::ContentTypeConfig {
+                        include_text: true,
+                        include_html: true,
+                        include_rtf: true,
+                        include_markdown: true,
+                    },
+                    conflict_resolution: crate::sync_core::ConflictResolutionStrategy::Merge,
+                    device_id: "device".to_string(),
+                    previous_mode: None,
+                };
                 let _ = core.perform_sync(mode_config, &database_state).await;
             });
         }));

@@ -92,6 +92,13 @@ fn read_sync_config_from_file() -> Option<types::SyncConfig> {
                         .and_then(|v| v.get("cloudSync"))
                         .and_then(|v| v.get("serverConfig"))
                     {
+                        // 提取同步模式配置
+                        let sync_mode_config = json
+                            .get("globalStore")
+                            .and_then(|v| v.get("cloudSync"))
+                            .and_then(|v| v.get("syncModeConfig"))
+                            .and_then(|v| v.get("settings"));
+
                         Some(types::SyncConfig {
                             server_url: server_config.get("url")
                                 .and_then(|v| v.as_str())
@@ -114,8 +121,14 @@ fn read_sync_config_from_file() -> Option<types::SyncConfig> {
                                 .unwrap_or(60000),
                             auto_sync: false,
                             auto_sync_interval_minutes: 60,
-                            only_favorites: false,
-                            include_files: false,
+                            only_favorites: sync_mode_config
+                                .and_then(|v| v.get("onlyFavorites"))
+                                .and_then(|v| v.as_bool())
+                                .unwrap_or(false),
+                            include_files: sync_mode_config
+                                .and_then(|v| v.get("includeFiles"))
+                                .and_then(|v| v.as_bool())
+                                .unwrap_or(false),
                         })
                     } else {
                         None

@@ -554,7 +554,11 @@ impl FileSyncManager {
                                 match self.calculate_checksum(&task.local_path).await {
                                     Ok(actual_checksum) => {
                                         if actual_checksum != *expected_checksum {
+                                            log::error!("❌ 文件校验和不匹配: expected={}, actual={}, file={}",
+                                                expected_checksum, actual_checksum, task.local_path.display());
                                             validation_error = Some("文件校验和不匹配".to_string());
+                                        } else {
+                                            log::info!("✅ 文件校验和验证通过: {}", task.local_path.display());
                                         }
                                     }
                                     Err(e) => {
@@ -824,34 +828,30 @@ impl FileSyncManager {
         }
     }
 
-    /// 计算文件校验和
+    /// 计算文件校验和（使用 MD5，与上传保持一致）
     /// # Arguments
     /// * `file_path` - 文件路径
     pub async fn calculate_checksum(&self, file_path: &PathBuf) -> Result<String, String> {
-        use sha2::{Digest, Sha256};
-
         // 读取文件内容
-        let file = tokio::fs::File::open(file_path).await
+        let mut file = tokio::fs::File::open(file_path).await
             .map_err(|e| format!("打开文件失败: {}", e))?;
 
-        // 转换为阻塞读取
-        let mut buffered = tokio::io::BufReader::new(file);
-        let mut hasher = Sha256::new();
-        let mut buffer = vec![0; 8192];
+        let mut context = md5::Context::new();
+        let mut buffer = vec![0u8; 8192];
 
         loop {
-            let bytes_read = buffered.read(&mut buffer).await
+            let bytes_read = file.read(&mut buffer)
+                .await
                 .map_err(|e| format!("读取文件失败: {}", e))?;
 
             if bytes_read == 0 {
                 break;
             }
 
-            hasher.update(&buffer[..bytes_read]);
+            context.consume(&buffer[..bytes_read]);
         }
 
-        // 计算校验和
-        let result = hasher.finalize();
+        let result = context.compute();
         Ok(format!("{:x}", result))
     }
 
@@ -1335,6 +1335,91 @@ impl FileSyncManager {
         }
 
         Ok(cache_dir)
+    }
+
+    /// 清理孤儿缓存文件
+    /// 扫描缓存目录，删除不在数据库中的文件（这些是已删除项目的缓存）
+    pub async fn cleanup_stale_cache_files(&self, database_state: &tauri_plugin_eco_database::DatabaseState) {
+        log::info!("🔄 开始清理孤儿缓存文件...");
+
+        // 获取缓存目录
+        let cache_dir = match self.get_cache_dir().await {
+            Ok(path) => path,
+            Err(e) => {
+                log::warn!("⚠️ 无法获取缓存目录，跳过清理: {}", e);
+                return;
+            }
+        };
+
+        if !cache_dir.exists() {
+            log::info!("✅ 缓存目录不存在，无需清理");
+            return;
+        }
+
+        // 获取缓存目录中的所有文件
+        let mut cache_files = Vec::new();
+        if let Ok(entries) = std::fs::read_dir(&cache_dir) {
+            for entry in entries.flatten() {
+                if entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
+                    if let Some(path) = entry.path().to_str().map(|s| s.to_string()) {
+                        cache_files.push(path);
+                    }
+                }
+            }
+        }
+
+        if cache_files.is_empty() {
+            log::info!("✅ 缓存目录为空，无需清理");
+            return;
+        }
+
+        log::info!("📁 缓存目录中有 {} 个文件", cache_files.len());
+
+        // 获取数据库中所有文件记录的本地路径
+        let db = database_state.lock().await;
+        let options = tauri_plugin_eco_database::QueryOptions {
+            where_clause: None,
+            order_by: None,
+            limit: None,
+            offset: None,
+            only_favorites: false,
+            exclude_deleted: false, // 包含已删除的数据
+            params: None,
+        };
+
+        let cache_dir_str = cache_dir.to_string_lossy().to_string();
+        let db_files: std::collections::HashSet<String> = match db.query_history(options) {
+            Ok(items) => items
+                .iter()
+                .filter(|item| item.item_type.as_deref() == Some("files") || item.item_type.as_deref() == Some("image"))
+                .filter_map(|item| item.value.clone())
+                .filter(|v| v.starts_with(&cache_dir_str))
+                .collect(),
+            Err(e) => {
+                log::error!("❌ 查询数据库失败: {}", e);
+                return;
+            }
+        };
+
+        drop(db);
+
+        // 找出不在数据库中的缓存文件（孤儿文件）
+        let mut orphaned_count = 0;
+        for cache_file in &cache_files {
+            if !db_files.contains(cache_file) {
+                match std::fs::remove_file(cache_file) {
+                    Ok(_) => {
+                        log::info!("🗑️ 已删除孤儿缓存: {}", cache_file);
+                        orphaned_count += 1;
+                    }
+                    Err(e) => {
+                        log::warn!("⚠️ 删除缓存文件失败: {} ({})", cache_file, e);
+                    }
+                }
+            }
+        }
+
+        log::info!("✅ 缓存清理完成，共删除 {} 个孤儿文件", orphaned_count);
     }
 }
 
