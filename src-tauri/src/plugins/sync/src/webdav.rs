@@ -94,8 +94,11 @@ impl WebDAVClient {
         self.config = Some(config);
         self.http_client = Some(client);
 
-        // 验证连接并确保同步目录存在
-        self.ensure_sync_directory().await?;
+        // 降级处理：目录检查失败只记录警告，不阻塞初始化
+        // 网络不稳定时应用仍可启动，后续同步时会自动创建目录
+        if let Err(e) = self.ensure_sync_directory().await {
+            log::warn!("[Sync] 初始化时检查同步目录失败: {}，应用将继续运行", e);
+        }
 
         Ok(())
     }
@@ -107,12 +110,16 @@ impl WebDAVClient {
 
     /// 获取配置
     fn config(&self) -> Result<&WebDAVConfig, String> {
-        self.config.as_ref().ok_or_else(|| "WebDAV 客户端未初始化".to_string())
+        self.config
+            .as_ref()
+            .ok_or_else(|| "WebDAV 客户端未初始化".to_string())
     }
 
     /// 获取 HTTP 客户端
     fn client(&self) -> Result<&reqwest::Client, String> {
-        self.http_client.as_ref().ok_or_else(|| "WebDAV 客户端未初始化".to_string())
+        self.http_client
+            .as_ref()
+            .ok_or_else(|| "WebDAV 客户端未初始化".to_string())
     }
 
     /// 构建认证头
@@ -143,7 +150,11 @@ impl WebDAVClient {
         if sync_path.is_empty() {
             self.build_full_url(file_name)
         } else {
-            self.build_full_url(&format!("{}/{}", sync_path, file_name.trim_start_matches('/')))
+            self.build_full_url(&format!(
+                "{}/{}",
+                sync_path,
+                file_name.trim_start_matches('/')
+            ))
         }
     }
 
@@ -223,25 +234,63 @@ impl WebDAVClient {
         }
     }
 
-    /// 测试连接
+    /// 测试连接（带重试机制）
     pub async fn test_connection(&self) -> Result<ConnectionTestResult, String> {
-        let start_time = Instant::now();
-        let client = self.client()?;
-        let _config = self.config()?;
-        let auth_header = self.build_auth_header()?;
+        let retry_config = RetryConfig::default();
+        let mut last_result = None;
 
-        // 首先确保目录存在
-        if let Err(e) = self.ensure_sync_directory().await {
-            return Ok(ConnectionTestResult {
-                success: false,
-                latency_ms: start_time.elapsed().as_millis() as u64,
-                status_code: None,
-                error_message: Some(format!("无法访问同步目录: {}", e)),
-                server_info: None,
-            });
+        for attempt in 1..=retry_config.max_retries {
+            match self.attempt_connection().await {
+                Ok(result) => {
+                    if result.success {
+                        return Ok(result);
+                    }
+                    // 失败且不可重试，直接返回
+                    if !Self::is_retryable_error(result.error_message.as_deref()) {
+                        return Ok(result);
+                    }
+                    last_result = Some(result);
+                }
+                Err(e) => {
+                    last_result = Some(ConnectionTestResult {
+                        success: false,
+                        latency_ms: 0,
+                        status_code: None,
+                        error_message: Some(format!("连接失败: {}", e)),
+                        server_info: None,
+                    });
+                }
+            }
+
+            // 如果不是最后一次尝试，等待后重试
+            if attempt < retry_config.max_retries {
+                let delay = retry_config.base_delay_ms * 2_u64.pow(attempt - 1);
+                log::debug!(
+                    "[WebDAV] 连接测试第 {} 次失败，{}ms 后重试...",
+                    attempt,
+                    delay
+                );
+                tokio::time::sleep(Duration::from_millis(delay)).await;
+            }
         }
 
-        // 测试连接
+        // 所有重试都失败，返回最后一次的结果
+        Ok(last_result.unwrap_or_else(|| ConnectionTestResult {
+            success: false,
+            latency_ms: 0,
+            status_code: None,
+            error_message: Some("所有重试均失败".to_string()),
+            server_info: None,
+        }))
+    }
+
+    /// 尝试一次连接测试（内部方法）
+    async fn attempt_connection(&self) -> Result<ConnectionTestResult, String> {
+        let start_time = Instant::now();
+        let client = self.client()?;
+        let auth_header = self.build_auth_header()?;
+
+        // 直接测试连接，不检查目录（避免 TLS 握手不稳定导致误判）
         let test_url = self.build_sync_path("")?;
 
         let response = client
@@ -262,7 +311,8 @@ impl WebDAVClient {
                     .and_then(|v| v.to_str().ok())
                     .map(|s| s.to_string());
 
-                let success = resp.status().is_success() || status_code == 405 || status_code == 207;
+                let success =
+                    resp.status().is_success() || status_code == 405 || status_code == 207;
 
                 Ok(ConnectionTestResult {
                     success,
@@ -292,8 +342,12 @@ impl WebDAVClient {
         file_path: &str,
         content: &str,
     ) -> Result<FileUploadResult, String> {
-        self.upload_with_retry(file_path, content.as_bytes(), "application/json; charset=utf-8")
-            .await
+        self.upload_with_retry(
+            file_path,
+            content.as_bytes(),
+            "application/json; charset=utf-8",
+        )
+        .await
     }
 
     /// 下载同步数据 (JSON 文本)
@@ -355,7 +409,11 @@ impl WebDAVClient {
         let full_path = if self.config()?.path.trim_matches('/').is_empty() {
             dir_path.to_string()
         } else {
-            format!("{}/{}", self.config()?.path.trim_matches('/'), dir_path.trim_start_matches('/'))
+            format!(
+                "{}/{}",
+                self.config()?.path.trim_matches('/'),
+                dir_path.trim_start_matches('/')
+            )
         };
 
         self.create_directory_internal(&full_path).await?;
@@ -387,7 +445,10 @@ impl WebDAVClient {
         let mut last_error = None;
 
         for attempt in 1..=retry_config.max_retries {
-            match self.upload_single_attempt(file_path, data, content_type).await {
+            match self
+                .upload_single_attempt(file_path, data, content_type)
+                .await
+            {
                 Ok(result) if result.success => {
                     return Ok(FileUploadResult {
                         duration_ms: start_time.elapsed().as_millis() as u64,
@@ -395,7 +456,9 @@ impl WebDAVClient {
                     });
                 }
                 Ok(result) => {
-                    if Self::is_retryable_error(result.error_message.as_deref()) && attempt < retry_config.max_retries {
+                    if Self::is_retryable_error(result.error_message.as_deref())
+                        && attempt < retry_config.max_retries
+                    {
                         last_error = result.error_message;
                         let delay = retry_config.base_delay_ms * 2_u64.pow(attempt - 1);
                         tokio::time::sleep(Duration::from_millis(delay)).await;
@@ -500,7 +563,9 @@ impl WebDAVClient {
                     });
                 }
                 Ok(result) => {
-                    if Self::is_retryable_error(result.error_message.as_deref()) && attempt < retry_config.max_retries {
+                    if Self::is_retryable_error(result.error_message.as_deref())
+                        && attempt < retry_config.max_retries
+                    {
                         last_error = result.error_message;
                         let delay = retry_config.base_delay_ms * 2_u64.pow(attempt - 1);
                         tokio::time::sleep(Duration::from_millis(delay)).await;
@@ -596,6 +661,8 @@ impl WebDAVClient {
                 || msg.contains("502")
                 || msg.contains("503")
                 || msg.contains("504")
+                || msg.contains("handshake")
+                || msg.contains("unexpected EOF")
         } else {
             false
         }
