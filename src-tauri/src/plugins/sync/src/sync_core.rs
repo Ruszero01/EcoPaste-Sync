@@ -85,13 +85,10 @@ pub struct SyncCore {
     webdav_client: WebDAVClientState,
     /// 数据管理器
     pub data_manager: Arc<Mutex<DataManager>>,
-    /// 文件同步管理器（保留用于未来扩展）
-    #[allow(dead_code)]
+    /// 文件同步管理器
     file_sync_manager: Arc<Mutex<FileSyncManager>>,
     /// 同步配置（统一配置入口）
     pub config: Arc<Mutex<Option<SyncConfig>>>,
-    /// 当前同步索引
-    current_index: Option<SyncIndex>,
     /// 是否正在同步
     sync_in_progress: bool,
 }
@@ -108,7 +105,6 @@ impl SyncCore {
             data_manager,
             file_sync_manager,
             config: Arc::new(Mutex::new(None)),
-            current_index: None,
             sync_in_progress: false,
         }
     }
@@ -325,11 +321,6 @@ impl SyncCore {
         true
     }
 
-    /// 获取当前同步索引
-    pub fn get_current_index(&self) -> Option<&SyncIndex> {
-        self.current_index.as_ref()
-    }
-
     /// 获取同步状态
     pub fn get_sync_status(&self) -> SyncStatus {
         if self.sync_in_progress {
@@ -443,51 +434,6 @@ impl SyncCore {
             })
             .cloned()
             .collect()
-    }
-
-    /// 检测和解决冲突
-    #[allow(dead_code)]
-    async fn detect_and_resolve_conflicts(
-        &self,
-        local_data: &[SyncDataItem],
-        cloud_data: &[SyncDataItem],
-    ) -> Vec<String> {
-        let mut conflicts = Vec::new();
-
-        // 构建云端数据的索引
-        let cloud_index: HashMap<String, &SyncDataItem> = cloud_data
-            .iter()
-            .map(|item| (item.id.clone(), item))
-            .collect();
-
-        for local_item in local_data {
-            if let Some(cloud_item) = cloud_index.get(&local_item.id) {
-                // 检查是否发生冲突
-                if self.is_conflict(local_item, cloud_item) {
-                    conflicts.push(local_item.id.clone());
-                }
-            }
-        }
-
-        conflicts
-    }
-
-    /// 检查是否为冲突
-    fn is_conflict(&self, local_item: &SyncDataItem, cloud_item: &SyncDataItem) -> bool {
-        // 检查时间戳判断谁更新
-        if local_item.time > cloud_item.time {
-            // 本地更新更新
-            return false;
-        }
-
-        // 检查内容是否不同
-        if let (Some(local_value), Some(cloud_value)) = (&local_item.value, &cloud_item.value) {
-            if local_value != cloud_value {
-                return true;
-            }
-        }
-
-        false
     }
 
     /// 计算需要删除的项目（简化版）
@@ -618,7 +564,7 @@ impl SyncCore {
                         }
                     }
                 } else {
-                    let file_paths = self.parse_file_paths(value);
+                    let file_paths = crate::file_sync_manager::parse_file_paths_from_value(value);
                     for file_path in file_paths {
                         if file_path.exists() {
                             let file_name = file_path
@@ -638,18 +584,12 @@ impl SyncCore {
                                 };
 
                             let remote_path = format!("files/{}_{}", item.id, file_name);
-                            let metadata = crate::file_sync_manager::FileMetadata {
-                                id: item.id.clone(),
-                                file_name: file_name.to_string(),
-                                original_path: Some(file_path.clone()),
-                                remote_path: remote_path.clone(),
-                                size: 0,
-                                time: item.time,
-                                checksum: file_checksum.clone(),
-                                mime_type: None,
-                                width: None,
-                                height: None,
-                            };
+                            let metadata = crate::file_sync_manager::build_metadata_for_upload(
+                                &item.id,
+                                item.time,
+                                &file_path,
+                                file_checksum.clone(),
+                            );
 
                             upload_tasks.push(crate::file_sync_manager::FileUploadTask {
                                 metadata,
@@ -769,29 +709,20 @@ impl SyncCore {
 
             for file_item in &file_items_to_upload {
                 if let Some(value) = &file_item.value {
-                    let file_path_str = if value.starts_with('[') {
-                        if let Ok(paths) = serde_json::from_str::<Vec<String>>(value) {
-                            if !paths.is_empty() {
-                                paths[0].clone()
-                            } else {
-                                continue;
-                            }
-                        } else {
-                            continue;
-                        }
-                    } else {
-                        value.clone()
+                    let Some(file_path_buf) =
+                        crate::file_sync_manager::extract_first_file_path(value)
+                    else {
+                        continue;
                     };
 
-                    let file_name = std::path::Path::new(&file_path_str)
-                        .file_name()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or("unknown");
-
-                    let file_path_buf = std::path::PathBuf::from(&file_path_str);
                     if !file_path_buf.exists() {
                         continue;
                     }
+
+                    let file_name = file_path_buf
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("unknown");
 
                     let file_checksum =
                         match crate::file_sync_manager::calculate_file_checksum(&file_path_buf)
@@ -804,23 +735,17 @@ impl SyncCore {
                             }
                         };
 
-                    let remote_path = format!("files/{}_{}", file_item.id, file_name);
-                    let metadata = crate::file_sync_manager::FileMetadata {
-                        id: file_item.id.clone(),
-                        file_name: file_name.to_string(),
-                        original_path: Some(file_path_buf.clone()),
-                        remote_path,
-                        size: 0,
-                        time: file_item.time,
-                        checksum: file_checksum.clone(),
-                        mime_type: None,
-                        width: None,
-                        height: None,
-                    };
+                    let _remote_path = format!("files/{}_{}", file_item.id, file_name);
+                    let metadata = crate::file_sync_manager::build_metadata_for_upload(
+                        &file_item.id,
+                        file_item.time,
+                        &file_path_buf,
+                        file_checksum.clone(),
+                    );
 
                     let upload_task = crate::file_sync_manager::FileUploadTask {
                         metadata,
-                        local_path: std::path::PathBuf::from(&file_path_str),
+                        local_path: file_path_buf.clone(),
                         remote_path: format!("files/{}_{}", file_item.id, file_name),
                     };
 
@@ -1058,23 +983,5 @@ impl SyncCore {
         }
 
         Ok((deleted_ids, files_to_delete, updated_cloud_data))
-    }
-
-    /// 解析文件路径
-    /// 支持JSON数组格式 ["path1", "path2"] 和直接字符串格式 "path"
-    fn parse_file_paths(&self, value: &str) -> Vec<std::path::PathBuf> {
-        // 尝试JSON数组格式
-        if value.starts_with('[') {
-            if let Ok(paths) = serde_json::from_str::<Vec<String>>(value) {
-                return paths
-                    .into_iter()
-                    .map(std::path::PathBuf::from)
-                    .filter(|p| !p.to_string_lossy().is_empty())
-                    .collect();
-            }
-        }
-
-        // 直接字符串格式
-        vec![std::path::PathBuf::from(value)]
     }
 }

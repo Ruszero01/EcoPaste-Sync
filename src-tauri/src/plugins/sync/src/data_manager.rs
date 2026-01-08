@@ -3,9 +3,7 @@
 //! 注意：同步状态管理已统一到 database/src/change_tracker.rs
 //! 此模块不再维护同步状态，只做数据缓存
 
-use crate::sync_core::{
-    StateValidationResult, SyncDataItem, SyncIndex, SyncModeConfig, SyncStatistics,
-};
+use crate::sync_core::{StateValidationResult, SyncDataItem, SyncModeConfig, SyncStatistics};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -37,9 +35,6 @@ pub struct DataManager {
     local_data: Vec<SyncDataItem>,
     /// 云端数据缓存
     cloud_data: Vec<SyncDataItem>,
-    /// 当前同步索引
-    #[allow(dead_code)]
-    current_index: Option<SyncIndex>,
 }
 
 impl DataManager {
@@ -48,7 +43,6 @@ impl DataManager {
         Self {
             local_data: vec![],
             cloud_data: vec![],
-            current_index: None,
         }
     }
 

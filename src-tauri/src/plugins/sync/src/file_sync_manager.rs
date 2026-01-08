@@ -69,6 +69,58 @@ pub async fn calculate_file_checksum(file_path: &PathBuf) -> Result<String, Stri
     Ok(format!("{:x}", result))
 }
 
+/// 从 sync item 的 value 字段解析文件路径
+/// 支持 JSON 数组格式 ["path1", "path2"] 和直接字符串格式 "path"
+pub fn parse_file_paths_from_value(value: &str) -> Vec<std::path::PathBuf> {
+    if value.starts_with('[') {
+        if let Ok(paths) = serde_json::from_str::<Vec<String>>(value) {
+            return paths
+                .into_iter()
+                .map(std::path::PathBuf::from)
+                .filter(|p| !p.to_string_lossy().is_empty())
+                .collect();
+        }
+    }
+    vec![std::path::PathBuf::from(value)]
+}
+
+/// 从 value 字段提取第一个文件路径（用于上传）
+pub fn extract_first_file_path(value: &str) -> Option<std::path::PathBuf> {
+    let paths = parse_file_paths_from_value(value);
+    paths
+        .into_iter()
+        .next()
+        .filter(|p| !p.to_string_lossy().is_empty())
+}
+
+/// 从本地文件路径构建上传任务的元数据
+pub fn build_metadata_for_upload(
+    item_id: &str,
+    time: i64,
+    local_path: &std::path::PathBuf,
+    file_checksum: Option<String>,
+) -> FileMetadata {
+    let file_name = local_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown");
+
+    let remote_path = format!("files/{}_{}", item_id, file_name);
+
+    FileMetadata {
+        id: item_id.to_string(),
+        file_name: file_name.to_string(),
+        original_path: Some(local_path.clone()),
+        remote_path,
+        size: 0,
+        time,
+        checksum: file_checksum,
+        mime_type: None,
+        width: None,
+        height: None,
+    }
+}
+
 /// 文件上传任务
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileUploadTask {
