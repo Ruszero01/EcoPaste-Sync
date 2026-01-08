@@ -4,6 +4,7 @@
 description = "Default permissions for the cloud sync engine plugin"
 permissions = [
     "allow-init-sync",
+    "allow-get-sync-status",
     "allow-trigger-sync",
     "allow-start-auto-sync",
     "allow-stop-auto-sync",
@@ -12,7 +13,6 @@ permissions = [
     "allow-test-webdav-connection",
     "allow-update-sync-config",
     "allow-reload-config-from-file",
-    "allow-save-connection-test-result",
     "allow-upload-local-config",
     "allow-apply-remote-config",
     "allow-set-bookmark-sync-data"

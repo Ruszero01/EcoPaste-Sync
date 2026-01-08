@@ -1,26 +1,26 @@
 //! 数据库插件核心模块
 //! 提供统一的 SQLite 数据库访问接口
 
-mod database;
-mod models;
-mod commands;
 mod change_tracker;
-mod filter;
-mod debug;
 mod cleanup;
-mod source_app;
-mod delete;
+mod commands;
 pub mod config;
+mod database;
+mod debug;
+mod delete;
+mod filter;
+mod models;
+mod source_app;
 
-pub use database::*;
-pub use models::*;
-pub use commands::*;
 pub use change_tracker::*;
-pub use filter::*;
-pub use debug::*;
 pub use cleanup::*;
+pub use commands::*;
 pub use config::*;
+pub use database::*;
+pub use debug::*;
 pub use delete::*;
+pub use filter::*;
+pub use models::*;
 
 use std::sync::Arc;
 use tauri::{
@@ -89,19 +89,14 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             let data_dir = save_data_dir.join(bundle_id);
 
             // 确保数据目录存在
-            std::fs::create_dir_all(&data_dir)
-                .map_err(|e| format!("创建数据目录失败: {}", e))?;
+            std::fs::create_dir_all(&data_dir).map_err(|e| format!("创建数据目录失败: {}", e))?;
 
             // 设置数据库路径并初始化 - 如果失败则应用启动失败
-            db.set_database_path(
-                data_dir.to_string_lossy().to_string(),
-                app_name,
-                is_dev,
-            )
-            .map_err(|e| {
-                log::error!("❌ 数据库插件初始化失败: {}", e);
-                e
-            })?;
+            db.set_database_path(data_dir.to_string_lossy().to_string(), app_name, is_dev)
+                .map_err(|e| {
+                    log::error!("❌ 数据库插件初始化失败: {}", e);
+                    e
+                })?;
 
             log::info!("✅ 数据库插件自动初始化成功");
 

@@ -67,7 +67,6 @@ const COMMAND = {
 	GET_SYNC_PROGRESS: "plugin:eco-sync|get_sync_progress",
 	UPDATE_SYNC_CONFIG: "plugin:eco-sync|update_sync_config",
 	GET_SYNC_CONFIG: "plugin:eco-sync|get_sync_config",
-	SAVE_CONNECTION_TEST_RESULT: "plugin:eco-sync|save_connection_test_result",
 } as const;
 
 /**
@@ -176,17 +175,4 @@ export const backendUpdateSyncConfig = (config: BackendSyncConfig) => {
  */
 export const backendGetSyncConfig = () => {
 	return invoke<BackendSyncConfig | null>(COMMAND.GET_SYNC_CONFIG);
-};
-
-/**
- * 保存连接测试结果到配置文件
- */
-export const backendSaveConnectionTestResult = (
-	success: boolean,
-	latencyMs: number,
-) => {
-	return invoke<void>(COMMAND.SAVE_CONNECTION_TEST_RESULT, {
-		success,
-		latencyMs,
-	});
 };

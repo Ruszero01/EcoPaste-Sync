@@ -7,10 +7,9 @@ use tauri::{
 
 mod commands;
 
-pub use commands::toggle_listen;
 pub use commands::is_listen_enabled;
 pub use commands::play_copy_audio;
-
+pub use commands::toggle_listen;
 
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("eco-clipboard")

@@ -1,7 +1,7 @@
 //! 调试专用模块
 //! 包含调试和开发时使用的命令，与生产环境隔离
 
-use crate::{DatabaseState, DatabaseManager};
+use crate::{DatabaseManager, DatabaseState};
 use tauri::State;
 
 /// 数据库信息结构
@@ -18,9 +18,7 @@ pub struct DatabaseInfo {
 
 /// 获取数据库统计信息（调试用）
 #[tauri::command]
-pub async fn get_database_info(
-    state: State<'_, DatabaseState>,
-) -> Result<DatabaseInfo, String> {
+pub async fn get_database_info(state: State<'_, DatabaseState>) -> Result<DatabaseInfo, String> {
     let db = state.lock().await;
 
     // 获取基本统计信息
@@ -61,9 +59,7 @@ pub async fn get_database_info(
 
 /// 重置数据库（调试用）
 #[tauri::command]
-pub async fn reset_database(
-    state: State<'_, DatabaseState>,
-) -> Result<bool, String> {
+pub async fn reset_database(state: State<'_, DatabaseState>) -> Result<bool, String> {
     let db = state.lock().await;
 
     log::warn!("🔄 开始重置数据库（调试操作）");
@@ -83,17 +79,21 @@ pub async fn reset_database(
 }
 
 /// 获取各类型记录数统计
-fn get_type_counts(db: &DatabaseManager) -> Result<std::collections::HashMap<String, usize>, String> {
+fn get_type_counts(
+    db: &DatabaseManager,
+) -> Result<std::collections::HashMap<String, usize>, String> {
     let conn = db.get_connection()?;
 
-    let mut stmt = conn.prepare(
-        "SELECT type, COUNT(*) as count FROM history WHERE deleted = 0 GROUP BY type"
-    ).map_err(|e| format!("查询类型统计失败: {}", e))?;
+    let mut stmt = conn
+        .prepare("SELECT type, COUNT(*) as count FROM history WHERE deleted = 0 GROUP BY type")
+        .map_err(|e| format!("查询类型统计失败: {}", e))?;
 
     let mut type_counts = std::collections::HashMap::new();
-    let rows = stmt.query_map([], |row| {
-        Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as usize))
-    }).map_err(|e| format!("解析类型统计失败: {}", e))?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as usize))
+        })
+        .map_err(|e| format!("解析类型统计失败: {}", e))?;
 
     for row in rows {
         let (item_type, count) = row.map_err(|e| format!("读取类型统计失败: {}", e))?;
@@ -104,7 +104,9 @@ fn get_type_counts(db: &DatabaseManager) -> Result<std::collections::HashMap<Str
 }
 
 /// 获取同步状态统计
-fn get_sync_status_counts(db: &DatabaseManager) -> Result<std::collections::HashMap<String, usize>, String> {
+fn get_sync_status_counts(
+    db: &DatabaseManager,
+) -> Result<std::collections::HashMap<String, usize>, String> {
     let conn = db.get_connection()?;
 
     let mut stmt = conn.prepare(
@@ -112,12 +114,15 @@ fn get_sync_status_counts(db: &DatabaseManager) -> Result<std::collections::Hash
     ).map_err(|e| format!("查询同步状态统计失败: {}", e))?;
 
     let mut sync_status_counts = std::collections::HashMap::new();
-    let rows = stmt.query_map([], |row| {
-        Ok((
-            row.get::<_, String>(0).unwrap_or_else(|_| "none".to_string()),
-            row.get::<_, i64>(1)? as usize
-        ))
-    }).map_err(|e| format!("解析同步状态统计失败: {}", e))?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)
+                    .unwrap_or_else(|_| "none".to_string()),
+                row.get::<_, i64>(1)? as usize,
+            ))
+        })
+        .map_err(|e| format!("解析同步状态统计失败: {}", e))?;
 
     for row in rows {
         let (sync_status, count) = row.map_err(|e| format!("读取同步状态统计失败: {}", e))?;

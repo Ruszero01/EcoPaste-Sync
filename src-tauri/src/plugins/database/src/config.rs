@@ -100,7 +100,11 @@ fn get_config_path() -> Result<std::path::PathBuf, String> {
     // 根据开发/发布模式选择配置文件名（与前端 path.ts 保持一致）
     // 开发环境: .store.dev.json
     // 生产环境: .store.json
-    let config_filename = if is_dev { ".store.dev.json" } else { ".store.json" };
+    let config_filename = if is_dev {
+        ".store.dev.json"
+    } else {
+        ".store.json"
+    };
 
     // 优先使用 APPDATA 环境变量（与前端的 appDataDir 对应）
     // 在 Windows 上通常是 C:\Users\<user>\AppData\Roaming
@@ -127,11 +131,11 @@ fn get_config_path() -> Result<std::path::PathBuf, String> {
 pub fn read_config() -> Result<AppConfig, String> {
     let config_path = get_config_path()?;
 
-    let content = std::fs::read_to_string(&config_path)
-        .map_err(|e| format!("读取配置文件失败: {}", e))?;
+    let content =
+        std::fs::read_to_string(&config_path).map_err(|e| format!("读取配置文件失败: {}", e))?;
 
-    let config: AppConfig = serde_json::from_str(&content)
-        .map_err(|e| format!("解析配置文件失败: {}", e))?;
+    let config: AppConfig =
+        serde_json::from_str(&content).map_err(|e| format!("解析配置文件失败: {}", e))?;
 
     Ok(config)
 }

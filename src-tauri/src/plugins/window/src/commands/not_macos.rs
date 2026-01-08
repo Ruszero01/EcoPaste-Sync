@@ -1,9 +1,15 @@
-use super::{find_monitor_at_position, get_saved_window_state, calculate_safe_position_in_monitor, MAIN_WINDOW_LABEL, PREFERENCE_WINDOW_LABEL};
-use crate::{shared_show_window, set_window_follow_cursor};
-use tauri::{command, AppHandle, Manager, Runtime, WebviewWindow};
+use super::{
+    calculate_safe_position_in_monitor, find_monitor_at_position, get_saved_window_state,
+    MAIN_WINDOW_LABEL, PREFERENCE_WINDOW_LABEL,
+};
+use crate::{set_window_follow_cursor, shared_show_window};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
 use std::time::Instant;
+use tauri::{command, AppHandle, Manager, Runtime, WebviewWindow};
 
 // 窗口配置
 const MAIN_WINDOW_URL: &str = "index.html/#/";
@@ -32,42 +38,45 @@ pub fn mark_window_hidden<R: Runtime>(app_handle: &AppHandle<R>, label: &str) {
     }
 
     // 只启动一个回收器线程
-    if RECYCLER_STARTED.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+    if RECYCLER_STARTED
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_ok()
+    {
         let app_inner = app_handle.clone();
         let hidden_inner = HIDDEN_WINDOWS.clone();
-        std::thread::spawn(move || {
-            loop {
-                std::thread::sleep(std::time::Duration::from_millis(RECYCLE_CHECK_INTERVAL_MS));
+        std::thread::spawn(move || loop {
+            std::thread::sleep(std::time::Duration::from_millis(RECYCLE_CHECK_INTERVAL_MS));
 
-                let delay_secs = {
-                    let (_, delay) = super::get_window_behavior_from_config();
-                    delay as f64
-                };
+            let delay_secs = {
+                let (_, delay) = super::get_window_behavior_from_config();
+                delay as f64
+            };
 
-                let mut to_remove = Vec::new();
-                {
-                    let hidden = hidden_inner.lock().unwrap();
-                    for (label, hidden_time) in hidden.iter() {
-                        if hidden_time.elapsed().as_secs_f64() >= delay_secs {
-                            to_remove.push(label.clone());
-                        }
+            let mut to_remove = Vec::new();
+            {
+                let hidden = hidden_inner.lock().unwrap();
+                for (label, hidden_time) in hidden.iter() {
+                    if hidden_time.elapsed().as_secs_f64() >= delay_secs {
+                        to_remove.push(label.clone());
                     }
                 }
+            }
 
-                for label in to_remove {
-                    let should_destroy = {
-                        let hidden = hidden_inner.lock().unwrap();
-                        hidden.get(&label).map_or(false, |t| t.elapsed().as_secs_f64() >= delay_secs)
-                    };
+            for label in to_remove {
+                let should_destroy = {
+                    let hidden = hidden_inner.lock().unwrap();
+                    hidden
+                        .get(&label)
+                        .map_or(false, |t| t.elapsed().as_secs_f64() >= delay_secs)
+                };
 
-                    if should_destroy {
-                        if let Some(win) = app_inner.get_webview_window(&label) {
-                            let _ = win.destroy();
-                            log::info!("[Window] 自动回收：已销毁窗口 {}", label);
-                        }
-                        let mut hidden = hidden_inner.lock().unwrap();
-                        hidden.remove(&label);
+                if should_destroy {
+                    if let Some(win) = app_inner.get_webview_window(&label) {
+                        let _ = win.destroy();
+                        log::info!("[Window] 自动回收：已销毁窗口 {}", label);
                     }
+                    let mut hidden = hidden_inner.lock().unwrap();
+                    hidden.remove(&label);
                 }
             }
         });
@@ -156,29 +165,41 @@ pub async fn create_window<R: Runtime>(
         Some("follow") => {
             // 获取鼠标位置并计算安全的屏幕位置
             if let Ok(cursor_pos) = app_handle.cursor_position() {
-                let window_width = if is_main { MAIN_WINDOW_WIDTH } else { PREFERENCE_WINDOW_WIDTH };
-                let window_height = if is_main { MAIN_WINDOW_HEIGHT } else { PREFERENCE_WINDOW_HEIGHT };
-
-                // 计算安全的窗口位置（不超出屏幕）
-                let (safe_x, safe_y) = match find_monitor_at_position(&app_handle, cursor_pos.x, cursor_pos.y) {
-                    Some(monitor) => calculate_safe_position_in_monitor(
-                        cursor_pos.x as i32,
-                        cursor_pos.y as i32,
-                        window_width,
-                        window_height,
-                        &monitor,
-                    ),
-                    None => (cursor_pos.x as i32, cursor_pos.y as i32),
+                let window_width = if is_main {
+                    MAIN_WINDOW_WIDTH
+                } else {
+                    PREFERENCE_WINDOW_WIDTH
+                };
+                let window_height = if is_main {
+                    MAIN_WINDOW_HEIGHT
+                } else {
+                    PREFERENCE_WINDOW_HEIGHT
                 };
 
-                Some((safe_x as f64, safe_y as f64, window_width as f64, window_height as f64))
+                // 计算安全的窗口位置（不超出屏幕）
+                let (safe_x, safe_y) =
+                    match find_monitor_at_position(&app_handle, cursor_pos.x, cursor_pos.y) {
+                        Some(monitor) => calculate_safe_position_in_monitor(
+                            cursor_pos.x as i32,
+                            cursor_pos.y as i32,
+                            window_width,
+                            window_height,
+                            &monitor,
+                        ),
+                        None => (cursor_pos.x as i32, cursor_pos.y as i32),
+                    };
+
+                Some((
+                    safe_x as f64,
+                    safe_y as f64,
+                    window_width as f64,
+                    window_height as f64,
+                ))
             } else {
                 None
             }
         }
-        Some("center") | None | Some(_) => {
-            None
-        }
+        Some("center") | None | Some(_) => None,
     };
 
     let builder = if is_main {
@@ -302,7 +323,10 @@ pub async fn show_taskbar_icon<R: Runtime>(
 
 // 应用 Mica 材质效果
 #[command]
-pub async fn apply_mica_effect<R: Runtime>(window: WebviewWindow<R>, dark_mode: bool) -> Result<(), String> {
+pub async fn apply_mica_effect<R: Runtime>(
+    window: WebviewWindow<R>,
+    dark_mode: bool,
+) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         // 先清除之前的 Mica 效果
@@ -326,8 +350,7 @@ pub async fn apply_mica_effect<R: Runtime>(window: WebviewWindow<R>, dark_mode: 
 pub async fn clear_mica_effect<R: Runtime>(window: WebviewWindow<R>) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        clear_mica(&window)
-            .map_err(|e| format!("Failed to clear mica effect: {}", e))?;
+        clear_mica(&window).map_err(|e| format!("Failed to clear mica effect: {}", e))?;
     }
 
     #[cfg(not(target_os = "windows"))]

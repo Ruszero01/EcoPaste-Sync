@@ -99,8 +99,11 @@ impl BookmarkSyncManager {
             }
         };
 
-        log::info!("🔍 书签同步分析: 本地分组数={}, 本地时间戳={}",
-            local_data.groups.len(), local_data.time);
+        log::info!(
+            "🔍 书签同步分析: 本地分组数={}, 本地时间戳={}",
+            local_data.groups.len(),
+            local_data.time
+        );
 
         // 从云端下载书签数据
         let client = self.webdav_client.lock().await;
@@ -140,23 +143,26 @@ impl BookmarkSyncManager {
         }
 
         // 解析云端书签数据
-        let cloud_data: BookmarkSyncData = match serde_json::from_str(
-            &download_result.data.unwrap_or_else(|| "{}".to_string())
-        ) {
-            Ok(data) => data,
-            Err(e) => {
-                log::error!("❌ 解析云端书签数据失败: {}", e);
-                return Ok(BookmarkSyncResult {
-                    success: false,
-                    need_upload: false,
-                    need_download: false,
-                    message: format!("解析失败: {}", e),
-                });
-            }
-        };
+        let cloud_data: BookmarkSyncData =
+            match serde_json::from_str(&download_result.data.unwrap_or_else(|| "{}".to_string())) {
+                Ok(data) => data,
+                Err(e) => {
+                    log::error!("❌ 解析云端书签数据失败: {}", e);
+                    return Ok(BookmarkSyncResult {
+                        success: false,
+                        need_upload: false,
+                        need_download: false,
+                        message: format!("解析失败: {}", e),
+                    });
+                }
+            };
 
-        log::info!("🔍 书签同步分析: 云端分组数={}, 云端时间戳={}, 云端设备ID={}",
-            cloud_data.groups.len(), cloud_data.time, cloud_data.device_id);
+        log::info!(
+            "🔍 书签同步分析: 云端分组数={}, 云端时间戳={}, 云端设备ID={}",
+            cloud_data.groups.len(),
+            cloud_data.time,
+            cloud_data.device_id
+        );
 
         // 核心同步逻辑：只比较时间戳，最新的数据胜出
         if local_data.time > cloud_data.time {
@@ -206,12 +212,18 @@ impl BookmarkSyncManager {
     }
 
     /// 上传书签数据到云端
-    async fn upload_bookmarks(&self, data: &BookmarkSyncData) -> Result<BookmarkSyncResult, String> {
+    async fn upload_bookmarks(
+        &self,
+        data: &BookmarkSyncData,
+    ) -> Result<BookmarkSyncResult, String> {
         let client = self.webdav_client.lock().await;
-        let json_data = serde_json::to_string(data)
-            .map_err(|e| format!("序列化书签数据失败: {}", e))?;
+        let json_data =
+            serde_json::to_string(data).map_err(|e| format!("序列化书签数据失败: {}", e))?;
 
-        match client.upload_sync_data("bookmark-sync.json", &json_data).await {
+        match client
+            .upload_sync_data("bookmark-sync.json", &json_data)
+            .await
+        {
             Ok(_) => {
                 log::info!("✅ 书签数据上传成功");
                 Ok(BookmarkSyncResult {
@@ -242,9 +254,8 @@ impl BookmarkSyncManager {
             return Ok(None);
         }
 
-        let data: BookmarkSyncData = serde_json::from_str(
-            &download_result.data.unwrap()
-        ).map_err(|e| format!("解析书签数据失败: {}", e))?;
+        let data: BookmarkSyncData = serde_json::from_str(&download_result.data.unwrap())
+            .map_err(|e| format!("解析书签数据失败: {}", e))?;
 
         Ok(Some(data))
     }
@@ -258,16 +269,17 @@ impl BookmarkSyncManager {
         let mut groups = data.groups.clone();
         groups.sort_by(|a, b| a.id.cmp(&b.id));
         for group in groups {
-            data_string.push_str(&format!("{}:{}:{};",
-                group.id, group.name, group.color));
+            data_string.push_str(&format!("{}:{}:{};", group.id, group.name, group.color));
         }
 
         // 添加书签项信息
         let mut items = data.items.clone();
         items.sort_by(|a, b| a.id.cmp(&b.id));
         for item in items {
-            data_string.push_str(&format!("{}:{}:{}:{};",
-                item.id, item.group_id, item.name, item.item_type));
+            data_string.push_str(&format!(
+                "{}:{}:{}:{};",
+                item.id, item.group_id, item.name, item.item_type
+            ));
         }
 
         // 简单的哈希函数
@@ -281,7 +293,8 @@ impl BookmarkSyncManager {
 
     /// 检查是否有书签数据需要同步
     pub fn has_bookmark_data(&self) -> bool {
-        self.local_data.as_ref()
+        self.local_data
+            .as_ref()
             .map(|d| !d.groups.is_empty() || !d.items.is_empty())
             .unwrap_or(false)
     }

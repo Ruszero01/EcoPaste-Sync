@@ -536,12 +536,6 @@ const CloudSync = () => {
 			if (result.success) {
 				setConnectionStatus("success");
 
-				// 保存连接测试结果到配置文件
-				await backendSync.backendSaveConnectionTestResult(
-					true,
-					result.latency_ms,
-				);
-
 				// 初始化后端同步引擎
 				const syncConfig = {
 					server_url: webdavConfig.url,
@@ -563,9 +557,6 @@ const CloudSync = () => {
 			} else {
 				setConnectionStatus("failed");
 
-				// 保存连接失败状态到配置文件
-				await backendSync.backendSaveConnectionTestResult(false, 0);
-
 				appMessage.error(
 					t("preference.cloud_sync.connection_failed") +
 						(result.error_message ? `: ${result.error_message}` : ""),
@@ -573,9 +564,6 @@ const CloudSync = () => {
 			}
 		} catch (error) {
 			setConnectionStatus("failed");
-
-			// 保存连接失败状态到配置文件
-			await backendSync.backendSaveConnectionTestResult(false, 0);
 
 			console.error("❌ 连接测试异常", {
 				error: error instanceof Error ? error.message : String(error),

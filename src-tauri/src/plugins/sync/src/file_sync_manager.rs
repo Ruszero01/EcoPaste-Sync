@@ -53,7 +53,8 @@ pub async fn calculate_file_checksum(file_path: &PathBuf) -> Result<String, Stri
     let mut buffer = vec![0u8; 8192]; // 8KB buffer
 
     loop {
-        let bytes_read = file.read(&mut buffer)
+        let bytes_read = file
+            .read(&mut buffer)
             .await
             .map_err(|e| format!("读取文件失败: {}", e))?;
 
@@ -191,8 +192,13 @@ impl FileSyncManager {
                             .unwrap()
                             .as_millis();
 
-                        log::info!("📤 上传结果: id={}, success={}, response_size={}, local_size={}",
-                            task.metadata.id, upload_result.success, upload_result.size, file_data.len());
+                        log::info!(
+                            "📤 上传结果: id={}, success={}, response_size={}, local_size={}",
+                            task.metadata.id,
+                            upload_result.success,
+                            upload_result.size,
+                            file_data.len()
+                        );
 
                         // 使用本地文件大小，更准确
                         Ok(FileOperationResult {
@@ -235,7 +241,10 @@ impl FileSyncManager {
     /// 下载单个文件
     /// # Arguments
     /// * `task` - 文件下载任务
-    pub async fn download_file(&self, task: FileDownloadTask) -> Result<FileOperationResult, String> {
+    pub async fn download_file(
+        &self,
+        task: FileDownloadTask,
+    ) -> Result<FileOperationResult, String> {
         let start_time = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -243,9 +252,14 @@ impl FileSyncManager {
 
         // 1. 从WebDAV下载文件
         let client = self.webdav_client.lock().await;
-        log::info!("📥 下载文件: id={}, name={}, remote={}, metadata_size={}, checksum={}",
-            task.metadata.id, task.metadata.file_name, task.remote_path, task.metadata.size,
-            task.metadata.checksum.as_deref().unwrap_or("none"));
+        log::info!(
+            "📥 下载文件: id={}, name={}, remote={}, metadata_size={}, checksum={}",
+            task.metadata.id,
+            task.metadata.file_name,
+            task.remote_path,
+            task.metadata.size,
+            task.metadata.checksum.as_deref().unwrap_or("none")
+        );
 
         match client.download_file(&task.remote_path).await {
             Ok(download_result) => {
@@ -268,8 +282,11 @@ impl FileSyncManager {
 
                 // 2. 保存到本地路径
                 if let Some(file_data) = download_result.binary_data {
-                    log::info!("📄 下载数据: actual_size={}, metadata_size={}",
-                        file_data.len(), task.metadata.size);
+                    log::info!(
+                        "📄 下载数据: actual_size={}, metadata_size={}",
+                        file_data.len(),
+                        task.metadata.size
+                    );
 
                     // 确保父目录存在
                     if let Some(parent) = task.local_path.parent() {
@@ -304,7 +321,10 @@ impl FileSyncManager {
                                                 expected_checksum, actual_checksum, task.local_path.display());
                                             validation_error = Some("文件校验和不匹配".to_string());
                                         } else {
-                                            log::info!("✅ 文件校验和验证通过: {}", task.local_path.display());
+                                            log::info!(
+                                                "✅ 文件校验和验证通过: {}",
+                                                task.local_path.display()
+                                            );
                                         }
                                     }
                                     Err(e) => {
@@ -390,7 +410,11 @@ impl FileSyncManager {
     /// # Arguments
     /// * `file_id` - 文件ID
     /// * `remote_path` - 远程文件路径
-    pub async fn delete_file(&self, file_id: String, remote_path: String) -> Result<FileOperationResult, String> {
+    pub async fn delete_file(
+        &self,
+        file_id: String,
+        remote_path: String,
+    ) -> Result<FileOperationResult, String> {
         let start_time = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -451,7 +475,11 @@ impl FileSyncManager {
     /// # Arguments
     /// * `file_ids` - 文件ID列表
     /// * `remote_paths` - 远程路径列表
-    pub async fn delete_files(&self, file_ids: Vec<String>, remote_paths: Vec<String>) -> Result<FileOperationResult, String> {
+    pub async fn delete_files(
+        &self,
+        file_ids: Vec<String>,
+        remote_paths: Vec<String>,
+    ) -> Result<FileOperationResult, String> {
         if file_ids.len() != remote_paths.len() {
             return Err("文件ID和路径数量不匹配".to_string());
         }
@@ -504,7 +532,9 @@ impl FileSyncManager {
                         }
                         Err(e) => {
                             result.failed_count += 1;
-                            result.errors.push(format!("删除文件出错 {}: {}", file_id, e));
+                            result
+                                .errors
+                                .push(format!("删除文件出错 {}: {}", file_id, e));
                         }
                     }
                 }
@@ -542,8 +572,11 @@ impl FileSyncManager {
     }
 
     /// 清理孤儿缓存文件
-    /// 扫描缓存目录，删除不在数据库中的文件（这些是已删除项目的缓存）
-    pub async fn cleanup_stale_cache_files(&self, database_state: &tauri_plugin_eco_database::DatabaseState) {
+    /// 递归扫描缓存目录，删除不在数据库中的文件（这些是已删除项目的缓存）
+    pub async fn cleanup_stale_cache_files(
+        &self,
+        database_state: &tauri_plugin_eco_database::DatabaseState,
+    ) {
         log::info!("🔄 开始清理孤儿缓存文件...");
 
         // 获取缓存目录
@@ -560,17 +593,9 @@ impl FileSyncManager {
             return;
         }
 
-        // 获取缓存目录中的所有文件
+        // 递归获取缓存目录中的所有文件（包括子目录）
         let mut cache_files = Vec::new();
-        if let Ok(entries) = std::fs::read_dir(&cache_dir) {
-            for entry in entries.flatten() {
-                if entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
-                    if let Some(path) = entry.path().to_str().map(|s| s.to_string()) {
-                        cache_files.push(path);
-                    }
-                }
-            }
-        }
+        Self::collect_files_recursive(&cache_dir, &mut cache_files);
 
         if cache_files.is_empty() {
             log::info!("✅ 缓存目录为空，无需清理");
@@ -595,7 +620,10 @@ impl FileSyncManager {
         let db_files: std::collections::HashSet<String> = match db.query_history(options) {
             Ok(items) => items
                 .iter()
-                .filter(|item| item.item_type.as_deref() == Some("files") || item.item_type.as_deref() == Some("image"))
+                .filter(|item| {
+                    item.item_type.as_deref() == Some("files")
+                        || item.item_type.as_deref() == Some("image")
+                })
                 .filter_map(|item| item.value.clone())
                 .filter(|v| v.starts_with(&cache_dir_str))
                 .collect(),
@@ -625,6 +653,22 @@ impl FileSyncManager {
 
         log::info!("✅ 缓存清理完成，共删除 {} 个孤儿文件", orphaned_count);
     }
+
+    /// 递归收集目录中的所有文件
+    fn collect_files_recursive(dir: &std::path::Path, files: &mut Vec<String>) {
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_file() {
+                    if let Some(path_str) = path.to_str().map(|s| s.to_string()) {
+                        files.push(path_str);
+                    }
+                } else if path.is_dir() {
+                    Self::collect_files_recursive(&path, files);
+                }
+            }
+        }
+    }
 }
 
 /// 创建共享的文件同步管理器实例
@@ -634,5 +678,8 @@ pub fn create_shared_manager(webdav_client: WebDAVClientState) -> Arc<Mutex<File
         timeout_ms: 60000,
     };
 
-    Arc::new(Mutex::new(FileSyncManager::new(webdav_client, default_config)))
+    Arc::new(Mutex::new(FileSyncManager::new(
+        webdav_client,
+        default_config,
+    )))
 }

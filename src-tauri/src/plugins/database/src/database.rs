@@ -1,10 +1,12 @@
 //! 数据库管理器
 //! 提供 SQLite 数据库的统一访问接口
 
-use crate::models::{HistoryItem, QueryOptions, SyncDataItem, InsertItem, InsertResult, DatabaseStatistics};
-use crate::filter::{DataFilter, BaseFilter, ContentTypeFilter, SyncStatusFilter, SyncModeFilter};
+use crate::config::{should_auto_sort, should_fetch_source_app};
+use crate::filter::{BaseFilter, ContentTypeFilter, DataFilter, SyncModeFilter, SyncStatusFilter};
+use crate::models::{
+    DatabaseStatistics, HistoryItem, InsertItem, InsertResult, QueryOptions, SyncDataItem,
+};
 use crate::source_app::fetch_source_app_info_impl;
-use crate::config::{should_fetch_source_app, should_auto_sort};
 use crate::ChangeTracker;
 use rusqlite::{params, Connection};
 use std::path::PathBuf;
@@ -38,11 +40,12 @@ impl DatabaseManager {
         let db_path_clone = db_path.clone();
 
         // 创建数据库连接并初始化表结构
-        let conn = Connection::open(&db_path_clone)
-            .map_err(|e| format!("打开数据库失败: {}", e))?;
+        let conn =
+            Connection::open(&db_path_clone).map_err(|e| format!("打开数据库失败: {}", e))?;
 
         // 创建 history 表
-        conn.execute_batch(r#"
+        conn.execute_batch(
+            r#"
             CREATE TABLE IF NOT EXISTS history (
                 id TEXT PRIMARY KEY,
                 type TEXT,
@@ -67,7 +70,9 @@ impl DatabaseManager {
             CREATE INDEX IF NOT EXISTS idx_history_favorite ON history(favorite);
             CREATE INDEX IF NOT EXISTS idx_history_syncStatus ON history(syncStatus);
             CREATE INDEX IF NOT EXISTS idx_history_time ON history(time);
-        "#).map_err(|e| format!("创建数据库表失败: {}", e))?;
+        "#,
+        )
+        .map_err(|e| format!("创建数据库表失败: {}", e))?;
 
         self.db_path = Some(db_path.clone());
         self.initialized = true;
@@ -78,11 +83,12 @@ impl DatabaseManager {
 
     /// 获取数据库连接（公开方法，供外部使用）
     pub fn get_connection(&self) -> Result<Connection, String> {
-        let path = self.db_path.as_ref()
+        let path = self
+            .db_path
+            .as_ref()
             .ok_or_else(|| "数据库路径未设置".to_string())?;
 
-        Connection::open(path)
-            .map_err(|e| format!("打开数据库失败: {}", e))
+        Connection::open(path).map_err(|e| format!("打开数据库失败: {}", e))
     }
 
     /// 检查是否已初始化
@@ -143,36 +149,40 @@ impl DatabaseManager {
             sql.push_str(&format!(" OFFSET {}", offset));
         }
 
-        let mut stmt = conn.prepare(&sql)
+        let mut stmt = conn
+            .prepare(&sql)
             .map_err(|e| format!("准备查询失败: {}", e))?;
 
         // 构建查询参数
-        let params: Vec<&str> = options.params
+        let params: Vec<&str> = options
+            .params
             .as_ref()
             .map(|p| p.iter().map(|s| s.as_str()).collect())
             .unwrap_or_default();
 
-        let rows = stmt.query_map(rusqlite::params_from_iter(params.iter()), |row| {
-            Ok(HistoryItem {
-                id: row.get(0)?,
-                item_type: row.get(1).ok(),
-                group: row.get(2).ok(),
-                value: row.get(3).ok(),
-                search: row.get(4).ok(),
-                count: row.get(5).ok(),
-                width: row.get(6).ok(),
-                height: row.get(7).ok(),
-                favorite: row.get(8).unwrap_or(0),
-                time: row.get(9).unwrap_or(0),
-                note: row.get(10).ok(),
-                subtype: row.get(11).ok(),
-                deleted: row.get(12).ok(),
-                sync_status: row.get(13).ok(),
-                source_app_name: row.get(14).ok().flatten(),
-                source_app_icon: row.get(15).ok().flatten(),
-                position: row.get(16).ok().flatten(),
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(params.iter()), |row| {
+                Ok(HistoryItem {
+                    id: row.get(0)?,
+                    item_type: row.get(1).ok(),
+                    group: row.get(2).ok(),
+                    value: row.get(3).ok(),
+                    search: row.get(4).ok(),
+                    count: row.get(5).ok(),
+                    width: row.get(6).ok(),
+                    height: row.get(7).ok(),
+                    favorite: row.get(8).unwrap_or(0),
+                    time: row.get(9).unwrap_or(0),
+                    note: row.get(10).ok(),
+                    subtype: row.get(11).ok(),
+                    deleted: row.get(12).ok(),
+                    sync_status: row.get(13).ok(),
+                    source_app_name: row.get(14).ok().flatten(),
+                    source_app_icon: row.get(15).ok().flatten(),
+                    position: row.get(16).ok().flatten(),
+                })
             })
-        }).map_err(|e| format!("查询失败: {}", e))?;
+            .map_err(|e| format!("查询失败: {}", e))?;
 
         let mut items = Vec::new();
         for row in rows {
@@ -220,11 +230,19 @@ impl DatabaseManager {
         };
 
         let options = filter.to_query_options(None, None);
-        log::info!("🔍 查询SQL: where='{}'", options.where_clause.as_deref().unwrap_or("none"));
+        log::info!(
+            "🔍 查询SQL: where='{}'",
+            options.where_clause.as_deref().unwrap_or("none")
+        );
         let history_items = self.query_history(options)?;
 
-        log::info!("🔍 同步查询: only_favorites={}, include_images={}, include_files={}, 结果={}",
-            only_favorites, include_images, include_files, history_items.len());
+        log::info!(
+            "🔍 同步查询: only_favorites={}, include_images={}, include_files={}, 结果={}",
+            only_favorites,
+            include_images,
+            include_files,
+            history_items.len()
+        );
 
         Ok(history_items.into_iter().map(SyncDataItem::from).collect())
     }
@@ -240,7 +258,8 @@ impl DatabaseManager {
         conn.execute(
             "UPDATE history SET syncStatus = ?1 WHERE id = ?2",
             params![status, id],
-        ).map_err(|e| format!("更新同步状态失败: {}", e))?;
+        )
+        .map_err(|e| format!("更新同步状态失败: {}", e))?;
 
         Ok(())
     }
@@ -256,7 +275,8 @@ impl DatabaseManager {
         conn.execute(
             "UPDATE history SET value = ?1 WHERE id = ?2",
             params![value, id],
-        ).map_err(|e| format!("更新项目值失败: {}", e))?;
+        )
+        .map_err(|e| format!("更新项目值失败: {}", e))?;
 
         Ok(())
     }
@@ -271,10 +291,8 @@ impl DatabaseManager {
         let conn = self.get_connection()?;
 
         let sql = format!("UPDATE history SET {} = ?1 WHERE id = ?2", field);
-        conn.execute(
-            &sql,
-            params![value, id],
-        ).map_err(|e| format!("更新字段 {} 失败: {}", field, e))?;
+        conn.execute(&sql, params![value, id])
+            .map_err(|e| format!("更新字段 {} 失败: {}", field, e))?;
 
         Ok(())
     }
@@ -291,7 +309,9 @@ impl DatabaseManager {
 
         let conn = self.get_connection()?;
 
-        let placeholders: Vec<String> = ids.iter().enumerate()
+        let placeholders: Vec<String> = ids
+            .iter()
+            .enumerate()
             .map(|(i, _)| format!("?{}", i + 2))
             .collect();
 
@@ -305,7 +325,8 @@ impl DatabaseManager {
             params.push(id);
         }
 
-        let count = conn.execute(&sql, rusqlite::params_from_iter(params.iter()))
+        let count = conn
+            .execute(&sql, rusqlite::params_from_iter(params.iter()))
             .map_err(|e| format!("批量更新同步状态失败: {}", e))?;
 
         Ok(count)
@@ -325,21 +346,17 @@ impl DatabaseManager {
                 if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(value) {
                     if item.item_type == "image" {
                         // 图片类型：提取 fileSize、width、height
-                        let count = parsed.get("fileSize")
-                            .and_then(|v| v.as_i64())
-                            .unwrap_or(1) as i32;
-                        let width = parsed.get("width")
-                            .and_then(|v| v.as_i64())
-                            .unwrap_or(0) as i32;
-                        let height = parsed.get("height")
-                            .and_then(|v| v.as_i64())
-                            .unwrap_or(0) as i32;
+                        let count =
+                            parsed.get("fileSize").and_then(|v| v.as_i64()).unwrap_or(1) as i32;
+                        let width =
+                            parsed.get("width").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                        let height =
+                            parsed.get("height").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
                         (count, width, height)
                     } else if item.item_type == "files" {
                         // 文件类型：提取 fileSize 作为 count
-                        let count = parsed.get("fileSize")
-                            .and_then(|v| v.as_i64())
-                            .unwrap_or(1) as i32;
+                        let count =
+                            parsed.get("fileSize").and_then(|v| v.as_i64()).unwrap_or(1) as i32;
                         (count, 0, 0)
                     } else {
                         // 文本类型：计算字符数
@@ -354,11 +371,13 @@ impl DatabaseManager {
         };
 
         // 检查是否存在
-        let exists: bool = conn.query_row(
-            "SELECT 1 FROM history WHERE id = ?1",
-            params![item.id],
-            |_| Ok(true),
-        ).unwrap_or(false);
+        let exists: bool = conn
+            .query_row(
+                "SELECT 1 FROM history WHERE id = ?1",
+                params![item.id],
+                |_| Ok(true),
+            )
+            .unwrap_or(false);
 
         if exists {
             // 更新
@@ -382,7 +401,8 @@ impl DatabaseManager {
                     height,
                     item.id,
                 ],
-            ).map_err(|e| format!("更新云端数据失败: {}", e))?;
+            )
+            .map_err(|e| format!("更新云端数据失败: {}", e))?;
         } else {
             // 插入
             conn.execute(
@@ -415,10 +435,8 @@ impl DatabaseManager {
     pub fn mark_deleted(&self, id: &str) -> Result<(), String> {
         let conn = self.get_connection()?;
 
-        conn.execute(
-            "UPDATE history SET deleted = 1 WHERE id = ?1",
-            params![id],
-        ).map_err(|e| format!("标记删除失败: {}", e))?;
+        conn.execute("UPDATE history SET deleted = 1 WHERE id = ?1", params![id])
+            .map_err(|e| format!("标记删除失败: {}", e))?;
 
         Ok(())
     }
@@ -431,10 +449,8 @@ impl DatabaseManager {
     pub fn hard_delete(&self, id: &str) -> Result<(), String> {
         let conn = self.get_connection()?;
 
-        conn.execute(
-            "DELETE FROM history WHERE id = ?1",
-            params![id],
-        ).map_err(|e| format!("硬删除失败: {}", e))?;
+        conn.execute("DELETE FROM history WHERE id = ?1", params![id])
+            .map_err(|e| format!("硬删除失败: {}", e))?;
 
         Ok(())
     }
@@ -443,23 +459,25 @@ impl DatabaseManager {
     pub fn get_statistics(&self) -> Result<DatabaseStatistics, String> {
         let conn = self.get_connection()?;
 
-        let total: i32 = conn.query_row(
-            "SELECT COUNT(*) FROM history",
-            [],
-            |row| row.get(0),
-        ).unwrap_or(0);
+        let total: i32 = conn
+            .query_row("SELECT COUNT(*) FROM history", [], |row| row.get(0))
+            .unwrap_or(0);
 
-        let active: i32 = conn.query_row(
-            "SELECT COUNT(*) FROM history WHERE deleted IS NULL OR deleted = 0",
-            [],
-            |row| row.get(0),
-        ).unwrap_or(0);
+        let active: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM history WHERE deleted IS NULL OR deleted = 0",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
 
-        let synced: i32 = conn.query_row(
-            "SELECT COUNT(*) FROM history WHERE syncStatus = 'synced'",
-            [],
-            |row| row.get(0),
-        ).unwrap_or(0);
+        let synced: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM history WHERE syncStatus = 'synced'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
 
         let favorites: i32 = conn.query_row(
             "SELECT COUNT(*) FROM history WHERE favorite = 1 AND (deleted IS NULL OR deleted = 0)",
@@ -483,21 +501,26 @@ impl DatabaseManager {
         let conn = self.get_connection()?;
 
         // 检查是否已存在（优先使用ID去重）
-        let exists_by_id: bool = conn.query_row(
-            "SELECT 1 FROM history WHERE id = ?1",
-            params![item.id],
-            |_| Ok(true),
-        ).unwrap_or(false);
+        let exists_by_id: bool = conn
+            .query_row(
+                "SELECT 1 FROM history WHERE id = ?1",
+                params![item.id],
+                |_| Ok(true),
+            )
+            .unwrap_or(false);
 
         if exists_by_id {
             // 如果ID已存在，判断是否为重复内容
-            let existing_value: Option<String> = conn.query_row(
-                "SELECT value FROM history WHERE id = ?1",
-                params![item.id],
-                |row| row.get(0),
-            ).unwrap_or(None);
+            let existing_value: Option<String> = conn
+                .query_row(
+                    "SELECT value FROM history WHERE id = ?1",
+                    params![item.id],
+                    |row| row.get(0),
+                )
+                .unwrap_or(None);
 
-            let is_duplicate = existing_value.as_ref() == Some(&item.value.clone().unwrap_or_default());
+            let is_duplicate =
+                existing_value.as_ref() == Some(&item.value.clone().unwrap_or_default());
 
             if is_duplicate {
                 // 如果内容和ID都相同，认为是重复操作，不执行任何操作
@@ -528,17 +551,22 @@ impl DatabaseManager {
                         item.note,
                         item.subtype,
                         item.deleted.unwrap_or(0),
-                        item.sync_status.clone().unwrap_or_else(|| "not_synced".to_string()),
+                        item.sync_status
+                            .clone()
+                            .unwrap_or_else(|| "not_synced".to_string()),
                         item.source_app_name,
                         item.source_app_icon,
                         item.position.unwrap_or(0),
                         item.id,
                     ],
-                ).map_err(|e| format!("更新数据失败: {}", e))?;
+                )
+                .map_err(|e| format!("更新数据失败: {}", e))?;
 
                 // 使用统一变更跟踪器
                 let conn = self.get_connection()?;
-                let _ = self.change_tracker.mark_item_changed(&conn, &item.id, "update");
+                let _ = self
+                    .change_tracker
+                    .mark_item_changed(&conn, &item.id, "update");
 
                 return Ok(InsertResult {
                     is_update: true,
@@ -553,15 +581,22 @@ impl DatabaseManager {
         // - 格式文本：使用 search（纯文本版本），粘贴纯文本时能识别相同内容
         // - 普通文本：search 等于 value，效果相同
         let item_type_str = item.item_type.as_deref().unwrap_or("text");
-        let existing_id: Option<String> = if item.subtype.as_deref() == Some("color") && item.search.is_some() {
+        let existing_id: Option<String> = if item.subtype.as_deref() == Some("color")
+            && item.search.is_some()
+        {
             // 颜色类型：基于 RGB 向量容差去重
             let new_search = item.search.as_deref().unwrap_or("");
             let mut stmt = conn.prepare(
                 "SELECT id, search FROM history WHERE type = ?1 AND subtype = 'color' AND deleted = 0",
             ).map_err(|e| format!("查询颜色记录失败: {}", e))?;
-            let mut rows = stmt.query(params![item_type_str]).map_err(|e| format!("查询颜色记录失败: {}", e))?;
+            let mut rows = stmt
+                .query(params![item_type_str])
+                .map_err(|e| format!("查询颜色记录失败: {}", e))?;
             let mut color_records: Vec<(String, String)> = Vec::new();
-            while let Some(row) = rows.next().map_err(|e| format!("读取颜色记录失败: {}", e))? {
+            while let Some(row) = rows
+                .next()
+                .map_err(|e| format!("读取颜色记录失败: {}", e))?
+            {
                 if let (Ok(id), Ok(search)) = (row.get(0), row.get(1)) {
                     color_records.push((id, search));
                 }
@@ -573,14 +608,16 @@ impl DatabaseManager {
                 "SELECT id FROM history WHERE type = ?1 AND search = ?2 AND deleted = 0 LIMIT 1",
                 params![item_type_str, item.search.as_deref().unwrap_or("")],
                 |row| row.get(0),
-            ).unwrap_or(None)
+            )
+            .unwrap_or(None)
         } else {
             // Fallback: 基于 value 去重（兼容没有 search 字段的类型）
             conn.query_row(
                 "SELECT id FROM history WHERE type = ?1 AND value = ?2 AND deleted = 0 LIMIT 1",
                 params![item_type_str, item.value.as_deref().unwrap_or("")],
                 |row| row.get(0),
-            ).unwrap_or(None)
+            )
+            .unwrap_or(None)
         };
 
         if let Some(existing_id) = existing_id {
@@ -595,27 +632,33 @@ impl DatabaseManager {
 
             if auto_sort {
                 // 获取新的 max_position 并更新
-                let max_position: i32 = conn.query_row(
-                    "SELECT COALESCE(MAX(position), 0) FROM history",
-                    params![],
-                    |row| row.get(0),
-                ).unwrap_or(0);
+                let max_position: i32 = conn
+                    .query_row(
+                        "SELECT COALESCE(MAX(position), 0) FROM history",
+                        params![],
+                        |row| row.get(0),
+                    )
+                    .unwrap_or(0);
 
                 conn.execute(
                     "UPDATE history SET time = ?1, position = ?2 WHERE id = ?3",
                     params![current_time, max_position + 1, existing_id],
-                ).map_err(|e| format!("更新相同内容失败: {}", e))?;
+                )
+                .map_err(|e| format!("更新相同内容失败: {}", e))?;
             } else {
                 // 只更新 time，position 保持不变（不更新该字段）
                 conn.execute(
                     "UPDATE history SET time = ?1 WHERE id = ?2",
                     params![current_time, existing_id],
-                ).map_err(|e| format!("更新相同内容失败: {}", e))?;
+                )
+                .map_err(|e| format!("更新相同内容失败: {}", e))?;
             }
 
             // 使用统一变更跟踪器
             let conn = self.get_connection()?;
-            let _ = self.change_tracker.mark_item_changed(&conn, &existing_id, "dedup");
+            let _ = self
+                .change_tracker
+                .mark_item_changed(&conn, &existing_id, "dedup");
 
             return Ok(InsertResult {
                 is_update: true,
@@ -624,11 +667,13 @@ impl DatabaseManager {
         }
 
         // 获取最大position，用于手动排序模式
-        let max_position: i32 = conn.query_row(
-            "SELECT COALESCE(MAX(position), 0) FROM history",
-            params![],
-            |row| row.get(0),
-        ).unwrap_or(0);
+        let max_position: i32 = conn
+            .query_row(
+                "SELECT COALESCE(MAX(position), 0) FROM history",
+                params![],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
 
         // 新记录，根据配置获取来源应用信息
         let source_info = if should_fetch_source_app() {
@@ -671,16 +716,21 @@ impl DatabaseManager {
                 item.note,
                 item.subtype,
                 item.deleted.unwrap_or(0),
-                item.sync_status.clone().unwrap_or_else(|| "not_synced".to_string()),
+                item.sync_status
+                    .clone()
+                    .unwrap_or_else(|| "not_synced".to_string()),
                 source_info.as_ref().map(|s| s.app_name.clone()),
                 source_info.as_ref().and_then(|s| s.app_icon.clone()),
                 max_position + 1,
             ],
-        ).map_err(|e| format!("插入数据失败: {}", e))?;
+        )
+        .map_err(|e| format!("插入数据失败: {}", e))?;
 
         // 使用统一变更跟踪器
         let conn = self.get_connection()?;
-        let _ = self.change_tracker.mark_item_changed(&conn, &item.id, "insert");
+        let _ = self
+            .change_tracker
+            .mark_item_changed(&conn, &item.id, "insert");
 
         Ok(InsertResult {
             is_update: false,
@@ -694,7 +744,12 @@ impl DatabaseManager {
     /// * `save_data_dir` - 数据存储目录
     /// * `app_name` - 应用名称
     /// * `is_dev` - 是否为开发模式
-    pub fn set_database_path(&mut self, save_data_dir: String, app_name: String, is_dev: bool) -> Result<(), String> {
+    pub fn set_database_path(
+        &mut self,
+        save_data_dir: String,
+        app_name: String,
+        is_dev: bool,
+    ) -> Result<(), String> {
         use std::path::Path;
 
         // 构建数据库文件名

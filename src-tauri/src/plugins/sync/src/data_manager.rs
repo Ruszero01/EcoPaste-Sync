@@ -4,7 +4,7 @@
 //! 此模块不再维护同步状态，只做数据缓存
 
 use crate::sync_core::{
-    SyncDataItem, SyncIndex, SyncModeConfig, StateValidationResult, SyncStatistics,
+    StateValidationResult, SyncDataItem, SyncIndex, SyncModeConfig, SyncStatistics,
 };
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -121,7 +121,11 @@ impl DataManager {
     /// 计算数据差异（简化版）
     /// 用于增量同步，避免全量比较
     pub fn calculate_data_diff(&self) -> Vec<String> {
-        let cloud_ids: HashSet<&str> = self.cloud_data.iter().map(|item| item.id.as_str()).collect();
+        let cloud_ids: HashSet<&str> = self
+            .cloud_data
+            .iter()
+            .map(|item| item.id.as_str())
+            .collect();
 
         // 仅存在于本地的项目ID
         self.local_data
@@ -145,9 +149,7 @@ impl DataManager {
     pub fn calculate_statistics(&self) -> SyncStatistics {
         let total_items = self.local_data.len();
 
-        SyncStatistics {
-            total_items,
-        }
+        SyncStatistics { total_items }
     }
 
     /// 获取本地数据

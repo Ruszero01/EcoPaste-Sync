@@ -3,13 +3,11 @@
 
 use crate::sync_engine::CloudSyncEngine;
 use crate::types::*;
-use crate::webdav::{WebDAVClientState, ConnectionTestResult, WebDAVConfig};
-use base64::Engine;
+use crate::webdav::{ConnectionTestResult, WebDAVClientState};
 use std::sync::Arc;
-use std::time::Instant;
 use tauri::{AppHandle, Emitter, Runtime, State};
-use tokio::sync::Mutex;
 use tauri_plugin_eco_database::DatabaseState;
+use tokio::sync::Mutex;
 
 /// 初始化同步
 #[tauri::command]
@@ -26,7 +24,10 @@ pub async fn init_sync(
     match engine.init(config, &db_state).await {
         Ok(result) => {
             log::info!("✅ 同步引擎初始化成功: {}", result.message);
-            log::info!("🔍 引擎配置状态: config.is_some={}", engine.config.is_some());
+            log::info!(
+                "🔍 引擎配置状态: config.is_some={}",
+                engine.config.is_some()
+            );
             if let Some(ref engine_config) = engine.config {
                 log::info!("🔍 保存的引擎配置: server_url={}", engine_config.server_url);
             }
@@ -41,7 +42,9 @@ pub async fn init_sync(
 
 /// 获取同步状态
 #[tauri::command]
-pub fn get_sync_status(state: State<'_, Arc<Mutex<CloudSyncEngine>>>) -> Result<SyncStatus, String> {
+pub fn get_sync_status(
+    state: State<'_, Arc<Mutex<CloudSyncEngine>>>,
+) -> Result<SyncStatus, String> {
     let engine = state.blocking_lock();
     Ok(engine.get_status().clone())
 }
@@ -57,9 +60,15 @@ pub async fn trigger_sync<R: Runtime>(
     let mut engine = state.lock().await;
     let db = db_state;
 
-    log::info!("🔍 [TRIGGER] 引擎配置状态检查: config.is_some={}", engine.config.is_some());
+    log::info!(
+        "🔍 [TRIGGER] 引擎配置状态检查: config.is_some={}",
+        engine.config.is_some()
+    );
     if let Some(ref engine_config) = engine.config {
-        log::info!("🔍 [TRIGGER] 当前引擎配置: server_url={}", engine_config.server_url);
+        log::info!(
+            "🔍 [TRIGGER] 当前引擎配置: server_url={}",
+            engine_config.server_url
+        );
     }
 
     // 检查引擎是否已初始化，如果没有则尝试自动初始化
@@ -73,18 +82,23 @@ pub async fn trigger_sync<R: Runtime>(
     }
 
     // 获取同步模式配置
-    let config = engine.config.as_ref()
+    let config = engine
+        .config
+        .as_ref()
         .ok_or_else(|| "同步引擎未初始化，请先保存服务器配置".to_string())?;
     let only_favorites = config.only_favorites;
     let include_files = config.include_files;
     log::info!("🔄 [TRIGGER] 触发同步: only_favorites={}", only_favorites);
 
     // 直接从数据库查询并执行同步
-    let result = engine.sync_with_database(&db, only_favorites, include_files).await;
+    let result = engine
+        .sync_with_database(&db, only_favorites, include_files)
+        .await;
 
     match result {
         Ok(process_result) => {
-            log::info!("✅ 同步成功: {} 项上传, {} 项下载, {} 项删除",
+            log::info!(
+                "✅ 同步成功: {} 项上传, {} 项下载, {} 项删除",
                 process_result.uploaded_items.len(),
                 process_result.downloaded_items.len(),
                 process_result.deleted_items.len()
@@ -140,112 +154,44 @@ pub async fn start_auto_sync(
 
 /// 停止自动同步
 #[tauri::command]
-pub async fn stop_auto_sync(state: State<'_, Arc<Mutex<CloudSyncEngine>>>) -> Result<SyncResult, String> {
+pub async fn stop_auto_sync(
+    state: State<'_, Arc<Mutex<CloudSyncEngine>>>,
+) -> Result<SyncResult, String> {
     let mut engine = state.lock().await;
     engine.stop_auto_sync().await
 }
 
 /// 获取自动同步状态
 #[tauri::command]
-pub fn get_auto_sync_status(state: State<'_, Arc<Mutex<CloudSyncEngine>>>) -> Result<AutoSyncStatus, String> {
+pub fn get_auto_sync_status(
+    state: State<'_, Arc<Mutex<CloudSyncEngine>>>,
+) -> Result<AutoSyncStatus, String> {
     let engine = state.blocking_lock();
     Ok(engine.get_auto_sync_status().clone())
 }
 
 /// 更新自动同步间隔
 #[tauri::command]
-pub async fn update_auto_sync_interval(interval_minutes: u64, state: State<'_, Arc<Mutex<CloudSyncEngine>>>) -> Result<SyncResult, String> {
+pub async fn update_auto_sync_interval(
+    interval_minutes: u64,
+    state: State<'_, Arc<Mutex<CloudSyncEngine>>>,
+) -> Result<SyncResult, String> {
     let mut engine = state.lock().await;
     engine.update_auto_sync_interval(interval_minutes).await
 }
 
-/// 测试 WebDAV 连接
+/// 测试 WebDAV 连接（从配置文件读取配置）
 #[tauri::command]
 pub async fn test_webdav_connection(
-    config: WebDAVConfig,
-    _webdav_client: State<'_, WebDAVClientState>,
+    webdav_client: State<'_, WebDAVClientState>,
 ) -> Result<ConnectionTestResult, String> {
-    // 使用传入的配置测试连接
-    test_connection_with_config(&config).await
-}
+    let client = webdav_client.lock().await;
 
-/// 使用指定配置测试连接
-async fn test_connection_with_config(config: &WebDAVConfig) -> Result<ConnectionTestResult, String> {
-    let start_time = Instant::now();
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_millis(config.timeout))
-        .pool_max_idle_per_host(5)
-        .build()
-        .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))?;
-
-    // 构建认证头
-    let credentials = format!("{}:{}", config.username, config.password);
-    let encoded = base64::engine::general_purpose::STANDARD.encode(credentials);
-    let auth_header = format!("Basic {}", encoded);
-
-    // 构建测试URL - 使用基础 URL 而非完整路径
-    let base_url = config.url.trim_end_matches('/');
-    let sync_path = config.path.trim_matches('/');
-    let test_url = format!("{}/{}", base_url, if sync_path.is_empty() { "" } else { sync_path });
-
-    // 先尝试创建目录
-    let directory_url = if !sync_path.is_empty() {
-        Some(format!("{}/{}", base_url, sync_path))
-    } else {
-        None
-    };
-
-    // 如果有自定义路径，先尝试创建目录
-    if let Some(dir_url) = &directory_url {
-        let _ = client
-            .request(reqwest::Method::from_bytes(b"MKCOL").unwrap(), dir_url)
-            .header("Authorization", &auth_header)
-            .header("User-Agent", "EcoPaste-CloudSync/1.0")
-            .send()
-            .await;
+    if !client.is_initialized() {
+        return Err("WebDAV 客户端未初始化".to_string());
     }
 
-    // 测试连接
-    let response = client
-        .head(&test_url)
-        .header("Authorization", &auth_header)
-        .header("User-Agent", "EcoPaste-CloudSync/1.0")
-        .send()
-        .await;
-
-    let latency = start_time.elapsed().as_millis() as u64;
-
-    match response {
-        Ok(resp) => {
-            let status_code = resp.status().as_u16();
-            let server_info = resp
-                .headers()
-                .get("Server")
-                .and_then(|v| v.to_str().ok())
-                .map(|s| s.to_string());
-
-            let success = resp.status().is_success() || status_code == 405 || status_code == 207;
-
-            Ok(ConnectionTestResult {
-                success,
-                latency_ms: latency,
-                status_code: Some(status_code),
-                error_message: if !success {
-                    Some(format!("HTTP {}", status_code))
-                } else {
-                    None
-                },
-                server_info,
-            })
-        }
-        Err(e) => Ok(ConnectionTestResult {
-            success: false,
-            latency_ms: latency,
-            status_code: None,
-            error_message: Some(format!("连接失败: {}", e)),
-            server_info: None,
-        }),
-    }
+    client.test_connection().await
 }
 
 /// 更新同步配置
@@ -319,90 +265,4 @@ pub async fn reload_config_from_file(
             Err("本地配置文件不存在".to_string())
         }
     }
-}
-
-/// 保存连接测试结果到配置文件
-#[tauri::command]
-pub async fn save_connection_test_result(
-    success: bool,
-    latency_ms: u64,
-) -> Result<(), String> {
-    use std::fs;
-
-    let data_dir = dirs::data_dir()
-        .or_else(|| dirs::config_dir())
-        .or_else(|| dirs::home_dir().map(|p| p.join(".local/share")))
-        .ok_or_else(|| "无法获取数据目录".to_string())?;
-
-    let bundle_id = "com.Rains.EcoPaste-Sync";
-    let config_path = if cfg!(debug_assertions) {
-        data_dir.join(bundle_id).join(".store.dev.json")
-    } else {
-        data_dir.join(bundle_id).join(".store.json")
-    };
-
-    // 读取现有配置或创建新配置
-    let mut config: serde_json::Value = if config_path.exists() {
-        let content = fs::read_to_string(&config_path)
-            .map_err(|e| format!("读取配置文件失败: {}", e))?;
-        serde_json::from_str(&content)
-            .map_err(|e| format!("解析配置文件失败: {}", e))?
-    } else {
-        serde_json::json!({
-            "globalStore": {
-                "cloudSync": {
-                    "serverConfig": {},
-                    "autoSyncSettings": {
-                        "enabled": false,
-                        "intervalHours": 1.0,
-                        "syncModeConfig": {
-                            "settings": {
-                                "onlyFavorites": false,
-                                "includeImages": false,
-                                "includeFiles": false
-                            }
-                        }
-                    },
-                    "syncModeConfig": {
-                        "settings": {
-                            "onlyFavorites": false,
-                            "includeImages": false,
-                            "includeFiles": false
-                        }
-                    },
-                    "connectionTest": {
-                        "tested": false,
-                        "success": false,
-                        "latencyMs": 0,
-                        "timestamp": 0
-                    }
-                }
-            }
-        })
-    };
-
-    // 更新连接测试结果
-    if let Some(cloud_sync) = config.get_mut("globalStore").and_then(|v| v.get_mut("cloudSync")) {
-        cloud_sync["connectionTest"] = serde_json::json!({
-            "tested": true,
-            "success": success,
-            "latencyMs": latency_ms,
-            "timestamp": chrono::Utc::now().timestamp()
-        });
-    }
-
-    // 写入配置文件
-    let content = serde_json::to_string_pretty(&config)
-        .map_err(|e| format!("序列化配置文件失败: {}", e))?;
-
-    fs::write(&config_path, content)
-        .map_err(|e| format!("写入配置文件失败: {}", e))?;
-
-    if success {
-        log::info!("[Sync] 连接测试成功已保存 (延迟: {}ms)", latency_ms);
-    } else {
-        log::info!("[Sync] 连接测试失败已保存");
-    }
-
-    Ok(())
 }

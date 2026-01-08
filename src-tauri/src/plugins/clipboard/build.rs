@@ -17,7 +17,7 @@ const COMMANDS: &[&str] = &[
     "write_rtf",
     "write_text",
     "get_image_dimensions",
-    "preview_audio"
+    "preview_audio",
 ];
 
 fn main() {

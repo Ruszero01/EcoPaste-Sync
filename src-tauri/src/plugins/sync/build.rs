@@ -9,7 +9,6 @@ const COMMANDS: &[&str] = &[
     "test_webdav_connection",
     "update_sync_config",
     "reload_config_from_file",
-    "save_connection_test_result",
     "upload_local_config",
     "apply_remote_config",
     "set_bookmark_sync_data",

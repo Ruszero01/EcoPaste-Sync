@@ -98,19 +98,25 @@ impl DeleteManager {
 
         // 查询每个项目的同步状态
         let placeholders: String = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-        let query = format!("SELECT id, syncStatus FROM history WHERE id IN ({})", placeholders);
+        let query = format!(
+            "SELECT id, syncStatus FROM history WHERE id IN ({})",
+            placeholders
+        );
         log::debug!("批量删除查询SQL: {}, 参数数量: {}", query, ids.len());
 
         let mut stmt = conn.prepare(&query).map_err(|e| e.to_string())?;
 
         // 将 Vec<String> 转换为 Vec<&str> 以正确绑定参数
         let params: Vec<&str> = ids.iter().map(|s| s.as_str()).collect();
-        let rows = stmt.query_map(rusqlite::params_from_iter(params.iter()), |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
-        }).map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(params.iter()), |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
+            })
+            .map_err(|e| e.to_string())?;
 
         // 构建 ID 到同步状态的映射
-        let mut sync_status_map: std::collections::HashMap<String, Option<String>> = std::collections::HashMap::new();
+        let mut sync_status_map: std::collections::HashMap<String, Option<String>> =
+            std::collections::HashMap::new();
         for row in rows {
             match row {
                 Ok((id, status)) => {
@@ -124,7 +130,8 @@ impl DeleteManager {
 
         // 根据策略决定每个项目的删除方式
         for id in ids {
-            match Self::delete_single_item(db, &conn, id, &sync_status_map, strategy, current_time) {
+            match Self::delete_single_item(db, &conn, id, &sync_status_map, strategy, current_time)
+            {
                 Ok(DeleteType::Soft) => soft_deleted_ids.push(id.clone()),
                 Ok(DeleteType::Hard) => hard_deleted_ids.push(id.clone()),
                 Err(e) => errors.push(format!("删除 {} 失败: {}", id, e)),
@@ -173,7 +180,8 @@ impl DeleteManager {
                 // 软删除：标记 deleted = 1，更新时间，标记变更跟踪
                 db.update_field(id, "deleted", "1")?;
                 db.update_field(id, "time", &current_time.to_string())?;
-                db.get_change_tracker().mark_item_changed(&conn, id, "delete")?;
+                db.get_change_tracker()
+                    .mark_item_changed(&conn, id, "delete")?;
                 Ok(DeleteType::Soft)
             }
             DeleteType::Hard => {
@@ -211,7 +219,10 @@ impl DeleteManager {
 
         // 标记变更跟踪器
         for id in ids {
-            if let Err(e) = db.get_change_tracker().mark_item_changed(&conn, id, "delete") {
+            if let Err(e) = db
+                .get_change_tracker()
+                .mark_item_changed(&conn, id, "delete")
+            {
                 log::warn!("标记变更跟踪失败: {}", e);
             }
         }

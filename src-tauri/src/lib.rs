@@ -173,9 +173,9 @@ pub fn run() {
             }
 
             let app_handle = app_handle.clone();
-      tauri::async_runtime::spawn(async move {
-          tauri_plugin_eco_window::show_preference_window(app_handle, None).await;
-      });
+            tauri::async_runtime::spawn(async move {
+                tauri_plugin_eco_window::show_preference_window(app_handle, None).await;
+            });
         }
         _ => {
             let _ = app_handle;

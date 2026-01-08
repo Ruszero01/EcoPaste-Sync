@@ -30,8 +30,22 @@ pub fn detect_markdown(content: &str) -> bool {
     // Markdown 核心特征检测（使用 contains_multiple 方式，类似代码检测）
 
     // 1. 标题格式：多个标题行
-    let header_count = contains_multiple(trimmed, &["\n# ", "\n## ", "\n### ", "\n#### ", "\n##### ", "\n###### "], 1)
-        || contains_multiple(trimmed, &["# ", "## ", "### ", "#### ", "##### ", "###### "], 2);
+    let header_count = contains_multiple(
+        trimmed,
+        &[
+            "\n# ",
+            "\n## ",
+            "\n### ",
+            "\n#### ",
+            "\n##### ",
+            "\n###### ",
+        ],
+        1,
+    ) || contains_multiple(
+        trimmed,
+        &["# ", "## ", "### ", "#### ", "##### ", "###### "],
+        2,
+    );
 
     // 2. 代码块：``` 或 ~~~
     let has_code_block = contains_multiple(trimmed, &["\n```", "\n~~~", "```\n", "~~~\n"], 1);
@@ -40,10 +54,15 @@ pub fn detect_markdown(content: &str) -> bool {
     let has_link = contains_multiple(trimmed, &["[", "](", ")"], 3);
 
     // 4. 引用：>
-    let has_blockquote = contains_multiple(trimmed, &["\n> ", "\n>"], 2) || trimmed.starts_with("> ");
+    let has_blockquote =
+        contains_multiple(trimmed, &["\n> ", "\n>"], 2) || trimmed.starts_with("> ");
 
     // 5. 列表：- * + 或数字.
-    let has_list = contains_multiple(trimmed, &["\n- ", "\n* ", "\n+ ", "\n1. ", "\n2. ", "\n3. "], 2);
+    let has_list = contains_multiple(
+        trimmed,
+        &["\n- ", "\n* ", "\n+ ", "\n1. ", "\n2. ", "\n3. "],
+        2,
+    );
 
     // 6. 水平分割线：--- 或 ***
     let has_hr = contains_multiple(trimmed, &["\n---\n", "\n***\n", "\n---\r", "\n***\r"], 1);
@@ -65,16 +84,36 @@ pub fn detect_markdown(content: &str) -> bool {
 
     // 计算特征分数
     let mut score = 0;
-    if header_count { score += 2; }
-    if has_code_block { score += 2; }
-    if has_link { score += 1; }
-    if has_blockquote { score += 1; }
-    if has_list { score += 1; }
-    if has_hr { score += 1; }
-    if has_inline_code { score += 1; }
-    if has_emphasis { score += 1; }
-    if has_image { score += 1; }
-    if has_table { score += 1; }
+    if header_count {
+        score += 2;
+    }
+    if has_code_block {
+        score += 2;
+    }
+    if has_link {
+        score += 1;
+    }
+    if has_blockquote {
+        score += 1;
+    }
+    if has_list {
+        score += 1;
+    }
+    if has_hr {
+        score += 1;
+    }
+    if has_inline_code {
+        score += 1;
+    }
+    if has_emphasis {
+        score += 1;
+    }
+    if has_image {
+        score += 1;
+    }
+    if has_table {
+        score += 1;
+    }
 
     // 分数达到 2 分以上认为是 Markdown
     // 标题或代码块加任意一个其他特征就可以确认

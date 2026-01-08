@@ -15,7 +15,10 @@ pub fn init<R: tauri::Runtime>() -> TauriPlugin<R> {
             // 检查 setup 是否已执行过
             let call_count = SETUP_CALLED.fetch_add(1, Ordering::SeqCst);
             if call_count > 0 {
-                log::warn!("[Hotkey] setup 被调用了 {} 次，跳过重复执行", call_count + 1);
+                log::warn!(
+                    "[Hotkey] setup 被调用了 {} 次，跳过重复执行",
+                    call_count + 1
+                );
                 return Ok(());
             }
 
@@ -35,7 +38,8 @@ pub fn init<R: tauri::Runtime>() -> TauriPlugin<R> {
                         clipboard_shortcut,
                         preference_shortcut,
                         quick_paste_shortcuts,
-                    ).await;
+                    )
+                    .await;
                     if let Err(e) = result {
                         log::error!("[Hotkey] 默认快捷键注册失败: {}", e);
                     } else {

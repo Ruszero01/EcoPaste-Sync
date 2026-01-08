@@ -105,7 +105,9 @@ where
                         let id = generate_id();
 
                         // 获取应用数据目录保存图片
-                        let app_data_dir = app_handle.path().data_dir()
+                        let app_data_dir = app_handle
+                            .path()
+                            .data_dir()
                             .unwrap_or_else(|_| PathBuf::from("./data"));
                         let images_dir = app_data_dir.join("images");
                         let _ = create_dir_all(&images_dir);
@@ -118,7 +120,10 @@ where
                         }
 
                         // count 存储文件大小（用于前端显示）
-                        let file_size = std::fs::metadata(&image_path).ok().map(|m| m.len() as i32).unwrap_or(1);
+                        let file_size = std::fs::metadata(&image_path)
+                            .ok()
+                            .map(|m| m.len() as i32)
+                            .unwrap_or(1);
 
                         (
                             "image".to_string(),
@@ -144,14 +149,17 @@ where
                                 .extension()
                                 .and_then(|e| e.to_str())
                                 .map(|e| e.to_lowercase());
-                            ext.map(|e| image_extensions.contains(&e.as_str())).unwrap_or(false)
+                            ext.map(|e| image_extensions.contains(&e.as_str()))
+                                .unwrap_or(false)
                         });
 
                         if is_all_images {
                             // 所有文件都是图片，保存第一张作为主图片
                             if let Some(first_file) = files.first() {
                                 let id = generate_id();
-                                let app_data_dir = app_handle.path().data_dir()
+                                let app_data_dir = app_handle
+                                    .path()
+                                    .data_dir()
                                     .unwrap_or_else(|_| PathBuf::from("./data"));
                                 let images_dir = app_data_dir.join("images");
                                 let _ = create_dir_all(&images_dir);
@@ -167,7 +175,10 @@ where
                                     .unwrap_or((0, 0));
 
                                 // count 存储文件大小
-                                let file_size = std::fs::metadata(&image_path).ok().map(|m| m.len() as i32).unwrap_or(1);
+                                let file_size = std::fs::metadata(&image_path)
+                                    .ok()
+                                    .map(|m| m.len() as i32)
+                                    .unwrap_or(1);
 
                                 (
                                     "image".to_string(),
@@ -195,7 +206,8 @@ where
                         } else {
                             // 有非图片文件，当作文件处理
                             // count 存储第一个文件的大小
-                            let count = files.first()
+                            let count = files
+                                .first()
                                 .and_then(|f| std::fs::metadata(f).ok())
                                 .map(|m| m.len() as i32)
                                 .unwrap_or(1);
@@ -214,14 +226,17 @@ where
                     }
                     Err(_) => return,
                 }
-            } else if !copy_plain && !context.has(ContentFormat::Html) && context.has(ContentFormat::Rtf) {
+            } else if !copy_plain
+                && !context.has(ContentFormat::Html)
+                && context.has(ContentFormat::Rtf)
+            {
                 // 复制为纯文本关闭时，检测 RTF 格式
                 match context.get_rich_text() {
                     Ok(rtf) => {
                         let text = context.get_text().ok();
                         (
                             "formatted".to_string(),
-                            "text".to_string(),  // group = "text" 表示文本分组
+                            "text".to_string(), // group = "text" 表示文本分组
                             Some(rtf.clone()),
                             text.clone(),
                             text.as_ref().map(|s| s.len() as i32),
@@ -239,7 +254,7 @@ where
                         let text = context.get_text().ok();
                         (
                             "formatted".to_string(),
-                            "text".to_string(),  // group = "text" 表示文本分组
+                            "text".to_string(), // group = "text" 表示文本分组
                             Some(html),
                             text.clone(),
                             text.as_ref().map(|s| s.len() as i32),
@@ -350,7 +365,12 @@ where
             search
         };
 
-        log::debug!("[Clipboard] Insert item: type={}, subtype={}, group={}", final_type, final_subtype_value.as_deref().unwrap_or("null"), group);
+        log::debug!(
+            "[Clipboard] Insert item: type={}, subtype={}, group={}",
+            final_type,
+            final_subtype_value.as_deref().unwrap_or("null"),
+            group
+        );
 
         let item = InsertItem {
             id: generate_id(),

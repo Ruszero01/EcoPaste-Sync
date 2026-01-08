@@ -1,14 +1,15 @@
 //! 数据库命令实现
 //! 提供前端调用的完整 API
 
-use crate::{DatabaseState, HistoryItem, SyncDataItem, QueryOptions, DatabaseStatistics, DataFilter, Pagination, SortInfo, FilterResult, InsertItem, InsertResult};
+use crate::{
+    DataFilter, DatabaseState, DatabaseStatistics, FilterResult, HistoryItem, InsertItem,
+    InsertResult, Pagination, QueryOptions, SortInfo, SyncDataItem,
+};
 use tauri::State;
 
 /// 设置数据库路径并初始化 - 仅用于插件内部，不供前端调用
 #[tauri::command]
-pub fn set_database_path(
-    state: State<'_, DatabaseState>,
-) -> Result<(), String> {
+pub fn set_database_path(state: State<'_, DatabaseState>) -> Result<(), String> {
     let mut db = state.blocking_lock();
 
     // 如果已经初始化，直接返回
@@ -34,11 +35,7 @@ pub fn set_database_path(
     let data_dir = save_data_dir.join(bundle_id);
 
     // set_database_path 会自动构建文件名：{dataDir}/{appName}.{ext}
-    db.set_database_path(
-        data_dir.to_string_lossy().to_string(),
-        app_name,
-        is_dev,
-    )
+    db.set_database_path(data_dir.to_string_lossy().to_string(), app_name, is_dev)
 }
 
 /// 查询历史记录
@@ -116,14 +113,16 @@ pub fn delete_items(
     hard_delete: Option<bool>,
 ) -> Result<crate::delete::DeleteResult, String> {
     let mut db = state.blocking_lock();
-    crate::delete::DeleteManager::delete_items(&mut db, &ids, crate::delete::DeleteStrategy::from_option(hard_delete))
+    crate::delete::DeleteManager::delete_items(
+        &mut db,
+        &ids,
+        crate::delete::DeleteStrategy::from_option(hard_delete),
+    )
 }
 
 /// 获取统计信息
 #[tauri::command]
-pub fn get_statistics(
-    state: State<'_, DatabaseState>,
-) -> Result<DatabaseStatistics, String> {
+pub fn get_statistics(state: State<'_, DatabaseState>) -> Result<DatabaseStatistics, String> {
     let db = state.blocking_lock();
     db.get_statistics()
 }
@@ -147,48 +146,56 @@ pub fn update_field(
             db.update_field(&id, "favorite", if bool_value { "1" } else { "0" })?;
             db.update_field(&id, "time", &current_time.to_string())?;
             let conn = db.get_connection()?;
-            db.get_change_tracker().mark_item_changed(&conn, &id, "favorite")?;
+            db.get_change_tracker()
+                .mark_item_changed(&conn, &id, "favorite")?;
         }
         "note" => {
             db.update_field(&id, "note", &value)?;
             db.update_field(&id, "time", &current_time.to_string())?;
             let conn = db.get_connection()?;
-            db.get_change_tracker().mark_item_changed(&conn, &id, "note")?;
+            db.get_change_tracker()
+                .mark_item_changed(&conn, &id, "note")?;
         }
         "content" => {
             db.update_field(&id, "value", &value)?;
             db.update_field(&id, "count", &value.len().to_string())?;
             db.update_field(&id, "time", &current_time.to_string())?;
             let conn = db.get_connection()?;
-            db.get_change_tracker().mark_item_changed(&conn, &id, "content")?;
+            db.get_change_tracker()
+                .mark_item_changed(&conn, &id, "content")?;
         }
         "search" => {
             db.update_field(&id, "search", &value)?;
             db.update_field(&id, "time", &current_time.to_string())?;
             let conn = db.get_connection()?;
-            db.get_change_tracker().mark_item_changed(&conn, &id, "search")?;
+            db.get_change_tracker()
+                .mark_item_changed(&conn, &id, "search")?;
         }
         "type" => {
             db.update_field(&id, "type", &value)?;
             db.update_field(&id, "time", &current_time.to_string())?;
             let conn = db.get_connection()?;
-            db.get_change_tracker().mark_item_changed(&conn, &id, "type")?;
+            db.get_change_tracker()
+                .mark_item_changed(&conn, &id, "type")?;
         }
         "subtype" => {
             db.update_field(&id, "subtype", &value)?;
             db.update_field(&id, "time", &current_time.to_string())?;
             let conn = db.get_connection()?;
-            db.get_change_tracker().mark_item_changed(&conn, &id, "subtype")?;
+            db.get_change_tracker()
+                .mark_item_changed(&conn, &id, "subtype")?;
         }
         "time" => {
             db.update_field(&id, "time", &value)?;
             let conn = db.get_connection()?;
-            db.get_change_tracker().mark_item_changed(&conn, &id, "time")?;
+            db.get_change_tracker()
+                .mark_item_changed(&conn, &id, "time")?;
         }
         "syncStatus" => {
             db.update_field(&id, "syncStatus", &value)?;
             let conn = db.get_connection()?;
-            db.get_change_tracker().mark_item_changed(&conn, &id, "sync_status")?;
+            db.get_change_tracker()
+                .mark_item_changed(&conn, &id, "sync_status")?;
         }
         _ => return Err(format!("不支持的字段名: {}", field)),
     }
@@ -198,10 +205,7 @@ pub fn update_field(
 
 /// 标记为已变更状态
 #[tauri::command]
-pub fn mark_changed(
-    id: String,
-    state: State<'_, DatabaseState>,
-) -> Result<(), String> {
+pub fn mark_changed(id: String, state: State<'_, DatabaseState>) -> Result<(), String> {
     let db = state.blocking_lock();
     let current_time = chrono::Utc::now().timestamp_millis();
 
@@ -210,7 +214,8 @@ pub fn mark_changed(
 
     // 使用新的统一变更跟踪器
     let conn = db.get_connection()?;
-    db.get_change_tracker().mark_item_changed(&conn, &id, "manual")?;
+    db.get_change_tracker()
+        .mark_item_changed(&conn, &id, "manual")?;
 
     Ok(())
 }
@@ -228,10 +233,16 @@ pub fn batch_mark_changed(
     for id in &ids {
         if db.update_field(id, "syncStatus", "changed").is_ok() {
             // 同时更新时间
-            if db.update_field(id, "time", &current_time.to_string()).is_ok() {
+            if db
+                .update_field(id, "time", &current_time.to_string())
+                .is_ok()
+            {
                 // 使用新的统一变更跟踪器
                 let conn = db.get_connection()?;
-                if let Err(e) = db.get_change_tracker().mark_item_changed(&conn, id, "manual") {
+                if let Err(e) = db
+                    .get_change_tracker()
+                    .mark_item_changed(&conn, id, "manual")
+                {
                     log::warn!("标记变更失败: {}", e);
                 } else {
                     count += 1;
@@ -245,18 +256,14 @@ pub fn batch_mark_changed(
 
 /// 获取已变更项目数量
 #[tauri::command]
-pub fn get_changed_items_count(
-    state: State<'_, DatabaseState>,
-) -> usize {
+pub fn get_changed_items_count(state: State<'_, DatabaseState>) -> usize {
     let db = state.blocking_lock();
     db.get_change_tracker().count()
 }
 
 /// 获取所有已变更的项目ID
 #[tauri::command]
-pub fn get_changed_items_list(
-    state: State<'_, DatabaseState>,
-) -> Vec<String> {
+pub fn get_changed_items_list(state: State<'_, DatabaseState>) -> Vec<String> {
     let db = state.blocking_lock();
     db.get_change_tracker().get_changed_items()
 }
@@ -322,7 +329,13 @@ pub fn query_for_sync(
     state: State<'_, DatabaseState>,
 ) -> Result<Vec<SyncDataItem>, String> {
     let db = state.blocking_lock();
-    db.query_for_sync(only_favorites, include_images, include_files, content_types, sync_status_filter)
+    db.query_for_sync(
+        only_favorites,
+        include_images,
+        include_files,
+        content_types,
+        sync_status_filter,
+    )
 }
 
 /// 搜索数据
@@ -424,9 +437,7 @@ pub fn query_by_group(
 
 /// 获取所有分组列表
 #[tauri::command]
-pub fn get_all_groups(
-    state: State<'_, DatabaseState>,
-) -> Result<Vec<String>, String> {
+pub fn get_all_groups(state: State<'_, DatabaseState>) -> Result<Vec<String>, String> {
     let db = state.blocking_lock();
 
     let options = QueryOptions {
@@ -478,7 +489,10 @@ pub fn get_filtered_statistics(
     let items = db.query_history(options)?;
 
     let total = items.len();
-    let active = items.iter().filter(|item| item.deleted.unwrap_or(0) == 0).count();
+    let active = items
+        .iter()
+        .filter(|item| item.deleted.unwrap_or(0) == 0)
+        .count();
     let favorites = items.iter().filter(|item| item.favorite != 0).count();
 
     let synced = items

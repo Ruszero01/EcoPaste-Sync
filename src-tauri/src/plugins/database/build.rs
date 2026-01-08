@@ -18,7 +18,7 @@ const COMMANDS: &[&str] = &[
     "cleanup_history",
     "get_source_app_info",
     "get_database_info",
-    "reset_database"
+    "reset_database",
 ];
 
 fn main() {

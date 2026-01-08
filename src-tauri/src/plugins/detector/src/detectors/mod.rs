@@ -4,20 +4,20 @@
 
 use serde::{Deserialize, Serialize};
 
-mod url;
-mod email;
-mod path;
-mod color;
 mod code;
+mod color;
+mod email;
 mod markdown;
+mod path;
+mod url;
 
-pub use url::detect_url;
-pub use email::detect_email;
-pub use path::detect_path;
-pub use color::{detect_color, get_color_format, conversion};
-pub use color::conversion::TargetType;
 pub use code::detect_code;
+pub use color::conversion::TargetType;
+pub use color::{conversion, detect_color, get_color_format};
+pub use email::detect_email;
 pub use markdown::detect_markdown;
+pub use path::detect_path;
+pub use url::detect_url;
 
 /// 检测结果
 #[derive(Debug, Clone, Default)]

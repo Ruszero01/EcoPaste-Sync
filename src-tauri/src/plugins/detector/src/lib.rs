@@ -1,20 +1,22 @@
+use std::sync::Mutex;
 use tauri::{
     plugin::{Builder, TauriPlugin},
     Manager, Runtime,
 };
-use std::sync::Mutex;
 
 mod commands;
-mod models;
 mod detectors;
+mod models;
 
+pub use commands::convert_color;
 pub use commands::detect_content;
 pub use commands::run_detection;
-pub use commands::convert_color;
 pub use commands::ColorConvertResult;
-pub use models::TypeDetectionResult;
-pub use detectors::{DetectionOptions, DetectionResult, detect_color, get_color_format, conversion};
 pub use detectors::conversion::find_similar_color;
+pub use detectors::{
+    conversion, detect_color, get_color_format, DetectionOptions, DetectionResult,
+};
+pub use models::TypeDetectionResult;
 
 /// Detector 插件状态
 pub struct DetectorState(Mutex<()>);
@@ -58,6 +60,9 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             app.manage(DetectorState::new());
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![commands::detect_content, commands::convert_color])
+        .invoke_handler(tauri::generate_handler![
+            commands::detect_content,
+            commands::convert_color
+        ])
         .build()
 }

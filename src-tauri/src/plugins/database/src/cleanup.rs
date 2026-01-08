@@ -28,8 +28,7 @@ pub async fn cleanup_history(
 
     // 1. 清理超过保留天数的记录（不影响收藏）
     if rule.retain_days > 0 {
-        let cutoff_time = chrono::Utc::now()
-            - chrono::Duration::days(rule.retain_days as i64);
+        let cutoff_time = chrono::Utc::now() - chrono::Duration::days(rule.retain_days as i64);
 
         deleted_count += delete_items_by_time_condition(&mut db, cutoff_time.timestamp_millis())?;
     }
@@ -93,7 +92,9 @@ fn delete_oldest_non_favorites(
         LIMIT ?
     "#;
 
-    let mut stmt = conn.prepare(sql).map_err(|e| format!("准备查询失败: {}", e))?;
+    let mut stmt = conn
+        .prepare(sql)
+        .map_err(|e| format!("准备查询失败: {}", e))?;
     let rows = stmt
         .query_map([limit as i32], |row| row.get::<_, String>(0))
         .map_err(|e| format!("查询失败: {}", e))?;

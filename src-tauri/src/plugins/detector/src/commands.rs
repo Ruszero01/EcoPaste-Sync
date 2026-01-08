@@ -2,7 +2,10 @@
 //!
 //! 提供内容类型检测功能
 
-use crate::{models::TypeDetectionResult, detectors::{DetectionOptions, DetectionResult, TargetType, conversion}};
+use crate::{
+    detectors::{conversion, DetectionOptions, DetectionResult, TargetType},
+    models::TypeDetectionResult,
+};
 use serde::{Deserialize, Serialize};
 
 /// 检测内容类型
@@ -34,7 +37,9 @@ pub async fn detect_content(
 
 /// 运行类型检测（按优先级）
 pub fn run_detection(content: &str, options: &DetectionOptions) -> DetectionResult {
-    use crate::detectors::{detect_url, detect_email, detect_path, detect_color, detect_code, detect_markdown};
+    use crate::detectors::{
+        detect_code, detect_color, detect_email, detect_markdown, detect_path, detect_url,
+    };
 
     // URL 检测
     if options.detect_url && detect_url(content) {
@@ -177,7 +182,15 @@ pub struct ColorConvertResult {
 pub fn convert_color(color: String, convert_type: ColorConvertType) -> ColorConvertResult {
     let target: TargetType = convert_type.into();
     match conversion::convert(&color, target) {
-        Some(value) => ColorConvertResult { value, success: true, error: None },
-        None => ColorConvertResult { value: String::new(), success: false, error: Some("无法转换颜色格式".to_string()) },
+        Some(value) => ColorConvertResult {
+            value,
+            success: true,
+            error: None,
+        },
+        None => ColorConvertResult {
+            value: String::new(),
+            success: false,
+            error: Some("无法转换颜色格式".to_string()),
+        },
     }
 }

@@ -1,10 +1,10 @@
 //! 来源应用信息获取模块
 //! 提供统一的来源应用信息获取接口
 
+use base64::{engine::general_purpose, Engine as _};
+use image::codecs::png::PngEncoder;
 use serde::{Deserialize, Serialize};
 use std::io::Cursor;
-use base64::{Engine as _, engine::general_purpose};
-use image::codecs::png::PngEncoder;
 
 /// 来源应用信息
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -20,11 +20,8 @@ fn get_icon_from_path(app_path: &str) -> Option<String> {
         .map_err(|e| log::warn!("Failed to get icon: {}", e))
         .ok()?;
 
-    let img = image::RgbaImage::from_raw(
-        icon_result.width,
-        icon_result.height,
-        icon_result.pixels,
-    )?;
+    let img =
+        image::RgbaImage::from_raw(icon_result.width, icon_result.height, icon_result.pixels)?;
 
     let mut buffer = Cursor::new(Vec::new());
     let encoder = PngEncoder::new(&mut buffer);
@@ -45,13 +42,14 @@ pub fn get_clipboard_owner_process() -> Result<(String, String), String> {
     use windows::Win32::Foundation::HWND;
     use windows::Win32::System::DataExchange::GetClipboardOwner;
     use windows::Win32::System::Threading::{
-        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
+        PROCESS_QUERY_LIMITED_INFORMATION,
     };
     use windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
 
     unsafe {
-        let hwnd_owner: HWND = GetClipboardOwner()
-            .map_err(|e| format!("Failed to get clipboard owner: {}", e))?;
+        let hwnd_owner: HWND =
+            GetClipboardOwner().map_err(|e| format!("Failed to get clipboard owner: {}", e))?;
 
         if hwnd_owner.is_invalid() {
             return Err("Failed to get clipboard owner".to_string());
@@ -103,11 +101,10 @@ pub fn get_clipboard_owner_process() -> Result<(String, String), String> {
 pub fn get_active_window_process() -> Result<(String, String), String> {
     use windows::Win32::Foundation::HWND;
     use windows::Win32::System::Threading::{
-        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
+        PROCESS_QUERY_LIMITED_INFORMATION,
     };
-    use windows::Win32::UI::WindowsAndMessaging::{
-        GetForegroundWindow, GetWindowThreadProcessId,
-    };
+    use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
 
     unsafe {
         let hwnd: HWND = GetForegroundWindow();
@@ -208,7 +205,9 @@ pub fn get_active_window_process() -> Result<(String, String), String> {
         return Err("Failed to get active window pid".to_string());
     }
 
-    let pid = String::from_utf8_lossy(&pid_output.stdout).trim().to_string();
+    let pid = String::from_utf8_lossy(&pid_output.stdout)
+        .trim()
+        .to_string();
 
     let ps_output = Command::new("ps")
         .args(&["-p", &pid, "-o", "comm="])
@@ -216,7 +215,9 @@ pub fn get_active_window_process() -> Result<(String, String), String> {
         .map_err(|e| format!("Failed to execute ps: {}", e))?;
 
     let process_name = if ps_output.status.success() {
-        String::from_utf8_lossy(&ps_output.stdout).trim().to_string()
+        String::from_utf8_lossy(&ps_output.stdout)
+            .trim()
+            .to_string()
     } else {
         "Unknown".to_string()
     };
@@ -242,7 +243,10 @@ pub fn fetch_source_app_info_impl() -> Result<SourceAppInfo, String> {
         match get_clipboard_owner_process() {
             Ok((process_name, process_path)) => {
                 let app_icon = get_icon_from_path(&process_path);
-                return Ok(SourceAppInfo { app_name: process_name, app_icon });
+                return Ok(SourceAppInfo {
+                    app_name: process_name,
+                    app_icon,
+                });
             }
             Err(e) => {
                 log::warn!("[SourceApp] 获取剪贴板所有者失败，回退到活动窗口: {}", e);
@@ -255,7 +259,10 @@ pub fn fetch_source_app_info_impl() -> Result<SourceAppInfo, String> {
     match get_active_window_process() {
         Ok((process_name, process_path)) => {
             let app_icon = get_icon_from_path(&process_path);
-            Ok(SourceAppInfo { app_name: process_name, app_icon })
+            Ok(SourceAppInfo {
+                app_name: process_name,
+                app_icon,
+            })
         }
         Err(e) => Err(format!("Failed to get source app info: {}", e)),
     }

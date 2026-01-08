@@ -9,7 +9,8 @@ pub fn detect_color(s: &str) -> bool {
     let trimmed = s.trim();
 
     // Hex 格式: #RGB, #RRGGBB, #RRGGBBAA
-    let hex_re = Regex::new(r"^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3}|[A-Fa-f0-9]{4}|[A-Fa-f0-9]{8})$").unwrap();
+    let hex_re =
+        Regex::new(r"^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3}|[A-Fa-f0-9]{4}|[A-Fa-f0-9]{8})$").unwrap();
     if hex_re.is_match(trimmed) {
         return true;
     }
@@ -21,7 +22,8 @@ pub fn detect_color(s: &str) -> bool {
     }
 
     // CMYK 格式: cmyk(c, m, y, k)
-    let cmyk_re = Regex::new(r"^cmyk\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\)$").unwrap();
+    let cmyk_re =
+        Regex::new(r"^cmyk\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\)$").unwrap();
     if cmyk_re.is_match(trimmed) {
         return true;
     }
@@ -43,7 +45,8 @@ pub fn detect_color(s: &str) -> bool {
     }
 
     // 向量格式: c,m,y,k (0-100)
-    let cmyk_vector_re = Regex::new(r"^\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}$").unwrap();
+    let cmyk_vector_re =
+        Regex::new(r"^\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}$").unwrap();
     if cmyk_vector_re.is_match(trimmed) {
         let parts: Vec<&str> = trimmed.split(',').collect();
         if parts.len() == 4 {
@@ -66,7 +69,8 @@ pub fn get_color_format(s: &str) -> Option<String> {
     let trimmed = s.trim();
 
     // Hex 格式
-    let hex_re = Regex::new(r"^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3}|[A-Fa-f0-9]{4}|[A-Fa-f0-9]{8})$").unwrap();
+    let hex_re =
+        Regex::new(r"^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3}|[A-Fa-f0-9]{4}|[A-Fa-f0-9]{8})$").unwrap();
     if hex_re.is_match(trimmed) {
         return Some("hex".to_string());
     }
@@ -78,7 +82,8 @@ pub fn get_color_format(s: &str) -> Option<String> {
     }
 
     // CMYK 格式
-    let cmyk_re = Regex::new(r"^cmyk\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\)$").unwrap();
+    let cmyk_re =
+        Regex::new(r"^cmyk\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\)$").unwrap();
     if cmyk_re.is_match(trimmed) {
         return Some("cmyk".to_string());
     }
@@ -192,7 +197,8 @@ pub mod conversion {
     /// 解析 rgb(r, g, b) 或 rgba(r, g, b, a) 格式
     fn parse_rgb_color(s: &str) -> Option<(u8, u8, u8)> {
         let s = s.trim();
-        let content = s.trim_start_matches("rgba")
+        let content = s
+            .trim_start_matches("rgba")
             .trim_start_matches("rgb")
             .trim_start_matches('(')
             .trim_end_matches(')');
@@ -209,7 +215,8 @@ pub mod conversion {
     /// 解析 cmyk(c, m, y, k) 格式
     fn parse_cmyk_color(s: &str) -> Option<(u8, u8, u8)> {
         let s = s.trim();
-        let content = s.trim_start_matches("cmyk")
+        let content = s
+            .trim_start_matches("cmyk")
             .trim_start_matches('(')
             .trim_end_matches(')');
         let parts: Vec<&str> = content.split(',').collect();
@@ -312,8 +319,8 @@ pub mod conversion {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::conversion::*;
+    use super::*;
 
     #[test]
     fn test_hex_color() {
@@ -337,32 +344,68 @@ mod tests {
     fn test_cmyk_color() {
         assert!(detect_color("cmyk(100, 0, 0, 0)"));
         assert!(detect_color("0, 100, 50, 25"));
-        assert_eq!(get_color_format("cmyk(100, 50, 0, 0)"), Some("cmyk".to_string()));
+        assert_eq!(
+            get_color_format("cmyk(100, 50, 0, 0)"),
+            Some("cmyk".to_string())
+        );
         assert_eq!(get_color_format("0, 100, 50, 25"), Some("cmyk".to_string()));
     }
 
     #[test]
     fn test_color_conversion() {
         // 使用统一的 convert 函数
-        assert_eq!(convert("#FF0000", TargetType::RgbVector), Some("255, 0, 0".to_string()));
-        assert_eq!(convert("#f00", TargetType::RgbVector), Some("255, 0, 0".to_string()));
-        assert_eq!(convert("#00FF00", TargetType::RgbVector), Some("0, 255, 0".to_string()));
+        assert_eq!(
+            convert("#FF0000", TargetType::RgbVector),
+            Some("255, 0, 0".to_string())
+        );
+        assert_eq!(
+            convert("#f00", TargetType::RgbVector),
+            Some("255, 0, 0".to_string())
+        );
+        assert_eq!(
+            convert("#00FF00", TargetType::RgbVector),
+            Some("0, 255, 0".to_string())
+        );
 
         // 转 HEX
-        assert_eq!(convert("rgb(255, 0, 0)", TargetType::Hex), Some("#ff0000".to_string()));
-        assert_eq!(convert("cmyk(0, 100, 100, 0)", TargetType::Hex), Some("#ff0000".to_string()));
+        assert_eq!(
+            convert("rgb(255, 0, 0)", TargetType::Hex),
+            Some("#ff0000".to_string())
+        );
+        assert_eq!(
+            convert("cmyk(0, 100, 100, 0)", TargetType::Hex),
+            Some("#ff0000".to_string())
+        );
 
         // 转 CMYK
-        assert_eq!(convert("#FF0000", TargetType::Cmyk), Some("0, 100, 100, 0".to_string()));
-        assert_eq!(convert("rgb(0, 255, 0)", TargetType::Cmyk), Some("100, 0, 100, 0".to_string()));
+        assert_eq!(
+            convert("#FF0000", TargetType::Cmyk),
+            Some("0, 100, 100, 0".to_string())
+        );
+        assert_eq!(
+            convert("rgb(0, 255, 0)", TargetType::Cmyk),
+            Some("100, 0, 100, 0".to_string())
+        );
 
         // 转 RGB
-        assert_eq!(convert("#FF0000", TargetType::Rgb), Some("255, 0, 0".to_string()));
+        assert_eq!(
+            convert("#FF0000", TargetType::Rgb),
+            Some("255, 0, 0".to_string())
+        );
 
         // 去重函数复用 convert
-        assert_eq!(color_to_rgb_vector("#FF0000"), Some("255, 0, 0".to_string()));
-        assert_eq!(color_to_rgb_vector("rgb(0, 255, 0)"), Some("0, 255, 0".to_string()));
-        assert_eq!(color_to_rgb_vector("cmyk(0, 0, 0, 100)"), Some("0, 0, 0".to_string()));
+        assert_eq!(
+            color_to_rgb_vector("#FF0000"),
+            Some("255, 0, 0".to_string())
+        );
+        assert_eq!(
+            color_to_rgb_vector("rgb(0, 255, 0)"),
+            Some("0, 255, 0".to_string())
+        );
+        assert_eq!(
+            color_to_rgb_vector("cmyk(0, 0, 0, 100)"),
+            Some("0, 0, 0".to_string())
+        );
     }
 
     #[test]

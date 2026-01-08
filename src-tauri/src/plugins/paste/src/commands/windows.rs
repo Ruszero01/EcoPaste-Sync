@@ -13,7 +13,7 @@ use winapi::shared::minwindef::DWORD;
 use winapi::shared::windef::{HWINEVENTHOOK, HWND};
 use winapi::um::winuser::{
     GetAsyncKeyState, GetWindowTextLengthW, GetWindowTextW, SetForegroundWindow, SetWinEventHook,
-    EVENT_SYSTEM_FOREGROUND, VK_CONTROL, VK_LSHIFT, VK_MENU, VK_RSHIFT, VK_LWIN, VK_RWIN,
+    EVENT_SYSTEM_FOREGROUND, VK_CONTROL, VK_LSHIFT, VK_LWIN, VK_MENU, VK_RSHIFT, VK_RWIN,
     WINEVENT_OUTOFCONTEXT,
 };
 

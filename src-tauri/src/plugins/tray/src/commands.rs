@@ -6,8 +6,8 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, Manager, Runtime,
 };
-use tauri_plugin_eco_window::{show_main_window, show_preference_window};
 use tauri_plugin_eco_clipboard::{is_listen_enabled, toggle_listen as clipboard_toggle_listen};
+use tauri_plugin_eco_window::{show_main_window, show_preference_window};
 
 // 托盘菜单项 ID
 const MENU_ITEM_SHOW: &str = "show";
@@ -45,8 +45,8 @@ fn create_tray_menu<R: Runtime>(
         .map_err(|e| format!("创建监听开关菜单项失败: {}", e))?;
 
     // 分割线 1（监听开关和窗口之间）
-    let separator1 = PredefinedMenuItem::separator(app_handle)
-        .map_err(|e| format!("创建分割线失败: {}", e))?;
+    let separator1 =
+        PredefinedMenuItem::separator(app_handle).map_err(|e| format!("创建分割线失败: {}", e))?;
 
     // 显示主窗口
     let show = MenuItemBuilder::with_id(MENU_ITEM_SHOW, "主窗口")
@@ -59,8 +59,8 @@ fn create_tray_menu<R: Runtime>(
         .map_err(|e| format!("创建设置菜单项失败: {}", e))?;
 
     // 分割线 2（窗口和底部操作之间）
-    let separator2 = PredefinedMenuItem::separator(app_handle)
-        .map_err(|e| format!("创建分割线失败: {}", e))?;
+    let separator2 =
+        PredefinedMenuItem::separator(app_handle).map_err(|e| format!("创建分割线失败: {}", e))?;
 
     // 重启应用
     let relaunch = MenuItemBuilder::with_id(MENU_ITEM_RELAUNCH, "重启应用")
@@ -73,7 +73,15 @@ fn create_tray_menu<R: Runtime>(
         .map_err(|e| format!("创建退出菜单项失败: {}", e))?;
 
     let menu = MenuBuilder::new(app_handle)
-        .items(&[&toggle_listen, &separator1, &show, &preference, &separator2, &relaunch, &quit])
+        .items(&[
+            &toggle_listen,
+            &separator1,
+            &show,
+            &preference,
+            &separator2,
+            &relaunch,
+            &quit,
+        ])
         .build()
         .map_err(|e| format!("构建菜单失败: {}", e))?;
 
@@ -203,7 +211,10 @@ fn show_window_from_tray<R: Runtime>(app: AppHandle<R>, window_label: String) {
 /// 加载托盘图标
 fn load_tray_icon<R: Runtime>(app_handle: &AppHandle<R>) -> Result<Image<'static>, String> {
     // 打包后的资源路径格式：resourceDir/assets/tray.ico
-    let resource_path = app_handle.path().resource_dir().map_err(|e| format!("获取资源目录失败: {}", e))?;
+    let resource_path = app_handle
+        .path()
+        .resource_dir()
+        .map_err(|e| format!("获取资源目录失败: {}", e))?;
     let icon_path = resource_path.join("assets").join("tray.ico");
 
     Image::from_path(&icon_path).map_err(|e| format!("加载托盘图标失败: {}", e))
@@ -215,7 +226,11 @@ fn should_show_tray<R: Runtime>(app_handle: &AppHandle<R>) -> bool {
     // 开发环境: .store.dev.json
     // 生产环境: .store.json
     let is_dev = cfg!(debug_assertions);
-    let config_filename = if is_dev { ".store.dev.json" } else { ".store.json" };
+    let config_filename = if is_dev {
+        ".store.dev.json"
+    } else {
+        ".store.json"
+    };
 
     // 优先使用 APPDATA 环境变量
     let config_path = if let Some(app_data_dir) = std::env::var_os("APPDATA") {

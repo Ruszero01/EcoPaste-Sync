@@ -180,7 +180,9 @@ impl ConfigSyncManager {
         if !download_result.success {
             return Ok(ConfigSyncResult {
                 success: false,
-                message: download_result.error_message.unwrap_or_else(|| "下载配置失败".to_string()),
+                message: download_result
+                    .error_message
+                    .unwrap_or_else(|| "下载配置失败".to_string()),
             });
         }
 
@@ -209,8 +211,7 @@ impl ConfigSyncManager {
 
             // 确保目录存在
             if let Some(parent) = config_path.parent() {
-                std::fs::create_dir_all(parent)
-                    .map_err(|e| format!("创建配置目录失败: {}", e))?;
+                std::fs::create_dir_all(parent).map_err(|e| format!("创建配置目录失败: {}", e))?;
             }
 
             // 写入配置文件

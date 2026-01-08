@@ -1,15 +1,15 @@
 //! 同步核心模块
 //! 基于前端云同步引擎的经验教训，设计更robust的同步架构
 
-use crate::types::*;
-use crate::webdav::WebDAVClientState;
 use crate::data_manager::DataManager;
 use crate::file_sync_manager::FileSyncManager;
+use crate::types::*;
+use crate::webdav::WebDAVClientState;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 use tauri_plugin_eco_database::{DatabaseState, DeleteManager};
+use tokio::sync::Mutex;
 
 /// 类型别名：本地数据使用数据库模型
 pub type LocalSyncDataItem = tauri_plugin_eco_database::SyncDataItem;
@@ -164,7 +164,10 @@ impl SyncCore {
         let mut files_to_delete = Vec::new();
 
         if !items_to_delete.is_empty() {
-            match self.process_deletions(&items_to_delete, &cloud_data, database_state).await {
+            match self
+                .process_deletions(&items_to_delete, &cloud_data, database_state)
+                .await
+            {
                 Ok((deleted_ids, deleted_files, updated_cloud)) => {
                     result.deleted_items.extend(deleted_ids.iter().cloned());
                     files_to_delete = deleted_files;
@@ -179,25 +182,35 @@ impl SyncCore {
         }
 
         // 获取本地数据
-        let local_data = self.load_local_data(database_state, &mode_config).await.map_err(|e| {
-            log::error!("获取本地数据失败: {}", e);
-            e
-        })?;
+        let local_data = self
+            .load_local_data(database_state, &mode_config)
+            .await
+            .map_err(|e| {
+                log::error!("获取本地数据失败: {}", e);
+                e
+            })?;
 
         // 数据比对
         let filtered_cloud = self.filter_cloud_data(&cloud_data, &mode_config);
-        let local_ids: std::collections::HashSet<&str> = local_data.iter()
-            .map(|item| item.id.as_str())
-            .collect();
+        let local_ids: std::collections::HashSet<&str> =
+            local_data.iter().map(|item| item.id.as_str()).collect();
 
-        let items_to_download: Vec<String> = filtered_cloud.iter()
+        let items_to_download: Vec<String> = filtered_cloud
+            .iter()
             .filter(|item| !local_ids.contains(item.id.as_str()))
             .map(|item| item.id.clone())
             .collect();
 
         // 上传本地数据
         if !local_data.is_empty() {
-            match self.upload_local_changes(&local_data.iter().map(|i| i.id.clone()).collect::<Vec<_>>(), &cloud_data, database_state).await {
+            match self
+                .upload_local_changes(
+                    &local_data.iter().map(|i| i.id.clone()).collect::<Vec<_>>(),
+                    &cloud_data,
+                    database_state,
+                )
+                .await
+            {
                 Ok(uploaded) => {
                     result.uploaded_items.extend(uploaded.iter().cloned());
                     log::info!("📤 上传 {} 项", uploaded.len());
@@ -211,7 +224,10 @@ impl SyncCore {
 
         // 下载云端数据
         if !items_to_download.is_empty() {
-            match self.download_cloud_changes(&items_to_download, &cloud_data, database_state).await {
+            match self
+                .download_cloud_changes(&items_to_download, &cloud_data, database_state)
+                .await
+            {
                 Ok(downloaded) => {
                     result.downloaded_items.extend(downloaded.iter().cloned());
                     log::info!("📥 下载 {} 项", downloaded.len());
@@ -227,7 +243,9 @@ impl SyncCore {
         {
             let db = database_state.lock().await;
             let tracker = db.get_change_tracker();
-            let all_synced_items: Vec<String> = result.uploaded_items.iter()
+            let all_synced_items: Vec<String> = result
+                .uploaded_items
+                .iter()
                 .chain(result.downloaded_items.iter())
                 .cloned()
                 .collect();
@@ -253,12 +271,17 @@ impl SyncCore {
         result.duration_ms = (end_time - start_time) as u64;
 
         if result.success {
-            if !result.uploaded_items.is_empty() || !result.downloaded_items.is_empty() || !result.deleted_items.is_empty() {
-                log::info!("✅ 同步完成: 上传 {}，下载 {}，删除 {} ({}ms)",
+            if !result.uploaded_items.is_empty()
+                || !result.downloaded_items.is_empty()
+                || !result.deleted_items.is_empty()
+            {
+                log::info!(
+                    "✅ 同步完成: 上传 {}，下载 {}，删除 {} ({}ms)",
                     result.uploaded_items.len(),
                     result.downloaded_items.len(),
                     result.deleted_items.len(),
-                    result.duration_ms);
+                    result.duration_ms
+                );
             } else {
                 log::info!("✅ 同步完成，无变更 ({}ms)", result.duration_ms);
             }
@@ -272,38 +295,34 @@ impl SyncCore {
 
     /// 严格检查项目是否真的已同步（简化版）
     /// 移除冗余字段：直接比较核心字段
-    fn is_item_actually_synced(&self, local_item: &SyncDataItem, cloud_item: &SyncDataItem) -> bool {
+    fn is_item_actually_synced(
+        &self,
+        local_item: &SyncDataItem,
+        cloud_item: &SyncDataItem,
+    ) -> bool {
+        // 只比较时间戳和核心元数据字段
+        // 注意：不比较 value 字段，因为：
+        // 1. 文件上传时，value 是原始路径（如 "G:/path/to/image.png"）
+        // 2. 文件下载后，value 是缓存路径（如 "C:/Users/.../images/xxx.png"）
+        // 3. 路径不同但内容相同，不应该重复上传
+        // 4. 时间戳相同时，说明数据已经同步过
+
         // 基础字段匹配检查
         if local_item.item_type != cloud_item.item_type
             || local_item.favorite != cloud_item.favorite
-            || local_item.note != cloud_item.note {
+            || local_item.note != cloud_item.note
+        {
             return false;
         }
 
-        // 使用内容比较（文本内容或文件路径）
-        if let (Some(local_value), Some(cloud_value)) = (&local_item.value, &cloud_item.value) {
-            // 对于长内容，只比较前1000字符以提高性能
-            // 注意：使用 char_indices 来安全地按字符边界切片
-            let max_chars = 1000;
-            let local_chars: Vec<char> = local_value.chars().collect();
-            let cloud_chars: Vec<char> = cloud_value.chars().collect();
-
-            let local_slice = if local_chars.len() > max_chars {
-                local_chars[..max_chars].iter().collect::<String>()
-            } else {
-                local_value.clone()
-            };
-
-            let cloud_slice = if cloud_chars.len() > max_chars {
-                cloud_chars[..max_chars].iter().collect::<String>()
-            } else {
-                cloud_value.clone()
-            };
-
-            return local_slice == cloud_slice;
+        // 时间戳检查（核心判断依据）
+        if local_item.time != cloud_item.time {
+            return false;
         }
 
-        false
+        // 对于文件类型，可以额外比较 checksum（如果有的话）
+        // 但对于简单同步，时间戳已经足够
+        true
     }
 
     /// 获取当前同步索引
@@ -327,7 +346,11 @@ impl SyncCore {
     }
 
     /// 加载本地待同步数据
-    async fn load_local_data(&self, database_state: &DatabaseState, mode_config: &SyncModeConfig) -> Result<Vec<SyncDataItem>, String> {
+    async fn load_local_data(
+        &self,
+        database_state: &DatabaseState,
+        mode_config: &SyncModeConfig,
+    ) -> Result<Vec<SyncDataItem>, String> {
         let db = database_state.lock().await;
 
         let content_types = tauri_plugin_eco_database::ContentTypeFilter {
@@ -396,7 +419,11 @@ impl SyncCore {
 
     /// 根据同步模式筛选云端数据
     /// 用于数据比对时减少遍历量
-    fn filter_cloud_data(&self, data: &[SyncDataItem], mode_config: &SyncModeConfig) -> Vec<SyncDataItem> {
+    fn filter_cloud_data(
+        &self,
+        data: &[SyncDataItem],
+        mode_config: &SyncModeConfig,
+    ) -> Vec<SyncDataItem> {
         data.iter()
             .filter(|item| {
                 // 收藏模式检查
@@ -420,7 +447,11 @@ impl SyncCore {
 
     /// 检测和解决冲突
     #[allow(dead_code)]
-    async fn detect_and_resolve_conflicts(&self, local_data: &[SyncDataItem], cloud_data: &[SyncDataItem]) -> Vec<String> {
+    async fn detect_and_resolve_conflicts(
+        &self,
+        local_data: &[SyncDataItem],
+        cloud_data: &[SyncDataItem],
+    ) -> Vec<String> {
         let mut conflicts = Vec::new();
 
         // 构建云端数据的索引
@@ -488,7 +519,11 @@ impl SyncCore {
     }
 
     /// 处理文件同步
-    async fn process_file_sync(&self, local_data: &[SyncDataItem], database_state: &DatabaseState) -> Result<(), String> {
+    async fn process_file_sync(
+        &self,
+        local_data: &[SyncDataItem],
+        database_state: &DatabaseState,
+    ) -> Result<(), String> {
         let file_items: Vec<_> = local_data
             .iter()
             .filter(|item| item.item_type == "image" || item.item_type == "files")
@@ -501,39 +536,47 @@ impl SyncCore {
         let file_sync_manager = self.file_sync_manager.clone();
         let file_manager = file_sync_manager.lock().await;
 
-        let cache_dir = file_manager.get_cache_dir().await
+        let cache_dir = file_manager
+            .get_cache_dir()
+            .await
             .map_err(|e| format!("获取缓存目录失败: {}", e))?;
 
         let images_cache_dir = cache_dir.join("images");
         let files_cache_dir = cache_dir.join("files");
 
-        tokio::fs::create_dir_all(&images_cache_dir).await
+        tokio::fs::create_dir_all(&images_cache_dir)
+            .await
             .map_err(|e| format!("创建图片缓存目录失败: {}", e))?;
-        tokio::fs::create_dir_all(&files_cache_dir).await
+        tokio::fs::create_dir_all(&files_cache_dir)
+            .await
             .map_err(|e| format!("创建文件缓存目录失败: {}", e))?;
 
         let mut upload_tasks = Vec::new();
-        let mut download_tasks: Vec<(String, crate::file_sync_manager::FileDownloadTask, std::path::PathBuf)> = Vec::new();
+        let mut download_tasks: Vec<(
+            String,
+            crate::file_sync_manager::FileDownloadTask,
+            std::path::PathBuf,
+        )> = Vec::new();
 
         for item in &file_items {
             if let Some(value) = &item.value {
                 if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(value) {
                     if parsed.get("checksum").is_some() {
-                        let remote_path = parsed.get("remotePath")
+                        let remote_path = parsed
+                            .get("remotePath")
                             .and_then(|v| v.as_str())
                             .unwrap_or("");
 
-                        let file_name_with_id = remote_path
-                            .rsplitn(2, '/')
-                            .next()
-                            .unwrap_or("unknown");
+                        let file_name_with_id =
+                            remote_path.rsplitn(2, '/').next().unwrap_or("unknown");
 
                         let original_file_name = file_name_with_id
                             .strip_prefix(&item.id)
                             .map(|s| s.strip_prefix('_').unwrap_or(s))
                             .unwrap_or(file_name_with_id);
 
-                        let checksum = parsed.get("checksum")
+                        let checksum = parsed
+                            .get("checksum")
                             .and_then(|v| v.as_str())
                             .unwrap_or("");
 
@@ -551,14 +594,18 @@ impl SyncCore {
                                 file_name: original_file_name.to_string(),
                                 original_path: None,
                                 remote_path: remote_path.to_string(),
-                                size: parsed.get("fileSize")
-                                    .and_then(|v| v.as_u64())
-                                    .unwrap_or(0),
+                                size: parsed.get("fileSize").and_then(|v| v.as_u64()).unwrap_or(0),
                                 time: item.time,
                                 checksum: Some(checksum.to_string()),
                                 mime_type: None,
-                                width: parsed.get("width").and_then(|v| v.as_u64()).map(|v| v as u32),
-                                height: parsed.get("height").and_then(|v| v.as_u64()).map(|v| v as u32),
+                                width: parsed
+                                    .get("width")
+                                    .and_then(|v| v.as_u64())
+                                    .map(|v| v as u32),
+                                height: parsed
+                                    .get("height")
+                                    .and_then(|v| v.as_u64())
+                                    .map(|v| v as u32),
                             };
 
                             let task = crate::file_sync_manager::FileDownloadTask {
@@ -574,17 +621,21 @@ impl SyncCore {
                     let file_paths = self.parse_file_paths(value);
                     for file_path in file_paths {
                         if file_path.exists() {
-                            let file_name = file_path.file_name()
+                            let file_name = file_path
+                                .file_name()
                                 .and_then(|n| n.to_str())
                                 .unwrap_or("unknown");
 
-                            let file_checksum = match crate::file_sync_manager::calculate_file_checksum(&file_path).await {
-                                Ok(hash) => Some(hash),
-                                Err(e) => {
-                                    log::warn!("计算文件哈希失败: {} ({})", file_name, e);
-                                    None
-                                }
-                            };
+                            let file_checksum =
+                                match crate::file_sync_manager::calculate_file_checksum(&file_path)
+                                    .await
+                                {
+                                    Ok(hash) => Some(hash),
+                                    Err(e) => {
+                                        log::warn!("计算文件哈希失败: {} ({})", file_name, e);
+                                        None
+                                    }
+                                };
 
                             let remote_path = format!("files/{}_{}", item.id, file_name);
                             let metadata = crate::file_sync_manager::FileMetadata {
@@ -624,7 +675,9 @@ impl SyncCore {
                 Ok(result) => {
                     if result.success {
                         let db = database_state.lock().await;
-                        if let Err(e) = db.update_item_value(&item_id, &local_path.to_string_lossy().to_string()) {
+                        if let Err(e) = db
+                            .update_item_value(&item_id, &local_path.to_string_lossy().to_string())
+                        {
                             log::error!("更新文件路径失败: {}", e);
                         }
                     } else {
@@ -650,7 +703,9 @@ impl SyncCore {
         let manager = file_sync_manager.lock().await;
 
         for remote_path in remote_paths {
-            let _ = manager.delete_file(String::new(), remote_path.clone()).await;
+            let _ = manager
+                .delete_file(String::new(), remote_path.clone())
+                .await;
         }
     }
 
@@ -716,7 +771,11 @@ impl SyncCore {
                 if let Some(value) = &file_item.value {
                     let file_path_str = if value.starts_with('[') {
                         if let Ok(paths) = serde_json::from_str::<Vec<String>>(value) {
-                            if !paths.is_empty() { paths[0].clone() } else { continue; }
+                            if !paths.is_empty() {
+                                paths[0].clone()
+                            } else {
+                                continue;
+                            }
                         } else {
                             continue;
                         }
@@ -734,13 +793,16 @@ impl SyncCore {
                         continue;
                     }
 
-                    let file_checksum = match crate::file_sync_manager::calculate_file_checksum(&file_path_buf).await {
-                        Ok(hash) => Some(hash),
-                        Err(e) => {
-                            log::warn!("计算文件哈希失败: {} ({})", file_name, e);
-                            None
-                        }
-                    };
+                    let file_checksum =
+                        match crate::file_sync_manager::calculate_file_checksum(&file_path_buf)
+                            .await
+                        {
+                            Ok(hash) => Some(hash),
+                            Err(e) => {
+                                log::warn!("计算文件哈希失败: {} ({})", file_name, e);
+                                None
+                            }
+                        };
 
                     let remote_path = format!("files/{}_{}", file_item.id, file_name);
                     let metadata = crate::file_sync_manager::FileMetadata {
@@ -766,15 +828,27 @@ impl SyncCore {
                         Ok(result) => {
                             if result.success {
                                 let mut metadata_map = serde_json::Map::new();
-                                metadata_map.insert("remotePath".to_string(), serde_json::Value::String(format!("files/{}_{}", file_item.id, file_name)));
+                                metadata_map.insert(
+                                    "remotePath".to_string(),
+                                    serde_json::Value::String(format!(
+                                        "files/{}_{}",
+                                        file_item.id, file_name
+                                    )),
+                                );
 
                                 if let Some(ref checksum) = &file_checksum {
-                                    metadata_map.insert("checksum".to_string(), serde_json::Value::String(checksum.clone()));
+                                    metadata_map.insert(
+                                        "checksum".to_string(),
+                                        serde_json::Value::String(checksum.clone()),
+                                    );
                                 }
 
                                 if let Ok(metadata) = std::fs::metadata(&file_path_buf) {
                                     if let Ok(file_size_val) = u32::try_from(metadata.len()) {
-                                        metadata_map.insert("fileSize".to_string(), serde_json::Value::Number(file_size_val.into()));
+                                        metadata_map.insert(
+                                            "fileSize".to_string(),
+                                            serde_json::Value::Number(file_size_val.into()),
+                                        );
                                     }
                                 }
 
@@ -788,12 +862,25 @@ impl SyncCore {
                                         );
                                         if let Ok(mut rows) = conn.prepare(&query) {
                                             if let Ok(row_iter) = rows.query_map([], |row| {
-                                                Ok((row.get::<usize, i32>(0)?, row.get::<usize, i32>(1)?))
+                                                Ok((
+                                                    row.get::<usize, i32>(0)?,
+                                                    row.get::<usize, i32>(1)?,
+                                                ))
                                             }) {
                                                 for result in row_iter {
                                                     if let Ok((width, height)) = result {
-                                                        metadata_map.insert("width".to_string(), serde_json::Value::Number(serde_json::Number::from(width)));
-                                                        metadata_map.insert("height".to_string(), serde_json::Value::Number(serde_json::Number::from(height)));
+                                                        metadata_map.insert(
+                                                            "width".to_string(),
+                                                            serde_json::Value::Number(
+                                                                serde_json::Number::from(width),
+                                                            ),
+                                                        );
+                                                        metadata_map.insert(
+                                                            "height".to_string(),
+                                                            serde_json::Value::Number(
+                                                                serde_json::Number::from(height),
+                                                            ),
+                                                        );
                                                         break;
                                                     }
                                                 }
@@ -815,7 +902,8 @@ impl SyncCore {
 
             for (item_id, metadata) in uploaded_file_metadata {
                 if let Some(item) = merged_items.iter_mut().find(|i| i.id == item_id) {
-                    item.value = Some(serde_json::to_string(&metadata).unwrap_or_else(|_| "{}".to_string()));
+                    item.value =
+                        Some(serde_json::to_string(&metadata).unwrap_or_else(|_| "{}".to_string()));
                 }
             }
         }
@@ -922,7 +1010,9 @@ impl SyncCore {
                     if item.item_type == "image" || item.item_type == "files" {
                         if let Some(ref value) = item.value {
                             if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(value) {
-                                if let Some(remote_path) = parsed.get("remotePath").and_then(|v| v.as_str()) {
+                                if let Some(remote_path) =
+                                    parsed.get("remotePath").and_then(|v| v.as_str())
+                                {
                                     files_to_delete.push(remote_path.to_string());
                                 }
                             }
@@ -941,7 +1031,10 @@ impl SyncCore {
                 let updated_json = serde_json::to_string(&updated_cloud_data)
                     .map_err(|e| format!("序列化删除数据失败: {}", e))?;
 
-                if let Err(e) = client.upload_sync_data("sync-data.json", &updated_json).await {
+                if let Err(e) = client
+                    .upload_sync_data("sync-data.json", &updated_json)
+                    .await
+                {
                     return Err(format!("更新云端索引失败: {}", e));
                 }
             }
@@ -973,7 +1066,8 @@ impl SyncCore {
         // 尝试JSON数组格式
         if value.starts_with('[') {
             if let Ok(paths) = serde_json::from_str::<Vec<String>>(value) {
-                return paths.into_iter()
+                return paths
+                    .into_iter()
                     .map(std::path::PathBuf::from)
                     .filter(|p| !p.to_string_lossy().is_empty())
                     .collect();

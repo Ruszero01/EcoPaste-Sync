@@ -1,5 +1,5 @@
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicUsize, AtomicBool, Ordering};
 use tauri::{command, AppHandle, Emitter, Manager, Runtime};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutEvent};
 
@@ -74,7 +74,8 @@ fn handle_shortcut_event<R: Runtime>(
                     }
                 }
                 // 其他快捷键
-                let _ = app_handle_clone.emit("plugin:eco-hotkey://shortcut-triggered", shortcut_str);
+                let _ =
+                    app_handle_clone.emit("plugin:eco-hotkey://shortcut-triggered", shortcut_str);
             }
         }
     });
@@ -88,7 +89,11 @@ async fn show_main_window_by_label<R: Runtime>(app_handle: &AppHandle<R>, label:
         tauri_plugin_eco_window::show_main_window(app_handle.clone(), position_mode).await;
     } else if label == "preference" {
         // 偏好设置窗口固定使用"center"模式，始终居中打开
-        tauri_plugin_eco_window::show_preference_window(app_handle.clone(), Some("center".to_string())).await;
+        tauri_plugin_eco_window::show_preference_window(
+            app_handle.clone(),
+            Some("center".to_string()),
+        )
+        .await;
     }
 }
 
@@ -96,7 +101,11 @@ async fn show_main_window_by_label<R: Runtime>(app_handle: &AppHandle<R>, label:
 fn get_position_mode<R: Runtime>(app_handle: &AppHandle<R>) -> Option<String> {
     // 配置文件路径（与前端保持一致）
     let is_dev = cfg!(debug_assertions);
-    let config_filename = if is_dev { ".store.dev.json" } else { ".store.json" };
+    let config_filename = if is_dev {
+        ".store.dev.json"
+    } else {
+        ".store.json"
+    };
 
     // 优先使用 APPDATA 环境变量
     let config_path = if let Some(app_data_dir) = std::env::var_os("APPDATA") {

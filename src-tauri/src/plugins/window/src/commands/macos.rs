@@ -1,4 +1,4 @@
-use super::{is_main_window, shared_hide_window, shared_show_window, set_window_follow_cursor};
+use super::{is_main_window, set_window_follow_cursor, shared_hide_window, shared_show_window};
 use crate::MAIN_WINDOW_LABEL;
 use tauri::{command, AppHandle, Runtime, WebviewWindow};
 use tauri_nspanel::ManagerExt;

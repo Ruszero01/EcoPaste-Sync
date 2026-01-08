@@ -119,7 +119,12 @@ pub async fn quick_paste<R: Runtime>(app_handle: AppHandle<R>, index: u32) -> Re
 
     let id = item.id.clone();
 
-    log::info!("[Paste] 快速粘贴: index={}, id={}, type={}", index, id, item_type);
+    log::info!(
+        "[Paste] 快速粘贴: index={}, id={}, type={}",
+        index,
+        id,
+        item_type
+    );
 
     // 2. 根据类型写入剪贴板
     log::info!("[Paste] 正在写入剪贴板, type={}", item_type);
@@ -150,7 +155,9 @@ pub async fn quick_paste<R: Runtime>(app_handle: AppHandle<R>, index: u32) -> Re
 
 /// 根据类型写入剪贴板（直接使用 clipboard-rs）
 fn write_to_clipboard(item_type: &str, value: &str, search: &str) -> Result<(), String> {
-    use clipboard_rs::{common::RustImage, RustImageData, Clipboard, ClipboardContext, ClipboardContent};
+    use clipboard_rs::{
+        common::RustImage, Clipboard, ClipboardContent, ClipboardContext, RustImageData,
+    };
 
     let text = if search.is_empty() { value } else { search };
     let context = ClipboardContext::new().map_err(|e| e.to_string())?;
@@ -176,7 +183,9 @@ fn write_to_clipboard(item_type: &str, value: &str, search: &str) -> Result<(), 
                 ];
                 context.set(contents).map_err(|e| e.to_string())
             } else {
-                context.set_text(text.to_string()).map_err(|e| e.to_string())
+                context
+                    .set_text(text.to_string())
+                    .map_err(|e| e.to_string())
             }
         }
         // RTF 富文本
@@ -191,7 +200,9 @@ fn write_to_clipboard(item_type: &str, value: &str, search: &str) -> Result<(), 
         // 其他所有类型（包括文本、代码等）都写入纯文本
         _ => {
             log::info!("[Paste] 写入文本到剪贴板");
-            context.set_text(text.to_string()).map_err(|e| e.to_string())
+            context
+                .set_text(text.to_string())
+                .map_err(|e| e.to_string())
         }
     }
 }

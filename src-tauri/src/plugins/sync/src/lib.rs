@@ -4,34 +4,33 @@ use tauri::{
     Manager, Runtime,
 };
 
+mod auto_sync_manager;
+mod bookmark_sync_manager;
 mod commands;
+mod config_sync_manager;
+mod data_manager;
+mod file_sync_manager;
+mod sync_core;
 mod sync_engine;
 mod types;
 mod webdav;
-mod auto_sync_manager;
-mod sync_core;
-mod data_manager;
-mod file_sync_manager;
-mod config_sync_manager;
-mod bookmark_sync_manager;
 
+pub use auto_sync_manager::{create_shared_manager, AutoSyncManagerState};
+pub use bookmark_sync_manager::{BookmarkSyncData, BookmarkSyncManager, BookmarkSyncResult};
+pub use config_sync_manager::{AppConfig, ConfigSyncManager, ConfigSyncResult};
+pub use data_manager::{create_shared_manager as create_data_manager, DataManager};
+pub use file_sync_manager::{
+    create_shared_manager as create_file_sync_manager, FileDownloadTask, FileMetadata,
+    FileOperationResult, FileSyncManager, FileUploadTask,
+};
+pub use sync_core::{SyncCore, SyncDataItem, SyncIndex, SyncModeConfig, SyncProcessResult};
 pub use sync_engine::{create_shared_engine, CloudSyncEngine};
 pub use types::*;
 pub use webdav::{create_shared_client, WebDAVClientState, WebDAVConfig};
-pub use auto_sync_manager::{create_shared_manager, AutoSyncManagerState};
-pub use sync_core::{
-    SyncCore, SyncModeConfig, SyncDataItem, SyncIndex, SyncProcessResult,
-};
-pub use data_manager::{DataManager, create_shared_manager as create_data_manager};
-pub use file_sync_manager::{
-    FileSyncManager, FileMetadata, FileUploadTask, FileDownloadTask, FileOperationResult,
-    create_shared_manager as create_file_sync_manager
-};
-pub use config_sync_manager::{ConfigSyncManager, ConfigSyncResult, AppConfig};
-pub use bookmark_sync_manager::{BookmarkSyncManager, BookmarkSyncData, BookmarkSyncResult};
 
 /// 从本地文件读取同步配置
-/// 返回值：Some(SyncConfig) 表示配置有效且连接测试通过，None 表示无有效配置
+/// 返回值：Some(SyncConfig) 表示配置有效，None 表示无有效配置
+/// 注意：连接测试会在 init() 时自动执行
 pub fn read_sync_config_from_file() -> Option<types::SyncConfig> {
     use std::fs;
 
@@ -60,35 +59,29 @@ pub fn read_sync_config_from_file() -> Option<types::SyncConfig> {
         Ok(content) => {
             match serde_json::from_str::<serde_json::Value>(&content) {
                 Ok(json) => {
-                    // 检查连接测试是否成功
-                    let connection_tested = json
-                        .get("globalStore")
-                        .and_then(|v| v.get("cloudSync"))
-                        .and_then(|v| v.get("connectionTest"))
-                        .and_then(|v| v.get("tested"))
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false);
-
-                    let connection_success = json
-                        .get("globalStore")
-                        .and_then(|v| v.get("cloudSync"))
-                        .and_then(|v| v.get("connectionTest"))
-                        .and_then(|v| v.get("success"))
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false);
-
-                    // 只有连接测试成功才读取配置
-                    if !connection_tested || !connection_success {
-                        log::info!("[Sync] 连接测试未通过，不自动初始化引擎");
-                        return None;
-                    }
-
-                    // 提取服务器配置
+                    // 提取服务器配置（不再检查连接测试状态，连接测试在 init() 时自动执行）
                     if let Some(server_config) = json
                         .get("globalStore")
                         .and_then(|v| v.get("cloudSync"))
                         .and_then(|v| v.get("serverConfig"))
                     {
+                        // 检查必要字段是否存在
+                        let has_server_url = server_config
+                            .get("url")
+                            .and_then(|v| v.as_str())
+                            .filter(|s| !s.is_empty())
+                            .is_some();
+                        let has_username = server_config
+                            .get("username")
+                            .and_then(|v| v.as_str())
+                            .filter(|s| !s.is_empty())
+                            .is_some();
+
+                        if !has_server_url || !has_username {
+                            log::info!("[Sync] 服务器配置不完整，跳过自动初始化");
+                            return None;
+                        }
+
                         // 读取自动同步设置
                         let auto_sync_settings = json
                             .get("globalStore")
@@ -102,19 +95,20 @@ pub fn read_sync_config_from_file() -> Option<types::SyncConfig> {
                             .and_then(|v| v.get("syncModeConfig"))
                             .and_then(|v| v.get("settings"));
 
-                        let (auto_sync, auto_sync_interval_minutes) = if let Some(settings) = auto_sync_settings {
-                            let enabled = settings
-                                .get("enabled")
-                                .and_then(|v| v.as_bool())
-                                .unwrap_or(false);
-                            let interval_hours = settings
-                                .get("intervalHours")
-                                .and_then(|v| v.as_f64())
-                                .unwrap_or(1.0);
-                            (enabled, (interval_hours * 60.0) as u64)
-                        } else {
-                            (false, 60)
-                        };
+                        let (auto_sync, auto_sync_interval_minutes) =
+                            if let Some(settings) = auto_sync_settings {
+                                let enabled = settings
+                                    .get("enabled")
+                                    .and_then(|v| v.as_bool())
+                                    .unwrap_or(false);
+                                let interval_hours = settings
+                                    .get("intervalHours")
+                                    .and_then(|v| v.as_f64())
+                                    .unwrap_or(1.0);
+                                (enabled, (interval_hours * 60.0) as u64)
+                            } else {
+                                (false, 60)
+                            };
 
                         // 从 syncModeConfig.settings 读取同步模式配置
                         let only_favorites = sync_mode_settings
@@ -124,29 +118,35 @@ pub fn read_sync_config_from_file() -> Option<types::SyncConfig> {
                         let include_files = sync_mode_settings
                             .and_then(|v| v.get("includeFiles"))
                             .and_then(|v| v.as_bool())
-                            .unwrap_or(false) || sync_mode_settings
-                            .and_then(|v| v.get("includeImages"))
-                            .and_then(|v| v.as_bool())
-                            .unwrap_or(false);
+                            .unwrap_or(false)
+                            || sync_mode_settings
+                                .and_then(|v| v.get("includeImages"))
+                                .and_then(|v| v.as_bool())
+                                .unwrap_or(false);
 
                         Some(types::SyncConfig {
-                            server_url: server_config.get("url")
+                            server_url: server_config
+                                .get("url")
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("")
                                 .to_string(),
-                            username: server_config.get("username")
+                            username: server_config
+                                .get("username")
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("")
                                 .to_string(),
-                            password: server_config.get("password")
+                            password: server_config
+                                .get("password")
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("")
                                 .to_string(),
-                            path: server_config.get("path")
+                            path: server_config
+                                .get("path")
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("/EcoPaste-Sync")
                                 .to_string(),
-                            timeout: server_config.get("timeout")
+                            timeout: server_config
+                                .get("timeout")
                                 .and_then(|v| v.as_u64())
                                 .unwrap_or(60000),
                             auto_sync,
@@ -178,7 +178,6 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::test_webdav_connection,
             commands::update_sync_config,
             commands::reload_config_from_file,
-            commands::save_connection_test_result,
             commands::upload_local_config,
             commands::apply_remote_config,
             commands::set_bookmark_sync_data
@@ -187,7 +186,8 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             // 在插件初始化时创建共享实例
             let webdav_client = create_shared_client();
             let auto_sync_manager = create_shared_manager();
-            let sync_engine = create_shared_engine(webdav_client.clone(), auto_sync_manager.clone());
+            let sync_engine =
+                create_shared_engine(webdav_client.clone(), auto_sync_manager.clone());
 
             // 注册状态管理器，让命令可以访问这些状态
             app_handle.manage(webdav_client.clone());
@@ -195,12 +195,19 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             app_handle.manage(sync_engine.clone());
 
             // 尝试从本地配置文件自动初始化同步引擎
+            let sync_engine_clone = sync_engine.clone();
+            let app_handle_clone = app_handle.clone();
             tauri::async_runtime::spawn(async move {
                 if let Some(config) = read_sync_config_from_file() {
-                    log::info!("[Sync] 检测到已保存的服务器配置，自动初始化同步引擎...");
+                    log::info!("[Sync] 检测到已保存的服务器配置，正在测试连接并初始化...");
 
-                    let mut engine = sync_engine.lock().await;
-                    match engine.init(config, &tauri_plugin_eco_database::DatabaseState::default()).await {
+                    // 从应用状态获取已初始化的数据库状态
+                    let database_state = app_handle_clone
+                        .state::<tauri_plugin_eco_database::DatabaseState>()
+                        .clone();
+
+                    let mut engine = sync_engine_clone.lock().await;
+                    match engine.init(config, &database_state).await {
                         Ok(result) => {
                             log::info!("[Sync] ✅ 自动初始化成功: {}", result.message);
                         }

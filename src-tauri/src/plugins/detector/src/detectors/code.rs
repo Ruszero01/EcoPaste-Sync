@@ -3,8 +3,8 @@
 //! 使用正则表达式进行代码语言检测
 //! 支持: Rust, TypeScript, JavaScript, Python, Go, C, C++, Java, C#, SQL, CSS
 
-use regex::Regex;
 use once_cell::sync::Lazy;
+use regex::Regex;
 
 /// 代码检测结果
 #[derive(Debug, Clone)]
@@ -77,11 +77,24 @@ fn quick_language_detection(text: &str) -> Option<&'static str> {
     // C++ 特征
     if contains_multiple(
         text,
-        &["int main", "cout", "cin", "<<", ">>", "using namespace std", "#include"],
+        &[
+            "int main",
+            "cout",
+            "cin",
+            "<<",
+            ">>",
+            "using namespace std",
+            "#include",
+        ],
         2,
     ) || contains_multiple(
         text,
-        &["const_cast", "dynamic_cast", "reinterpret_cast", "static_cast"],
+        &[
+            "const_cast",
+            "dynamic_cast",
+            "reinterpret_cast",
+            "static_cast",
+        ],
         2,
     ) || (contains_multiple(text, &["#include", "using namespace", "std::"], 2)
         && contains_multiple(text, &["int", "main"], 2))
@@ -99,7 +112,11 @@ fn quick_language_detection(text: &str) -> Option<&'static str> {
     // Java 特征 - 需要精确匹配 System.out.println
     if contains_multiple(
         text,
-        &["public class", "public static void main", "System.out.println"],
+        &[
+            "public class",
+            "public static void main",
+            "System.out.println",
+        ],
         2,
     ) && !lower.contains("console.writeline")
     {
@@ -126,7 +143,14 @@ fn quick_language_detection(text: &str) -> Option<&'static str> {
     // TypeScript 特征
     if contains_multiple(
         text,
-        &["interface ", "type ", "as ", ": string", ": number", ": boolean"],
+        &[
+            "interface ",
+            "type ",
+            "as ",
+            ": string",
+            ": number",
+            ": boolean",
+        ],
         2,
     ) {
         return Some("TypeScript");
@@ -135,7 +159,16 @@ fn quick_language_detection(text: &str) -> Option<&'static str> {
     // Rust 特征
     if contains_multiple(
         text,
-        &["fn ", "let mut", "println!", "use std::", "-> ", "match ", "impl ", "pub fn"],
+        &[
+            "fn ",
+            "let mut",
+            "println!",
+            "use std::",
+            "-> ",
+            "match ",
+            "impl ",
+            "pub fn",
+        ],
         2,
     ) {
         return Some("Rust");
@@ -153,7 +186,12 @@ fn quick_language_detection(text: &str) -> Option<&'static str> {
     // C# 特征
     if contains_multiple(
         text,
-        &["using System", "public class", "Console.WriteLine", "namespace "],
+        &[
+            "using System",
+            "public class",
+            "Console.WriteLine",
+            "namespace ",
+        ],
         2,
     ) {
         return Some("C#");
@@ -244,9 +282,32 @@ fn is_valid_sql(text: &str) -> bool {
 
     // SQL 关键字
     let sql_keywords = [
-        "select", "from", "where", "insert", "update", "delete", "create", "drop", "table",
-        "index", "join", "inner", "left", "right", "group", "order", "by", "union", "distinct",
-        "primary", "key", "foreign", "references", "not", "null", "default",
+        "select",
+        "from",
+        "where",
+        "insert",
+        "update",
+        "delete",
+        "create",
+        "drop",
+        "table",
+        "index",
+        "join",
+        "inner",
+        "left",
+        "right",
+        "group",
+        "order",
+        "by",
+        "union",
+        "distinct",
+        "primary",
+        "key",
+        "foreign",
+        "references",
+        "not",
+        "null",
+        "default",
     ];
 
     let found: usize = sql_keywords

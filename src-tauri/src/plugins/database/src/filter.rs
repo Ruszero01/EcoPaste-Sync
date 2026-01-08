@@ -270,7 +270,11 @@ impl DataFilter {
     }
 
     /// 转换为数据库查询选项
-    pub fn to_query_options(&self, pagination: Option<Pagination>, sort: Option<SortInfo>) -> QueryOptions {
+    pub fn to_query_options(
+        &self,
+        pagination: Option<Pagination>,
+        sort: Option<SortInfo>,
+    ) -> QueryOptions {
         let mut options = QueryOptions::default();
 
         // 基础筛选
@@ -289,7 +293,8 @@ impl DataFilter {
         if let Some(search_filter) = &self.search_filter {
             let search_conditions = self.build_search_conditions(search_filter);
             if let Some(existing_where) = &options.where_clause {
-                options.where_clause = Some(format!("{} AND {}", existing_where, search_conditions));
+                options.where_clause =
+                    Some(format!("{} AND {}", existing_where, search_conditions));
             } else {
                 options.where_clause = Some(search_conditions);
             }
@@ -299,7 +304,8 @@ impl DataFilter {
         if let Some(sync_status_filter) = &self.sync_status_filter {
             let status_conditions = self.build_sync_status_conditions(sync_status_filter);
             if let Some(existing_where) = &options.where_clause {
-                options.where_clause = Some(format!("{} AND {}", existing_where, status_conditions));
+                options.where_clause =
+                    Some(format!("{} AND {}", existing_where, status_conditions));
             } else {
                 options.where_clause = Some(status_conditions);
             }
@@ -324,7 +330,8 @@ impl DataFilter {
             if !type_conditions.is_empty() {
                 let type_condition = type_conditions.join(" AND ");
                 if let Some(existing_where) = &options.where_clause {
-                    options.where_clause = Some(format!("{} AND {}", existing_where, type_condition));
+                    options.where_clause =
+                        Some(format!("{} AND {}", existing_where, type_condition));
                 } else {
                     options.where_clause = Some(type_condition);
                 }
@@ -359,13 +366,15 @@ impl DataFilter {
 
         // 处理包含列表
         if !filter.include.is_empty() {
-            let include_statuses: Vec<String> = filter.include.iter().map(|s| {
-                match s {
+            let include_statuses: Vec<String> = filter
+                .include
+                .iter()
+                .map(|s| match s {
                     SyncStatus::NotSynced => "'not_synced'".to_string(),
                     SyncStatus::Synced => "'synced'".to_string(),
                     SyncStatus::Changed => "'changed'".to_string(),
-                }
-            }).collect();
+                })
+                .collect();
             conditions.push(format!("syncStatus IN ({})", include_statuses.join(", ")));
         }
 
@@ -392,7 +401,10 @@ impl DataFilter {
         for field in &search_filter.search_fields {
             let condition = match field {
                 SearchField::Value => {
-                    format!("(value LIKE '%{}%' OR search LIKE '%{}%')", keyword_escaped, keyword_escaped)
+                    format!(
+                        "(value LIKE '%{}%' OR search LIKE '%{}%')",
+                        keyword_escaped, keyword_escaped
+                    )
                 }
                 SearchField::Note => {
                     format!("note LIKE '%{}%'", keyword_escaped)
@@ -502,12 +514,8 @@ impl DataFilter {
                     item.value.as_ref().map_or(false, |v| v.contains(keyword))
                         || item.search.as_ref().map_or(false, |s| s.contains(keyword))
                 }
-                SearchField::Note => {
-                    item.note.as_ref().map_or(false, |n| n.contains(keyword))
-                }
-                SearchField::Group => {
-                    item.group.as_ref().map_or(false, |g| g.contains(keyword))
-                }
+                SearchField::Note => item.note.as_ref().map_or(false, |n| n.contains(keyword)),
+                SearchField::Group => item.group.as_ref().map_or(false, |g| g.contains(keyword)),
                 SearchField::All => {
                     item.value.as_ref().map_or(false, |v| v.contains(keyword))
                         || item.search.as_ref().map_or(false, |s| s.contains(keyword))

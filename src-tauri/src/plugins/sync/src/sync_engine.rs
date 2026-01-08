@@ -1,17 +1,19 @@
 //! 云同步引擎
 //! 协调各子模块，实现清晰的数据流向和职责分离
 
+use crate::auto_sync_manager::AutoSyncManagerState;
+use crate::bookmark_sync_manager::BookmarkSyncManager;
+use crate::config_sync_manager::ConfigSyncManager;
+use crate::data_manager::{create_shared_manager as create_data_manager, DataManager};
+use crate::file_sync_manager::{
+    create_shared_manager as create_file_sync_manager, FileSyncManager,
+};
+use crate::sync_core::{SyncCore, SyncModeConfig, SyncProcessResult};
 use crate::types::*;
 use crate::webdav::WebDAVClientState;
-use crate::auto_sync_manager::AutoSyncManagerState;
-use crate::sync_core::{SyncCore, SyncModeConfig, SyncProcessResult};
-use crate::data_manager::{DataManager, create_shared_manager as create_data_manager};
-use crate::file_sync_manager::{FileSyncManager, create_shared_manager as create_file_sync_manager};
-use crate::config_sync_manager::{ConfigSyncManager};
-use crate::bookmark_sync_manager::{BookmarkSyncManager};
 use std::sync::Arc;
-use tokio::sync::Mutex;
 use tauri_plugin_eco_database::DatabaseState;
+use tokio::sync::Mutex;
 
 /// 云同步引擎
 /// 专注于协调各子模块，不包含具体同步逻辑
@@ -41,10 +43,7 @@ pub struct CloudSyncEngine {
 
 impl CloudSyncEngine {
     /// 创建新实例
-    pub fn new(
-        webdav_client: WebDAVClientState,
-        auto_sync_manager: AutoSyncManagerState,
-    ) -> Self {
+    pub fn new(webdav_client: WebDAVClientState, auto_sync_manager: AutoSyncManagerState) -> Self {
         let data_manager = create_data_manager();
         let file_sync_manager = create_file_sync_manager(webdav_client.clone());
         let sync_core = Arc::new(Mutex::new(SyncCore::new(
@@ -52,7 +51,8 @@ impl CloudSyncEngine {
             data_manager.clone(),
             file_sync_manager.clone(),
         )));
-        let config_sync_manager = Arc::new(Mutex::new(ConfigSyncManager::new(webdav_client.clone())));
+        let config_sync_manager =
+            Arc::new(Mutex::new(ConfigSyncManager::new(webdav_client.clone())));
         let device_id = "device-".to_string() + &chrono::Utc::now().timestamp_millis().to_string();
         let bookmark_sync_manager = Arc::new(Mutex::new(BookmarkSyncManager::new(
             webdav_client.clone(),
@@ -74,7 +74,11 @@ impl CloudSyncEngine {
     }
 
     /// 初始化同步引擎
-    pub async fn init(&mut self, config: SyncConfig, database_state: &DatabaseState) -> Result<SyncResult, String> {
+    pub async fn init(
+        &mut self,
+        config: SyncConfig,
+        database_state: &DatabaseState,
+    ) -> Result<SyncResult, String> {
         // 初始化 WebDAV 客户端
         let webdav_config = crate::webdav::WebDAVConfig {
             url: config.server_url.clone(),
@@ -100,11 +104,22 @@ impl CloudSyncEngine {
 
         // 清理孤儿缓存文件
         let file_sync_manager = self.file_sync_manager.clone();
-        file_sync_manager.lock().await.cleanup_stale_cache_files(database_state).await;
+        file_sync_manager
+            .lock()
+            .await
+            .cleanup_stale_cache_files(database_state)
+            .await;
 
         // 如果配置中启用了自动同步，启动它
         if self.config.as_ref().map(|c| c.auto_sync).unwrap_or(false) {
-            self.start_auto_sync(self.config.as_ref().map(|c| c.auto_sync_interval_minutes).unwrap_or(60), database_state).await?;
+            self.start_auto_sync(
+                self.config
+                    .as_ref()
+                    .map(|c| c.auto_sync_interval_minutes)
+                    .unwrap_or(60),
+                database_state,
+            )
+            .await?;
         }
 
         Ok(SyncResult {
@@ -114,13 +129,25 @@ impl CloudSyncEngine {
     }
 
     /// 启动自动同步
-    pub async fn start_auto_sync(&mut self, interval_minutes: u64, database_state: &DatabaseState) -> Result<SyncResult, String> {
+    pub async fn start_auto_sync(
+        &mut self,
+        interval_minutes: u64,
+        database_state: &DatabaseState,
+    ) -> Result<SyncResult, String> {
         let auto_sync_manager = self.auto_sync_manager.clone();
         let mut manager = auto_sync_manager.lock().await;
 
         // 从当前配置获取同步参数
-        let only_favorites = self.config.as_ref().map(|c| c.only_favorites).unwrap_or(false);
-        let include_files = self.config.as_ref().map(|c| c.include_files).unwrap_or(false);
+        let only_favorites = self
+            .config
+            .as_ref()
+            .map(|c| c.only_favorites)
+            .unwrap_or(false);
+        let include_files = self
+            .config
+            .as_ref()
+            .map(|c| c.include_files)
+            .unwrap_or(false);
 
         // 设置自动同步回调
         let sync_core = self.sync_core.clone();
@@ -167,7 +194,10 @@ impl CloudSyncEngine {
     }
 
     /// 更新自动同步间隔
-    pub async fn update_auto_sync_interval(&mut self, interval_minutes: u64) -> Result<SyncResult, String> {
+    pub async fn update_auto_sync_interval(
+        &mut self,
+        interval_minutes: u64,
+    ) -> Result<SyncResult, String> {
         let auto_sync_manager = self.auto_sync_manager.clone();
         let mut manager = auto_sync_manager.lock().await;
 
@@ -205,7 +235,9 @@ impl CloudSyncEngine {
         only_favorites: bool,
         include_files: bool,
     ) -> Result<SyncProcessResult, String> {
-        let config = self.config.as_ref()
+        let config = self
+            .config
+            .as_ref()
             .ok_or_else(|| "同步引擎未初始化，请先调用 init()".to_string())?;
 
         let sync_core = self.sync_core.clone();
@@ -222,7 +254,11 @@ impl CloudSyncEngine {
             include_files,
         };
 
-        log::info!("开始执行同步... only_favorites={}, include_files={}", only_favorites, include_files);
+        log::info!(
+            "开始执行同步... only_favorites={}, include_files={}",
+            only_favorites,
+            include_files
+        );
 
         // 直接执行同步，让 perform_sync 负责所有数据库操作
         let result = core.perform_sync(mode_config, database_state).await;
@@ -289,7 +325,10 @@ impl CloudSyncEngine {
     }
 
     /// 设置书签同步数据
-    pub async fn set_bookmark_sync_data(&mut self, bookmark_data: crate::bookmark_sync_manager::BookmarkSyncData) {
+    pub async fn set_bookmark_sync_data(
+        &mut self,
+        bookmark_data: crate::bookmark_sync_manager::BookmarkSyncData,
+    ) {
         let mut bookmark_sync_manager = self.bookmark_sync_manager.lock().await;
         bookmark_sync_manager.set_local_data(bookmark_data);
     }
