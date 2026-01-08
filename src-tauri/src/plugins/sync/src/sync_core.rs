@@ -6,7 +6,6 @@ use crate::file_sync_manager::FileSyncManager;
 use crate::types::*;
 use crate::webdav::WebDAVClientState;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::sync::Arc;
 use tauri_plugin_eco_database::{DatabaseState, DeleteManager};
 use tokio::sync::Mutex;
@@ -43,13 +42,6 @@ pub struct SyncIndex {
     pub data: Vec<SyncDataItem>,
 }
 
-/// 同步统计信息
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SyncStatistics {
-    /// 总项目数
-    pub total_items: usize,
-}
-
 /// 同步结果
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncProcessResult {
@@ -67,15 +59,6 @@ pub struct SyncProcessResult {
     pub duration_ms: u64,
     /// 时间戳
     pub timestamp: i64,
-}
-
-/// 状态验证结果
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StateValidationResult {
-    /// 是否通过验证
-    pub is_valid: bool,
-    /// 验证详情
-    pub validation_details: HashMap<String, String>,
 }
 
 /// 同步核心引擎
@@ -880,10 +863,6 @@ impl SyncCore {
 
         for item_id in items {
             if let Some(cloud_item) = cloud_data.iter().find(|i| i.id == *item_id) {
-                let mut manager = data_manager.lock().await;
-                manager.save_item_from_cloud(cloud_item);
-                drop(manager);
-
                 let mut db_item = cloud_item.clone();
                 db_item.time = chrono::Utc::now().timestamp_millis();
 

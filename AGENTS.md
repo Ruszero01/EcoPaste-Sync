@@ -22,6 +22,7 @@ pnpm tauri build --debug  # Debug build
 pnpm lint                 # Biome auto-fix for src
 biome check src           # Biome check only (no auto-fix)
 biome check --write src   # Biome auto-fix (same as pnpm lint)
+biome check src/utils/tauri.ts  # Lint single file
 
 # Release
 pnpm run release          # Full release
@@ -38,7 +39,8 @@ pnpm run release-beta     # Beta release
 - **Linting**: Biome with strict rules enforced in `biome.json`. No `console.log`, no unused variables/imports, no `any` type.
 - **State Management**: Valtio - use `proxy()` for stores, `useSnapshot()` in components. Never mutate state directly.
 - **Components**: Functional components with TypeScript. Name props interfaces `ComponentNameProps`, use `FC<ComponentNameProps>` type.
-- **Imports**: Use path aliases consistently - `@/utils`, `@/components`, `@/hooks`, `@/types`, `@/locales`, `@/assets`.
+- **Imports**: Use path aliases consistently - `@/utils`, `@/components`, `@/hooks`, `@/types`, `@/locales`, `@/assets`. Defined in `tsconfig.json` paths.
+- **CSS Modules**: Supported via `typescript-plugin-css-modules`. Use `import * as styles from './Button.module.scss'` and apply with `className={styles.button}`.
 - **Auto-imports**: React hooks, ahooks, router hooks, i18n hooks are auto-configured via unplugin-auto-import. DON'T import manually.
 - **Styling**: UnoCSS utility classes + Ant Design components. Global styles in `src/assets/css/global.scss`.
 - **i18n**: Use `useTranslation()` hook, translation keys in `src/locales/{lang}.json`. Avoid hardcoded strings.
@@ -51,6 +53,7 @@ pnpm run release-beta     # Beta release
 - **Async Patterns**: Commands can be async. Use `Arc<Mutex<T>>` for shared mutable state, `State<T>` for dependency injection.
 - **Plugin Structure**: Each plugin follows pattern: `commands.rs` (handlers), `lib.rs` (exports), `build.rs` (build script), `permissions/default.toml`.
 - **Logging**: Use `log::info!()`, `log::error!()`, `log::warn!()`, `log::debug!()` appropriately. Debug logs for tracing.
+- **Rust Plugin Lib**: Lib exports `plugin_context()` and `run_auto_subscribe()` if needed. Commands use `#[tauri::command]` macro.
 
 ### TypeScript Conventions
 
@@ -112,6 +115,8 @@ EcoPaste-Sync/
 │   ├── stores/            # Valtio proxy stores
 │   ├── types/             # TypeScript type definitions
 │   ├── utils/             # Utility functions
+│   │   ├── tauri.ts       # Tauri invoke wrappers
+│   │   └── *.ts           # Helper utilities
 │   └── main.tsx           # App entry point
 ├── src-tauri/             # Tauri backend (Rust)
 │   ├── src/
@@ -152,10 +157,15 @@ EcoPaste-Sync/
 
 ### Adding a New Tauri Plugin
 1. Create directory in `src-tauri/src/plugins/{name}/`
-2. Create `commands.rs`, `lib.rs`, `build.rs`, `permissions/default.toml`
+2. Create `commands.rs` (handlers), `lib.rs` (exports), `build.rs` (build script), `permissions/default.toml`
 3. Register plugin in `src-tauri/src/lib.rs`
 4. Add frontend invoke wrapper in `src/utils/tauri.ts`
 
 ### Adding a New i18n Key
 1. Add key to `src/locales/en.json` and `src/locales/zh.json`
 2. Use in component: `const { t } = useTranslation(); t('key.name')`
+
+### Running Specific Lint on Single File
+```bash
+biome check src/utils/tauri.ts
+```
