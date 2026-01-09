@@ -14,7 +14,7 @@ dist-ssr
 auto-imports.d.ts
 *.patch
 /target/
-.serena/
+
 
 # Editor directories and files
 .idea
@@ -28,5 +28,8 @@ auto-imports.d.ts
 .claude/
 tests/
 docs/
+.crush/
+.serena/
+
 CLAUDE.md
 AGENTS.md
