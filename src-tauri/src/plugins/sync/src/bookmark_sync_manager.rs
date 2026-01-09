@@ -83,13 +83,13 @@ impl BookmarkSyncManager {
 
     /// 执行书签同步逻辑
     pub async fn sync_bookmarks(&self) -> Result<BookmarkSyncResult, String> {
-        log::info!("🔄 开始执行书签同步...");
+        log::info!("[Bookmark] 开始同步...");
 
         // 获取本地书签数据
         let local_data = match &self.local_data {
             Some(data) => data.clone(),
             None => {
-                log::info!("ℹ️ 本地无书签数据，跳过同步");
+                log::info!("[Bookmark] 本地无数据，跳过同步");
                 return Ok(BookmarkSyncResult {
                     success: true,
                     need_upload: false,
@@ -100,7 +100,7 @@ impl BookmarkSyncManager {
         };
 
         log::info!(
-            "🔍 书签同步分析: 本地分组数={}, 本地时间戳={}",
+            "[Bookmark] 分析: 本地分组数={}, 时间戳={}",
             local_data.groups.len(),
             local_data.time
         );
@@ -110,7 +110,7 @@ impl BookmarkSyncManager {
         let download_result = match client.download_sync_data("bookmark-sync.json").await {
             Ok(result) => result,
             Err(e) => {
-                log::error!("❌ 下载云端书签数据失败: {}", e);
+                log::error!("[Bookmark] 下载失败: {}", e);
                 return Ok(BookmarkSyncResult {
                     success: false,
                     need_upload: false,
@@ -122,7 +122,7 @@ impl BookmarkSyncManager {
 
         // 如果云端没有书签数据
         if !download_result.success || download_result.data.is_none() {
-            log::info!("📤 云端无书签数据，上传本地书签到云端");
+            log::info!("[Bookmark] 云端无数据，上传本地书签");
 
             let upload_result = self.upload_bookmarks(&local_data).await?;
             if upload_result.success {
@@ -147,7 +147,7 @@ impl BookmarkSyncManager {
             match serde_json::from_str(&download_result.data.unwrap_or_else(|| "{}".to_string())) {
                 Ok(data) => data,
                 Err(e) => {
-                    log::error!("❌ 解析云端书签数据失败: {}", e);
+                    log::error!("[Bookmark] 解析云端数据失败: {}", e);
                     return Ok(BookmarkSyncResult {
                         success: false,
                         need_upload: false,
@@ -158,7 +158,7 @@ impl BookmarkSyncManager {
             };
 
         log::info!(
-            "🔍 书签同步分析: 云端分组数={}, 云端时间戳={}, 云端设备ID={}",
+            "[Bookmark] 分析: 云端分组数={}, 时间戳={}, 设备ID={}",
             cloud_data.groups.len(),
             cloud_data.time,
             cloud_data.device_id
@@ -166,7 +166,7 @@ impl BookmarkSyncManager {
 
         // 核心同步逻辑：只比较时间戳，最新的数据胜出
         if local_data.time > cloud_data.time {
-            log::info!("📤 本地数据更新，上传到云端");
+            log::info!("[Bookmark] 本地更新，上传云端");
             let upload_result = self.upload_bookmarks(&local_data).await?;
             return Ok(BookmarkSyncResult {
                 success: upload_result.success,
@@ -177,7 +177,7 @@ impl BookmarkSyncManager {
         }
 
         if cloud_data.time > local_data.time {
-            log::info!("📥 云端数据更新，下载到本地");
+            log::info!("[Bookmark] 云端更新，下载本地");
             return Ok(BookmarkSyncResult {
                 success: true,
                 need_upload: false,
@@ -192,7 +192,7 @@ impl BookmarkSyncManager {
 
         if local_hash != cloud_hash {
             // 时间戳相同但内容不同：以云端为准（云端数据通常更可靠）
-            log::warn!("⚠️ 时间戳相同但内容不同，以云端数据为准");
+            log::warn!("[Bookmark] 时间戳相同但内容不同，以云端为准");
             return Ok(BookmarkSyncResult {
                 success: true,
                 need_upload: false,
@@ -202,7 +202,7 @@ impl BookmarkSyncManager {
         }
 
         // 内容一致，无需同步
-        log::info!("✅ 书签数据已同步，无需操作");
+        log::info!("[Bookmark] 数据已同步，无需操作");
         Ok(BookmarkSyncResult {
             success: true,
             need_upload: false,
@@ -225,7 +225,7 @@ impl BookmarkSyncManager {
             .await
         {
             Ok(_) => {
-                log::info!("✅ 书签数据上传成功");
+                log::info!("[Bookmark] 上传成功");
                 Ok(BookmarkSyncResult {
                     success: true,
                     need_upload: true,
@@ -234,7 +234,7 @@ impl BookmarkSyncManager {
                 })
             }
             Err(e) => {
-                log::error!("❌ 书签数据上传失败: {}", e);
+                log::error!("[Bookmark] 上传失败: {}", e);
                 Ok(BookmarkSyncResult {
                     success: false,
                     need_upload: false,

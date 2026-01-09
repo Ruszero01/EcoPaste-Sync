@@ -231,9 +231,8 @@ impl FileSyncManager {
         // 2. 读取文件内容
         match tokio::fs::read(&task.local_path).await {
             Ok(file_data) => {
-                log::info!("📤 上传文件: id={}, name={}, remote={}, local_size={}, metadata_size={}, checksum={}",
-                    task.metadata.id, task.metadata.file_name, task.remote_path, file_data.len(),
-                    task.metadata.size, task.metadata.checksum.as_deref().unwrap_or("none"));
+                log::info!("[File] 上传: id={}, name={}, remote={}, size={}",
+                    task.metadata.id, task.metadata.file_name, task.remote_path, file_data.len());
 
                 // 3. 上传到WebDAV
                 let client = self.webdav_client.lock().await;
@@ -245,11 +244,10 @@ impl FileSyncManager {
                             .as_millis();
 
                         log::info!(
-                            "📤 上传结果: id={}, success={}, response_size={}, local_size={}",
+                            "[File] 上传结果: id={}, success={}, size={}",
                             task.metadata.id,
                             upload_result.success,
-                            upload_result.size,
-                            file_data.len()
+                            upload_result.size
                         );
 
                         // 使用本地文件大小，更准确
@@ -305,12 +303,11 @@ impl FileSyncManager {
         // 1. 从WebDAV下载文件
         let client = self.webdav_client.lock().await;
         log::info!(
-            "📥 下载文件: id={}, name={}, remote={}, metadata_size={}, checksum={}",
+            "[File] 下载: id={}, name={}, remote={}, size={}",
             task.metadata.id,
             task.metadata.file_name,
             task.remote_path,
-            task.metadata.size,
-            task.metadata.checksum.as_deref().unwrap_or("none")
+            task.metadata.size
         );
 
         match client.download_file(&task.remote_path).await {
@@ -335,9 +332,8 @@ impl FileSyncManager {
                 // 2. 保存到本地路径
                 if let Some(file_data) = download_result.binary_data {
                     log::info!(
-                        "📄 下载数据: actual_size={}, metadata_size={}",
-                        file_data.len(),
-                        task.metadata.size
+                        "[File] 下载数据: size={}",
+                        file_data.len()
                     );
 
                     // 确保父目录存在
@@ -369,12 +365,12 @@ impl FileSyncManager {
                                 match calculate_file_checksum(&task.local_path).await {
                                     Ok(actual_checksum) => {
                                         if actual_checksum != *expected_checksum {
-                                            log::error!("❌ 文件校验和不匹配: expected={}, actual={}, file={}",
+                                            log::error!("[File] 校验和不匹配: expected={}, actual={}, file={}",
                                                 expected_checksum, actual_checksum, task.local_path.display());
                                             validation_error = Some("文件校验和不匹配".to_string());
                                         } else {
                                             log::info!(
-                                                "✅ 文件校验和验证通过: {}",
+                                                "[File] 校验和验证通过: {}",
                                                 task.local_path.display()
                                             );
                                         }
@@ -629,19 +625,19 @@ impl FileSyncManager {
         &self,
         database_state: &tauri_plugin_eco_database::DatabaseState,
     ) {
-        log::info!("🔄 开始清理孤儿缓存文件...");
+        log::info!("[File] 开始清理缓存...");
 
         // 获取缓存目录
         let cache_dir = match self.get_cache_dir().await {
             Ok(path) => path,
             Err(e) => {
-                log::warn!("⚠️ 无法获取缓存目录，跳过清理: {}", e);
+                log::warn!("[File] 无法获取缓存目录，跳过清理: {}", e);
                 return;
             }
         };
 
         if !cache_dir.exists() {
-            log::info!("✅ 缓存目录不存在，无需清理");
+            log::info!("[File] 缓存目录不存在，无需清理");
             return;
         }
 
@@ -650,11 +646,11 @@ impl FileSyncManager {
         Self::collect_files_recursive(&cache_dir, &mut cache_files);
 
         if cache_files.is_empty() {
-            log::info!("✅ 缓存目录为空，无需清理");
+            log::info!("[File] 缓存目录为空，无需清理");
             return;
         }
 
-        log::info!("📁 缓存目录中有 {} 个文件", cache_files.len());
+        log::info!("[File] 缓存目录中有 {} 个文件", cache_files.len());
 
         // 获取数据库中所有文件记录的本地路径
         let db = database_state.lock().await;
@@ -680,7 +676,7 @@ impl FileSyncManager {
                 .filter(|v| v.starts_with(&cache_dir_str))
                 .collect(),
             Err(e) => {
-                log::error!("❌ 查询数据库失败: {}", e);
+                log::error!("[File] 查询数据库失败: {}", e);
                 return;
             }
         };
@@ -693,17 +689,17 @@ impl FileSyncManager {
             if !db_files.contains(cache_file) {
                 match std::fs::remove_file(cache_file) {
                     Ok(_) => {
-                        log::info!("🗑️ 已删除孤儿缓存: {}", cache_file);
+                        log::info!("[File] 已删除孤儿缓存: {}", cache_file);
                         orphaned_count += 1;
                     }
                     Err(e) => {
-                        log::warn!("⚠️ 删除缓存文件失败: {} ({})", cache_file, e);
+                        log::warn!("[File] 删除缓存失败: {} ({})", cache_file, e);
                     }
                 }
             }
         }
 
-        log::info!("✅ 缓存清理完成，共删除 {} 个孤儿文件", orphaned_count);
+        log::info!("[File] 缓存清理完成，删除 {} 个文件", orphaned_count);
     }
 
     /// 递归收集目录中的所有文件

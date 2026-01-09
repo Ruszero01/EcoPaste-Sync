@@ -12,6 +12,7 @@ mod data_manager;
 mod file_sync_manager;
 mod sync_core;
 mod sync_engine;
+mod sync_utils;
 mod types;
 mod webdav;
 
@@ -209,10 +210,10 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
                     let mut engine = sync_engine_clone.lock().await;
                     match engine.init(config, &database_state).await {
                         Ok(result) => {
-                            log::info!("[Sync] ✅ 自动初始化成功: {}", result.message);
+                            log::info!("[Sync] 自动初始化成功: {}", result.message);
                         }
                         Err(e) => {
-                            log::error!("[Sync] ❌ 自动初始化失败: {}", e);
+                            log::error!("[Sync] 自动初始化失败: {}", e);
                         }
                     }
                 } else {
@@ -220,7 +221,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
                 }
             });
 
-            log::info!("✅ 同步插件初始化成功");
+            log::info!("[Sync] 插件初始化成功");
             Ok(())
         })
         .build()

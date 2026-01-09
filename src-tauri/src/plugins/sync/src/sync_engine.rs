@@ -21,8 +21,6 @@ use tokio::sync::Mutex;
 pub struct CloudSyncEngine {
     /// 当前状态
     pub status: SyncStatus,
-    /// 同步配置（统一使用 SyncConfig）
-    pub config: Option<SyncConfig>,
     /// 进度
     pub progress: Option<SyncProgress>,
     /// WebDAV 客户端
@@ -61,7 +59,6 @@ impl CloudSyncEngine {
 
         Self {
             status: SyncStatus::Idle,
-            config: None,
             progress: None,
             webdav_client,
             auto_sync_manager,
@@ -79,6 +76,10 @@ impl CloudSyncEngine {
         config: SyncConfig,
         database_state: &DatabaseState,
     ) -> Result<SyncResult, String> {
+        // 提取需要的配置字段
+        let auto_sync = config.auto_sync;
+        let auto_sync_interval = config.auto_sync_interval_minutes;
+
         // 初始化 WebDAV 客户端
         let webdav_config = crate::webdav::WebDAVConfig {
             url: config.server_url.clone(),
@@ -94,13 +95,13 @@ impl CloudSyncEngine {
         }
         drop(client);
 
-        // 保存配置
-        self.config = Some(config.clone());
         self.status = SyncStatus::Idle;
 
         // 同步配置到 SyncCore（统一配置入口）
-        let sync_core = self.sync_core.clone();
-        sync_core.lock().await.update_config(config).await;
+        {
+            let core = self.sync_core.lock().await;
+            core.update_config(config).await;
+        }
 
         // 清理孤儿缓存文件
         let file_sync_manager = self.file_sync_manager.clone();
@@ -111,15 +112,8 @@ impl CloudSyncEngine {
             .await;
 
         // 如果配置中启用了自动同步，启动它
-        if self.config.as_ref().map(|c| c.auto_sync).unwrap_or(false) {
-            self.start_auto_sync(
-                self.config
-                    .as_ref()
-                    .map(|c| c.auto_sync_interval_minutes)
-                    .unwrap_or(60),
-                database_state,
-            )
-            .await?;
+        if auto_sync {
+            self.start_auto_sync(auto_sync_interval, database_state).await?;
         }
 
         Ok(SyncResult {
@@ -137,17 +131,13 @@ impl CloudSyncEngine {
         let auto_sync_manager = self.auto_sync_manager.clone();
         let mut manager = auto_sync_manager.lock().await;
 
-        // 从当前配置获取同步参数
-        let only_favorites = self
-            .config
-            .as_ref()
-            .map(|c| c.only_favorites)
-            .unwrap_or(false);
-        let include_files = self
-            .config
-            .as_ref()
-            .map(|c| c.include_files)
-            .unwrap_or(false);
+        // 从 SyncCore 获取同步参数
+        let config = {
+            let core = self.sync_core.lock().await;
+            core.get_config().await
+        };
+        let only_favorites = config.as_ref().map(|c| c.only_favorites).unwrap_or(false);
+        let include_files = config.as_ref().map(|c| c.include_files).unwrap_or(false);
 
         // 设置自动同步回调
         let sync_core = self.sync_core.clone();
@@ -189,7 +179,7 @@ impl CloudSyncEngine {
 
         Ok(SyncResult {
             success: true,
-            message: "✅ 自动同步已停止".to_string(),
+            message: "自动同步已停止".to_string(),
         })
     }
 
@@ -207,13 +197,13 @@ impl CloudSyncEngine {
 
         Ok(SyncResult {
             success: true,
-            message: format!("✅ 同步间隔: {}分钟", interval_minutes),
+            message: format!("同步间隔: {}分钟", interval_minutes),
         })
     }
 
     /// 获取自动同步状态
-    pub fn get_auto_sync_status(&self) -> AutoSyncStatus {
-        let manager = self.auto_sync_manager.blocking_lock();
+    pub async fn get_auto_sync_status(&self) -> AutoSyncStatus {
+        let manager = self.auto_sync_manager.lock().await;
         manager.get_status()
     }
 
@@ -222,9 +212,10 @@ impl CloudSyncEngine {
         &self.status
     }
 
-    /// 获取配置
-    pub fn get_config(&self) -> Option<&SyncConfig> {
-        self.config.as_ref()
+    /// 获取配置（委托给 SyncCore）
+    pub async fn get_config(&self) -> Option<SyncConfig> {
+        let core = self.sync_core.lock().await;
+        core.get_config().await
     }
 
     /// 使用数据库状态执行同步
@@ -235,10 +226,17 @@ impl CloudSyncEngine {
         only_favorites: bool,
         include_files: bool,
     ) -> Result<SyncProcessResult, String> {
-        let config = self
-            .config
-            .as_ref()
-            .ok_or_else(|| "同步引擎未初始化，请先调用 init()".to_string())?;
+        // 从 SyncCore 获取配置
+        let config = {
+            let core = self.sync_core.lock().await;
+            core.get_config().await
+        };
+        let config = match config {
+            Some(cfg) => cfg,
+            None => {
+                return Err("同步引擎未初始化，请先调用 init()".to_string());
+            }
+        };
 
         let sync_core = self.sync_core.clone();
         let mut core = sync_core.lock().await;
@@ -255,7 +253,7 @@ impl CloudSyncEngine {
         };
 
         log::info!(
-            "开始执行同步... only_favorites={}, include_files={}",
+            "[Sync] 开始执行同步: only_favorites={}, include_files={}",
             only_favorites,
             include_files
         );
@@ -264,8 +262,8 @@ impl CloudSyncEngine {
         let result = core.perform_sync(mode_config, database_state).await;
 
         // 执行书签同步（只在主同步成功且有书签数据时）
-        if let Ok(_) = &result {
-            log::info!("执行书签同步...");
+        if result.is_ok() {
+            log::info!("[Bookmark] 开始同步...");
             let bookmark_sync_manager = self.bookmark_sync_manager.clone();
             let manager = bookmark_sync_manager.lock().await;
 
@@ -274,25 +272,25 @@ impl CloudSyncEngine {
                 match manager.sync_bookmarks().await {
                     Ok(bookmark_result) => {
                         if bookmark_result.need_upload || bookmark_result.need_download {
-                            log::info!("书签同步: {}", bookmark_result.message);
+                            log::info!("[Bookmark] 同步: {}", bookmark_result.message);
                         } else {
-                            log::info!("书签数据无需同步");
+                            log::info!("[Bookmark] 数据无需同步");
                         }
                     }
                     Err(e) => {
-                        log::warn!("书签同步失败: {}", e);
+                        log::warn!("[Bookmark] 同步失败: {}", e);
                     }
                 }
             } else {
-                log::info!("本地无书签数据，跳过书签同步");
+                log::info!("[Bookmark] 本地无数据，跳过同步");
             }
         }
 
         self.status = SyncStatus::Idle;
 
         match &result {
-            Ok(_) => log::info!("同步执行完成"),
-            Err(e) => log::error!("同步执行失败: {}", e),
+            Ok(_) => log::info!("[Sync] 执行完成"),
+            Err(e) => log::error!("[Sync] 执行失败: {}", e),
         }
 
         result

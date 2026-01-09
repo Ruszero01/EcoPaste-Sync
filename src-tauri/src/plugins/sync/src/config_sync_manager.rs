@@ -96,7 +96,7 @@ impl ConfigSyncManager {
 
     /// 上传本地配置到云端
     pub async fn upload_local_config(&self) -> Result<ConfigSyncResult, String> {
-        log::info!("🔄 开始上传本地配置到云端...");
+        log::info!("[Config] 开始上传本地配置到云端...");
 
         // 获取应用数据目录（使用dirs crate，与数据库插件保持一致）
         let save_data_dir = dirs::data_dir()
@@ -112,7 +112,7 @@ impl ConfigSyncManager {
         let config_content = match std::fs::read_to_string(&config_path) {
             Ok(content) => content,
             Err(e) => {
-                log::error!("❌ 读取本地配置文件失败: {}", e);
+                log::error!("[Config] 读取本地配置文件失败: {}", e);
                 return Ok(ConfigSyncResult {
                     success: false,
                     message: format!("读取配置文件失败: {}", e),
@@ -124,7 +124,7 @@ impl ConfigSyncManager {
         let config_data: AppConfig = match serde_json::from_str(&config_content) {
             Ok(data) => data,
             Err(e) => {
-                log::error!("❌ 解析本地配置文件失败: {}", e);
+                log::error!("[Config] 解析本地配置文件失败: {}", e);
                 return Ok(ConfigSyncResult {
                     success: false,
                     message: format!("解析配置文件失败: {}", e),
@@ -142,14 +142,14 @@ impl ConfigSyncManager {
 
         match client.upload_sync_data(remote_path, &filtered_json).await {
             Ok(_) => {
-                log::info!("✅ 配置上传成功");
+                log::info!("[Config] 上传成功");
                 Ok(ConfigSyncResult {
                     success: true,
                     message: "配置已上传到云端".to_string(),
                 })
             }
             Err(e) => {
-                log::error!("❌ 配置上传失败: {}", e);
+                log::error!("[Config] 上传失败: {}", e);
                 Ok(ConfigSyncResult {
                     success: false,
                     message: format!("上传失败: {}", e),
@@ -160,7 +160,7 @@ impl ConfigSyncManager {
 
     /// 应用云端配置
     pub async fn apply_remote_config(&self) -> Result<ConfigSyncResult, String> {
-        log::info!("🔄 开始应用云端配置...");
+        log::info!("[Config] 开始应用云端配置...");
 
         let client = self.webdav_client.lock().await;
         let remote_path = "store-config.json";
@@ -169,7 +169,7 @@ impl ConfigSyncManager {
         let download_result = match client.download_sync_data(remote_path).await {
             Ok(result) => result,
             Err(e) => {
-                log::error!("❌ 下载云端配置失败: {}", e);
+                log::error!("[Config] 下载失败: {}", e);
                 return Ok(ConfigSyncResult {
                     success: false,
                     message: format!("下载配置失败: {}", e),
@@ -191,7 +191,7 @@ impl ConfigSyncManager {
             let remote_config: AppConfig = match serde_json::from_str(&data) {
                 Ok(config) => config,
                 Err(e) => {
-                    log::error!("❌ 解析云端配置失败: {}", e);
+                    log::error!("[Config] 解析云端配置失败: {}", e);
                     return Ok(ConfigSyncResult {
                         success: false,
                         message: "云端配置格式错误".to_string(),
@@ -221,7 +221,7 @@ impl ConfigSyncManager {
             std::fs::write(&config_path, config_json)
                 .map_err(|e| format!("写入配置文件失败: {}", e))?;
 
-            log::info!("✅ 云端配置已应用");
+            log::info!("[Config] 云端配置已应用");
             Ok(ConfigSyncResult {
                 success: true,
                 message: "云端配置已应用".to_string(),

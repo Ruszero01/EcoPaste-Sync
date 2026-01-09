@@ -120,7 +120,7 @@ impl SyncCore {
             .unwrap()
             .as_millis() as i64;
 
-        log::info!("🚀 开始同步");
+        log::info!("[Sync] 开始同步");
 
         let mut result = SyncProcessResult {
             success: false,
@@ -151,11 +151,11 @@ impl SyncCore {
                     result.deleted_items.extend(deleted_ids.iter().cloned());
                     files_to_delete = deleted_files;
                     cloud_data = updated_cloud;
-                    log::info!("🗑️ 删除 {} 项", deleted_ids.len());
+                    log::info!("[Sync] 删除 {} 项", deleted_ids.len());
                 }
                 Err(e) => {
                     result.errors.push(format!("删除失败: {}", e));
-                    log::error!("删除失败: {}", e);
+                    log::error!("[Sync] 删除失败: {}", e);
                 }
             }
         }
@@ -192,11 +192,11 @@ impl SyncCore {
             {
                 Ok(uploaded) => {
                     result.uploaded_items.extend(uploaded.iter().cloned());
-                    log::info!("📤 上传 {} 项", uploaded.len());
+                    log::info!("[Sync] 上传 {} 项", uploaded.len());
                 }
                 Err(e) => {
                     result.errors.push(format!("上传失败: {}", e));
-                    log::error!("上传失败: {}", e);
+                    log::error!("[Sync] 上传失败: {}", e);
                 }
             }
         }
@@ -209,11 +209,11 @@ impl SyncCore {
             {
                 Ok(downloaded) => {
                     result.downloaded_items.extend(downloaded.iter().cloned());
-                    log::info!("📥 下载 {} 项", downloaded.len());
+                    log::info!("[Sync] 下载 {} 项", downloaded.len());
                 }
                 Err(e) => {
                     result.errors.push(format!("下载失败: {}", e));
-                    log::error!("下载失败: {}", e);
+                    log::error!("[Sync] 下载失败: {}", e);
                 }
             }
         }
@@ -255,17 +255,17 @@ impl SyncCore {
                 || !result.deleted_items.is_empty()
             {
                 log::info!(
-                    "✅ 同步完成: 上传 {}，下载 {}，删除 {} ({}ms)",
+                    "[Sync] 完成: 上传 {}，下载 {}，删除 {} ({}ms)",
                     result.uploaded_items.len(),
                     result.downloaded_items.len(),
                     result.deleted_items.len(),
                     result.duration_ms
                 );
             } else {
-                log::info!("✅ 同步完成，无变更 ({}ms)", result.duration_ms);
+                log::info!("[Sync] 完成，无变更 ({}ms)", result.duration_ms);
             }
         } else {
-            log::error!("❌ 同步完成，有 {} 个错误", result.errors.len());
+            log::error!("[Sync] 完成，有 {} 个错误", result.errors.len());
         }
 
         self.sync_in_progress = false;
@@ -345,7 +345,7 @@ impl SyncCore {
         ) {
             Ok(items) => items,
             Err(e) => {
-                log::error!("查询待同步数据失败: {}", e);
+                log::error!("[Sync] 查询待同步数据失败: {}", e);
                 let mut manager = self.data_manager.lock().await;
                 manager.load_local_data(vec![]).await;
                 return Err(e);
@@ -355,7 +355,7 @@ impl SyncCore {
         let mut manager = self.data_manager.lock().await;
         manager.load_local_data(sync_items.clone()).await;
 
-        log::info!("📋 待同步: {} 项", sync_items.len());
+        log::info!("[Sync] 待同步: {} 项", sync_items.len());
         Ok(sync_items)
     }
 
@@ -374,7 +374,7 @@ impl SyncCore {
                     let mut manager = data_manager.lock().await;
                     manager.load_cloud_data(cloud_items.clone()).await;
 
-                    log::info!("☁️ 云端: {} 项", cloud_items.len());
+                    log::info!("[Sync] 云端: {} 项", cloud_items.len());
                     cloud_items
                 } else {
                     let mut manager = data_manager.lock().await;
@@ -385,7 +385,7 @@ impl SyncCore {
                 Ok(cloud_data)
             }
             Err(e) => {
-                log::error!("下载云端数据失败: {}", e);
+                log::error!("[Sync] 下载云端数据失败: {}", e);
                 Err(format!("下载云端数据失败: {}", e))
             }
         }
@@ -437,11 +437,11 @@ impl SyncCore {
 
         match db.query_history(options) {
             Ok(items) => {
-                log::info!("🗑️ 本地软删除项目: {} 项", items.len());
+                log::info!("[Sync] 本地软删除: {} 项", items.len());
                 items.into_iter().map(|item| item.id).collect()
             }
             Err(e) => {
-                log::error!("❌ 查询软删除项目失败: {}", e);
+                log::error!("[Sync] 查询软删除项目失败: {}", e);
                 vec![]
             }
         }
@@ -561,7 +561,7 @@ impl SyncCore {
                                 {
                                     Ok(hash) => Some(hash),
                                     Err(e) => {
-                                        log::warn!("计算文件哈希失败: {} ({})", file_name, e);
+                                        log::warn!("[File] 计算哈希失败: {} ({})", file_name, e);
                                         None
                                     }
                                 };
@@ -588,7 +588,7 @@ impl SyncCore {
         // 执行上传任务
         for task in upload_tasks {
             if let Err(e) = file_manager.upload_file(task).await {
-                log::error!("文件上传失败: {}", e);
+                log::error!("[File] 上传失败: {}", e);
             }
         }
 
@@ -601,14 +601,14 @@ impl SyncCore {
                         if let Err(e) = db
                             .update_item_value(&item_id, &local_path.to_string_lossy().to_string())
                         {
-                            log::error!("更新文件路径失败: {}", e);
+                            log::error!("[File] 更新路径失败: {}", e);
                         }
                     } else {
-                        log::error!("文件下载失败: {:?}", result.errors);
+                        log::error!("[File] 下载失败: {:?}", result.errors);
                     }
                 }
                 Err(e) => {
-                    log::error!("文件下载异常: {}", e);
+                    log::error!("[File] 下载异常: {}", e);
                 }
             }
         }
@@ -713,7 +713,7 @@ impl SyncCore {
                         {
                             Ok(hash) => Some(hash),
                             Err(e) => {
-                                log::warn!("计算文件哈希失败: {} ({})", file_name, e);
+                                log::warn!("[File] 计算哈希失败: {} ({})", file_name, e);
                                 None
                             }
                         };
@@ -802,7 +802,7 @@ impl SyncCore {
                             }
                         }
                         Err(e) => {
-                            log::error!("文件上传失败: {}", e);
+                            log::error!("[File] 上传失败: {}", e);
                         }
                     }
                 }
@@ -826,18 +826,18 @@ impl SyncCore {
                 let tracker = db.get_change_tracker();
                 let conn = db.get_connection()?;
                 if let Err(e) = tracker.mark_items_synced(&conn, &actually_uploaded) {
-                    log::error!("标记同步状态失败: {}", e);
+                    log::error!("[Sync] 标记同步状态失败: {}", e);
                 }
                 Ok(actually_uploaded)
             }
             Err(e) => {
-                log::error!("上传同步数据失败: {}", e);
+                log::error!("[Sync] 上传同步数据失败: {}", e);
                 let db = database_state.lock().await;
                 let tracker = db.get_change_tracker();
                 let conn = db.get_connection()?;
                 for item_id in items {
                     if let Err(err) = tracker.mark_item_changed(&conn, item_id, "upload_failed") {
-                        log::error!("标记变更失败: {}", err);
+                        log::error!("[Sync] 标记变更失败: {}", err);
                     }
                 }
                 Err(e)
@@ -868,7 +868,7 @@ impl SyncCore {
 
                 let db = database_state.lock().await;
                 if let Err(e) = db.upsert_from_cloud(&db_item) {
-                    log::error!("保存云端数据到数据库失败: {}", e);
+                    log::error!("[Sync] 保存云端数据失败: {}", e);
                 }
                 drop(db);
 
@@ -884,7 +884,7 @@ impl SyncCore {
 
         if !items_to_sync.is_empty() {
             if let Err(e) = self.process_file_sync(&items_to_sync, database_state).await {
-                log::error!("文件同步失败: {}", e);
+                log::error!("[File] 同步失败: {}", e);
             }
         }
 
