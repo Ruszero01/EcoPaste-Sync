@@ -31,17 +31,6 @@ pub struct SyncModeConfig {
     pub include_files: bool,
 }
 
-/// 同步索引
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SyncIndex {
-    /// 时间戳
-    pub timestamp: i64,
-    /// 最后同步时间
-    pub last_sync_time: i64,
-    /// 同步数据（云端不包含已删除项目）
-    pub data: Vec<SyncDataItem>,
-}
-
 /// 同步结果
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncProcessResult {

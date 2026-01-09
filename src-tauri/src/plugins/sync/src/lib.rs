@@ -24,7 +24,7 @@ pub use file_sync_manager::{
     create_shared_manager as create_file_sync_manager, FileDownloadTask, FileMetadata,
     FileOperationResult, FileSyncManager, FileUploadTask,
 };
-pub use sync_core::{SyncCore, SyncDataItem, SyncIndex, SyncModeConfig, SyncProcessResult};
+pub use sync_core::{SyncCore, SyncDataItem, SyncModeConfig, SyncProcessResult};
 pub use sync_engine::{create_shared_engine, CloudSyncEngine};
 pub use types::*;
 pub use webdav::{create_shared_client, WebDAVClientState, WebDAVConfig};
