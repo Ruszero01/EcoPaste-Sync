@@ -1058,7 +1058,7 @@ const CloudSync = () => {
 									{(() => {
 										if (!lastSyncTime || lastSyncTime === 0) return "";
 
-										const date = new Date(lastSyncTime);
+										const date = new Date(lastSyncTime * 1000); // 转换为毫秒
 										const now = new Date();
 										const diffMs = now.getTime() - date.getTime();
 										const diffMins = Math.floor(diffMs / (1000 * 60));
