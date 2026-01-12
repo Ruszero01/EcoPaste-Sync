@@ -1,22 +1,12 @@
 import ProList from "@/components/ProList";
 import ProListItem from "@/components/ProListItem";
 import { LISTEN_KEY } from "@/constants";
+import * as backendDatabase from "@/plugins/database";
 import * as backendSync from "@/plugins/sync";
 import { globalStore } from "@/stores/global";
 import type { SyncModeConfig } from "@/types/sync.d";
 import { isDev } from "@/utils/is";
 import { invoke } from "@tauri-apps/api/core";
-
-// 数据库信息类型（与后端 DatabaseInfo 对应）
-interface DatabaseInfo {
-	total_count: number;
-	active_count: number;
-	deleted_count: number;
-	favorite_count: number;
-	type_counts: Record<string, number>;
-	sync_status_counts: Record<string, number>;
-	recent_records_count: number;
-}
 
 // WebDAV配置类型（与后端 BackendSyncConfig 对应）
 type WebDAVConfig = {
@@ -688,16 +678,21 @@ const CloudSync = () => {
 		}
 
 		try {
-			// 配置上传功能已整合到后端同步引擎中
-			// 在保存服务器配置时会自动处理配置同步
-			appMessage.info("配置将自动同步到云端");
+			const result = await backendSync.backendUploadLocalConfig();
+			if (result.success) {
+				appMessage.success(t("preference.cloud_sync.upload_config_success"));
+			} else {
+				appMessage.error(
+					result.message || t("preference.cloud_sync.upload_config_failed"),
+				);
+			}
 		} catch (error) {
 			console.error("上传配置失败", error);
 			appMessage.error(t("preference.cloud_sync.upload_config_failed"));
 		}
 	};
 
-	// 应用云端配置（功能已迁移至后端）
+	// 应用云端配置
 	const handleApplyRemoteConfig = async () => {
 		if (connectionStatus !== "success") {
 			appMessage.error(t("preference.cloud_sync.check_network_first"));
@@ -712,23 +707,13 @@ const CloudSync = () => {
 			cancelText: t("preference.cloud_sync.cancel"),
 			onOk: async () => {
 				try {
-					// 配置应用功能已整合到后端同步引擎中
-					// 重新初始化同步引擎以应用最新配置
-					if (webdavConfig) {
-						const syncConfig = {
-							server_url: webdavConfig.url,
-							username: webdavConfig.username,
-							password: webdavConfig.password,
-							path: webdavConfig.path || "/EcoPaste-Sync",
-							auto_sync: autoSyncEnabled,
-							auto_sync_interval_minutes: syncInterval,
-							only_favorites: syncModeConfig.onlyFavorites,
-							include_files:
-								syncModeConfig.includeImages && syncModeConfig.includeFiles,
-							timeout: 30000,
-						};
-						await backendSync.backendInitSync(syncConfig);
-						appMessage.success("配置已应用，建议重启应用以完全生效");
+					const result = await backendSync.backendApplyRemoteConfig();
+					if (result.success) {
+						appMessage.success(t("preference.cloud_sync.apply_config_success"));
+					} else {
+						appMessage.error(
+							result.message || t("preference.cloud_sync.apply_config_failed"),
+						);
 					}
 				} catch (error) {
 					console.error("应用配置失败", error);
@@ -805,7 +790,7 @@ const CloudSync = () => {
 			okType: "danger",
 			onOk: async () => {
 				try {
-					const success = await invoke("plugin:eco-database|reset_database");
+					const success = await backendDatabase.backendResetDatabase();
 					if (success) {
 						appMessage.success("数据库已重置");
 						emit(LISTEN_KEY.REFRESH_CLIPBOARD_LIST);
@@ -823,9 +808,7 @@ const CloudSync = () => {
 	// 开发环境专用：显示数据库信息
 	const handleShowDatabaseInfo = async () => {
 		try {
-			const dbInfo = await invoke<DatabaseInfo>(
-				"plugin:eco-database|get_database_info",
-			);
+			const dbInfo = await backendDatabase.backendGetDatabaseInfo();
 			if (dbInfo) {
 				console.group("📊 数据库信息");
 				console.info("=== 基本统计 ===");

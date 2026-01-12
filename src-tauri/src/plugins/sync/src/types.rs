@@ -60,4 +60,5 @@ pub struct AutoSyncStatus {
     pub interval_minutes: u64,
     pub last_sync_time: Option<u64>,
     pub next_sync_time: Option<u64>,
+    pub is_syncing: bool,
 }

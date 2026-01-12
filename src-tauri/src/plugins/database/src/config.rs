@@ -162,4 +162,14 @@ pub fn should_auto_sort() -> bool {
         .unwrap_or(true) // 默认为 true
 }
 
+/// 检查是否应该以纯文本模式复制
+pub fn should_copy_plain() -> bool {
+    read_config()
+        .ok()
+        .and_then(|c| c.clipboard_store)
+        .and_then(|c| c.content)
+        .and_then(|c| c.copy_plain)
+        .unwrap_or(false) // 默认为 false
+}
+
 

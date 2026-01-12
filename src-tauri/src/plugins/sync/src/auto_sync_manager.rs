@@ -2,6 +2,7 @@
 //! 负责自动同步的定时器管理，不涉及具体的同步逻辑
 
 use crate::types::*;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
@@ -27,6 +28,8 @@ pub struct AutoSyncManager {
     sync_callback: Option<Box<dyn FnMut() + Send + Sync>>,
     /// 内部定时器句柄（用于取消定时器）
     _timer_handle: Option<tokio::task::JoinHandle<()>>,
+    /// 当前是否正在同步
+    syncing: AtomicBool,
 }
 
 impl AutoSyncManager {
@@ -39,6 +42,7 @@ impl AutoSyncManager {
             next_sync_time: None,
             sync_callback: None,
             _timer_handle: None,
+            syncing: AtomicBool::new(false),
         }
     }
 
@@ -146,6 +150,7 @@ impl AutoSyncManager {
             interval_minutes: self.interval_minutes,
             last_sync_time: self.last_sync_time,
             next_sync_time: self.next_sync_time,
+            is_syncing: self.syncing.load(Ordering::Relaxed),
         }
     }
 

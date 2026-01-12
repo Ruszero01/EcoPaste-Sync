@@ -51,6 +51,26 @@ export interface DatabaseStatistics {
 	favorite_items: number;
 }
 
+// 数据库信息（调试用）
+export interface DatabaseInfo {
+	total_count: number;
+	active_count: number;
+	deleted_count: number;
+	favorite_count: number;
+	type_counts: Record<string, number>;
+	sync_status_counts: Record<string, number>;
+	recent_records_count: number;
+}
+
+// 删除结果
+export interface DeleteResult {
+	success: boolean;
+	deletedCount: number;
+	softDeletedIds: string[];
+	hardDeletedIds: string[];
+	errors: string[];
+}
+
 // 清理规则
 export interface CleanupRule {
 	// 保留天数，0 表示不限制
@@ -68,6 +88,7 @@ const COMMAND = {
 	QUERY_HISTORY: "plugin:eco-database|query_history",
 	INSERT_WITH_DEDUPLICATION: "plugin:eco-database|insert_with_deduplication",
 	GET_STATISTICS: "plugin:eco-database|get_statistics",
+	GET_DATABASE_INFO: "plugin:eco-database|get_database_info",
 } as const;
 
 /**
@@ -122,4 +143,11 @@ export const backendCleanupHistory = (rule: CleanupRule) => {
  */
 export const backendResetDatabase = () => {
 	return invoke<boolean>(COMMAND.RESET_DATABASE, {});
+};
+
+/**
+ * 获取数据库统计信息（调试用）
+ */
+export const backendGetDatabaseInfo = () => {
+	return invoke<DatabaseInfo>(COMMAND.GET_DATABASE_INFO, {});
 };

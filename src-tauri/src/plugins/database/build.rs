@@ -6,6 +6,7 @@ const COMMANDS: &[&str] = &[
     "update_field",
     "cleanup_history",
     "reset_database",
+    "get_database_info",
 ];
 
 fn main() {

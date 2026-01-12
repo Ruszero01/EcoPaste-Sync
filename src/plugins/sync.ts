@@ -36,6 +36,7 @@ export interface BackendAutoSyncStatus {
 	interval_minutes: number;
 	last_sync_time: number;
 	next_sync_time: number;
+	is_syncing: boolean;
 }
 
 // 连接测试结果
@@ -67,6 +68,8 @@ const COMMAND = {
 	GET_SYNC_PROGRESS: "plugin:eco-sync|get_sync_progress",
 	UPDATE_SYNC_CONFIG: "plugin:eco-sync|update_sync_config",
 	GET_SYNC_CONFIG: "plugin:eco-sync|get_sync_config",
+	UPLOAD_LOCAL_CONFIG: "plugin:eco-sync|upload_local_config",
+	APPLY_REMOTE_CONFIG: "plugin:eco-sync|apply_remote_config",
 } as const;
 
 /**
@@ -175,4 +178,22 @@ export const backendUpdateSyncConfig = (config: BackendSyncConfig) => {
  */
 export const backendGetSyncConfig = () => {
 	return invoke<BackendSyncConfig | null>(COMMAND.GET_SYNC_CONFIG);
+};
+
+/**
+ * 上传本地配置到云端
+ */
+export const backendUploadLocalConfig = () => {
+	return invoke<{ success: boolean; message: string }>(
+		COMMAND.UPLOAD_LOCAL_CONFIG,
+	);
+};
+
+/**
+ * 应用云端配置
+ */
+export const backendApplyRemoteConfig = () => {
+	return invoke<{ success: boolean; message: string }>(
+		COMMAND.APPLY_REMOTE_CONFIG,
+	);
 };

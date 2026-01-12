@@ -9,5 +9,6 @@ permissions = [
     "allow-delete-items",
     "allow-update-field",
     "allow-cleanup-history",
-    "allow-reset-database"
+    "allow-reset-database",
+    "allow-get-database-info"
 ]

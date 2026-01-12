@@ -33,13 +33,13 @@ pub async fn init_sync(
     }
 }
 
-/// 获取同步状态
+/// 获取同步状态（返回包含 last_sync_time 的完整状态）
 #[tauri::command]
 pub async fn get_sync_status(
     state: State<'_, Arc<Mutex<CloudSyncEngine>>>,
-) -> Result<SyncStatus, String> {
+) -> Result<AutoSyncStatus, String> {
     let engine = state.lock().await;
-    Ok(engine.get_status().clone())
+    Ok(engine.get_auto_sync_status().await)
 }
 
 /// 手动触发同步（后端直接从数据库读取数据）

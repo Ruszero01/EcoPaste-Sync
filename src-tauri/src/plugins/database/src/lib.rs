@@ -47,6 +47,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::delete_items,
             commands::update_field,
             cleanup::cleanup_history,
+            debug::get_database_info,
             debug::reset_database
         ])
         .setup(|app_handle, _webview_manager| {
