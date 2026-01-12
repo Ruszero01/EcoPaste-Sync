@@ -288,6 +288,11 @@ impl CloudSyncEngine {
 
         self.status = SyncStatus::Idle;
 
+        // 同步完成后更新最后同步时间
+        let auto_sync_manager = self.auto_sync_manager.clone();
+        let mut manager = auto_sync_manager.lock().await;
+        manager.update_sync_time();
+
         match &result {
             Ok(_) => log::info!("[Sync] 执行完成"),
             Err(e) => log::error!("[Sync] 执行失败: {}", e),

@@ -119,10 +119,12 @@ const CloudSync = () => {
 	const fetchBackendSyncStatus = useCallback(async () => {
 		try {
 			const status = await backendSync.backendGetSyncStatus();
-			if (status?.last_sync_time) {
-				setLastSyncTime(status.last_sync_time);
+			// 处理 null 值（Rust 的 Option<u64> 序列化为 null）
+			const syncTime = status?.last_sync_time ?? 0;
+			if (syncTime > 0) {
+				setLastSyncTime(syncTime);
 				// 持久化同步时间
-				saveLastSyncTime(status.last_sync_time);
+				saveLastSyncTime(syncTime);
 			}
 			// 更新同步状态
 			setIsSyncing(status?.is_syncing || false);
