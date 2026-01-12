@@ -192,44 +192,6 @@ impl DeleteManager {
         }
     }
 
-    /// 批量软删除（仅更新 deleted 字段和时间戳）
-    pub fn batch_soft_delete(db: &mut DatabaseManager, ids: &[String]) -> Result<usize, String> {
-        if ids.is_empty() {
-            return Ok(0);
-        }
-
-        let conn = db.get_connection()?;
-        let current_time = chrono::Utc::now().timestamp_millis();
-
-        let placeholders: String = ids.iter().map(|_| "?").collect();
-        let query = format!(
-            "UPDATE history SET deleted = 1, time = ? WHERE id IN ({})",
-            placeholders
-        );
-
-        // 构建参数：时间戳 + 所有ID
-        let mut params: Vec<&dyn rusqlite::ToSql> = vec![&current_time];
-        for id in ids {
-            params.push(id);
-        }
-
-        let count = conn
-            .execute(&query, rusqlite::params_from_iter(params))
-            .map_err(|e| format!("批量软删除失败: {}", e))?;
-
-        // 标记变更跟踪器
-        for id in ids {
-            if let Err(e) = db
-                .get_change_tracker()
-                .mark_item_changed(&conn, id, "delete")
-            {
-                log::warn!("标记变更跟踪失败: {}", e);
-            }
-        }
-
-        Ok(count)
-    }
-
     /// 批量硬删除（直接从数据库删除）
     pub fn batch_hard_delete(db: &mut DatabaseManager, ids: &[String]) -> Result<usize, String> {
         if ids.is_empty() {

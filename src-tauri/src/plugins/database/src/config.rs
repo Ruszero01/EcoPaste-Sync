@@ -150,15 +150,7 @@ pub fn should_fetch_source_app() -> bool {
         .unwrap_or(true) // 默认为 true
 }
 
-/// 检查是否开启"复制为纯文本"模式
-pub fn should_copy_plain() -> bool {
-    read_config()
-        .ok()
-        .and_then(|c| c.clipboard_store)
-        .and_then(|c| c.content)
-        .and_then(|c| c.copy_plain)
-        .unwrap_or(false) // 默认为 false
-}
+
 
 /// 检查是否开启自动排序
 pub fn should_auto_sort() -> bool {
@@ -170,22 +162,4 @@ pub fn should_auto_sort() -> bool {
         .unwrap_or(true) // 默认为 true
 }
 
-/// 获取历史记录保留天数
-pub fn get_history_duration() -> i32 {
-    read_config()
-        .ok()
-        .and_then(|c| c.clipboard_store)
-        .and_then(|c| c.history)
-        .and_then(|c| c.duration)
-        .unwrap_or(0)
-}
 
-/// 获取历史记录最大保留条数
-pub fn get_history_max_count() -> i32 {
-    read_config()
-        .ok()
-        .and_then(|c| c.clipboard_store)
-        .and_then(|c| c.history)
-        .and_then(|c| c.max_count)
-        .unwrap_or(0)
-}
