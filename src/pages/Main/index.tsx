@@ -1,8 +1,8 @@
 import { LISTEN_KEY } from "@/constants";
+import { backendQueryHistoryWithFilter } from "@/plugins/database";
 import { hideWindowWithBehavior, initializeMicaEffect } from "@/plugins/window";
 import type { HistoryTablePayload, TablePayload } from "@/types/database";
 import type { Store } from "@/types/store";
-import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import { useReactive } from "ahooks";
 import type { EventEmitter } from "ahooks/lib/useEventEmitter";
@@ -310,10 +310,10 @@ const Main = () => {
 				params.push(`%${search}%`, `%${search}%`);
 			}
 
-			const list = await invoke(
-				"plugin:eco-database|query_history_with_filter",
-				{ args: { where_clause: whereClause, params } },
-			);
+			const list = await backendQueryHistoryWithFilter({
+				where_clause: whereClause,
+				params,
+			});
 
 			// 转换数据类型，与 selectSQL 保持一致
 			rawData = (Array.isArray(list) ? list : []).map((item: any) => ({
@@ -335,10 +335,10 @@ const Main = () => {
 				params.push(`%${search}%`, `%${search}%`);
 			}
 
-			const list = await invoke(
-				"plugin:eco-database|query_history_with_filter",
-				{ args: { where_clause: whereClause, params } },
-			);
+			const list = await backendQueryHistoryWithFilter({
+				where_clause: whereClause,
+				params,
+			});
 
 			// 转换数据类型，与 selectSQL 保持一致
 			rawData = (Array.isArray(list) ? list : []).map((item: any) => ({
@@ -380,10 +380,10 @@ const Main = () => {
 					" AND ((type = 'text' AND (subtype IS NULL OR subtype = '')) OR type = 'formatted')";
 			}
 
-			const list = await invoke(
-				"plugin:eco-database|query_history_with_filter",
-				{ args: { where_clause: whereClause, params } },
-			);
+			const list = await backendQueryHistoryWithFilter({
+				where_clause: whereClause,
+				params,
+			});
 
 			// 转换数据类型，与 selectSQL 保持一致
 			rawData = (Array.isArray(list) ? list : []).map((item: any) => ({

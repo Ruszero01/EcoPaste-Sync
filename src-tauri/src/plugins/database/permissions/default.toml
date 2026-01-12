@@ -3,24 +3,11 @@
 [default]
 description = "Default permissions for the database plugin"
 permissions = [
-    "allow-set-database-path",
     "allow-query-history",
     "allow-query-history-with-filter",
     "allow-insert-with-deduplication",
     "allow-delete-items",
-    "allow-get-statistics",
     "allow-update-field",
-    "allow-mark-changed",
-    "allow-batch-mark-changed",
-    "allow-get-changed-items-count",
-    "allow-get-changed-items-list",
-    "allow-query-with-filter",
-    "allow-search-data",
-    "allow-query-by-group",
-    "allow-get-all-groups",
-    "allow-get-filtered-statistics",
     "allow-cleanup-history",
-    "allow-get-source-app-info",
-    "allow-get-database-info",
     "allow-reset-database"
 ]

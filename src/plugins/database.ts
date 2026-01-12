@@ -60,85 +60,36 @@ export interface CleanupRule {
 }
 
 const COMMAND = {
-	SET_DATABASE_PATH: "plugin:eco-database|set_database_path",
-	QUERY_HISTORY: "plugin:eco-database|query_history",
 	QUERY_HISTORY_WITH_FILTER: "plugin:eco-database|query_history_with_filter",
-	INSERT_WITH_DEDUPLICATION: "plugin:eco-database|insert_with_deduplication",
-	MARK_DELETED: "plugin:eco-database|mark_deleted",
-	BATCH_MARK_DELETED: "plugin:eco-database|batch_mark_deleted",
-	HARD_DELETE: "plugin:eco-database|hard_delete",
-	BATCH_HARD_DELETE: "plugin:eco-database|batch_hard_delete",
-	GET_STATISTICS: "plugin:eco-database|get_statistics",
+	DELETE_ITEMS: "plugin:eco-database|delete_items",
 	UPDATE_FIELD: "plugin:eco-database|update_field",
-	MARK_CHANGED: "plugin:eco-database|mark_changed",
-	BATCH_MARK_CHANGED: "plugin:eco-database|batch_mark_changed",
-	GET_CHANGED_ITEMS_COUNT: "plugin:eco-database|get_changed_items_count",
-	GET_CHANGED_ITEMS_LIST: "plugin:eco-database|get_changed_items_list",
-	QUERY_WITH_FILTER: "plugin:eco-database|query_with_filter",
-	SEARCH_DATA: "plugin:eco-database|search_data",
-	QUERY_BY_GROUP: "plugin:eco-database|query_by_group",
-	GET_ALL_GROUPS: "plugin:eco-database|get_all_groups",
-	GET_FILTERED_STATISTICS: "plugin:eco-database|get_filtered_statistics",
 	CLEANUP_HISTORY: "plugin:eco-database|cleanup_history",
+	RESET_DATABASE: "plugin:eco-database|reset_database",
+	QUERY_HISTORY: "plugin:eco-database|query_history",
+	INSERT_WITH_DEDUPLICATION: "plugin:eco-database|insert_with_deduplication",
+	GET_STATISTICS: "plugin:eco-database|get_statistics",
 } as const;
-
-/**
- * 设置数据库路径并初始化 - 后端自动获取路径
- */
-export const backendSetDatabasePath = () => {
-	return invoke<void>(COMMAND.SET_DATABASE_PATH, {});
-};
-
-/**
- * 查询历史记录
- */
-export const backendQueryHistory = (options: {
-	only_favorites: boolean;
-	exclude_deleted: boolean;
-	limit?: number;
-	offset?: number;
-}) => {
-	return invoke<HistoryItem[]>(COMMAND.QUERY_HISTORY, options);
-};
 
 /**
  * 查询历史记录（带自定义筛选条件）
  */
 export const backendQueryHistoryWithFilter = (options: {
 	where_clause?: string;
-	order_by?: string;
-	limit?: number;
-	offset?: number;
+	params?: string[];
 }) => {
-	return invoke<HistoryItem[]>(COMMAND.QUERY_HISTORY_WITH_FILTER, options);
-};
-
-/**
- * 插入数据（带去重功能）
- */
-export const backendInsertWithDeduplication = (item: any) => {
-	return invoke<{ is_update: boolean; insert_id: string | null }>(
-		COMMAND.INSERT_WITH_DEDUPLICATION,
-		{
-			item,
-		},
-	);
-};
-
-/**
- * 标记删除
- */
-export const backendMarkDeleted = (id: string) => {
-	return invoke<void>(COMMAND.MARK_DELETED, {
-		id,
+	return invoke<HistoryItem[]>(COMMAND.QUERY_HISTORY_WITH_FILTER, {
+		args: options,
 	});
 };
 
 /**
- * 获取统计信息
+ * 批量删除项目（支持单个或批量）
+ * 根据同步状态决定删除方式：
+ * - 已同步 (sync_status == "synced")：软删除，标记 deleted=1
+ * - 未同步 (sync_status != "synced")：硬删除，直接从数据库删除
  */
-export const backendGetStatistics = () => {
-	return invoke<DatabaseStatistics>(COMMAND.GET_STATISTICS);
+export const backendDeleteItems = (ids: string[]) => {
+	return invoke<DeleteResult>(COMMAND.DELETE_ITEMS, { ids });
 };
 
 /**
@@ -164,4 +115,11 @@ export const backendCleanupHistory = (rule: CleanupRule) => {
 	return invoke<void>(COMMAND.CLEANUP_HISTORY, {
 		rule,
 	});
+};
+
+/**
+ * 重置数据库（调试用）
+ */
+export const backendResetDatabase = () => {
+	return invoke<boolean>(COMMAND.RESET_DATABASE, {});
 };

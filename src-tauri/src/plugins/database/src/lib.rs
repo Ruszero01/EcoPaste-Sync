@@ -41,25 +41,12 @@ pub fn create_shared_database() -> DatabaseState {
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("eco-database")
         .invoke_handler(tauri::generate_handler![
-            commands::set_database_path,
             commands::query_history,
             commands::query_history_with_filter,
             commands::insert_with_deduplication,
             commands::delete_items,
-            commands::get_statistics,
             commands::update_field,
-            commands::mark_changed,
-            commands::batch_mark_changed,
-            commands::get_changed_items_count,
-            commands::get_changed_items_list,
-            commands::query_with_filter,
-            commands::search_data,
-            commands::query_by_group,
-            commands::get_all_groups,
-            commands::get_filtered_statistics,
             cleanup::cleanup_history,
-            source_app::get_source_app_info,
-            debug::get_database_info,
             debug::reset_database
         ])
         .setup(|app_handle, _webview_manager| {

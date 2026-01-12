@@ -4,7 +4,7 @@ import { LISTEN_KEY } from "@/constants";
 import { MainContext } from "@/pages/Main";
 import { convertColor, smartPasteClipboard } from "@/plugins/clipboard";
 import { batchPasteClipboard, writeClipboard } from "@/plugins/clipboard";
-import { backendUpdateField } from "@/plugins/database";
+import { backendDeleteItems, backendUpdateField } from "@/plugins/database";
 import { clipboardStore } from "@/stores/clipboard";
 import { globalStore } from "@/stores/global";
 import type { DeleteResult, HistoryTablePayload } from "@/types/database";
@@ -12,7 +12,6 @@ import { parseColorString } from "@/utils/color";
 import { isMac } from "@/utils/is";
 import { joinPath } from "@/utils/path";
 import { startDrag } from "@crabnebula/tauri-plugin-drag";
-import { invoke } from "@tauri-apps/api/core";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { Menu, MenuItem, type MenuItemOptions } from "@tauri-apps/api/menu";
 import { downloadDir } from "@tauri-apps/api/path";
@@ -360,9 +359,7 @@ const Item: FC<ItemProps> = (props) => {
 			if (!confirmed) return;
 
 			// 使用统一的删除命令
-			const result = (await invoke("plugin:eco-database|delete_items", {
-				ids: selectedIds,
-			})) as DeleteResult;
+			const result = (await backendDeleteItems(selectedIds)) as DeleteResult;
 
 			if (!result.success) {
 				message.error(
@@ -642,9 +639,7 @@ const Item: FC<ItemProps> = (props) => {
 
 		try {
 			// 使用统一的删除命令
-			const result = (await invoke("plugin:eco-database|delete_items", {
-				ids: [id],
-			})) as DeleteResult;
+			const result = (await backendDeleteItems([id])) as DeleteResult;
 
 			if (!result.success) {
 				message.error(`删除失败: ${result.errors?.join("; ") ?? "未知错误"}`);
