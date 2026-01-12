@@ -30,6 +30,7 @@ tests/
 docs/
 .crush/
 .serena/
+.sisyphus/
 
 CLAUDE.md
 AGENTS.md
