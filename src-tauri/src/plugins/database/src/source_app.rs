@@ -268,8 +268,4 @@ pub fn fetch_source_app_info_impl() -> Result<SourceAppInfo, String> {
     }
 }
 
-/// 获取来源应用信息（Tauri 命令，供前端调用）
-#[tauri::command]
-pub async fn get_source_app_info() -> Result<SourceAppInfo, String> {
-    fetch_source_app_info_impl()
-}
+
