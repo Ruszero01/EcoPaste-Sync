@@ -15,5 +15,7 @@ permissions = [
     "allow-reload-config-from-file",
     "allow-upload-local-config",
     "allow-apply-remote-config",
-    "allow-set-bookmark-sync-data"
+    "allow-set-bookmark-sync-data",
+    "allow-save-server-config",
+    "allow-load-server-config"
 ]
