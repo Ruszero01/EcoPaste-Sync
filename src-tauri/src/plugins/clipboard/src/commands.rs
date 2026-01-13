@@ -90,21 +90,19 @@ where
             // 如果有图片数据，优先作为图片处理
             if has_image {
                 match context.get_image() {
-                    Ok(image) => {
-                        match save_clipboard_image(&app_handle, Some(&image), None) {
-                            Ok((image_path, file_size, width, height)) => (
-                                "image".to_string(),
-                                "image".to_string(),
-                                Some(image_path.to_string_lossy().to_string()),
-                                Some(format!("{}x{} png", width, height)),
-                                Some(file_size),
-                                Some("image".to_string()),
-                                Some(width as i32),
-                                Some(height as i32),
-                            ),
-                            Err(_) => return,
-                        }
-                    }
+                    Ok(image) => match save_clipboard_image(&app_handle, Some(&image), None) {
+                        Ok((image_path, file_size, width, height)) => (
+                            "image".to_string(),
+                            "image".to_string(),
+                            Some(image_path.to_string_lossy().to_string()),
+                            Some(format!("{}x{} png", width, height)),
+                            Some(file_size),
+                            Some("image".to_string()),
+                            Some(width as i32),
+                            Some(height as i32),
+                        ),
+                        Err(_) => return,
+                    },
                     Err(_) => return,
                 }
             } else if has_files {
@@ -154,9 +152,10 @@ where
                         } else {
                             // 有非图片文件，当作文件处理
                             // count 存储第一个文件的大小
-                            let count = files.first().and_then(|f| {
-                                std::fs::metadata(f).ok().map(|m| m.len() as i32)
-                            }).unwrap_or(1);
+                            let count = files
+                                .first()
+                                .and_then(|f| std::fs::metadata(f).ok().map(|m| m.len() as i32))
+                                .unwrap_or(1);
 
                             (
                                 "files".to_string(),

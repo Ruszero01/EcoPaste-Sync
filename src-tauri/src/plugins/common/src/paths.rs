@@ -1,5 +1,5 @@
-use tauri::{AppHandle, Manager, Runtime};
 use std::path::PathBuf;
+use tauri::{AppHandle, Manager, Runtime};
 
 pub const BUNDLE_ID: &str = "com.Rains.EcoPaste-Sync";
 
@@ -25,7 +25,11 @@ pub fn get_config_path<R: Runtime>(app_handle: &AppHandle<R>) -> Option<PathBuf>
     let config_filename = get_config_filename();
 
     if let Some(app_data_dir) = std::env::var_os("APPDATA") {
-        return Some(PathBuf::from(app_data_dir).join(BUNDLE_ID).join(config_filename));
+        return Some(
+            PathBuf::from(app_data_dir)
+                .join(BUNDLE_ID)
+                .join(config_filename),
+        );
     }
 
     app_handle

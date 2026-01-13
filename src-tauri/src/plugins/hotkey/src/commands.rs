@@ -3,7 +3,7 @@ use std::sync::Mutex;
 use tauri::{command, AppHandle, Emitter, Runtime};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutEvent};
 
-use tauri_plugin_eco_common::{paths::get_config_path, config::get_nested};
+use tauri_plugin_eco_common::{config::get_nested, paths::get_config_path};
 
 // 用于防止并发注册的互斥锁
 static REGISTRATION_LOCK: Mutex<()> = Mutex::new(());

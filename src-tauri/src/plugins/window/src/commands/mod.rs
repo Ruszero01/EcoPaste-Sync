@@ -1,6 +1,6 @@
 use tauri::{async_runtime::spawn, AppHandle, Manager, Runtime, WebviewWindow};
 
-use tauri_plugin_eco_common::config::{read_config, get_nested};
+use tauri_plugin_eco_common::config::{get_nested, read_config};
 
 // 主窗口的label
 pub static MAIN_WINDOW_LABEL: &str = "main";

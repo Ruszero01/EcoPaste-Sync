@@ -5,7 +5,10 @@ use tauri::{AppHandle, Manager, Runtime};
 
 /// 获取文件大小（字节），失败返回 1
 pub fn get_file_size(path: &PathBuf) -> i32 {
-    std::fs::metadata(path).ok().map(|m| m.len() as i32).unwrap_or(1)
+    std::fs::metadata(path)
+        .ok()
+        .map(|m| m.len() as i32)
+        .unwrap_or(1)
 }
 
 /// 检查文件是否为图片格式
@@ -15,7 +18,8 @@ pub fn is_image_file(path: &str) -> bool {
         .extension()
         .and_then(|e| e.to_str())
         .map(|e| e.to_lowercase());
-    ext.map(|e| IMAGE_EXTENSIONS.contains(&e.as_str())).unwrap_or(false)
+    ext.map(|e| IMAGE_EXTENSIONS.contains(&e.as_str()))
+        .unwrap_or(false)
 }
 
 pub fn is_all_images(files: &[String]) -> bool {

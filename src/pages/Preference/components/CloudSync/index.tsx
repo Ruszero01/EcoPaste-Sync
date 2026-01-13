@@ -176,30 +176,37 @@ const CloudSync = () => {
 	// 服务器配置状态
 	const [webdavConfig, setWebdavConfig] = useState<WebDAVConfig | null>(null);
 
-	// 加载服务器配置
+	// 从单独文件加载服务器配置（不参与云同步）
 	const loadServerConfig = useCallback(async () => {
 		try {
-			// 直接从 globalStore 读取配置
-			const { serverConfig } = cloudSyncStore;
+			// 从单独文件加载服务器配置
+			const serverData = await backendSync.backendLoadServerConfig();
 
-			if (serverConfig.url) {
+			if (serverData.url) {
 				const webdavConfig: WebDAVConfig = {
-					url: serverConfig.url,
-					username: serverConfig.username,
-					password: serverConfig.password,
-					path: serverConfig.path,
-					timeout: serverConfig.timeout,
+					url: serverData.url,
+					username: serverData.username,
+					password: serverData.password,
+					path: serverData.path,
+					timeout: serverData.timeout,
 				};
 				setWebdavConfig(webdavConfig);
 				form.setFieldsValue(webdavConfig);
 
-				// 检查后端同步引擎是否已初始化（由后端自动初始化）
+				// 更新全局状态
+				globalStore.cloudSync.serverConfig = {
+					url: serverData.url,
+					username: serverData.username,
+					password: serverData.password,
+					path: serverData.path,
+					timeout: serverData.timeout,
+				};
+
+				// 检查后端同步引擎是否已初始化
 				try {
 					await backendSync.backendGetSyncStatus();
-					// 后端同步引擎已初始化（如果配置有效）
 					setConnectionStatus("success");
 				} catch {
-					// 后端可能还未初始化，跳过
 					setConnectionStatus("idle");
 				}
 			} else {
@@ -216,7 +223,7 @@ const CloudSync = () => {
 		} finally {
 			setIsConfigLoading(false);
 		}
-	}, [form, appMessage.error, t, cloudSyncStore]);
+	}, [form, appMessage.error, t]);
 
 	// 处理收藏模式开关变更（使用防抖优化）
 	const handleFavoritesModeChange = useCallback(
@@ -260,7 +267,8 @@ const CloudSync = () => {
 							auto_sync: autoSyncEnabled,
 							auto_sync_interval_minutes: syncInterval,
 							only_favorites: enabled,
-							include_files: newConfig.includeImages && newConfig.includeFiles,
+							include_images: newConfig.includeImages,
+							include_files: newConfig.includeFiles,
 							timeout: 30000,
 						});
 					} catch (updateError) {
@@ -335,6 +343,7 @@ const CloudSync = () => {
 							auto_sync: autoSyncEnabled,
 							auto_sync_interval_minutes: syncInterval,
 							only_favorites: newConfig.onlyFavorites,
+							include_images: enabled,
 							include_files: enabled,
 							timeout: 30000,
 						});
@@ -477,10 +486,10 @@ const CloudSync = () => {
 		};
 	}, [fetchBackendSyncStatus]);
 
-	// 保存服务器配置
+	// 保存服务器配置到单独文件（不参与云同步）
 	const saveServerConfig = async (config: WebDAVConfig) => {
 		try {
-			// 直接保存到本地持久化文件
+			// 保存到全局状态
 			globalStore.cloudSync.serverConfig = {
 				url: config.url,
 				username: config.username,
@@ -489,15 +498,28 @@ const CloudSync = () => {
 				timeout: config.timeout,
 			};
 
-			// 持久化到本地文件
+			// 持久化到主配置文件（同步设置等）
 			const { saveStore } = await import("@/utils/store");
 			await saveStore();
 
-			// 让后端从本地文件重新加载配置
+			// 保存服务器配置到单独文件
+			const result = await backendSync.backendSaveServerConfig({
+				url: config.url,
+				username: config.username,
+				password: config.password,
+				path: config.path,
+				timeout: config.timeout,
+			});
+
+			if ("type" in result && result.type === "Error") {
+				console.error("保存服务器配置失败:", result.data);
+				return false;
+			}
+
+			// 通知后端重新加载配置
 			try {
 				await invoke("plugin:eco-sync|reload_config_from_file");
 			} catch (reloadError) {
-				// 后端可能还没有这个命令，静默处理
 				console.warn("通知后端重新加载配置失败:", reloadError);
 			}
 
@@ -544,8 +566,8 @@ const CloudSync = () => {
 					auto_sync: autoSyncEnabled,
 					auto_sync_interval_minutes: syncInterval,
 					only_favorites: syncModeConfig.onlyFavorites,
-					include_files:
-						syncModeConfig.includeImages && syncModeConfig.includeFiles,
+					include_images: syncModeConfig.includeImages,
+					include_files: syncModeConfig.includeFiles,
 					timeout: 30000,
 				};
 				await backendSync.backendInitSync(syncConfig);

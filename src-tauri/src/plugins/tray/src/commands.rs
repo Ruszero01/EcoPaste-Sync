@@ -9,7 +9,7 @@ use tauri::{
 use tauri_plugin_eco_clipboard::{is_listen_enabled, toggle_listen as clipboard_toggle_listen};
 use tauri_plugin_eco_window::{show_main_window, show_preference_window};
 
-use tauri_plugin_eco_common::config::{read_config, get_nested};
+use tauri_plugin_eco_common::config::{get_nested, read_config};
 
 // 托盘菜单项 ID
 const MENU_ITEM_SHOW: &str = "show";

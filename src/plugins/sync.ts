@@ -9,6 +9,7 @@ export interface BackendSyncConfig {
 	auto_sync: boolean;
 	auto_sync_interval_minutes: number;
 	only_favorites: boolean;
+	include_images: boolean;
 	include_files: boolean;
 	timeout: number;
 }
@@ -70,6 +71,9 @@ const COMMAND = {
 	GET_SYNC_CONFIG: "plugin:eco-sync|get_sync_config",
 	UPLOAD_LOCAL_CONFIG: "plugin:eco-sync|upload_local_config",
 	APPLY_REMOTE_CONFIG: "plugin:eco-sync|apply_remote_config",
+	// 服务器配置本地管理命令（不参与云同步）
+	SAVE_SERVER_CONFIG: "plugin:eco-sync|save_server_config",
+	LOAD_SERVER_CONFIG: "plugin:eco-sync|load_server_config",
 } as const;
 
 /**
@@ -196,4 +200,36 @@ export const backendApplyRemoteConfig = () => {
 	return invoke<{ success: boolean; message: string }>(
 		COMMAND.APPLY_REMOTE_CONFIG,
 	);
+};
+
+// ================================
+// 服务器配置本地管理命令（不参与云同步）
+// ================================
+
+/**
+ * 服务器配置数据类型
+ */
+export interface BackendServerConfigData {
+	url: string;
+	username: string;
+	password: string;
+	path: string;
+	timeout: number;
+}
+
+/**
+ * 保存服务器配置到单独文件
+ */
+export const backendSaveServerConfig = (config: BackendServerConfigData) => {
+	return invoke<{ type: "Success" } | { type: "Error"; data: string }>(
+		COMMAND.SAVE_SERVER_CONFIG,
+		{ config },
+	);
+};
+
+/**
+ * 从单独文件加载服务器配置
+ */
+export const backendLoadServerConfig = () => {
+	return invoke<BackendServerConfigData>(COMMAND.LOAD_SERVER_CONFIG);
 };
