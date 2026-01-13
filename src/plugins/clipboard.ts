@@ -2,13 +2,10 @@ import { systemOCR } from "@/plugins/ocr";
 import { clipboardStore } from "@/stores/clipboard";
 import type { HistoryTablePayload } from "@/types/database";
 import type { ClipboardPayload, ReadImage, WindowsOCR } from "@/types/plugin";
-import { parseColorString } from "@/utils/color";
-import { isColor, isEmail, isURL } from "@/utils/is";
 import { resolveImagePath } from "@/utils/path";
 import { getSaveImagePath } from "@/utils/path";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { exists } from "@tauri-apps/plugin-fs";
 import { isEmpty, isEqual } from "lodash-es";
 import { fullName, metadata } from "tauri-plugin-fs-pro-api";
 import { pasteWithFocus } from "./paste";
@@ -32,8 +29,31 @@ const COMMAND = {
 	WRITE_RTF: "plugin:eco-clipboard|write_rtf",
 	WRITE_TEXT: "plugin:eco-clipboard|write_text",
 	GET_CLIPBOARD_SOURCE_INFO: "plugin:eco-clipboard|get_clipboard_source_info",
+	GET_IMAGE_DIMENSIONS: "plugin:eco-clipboard|get_image_dimensions",
+	DETECT_CONTENT: "plugin:eco-detector|detect_content",
+	CONVERT_COLOR: "plugin:eco-detector|convert_color",
 	CLIPBOARD_UPDATE: "plugin:eco-clipboard://clipboard_update",
 };
+
+/// 后端类型检测选项
+interface DetectionOptions {
+	detectUrl: boolean;
+	detectEmail: boolean;
+	detectPath: boolean;
+	detectColor: boolean;
+	detectCode: boolean;
+	detectMarkdown: boolean;
+	codeMinLength: number;
+}
+
+/// 后端类型检测结果
+interface TypeDetectionResult {
+	subtype: string | null;
+	isCode: boolean;
+	codeLanguage: string;
+	isMarkdown: boolean;
+	colorNormalized: string;
+}
 
 /**
  * 开启监听
@@ -156,7 +176,7 @@ export const readFiles = async (): Promise<ClipboardPayload> => {
 		try {
 			// 使用 Tauri 命令获取图片尺寸
 			const dimensions = await invoke<{ width: number; height: number }>(
-				"plugin:eco-clipboard|get_image_dimensions",
+				COMMAND.GET_IMAGE_DIMENSIONS,
 				{
 					path: files[0],
 				},
@@ -750,28 +770,32 @@ export const getClipboardSubtype = async (data: ClipboardPayload) => {
 	try {
 		const { value } = data;
 
-		if (isURL(value)) {
-			return "url";
+		// 使用后端检测
+		const options: DetectionOptions = {
+			detectUrl: true,
+			detectEmail: true,
+			detectPath: true,
+			detectColor: clipboardStore.content.colorDetection,
+			detectCode: clipboardStore.content.codeDetection,
+			detectMarkdown: true,
+			codeMinLength: 10,
+		};
+
+		const result = await detectContent(value, "text", options);
+
+		// 返回检测到的子类型
+		if (result.subtype) {
+			return result.subtype;
 		}
 
-		if (isEmail(value)) {
-			return "email";
+		// 如果后端没有检测到子类型，检查代码类型
+		if (result.isCode && result.codeLanguage) {
+			return result.codeLanguage;
 		}
 
-		// 颜色检测，只支持RGB格式
-		// 根据颜色识别开关决定是否检测向量值
-		if (isColor(value, clipboardStore.content.colorDetection)) {
-			// 进一步解析颜色格式，以便前端可以正确显示
-			const colorInfo = parseColorString(value);
-			if (colorInfo) {
-				// 返回"color"，但在调用方会将其设置为type而不是subtype
-				return "color";
-			}
-			return "color";
-		}
-
-		if (await exists(value)) {
-			return "path";
+		// 检查 Markdown
+		if (result.isMarkdown) {
+			return "markdown";
 		}
 	} catch {
 		return;
@@ -881,8 +905,21 @@ export const convertColor = async (
 	color: string,
 	convertType: ColorConvertType,
 ): Promise<ColorConvertResult> => {
-	return (await invoke("plugin:eco-detector|convert_color", {
+	return (await invoke(COMMAND.CONVERT_COLOR, {
 		color,
 		convertType,
 	})) as ColorConvertResult;
+};
+
+/// 检测内容类型（调用后端命令）
+const detectContent = async (
+	content: string,
+	itemType: string,
+	options: DetectionOptions,
+): Promise<TypeDetectionResult> => {
+	return (await invoke(COMMAND.DETECT_CONTENT, {
+		content,
+		itemType,
+		options,
+	})) as TypeDetectionResult;
 };

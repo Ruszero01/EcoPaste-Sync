@@ -207,22 +207,6 @@ export const parseColorString = (
 };
 
 /**
- * 将RGB值转换为向量格式字符串
- * @param r 红色分量 (0-255)
- * @param g 绿色分量 (0-255)
- * @param b 蓝色分量 (0-255)
- * @returns 向量格式字符串 "r, g, b"
- */
-export const rgbToVector = (r: number, g: number, b: number): string => {
-	// 验证输入范围
-	if (r < 0 || r > 255 || g < 0 || g > 255 || b < 0 || b > 255) {
-		throw new Error("RGB值必须在0-255范围内");
-	}
-
-	return `${r}, ${g}, ${b}`;
-};
-
-/**
  * CMYK值接口定义
  */
 export interface CmykValue {
@@ -307,94 +291,4 @@ export const rgbToCmyk = (r: number, g: number, b: number): CmykValue => {
 	const kPercent = Math.round(k * 100);
 
 	return { c, m, y, k: kPercent };
-};
-
-/**
- * 解析CMYK格式字符串，返回CMYK对象
- * @param str CMYK格式字符串，如 "cmyk(100, 0, 0, 0)" 或 "100, 0, 0, 0"
- * @returns CMYK对象或null
- */
-export const parseCmykString = (str: string): CmykValue | null => {
-	const trimmedStr = str.trim();
-
-	// 检查cmyk()格式
-	const cmykRegex =
-		/^cmyk\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)$/;
-	const cmykMatch = trimmedStr.match(cmykRegex);
-	if (cmykMatch) {
-		const c = Number.parseInt(cmykMatch[1], 10);
-		const m = Number.parseInt(cmykMatch[2], 10);
-		const y = Number.parseInt(cmykMatch[3], 10);
-		const k = Number.parseInt(cmykMatch[4], 10);
-
-		if (
-			c >= 0 &&
-			c <= 100 &&
-			m >= 0 &&
-			m <= 100 &&
-			y >= 0 &&
-			y <= 100 &&
-			k >= 0 &&
-			k <= 100
-		) {
-			return { c, m, y, k };
-		}
-	}
-
-	// 检查向量格式
-	const vectorRegex =
-		/^(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})$/;
-	const vectorMatch = trimmedStr.match(vectorRegex);
-	if (vectorMatch) {
-		const c = Number.parseInt(vectorMatch[1], 10);
-		const m = Number.parseInt(vectorMatch[2], 10);
-		const y = Number.parseInt(vectorMatch[3], 10);
-		const k = Number.parseInt(vectorMatch[4], 10);
-
-		if (
-			c >= 0 &&
-			c <= 100 &&
-			m >= 0 &&
-			m <= 100 &&
-			y >= 0 &&
-			y <= 100 &&
-			k >= 0 &&
-			k <= 100
-		) {
-			return { c, m, y, k };
-		}
-	}
-
-	return null;
-};
-
-/**
- * 将CMYK值转换为向量格式字符串
- * @param c 青色分量 (0-100)
- * @param m 洋红色分量 (0-100)
- * @param y 黄色分量 (0-100)
- * @param k 黑色分量 (0-100)
- * @returns 向量格式字符串 "c, m, y, k"
- */
-export const cmykToVector = (
-	c: number,
-	m: number,
-	y: number,
-	k: number,
-): string => {
-	// 验证输入范围
-	if (
-		c < 0 ||
-		c > 100 ||
-		m < 0 ||
-		m > 100 ||
-		y < 0 ||
-		y > 100 ||
-		k < 0 ||
-		k > 100
-	) {
-		throw new Error("CMYK值必须在0-100范围内");
-	}
-
-	return `${c}, ${m}, ${y}, ${k}`;
 };
