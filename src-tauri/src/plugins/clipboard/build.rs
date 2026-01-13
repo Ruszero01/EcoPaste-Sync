@@ -1,5 +1,4 @@
 const COMMANDS: &[&str] = &[
-    "start_listen",
     "stop_listen",
     "has_files",
     "has_image",

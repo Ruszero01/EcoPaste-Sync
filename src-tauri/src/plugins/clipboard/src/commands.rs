@@ -12,23 +12,15 @@ use std::{
 use tauri::{command, AppHandle, Emitter, Manager, Runtime, State};
 
 mod audio;
+mod utils;
 pub use audio::play_copy_audio;
+pub use utils::{generate_id, is_all_images, save_clipboard_image};
 
 // 引入 database 插件
 use tauri_plugin_eco_database::{DatabaseState, InsertItem};
 
 // 引入 detector 插件
 use tauri_plugin_eco_detector::DetectorState;
-
-// 用于生成唯一 ID
-fn generate_id() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    format!("{:x}", timestamp)
-}
 
 pub struct ClipboardManager {
     context: Arc<Mutex<ClipboardContext>>,
@@ -99,42 +91,19 @@ where
             if has_image {
                 match context.get_image() {
                     Ok(image) => {
-                        let (width, height) = image.get_size();
-
-                        // 生成唯一 ID 和文件路径
-                        let id = generate_id();
-
-                        // 获取应用数据目录保存图片
-                        let app_data_dir = app_handle
-                            .path()
-                            .data_dir()
-                            .unwrap_or_else(|_| PathBuf::from("./data"));
-                        let images_dir = app_data_dir.join("images");
-                        let _ = create_dir_all(&images_dir);
-
-                        let image_path = images_dir.join(format!("{}.png", id));
-
-                        // 保存图片
-                        if let Some(path) = image_path.to_str() {
-                            let _ = image.save_to_path(path);
+                        match save_clipboard_image(&app_handle, Some(&image), None) {
+                            Ok((image_path, file_size, width, height)) => (
+                                "image".to_string(),
+                                "image".to_string(),
+                                Some(image_path.to_string_lossy().to_string()),
+                                Some(format!("{}x{} png", width, height)),
+                                Some(file_size),
+                                Some("image".to_string()),
+                                Some(width as i32),
+                                Some(height as i32),
+                            ),
+                            Err(_) => return,
                         }
-
-                        // count 存储文件大小（用于前端显示）
-                        let file_size = std::fs::metadata(&image_path)
-                            .ok()
-                            .map(|m| m.len() as i32)
-                            .unwrap_or(1);
-
-                        (
-                            "image".to_string(),
-                            "image".to_string(),
-                            Some(image_path.to_string_lossy().to_string()),
-                            Some(format!("{}x{} png", width, height)),
-                            Some(file_size),
-                            Some("image".to_string()),
-                            Some(width as i32),
-                            Some(height as i32),
-                        )
                     }
                     Err(_) => return,
                 }
@@ -142,54 +111,33 @@ where
                 // 检查是否都是图片文件
                 match context.get_files() {
                     Ok(files) => {
-                        // 检查是否都是图片文件
-                        let image_extensions = ["png", "jpg", "jpeg", "gif", "bmp", "webp", "tiff"];
-                        let is_all_images = files.iter().all(|f| {
-                            let ext = std::path::Path::new(f)
-                                .extension()
-                                .and_then(|e| e.to_str())
-                                .map(|e| e.to_lowercase());
-                            ext.map(|e| image_extensions.contains(&e.as_str()))
-                                .unwrap_or(false)
-                        });
+                        let is_all = is_all_images(&files);
 
-                        if is_all_images {
+                        if is_all {
                             // 所有文件都是图片，保存第一张作为主图片
                             if let Some(first_file) = files.first() {
-                                let id = generate_id();
-                                let app_data_dir = app_handle
-                                    .path()
-                                    .data_dir()
-                                    .unwrap_or_else(|_| PathBuf::from("./data"));
-                                let images_dir = app_data_dir.join("images");
-                                let _ = create_dir_all(&images_dir);
-
-                                // 复制图片到应用数据目录
-                                let image_path = images_dir.join(format!("{}.png", id));
-                                let _ = std::fs::copy(first_file, &image_path);
-
-                                // 获取图片尺寸
-                                let image_path_str = image_path.to_string_lossy().to_string();
-                                let (width, height) = RustImageData::from_path(&image_path_str)
-                                    .map(|img| img.get_size())
-                                    .unwrap_or((0, 0));
-
-                                // count 存储文件大小
-                                let file_size = std::fs::metadata(&image_path)
-                                    .ok()
-                                    .map(|m| m.len() as i32)
-                                    .unwrap_or(1);
-
-                                (
-                                    "image".to_string(),
-                                    "image".to_string(),
-                                    Some(image_path_str),
-                                    Some(format!("{}x{} png", width, height)),
-                                    Some(file_size),
-                                    Some("image".to_string()),
-                                    Some(width as i32),
-                                    Some(height as i32),
-                                )
+                                match save_clipboard_image(&app_handle, None, Some(first_file)) {
+                                    Ok((image_path, file_size, width, height)) => (
+                                        "image".to_string(),
+                                        "image".to_string(),
+                                        Some(image_path.to_string_lossy().to_string()),
+                                        Some(format!("{}x{} png", width, height)),
+                                        Some(file_size),
+                                        Some("image".to_string()),
+                                        Some(width as i32),
+                                        Some(height as i32),
+                                    ),
+                                    Err(_) => (
+                                        "files".to_string(),
+                                        "files".to_string(),
+                                        serde_json::to_string(&files).ok(),
+                                        Some(files.join(" ")),
+                                        Some(0),
+                                        None,
+                                        None,
+                                        None,
+                                    ),
+                                }
                             } else {
                                 // 空文件列表，返回默认值
                                 (
@@ -206,11 +154,9 @@ where
                         } else {
                             // 有非图片文件，当作文件处理
                             // count 存储第一个文件的大小
-                            let count = files
-                                .first()
-                                .and_then(|f| std::fs::metadata(f).ok())
-                                .map(|m| m.len() as i32)
-                                .unwrap_or(1);
+                            let count = files.first().and_then(|f| {
+                                std::fs::metadata(f).ok().map(|m| m.len() as i32)
+                            }).unwrap_or(1);
 
                             (
                                 "files".to_string(),
@@ -502,33 +448,6 @@ pub struct ReadImage {
 }
 
 #[command]
-pub async fn start_listen<R: Runtime>(
-    app_handle: AppHandle<R>,
-    manager: State<'_, ClipboardManager>,
-) -> Result<(), String> {
-    let listener = ClipboardListen::new(app_handle.clone());
-
-    let mut watcher: ClipboardWatcherContext<ClipboardListen<R>> =
-        ClipboardWatcherContext::new().unwrap();
-
-    let watcher_shutdown = watcher.add_handler(listener).get_shutdown_channel();
-
-    let mut watcher_shutdown_state = manager.watcher_shutdown.lock().unwrap();
-
-    if (*watcher_shutdown_state).is_some() {
-        return Ok(());
-    }
-
-    *watcher_shutdown_state = Some(watcher_shutdown);
-
-    spawn(move || {
-        watcher.start_watch();
-    });
-
-    Ok(())
-}
-
-#[command]
 pub async fn stop_listen(manager: State<'_, ClipboardManager>) -> Result<(), String> {
     let mut watcher_shutdown = manager.watcher_shutdown.lock().unwrap();
 
@@ -746,9 +665,6 @@ pub async fn get_image_dimensions(path: String) -> Result<ReadImage, String> {
         image: path,
     })
 }
-
-// get_clipboard_owner_process 已移至 database/source_app.rs
-// 避免循环依赖
 
 /// 预览音效（供前端偏好设置页面使用）
 #[command]

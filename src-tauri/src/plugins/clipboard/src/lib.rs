@@ -32,7 +32,6 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             Ok(())
         })
         .invoke_handler(generate_handler![
-            commands::start_listen,
             commands::stop_listen,
             commands::has_files,
             commands::has_image,
