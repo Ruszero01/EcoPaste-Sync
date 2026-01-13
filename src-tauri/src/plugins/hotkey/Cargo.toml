@@ -11,6 +11,7 @@ links = "tauri-plugin-eco-hotkey"
 tauri = { workspace = true, features = ["tray-icon", "protocol-asset", "macos-private-api", "image-ico"] }
 tauri-plugin-global-shortcut = { workspace = true }
 tauri-plugin-eco-window = { workspace = true }
+tauri-plugin-eco-common = { workspace = true }
 serde = { workspace = true }
 serde_json.workspace = true
 log = { workspace = true }

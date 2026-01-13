@@ -1,5 +1,7 @@
 use tauri::{async_runtime::spawn, AppHandle, Manager, Runtime, WebviewWindow};
 
+use tauri_plugin_eco_common::config::{read_config, get_nested};
+
 // 主窗口的label
 pub static MAIN_WINDOW_LABEL: &str = "main";
 // 偏好设置窗口的label
@@ -332,59 +334,27 @@ pub enum WindowBehavior {
 /// 返回 (mode, delay_seconds)
 /// mode: "lightweight" | "resident" | "auto_recycle"
 /// delay_seconds: 延迟销毁的秒数（仅 auto_recycle 模式使用）
-pub fn get_window_behavior_from_config() -> (String, i32) {
-    let bundle_id = "com.Rains.EcoPaste-Sync";
-    let is_dev = cfg!(debug_assertions);
-
-    // 根据开发/发布模式选择配置文件名（与前端 path.ts 保持一致）
-    // 开发环境: .store.dev.json
-    // 生产环境: .store.json
-    let config_filename = if is_dev {
-        ".store.dev.json"
-    } else {
-        ".store.json"
+pub fn get_window_behavior_from_config<R: Runtime>(app_handle: &AppHandle<R>) -> (String, i32) {
+    let config = match read_config(app_handle) {
+        Ok(c) => c,
+        Err(_) => return ("resident".to_string(), 60),
     };
 
-    // 优先使用 APPDATA 环境变量（与前端的 appDataDir 对应）
-    let config_path = if let Some(app_data_dir) = std::env::var_os("APPDATA") {
-        std::path::PathBuf::from(app_data_dir)
-            .join(bundle_id)
-            .join(config_filename)
-    } else {
-        // 备用方案：使用 dirs crate
-        let save_data_dir = dirs::data_dir()
-            .or_else(|| dirs::config_dir())
-            .or_else(|| dirs::home_dir().map(|p| p.join(".local/share")));
-
-        match save_data_dir {
-            Some(data_dir) => data_dir.join(bundle_id).join(config_filename),
-            None => return ("resident".to_string(), 60),
-        }
-    };
-
-    if config_path.exists() {
-        if let Ok(content) = std::fs::read_to_string(&config_path) {
-            // 解析 JSON，提取 windowBehavior 配置
-            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-                if let Some(app) = json.get("globalStore").and_then(|s| s.get("app")) {
-                    if let Some(wb) = app.get("windowBehavior") {
-                        let mode = wb
-                            .get("mode")
-                            .and_then(|m| m.as_str())
-                            .unwrap_or("resident")
-                            .to_string();
-                        let delay = wb
-                            .get("recycleDelaySeconds")
-                            .and_then(|d| d.as_i64())
-                            .unwrap_or(60) as i32;
-                        return (mode, delay);
-                    }
-                }
-            }
+    if let Some(app) = get_nested(&config, &["globalStore", "app"]) {
+        if let Some(wb) = app.get("windowBehavior") {
+            let mode = wb
+                .get("mode")
+                .and_then(|m| m.as_str())
+                .unwrap_or("resident")
+                .to_string();
+            let delay = wb
+                .get("recycleDelaySeconds")
+                .and_then(|d| d.as_i64())
+                .unwrap_or(60) as i32;
+            return (mode, delay);
         }
     }
 
-    // 默认值
     ("resident".to_string(), 60)
 }
 
@@ -395,7 +365,7 @@ pub async fn hide_window_with_behavior<R: Runtime>(
     label: String,
 ) -> Result<(), String> {
     // 从配置文件读取窗口行为设置
-    let (mode, _delay_seconds) = get_window_behavior_from_config();
+    let (mode, _delay_seconds) = get_window_behavior_from_config(&app_handle);
 
     let window = app_handle.get_webview_window(&label);
 
@@ -429,6 +399,7 @@ pub async fn hide_window_with_behavior<R: Runtime>(
                 {
                     let app_handle_clone = app_handle.clone();
                     let label_clone = label.clone();
+                    let delay_ms = delay_seconds * 1000;
 
                     spawn(async move {
                         tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms as u64))

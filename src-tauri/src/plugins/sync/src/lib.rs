@@ -181,7 +181,15 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::reload_config_from_file,
             commands::upload_local_config,
             commands::apply_remote_config,
-            commands::set_bookmark_sync_data
+            commands::set_bookmark_sync_data,
+            // 书签本地管理命令
+            commands::load_bookmark_data,
+            commands::save_bookmark_data,
+            commands::load_bookmark_last_modified,
+            commands::add_bookmark_group,
+            commands::update_bookmark_group,
+            commands::delete_bookmark_group,
+            commands::reorder_bookmark_groups,
         ])
         .setup(|app_handle, _webview_manager| {
             // 在插件初始化时创建共享实例

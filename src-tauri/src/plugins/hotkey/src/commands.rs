@@ -1,7 +1,9 @@
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Mutex;
-use tauri::{command, AppHandle, Emitter, Manager, Runtime};
+use tauri::{command, AppHandle, Emitter, Runtime};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutEvent};
+
+use tauri_plugin_eco_common::{paths::get_config_path, config::get_nested};
 
 // 用于防止并发注册的互斥锁
 static REGISTRATION_LOCK: Mutex<()> = Mutex::new(());
@@ -99,25 +101,7 @@ async fn show_main_window_by_label<R: Runtime>(app_handle: &AppHandle<R>, label:
 
 /// 获取位置模式配置
 fn get_position_mode<R: Runtime>(app_handle: &AppHandle<R>) -> Option<String> {
-    // 配置文件路径（与前端保持一致）
-    let is_dev = cfg!(debug_assertions);
-    let config_filename = if is_dev {
-        ".store.dev.json"
-    } else {
-        ".store.json"
-    };
-
-    // 优先使用 APPDATA 环境变量
-    let config_path = if let Some(app_data_dir) = std::env::var_os("APPDATA") {
-        std::path::PathBuf::from(app_data_dir)
-            .join("com.Rains.EcoPaste-Sync")
-            .join(config_filename)
-    } else if let Ok(path) = app_handle.path().app_data_dir() {
-        path.join(config_filename)
-    } else {
-        return None;
-    };
-
+    let config_path = get_config_path(app_handle)?;
     if !config_path.exists() {
         return None;
     }
@@ -125,13 +109,8 @@ fn get_position_mode<R: Runtime>(app_handle: &AppHandle<R>) -> Option<String> {
     let config_content = std::fs::read_to_string(&config_path).ok()?;
     let config: serde_json::Value = serde_json::from_str(&config_content).ok()?;
 
-    // 尝试获取窗口位置模式: clipboardStore.window.position
-    let position = config
-        .get("clipboardStore")?
-        .get("window")?
-        .get("position")?;
-
-    position.as_str().map(|s| s.to_string())
+    get_nested(&config, &["clipboardStore", "window", "position"])
+        .and_then(|v| v.as_str().map(|s| s.to_string()))
 }
 
 /// 内部注册快捷键的辅助函数

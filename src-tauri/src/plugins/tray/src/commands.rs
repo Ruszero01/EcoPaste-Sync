@@ -9,6 +9,8 @@ use tauri::{
 use tauri_plugin_eco_clipboard::{is_listen_enabled, toggle_listen as clipboard_toggle_listen};
 use tauri_plugin_eco_window::{show_main_window, show_preference_window};
 
+use tauri_plugin_eco_common::config::{read_config, get_nested};
+
 // 托盘菜单项 ID
 const MENU_ITEM_SHOW: &str = "show";
 const MENU_ITEM_PREFERENCE: &str = "preference";
@@ -222,59 +224,12 @@ fn load_tray_icon<R: Runtime>(app_handle: &AppHandle<R>) -> Result<Image<'static
 
 /// 检查是否应该显示托盘
 fn should_show_tray<R: Runtime>(app_handle: &AppHandle<R>) -> bool {
-    // 配置文件路径（与前端保持一致）
-    // 开发环境: .store.dev.json
-    // 生产环境: .store.json
-    let is_dev = cfg!(debug_assertions);
-    let config_filename = if is_dev {
-        ".store.dev.json"
-    } else {
-        ".store.json"
+    let config = match read_config(app_handle) {
+        Ok(c) => c,
+        Err(_) => return true,
     };
 
-    // 优先使用 APPDATA 环境变量
-    let config_path = if let Some(app_data_dir) = std::env::var_os("APPDATA") {
-        std::path::PathBuf::from(app_data_dir)
-            .join("com.Rains.EcoPaste-Sync")
-            .join(config_filename)
-    } else {
-        // 备用方案
-        match app_handle.path().app_data_dir() {
-            Ok(path) => path.join(config_filename),
-            Err(_) => {
-                return true;
-            }
-        }
-    };
-
-    if !config_path.exists() {
-        return true;
-    }
-
-    let config_content = match std::fs::read_to_string(&config_path) {
-        Ok(content) => content,
-        Err(_) => {
-            return true;
-        }
-    };
-
-    let config: serde_json::Value = match serde_json::from_str(&config_content) {
-        Ok(config) => config,
-        Err(_) => {
-            return true;
-        }
-    };
-
-    // 尝试获取托盘配置: clipboardStore.window.showTray
-    if let Some(show_tray) = config
-        .get("clipboardStore")
-        .and_then(|cs| cs.get("window"))
-        .and_then(|w| w.get("showTray"))
-        .and_then(|t| t.as_bool())
-    {
-        return show_tray;
-    }
-
-    // 默认显示托盘
-    true
+    get_nested(&config, &["clipboardStore", "window", "showTray"])
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true)
 }

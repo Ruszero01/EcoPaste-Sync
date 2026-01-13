@@ -1,10 +1,7 @@
 //! 数据库命令实现
 //! 提供前端调用的完整 API
 
-use crate::{
-    DatabaseState, HistoryItem, InsertItem, InsertResult, QueryOptions,
-    SyncDataItem,
-};
+use crate::{DatabaseState, HistoryItem, InsertItem, InsertResult, QueryOptions, SyncDataItem};
 use tauri::State;
 
 /// 查询历史记录
@@ -185,4 +182,3 @@ pub fn query_for_sync(
         sync_status_filter,
     )
 }
-

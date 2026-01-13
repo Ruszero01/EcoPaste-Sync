@@ -4,71 +4,330 @@
 use crate::webdav::WebDAVClientState;
 use serde::{Deserialize, Serialize};
 
-/// 应用配置结构
-/// 与前端的Store结构对应，但只包含需要同步的部分
+/// 应用配置结构（与前端 globalStore 对应）
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AppConfig {
     /// 全局配置
+    #[serde(default)]
     pub global_store: Option<GlobalStoreConfig>,
     /// 剪贴板配置
+    #[serde(default)]
     pub clipboard_store: Option<ClipboardStoreConfig>,
 }
 
 /// 全局存储配置
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GlobalStoreConfig {
-    /// 环境配置
+    /// 应用设置
+    #[serde(default)]
+    pub app: Option<AppConfigInner>,
+    /// 外观设置
+    #[serde(default)]
+    pub appearance: Option<AppearanceConfig>,
+    /// 更新设置
+    #[serde(default)]
+    pub update: Option<UpdateConfig>,
+    /// 快捷键设置
+    #[serde(default)]
+    pub shortcut: Option<ShortcutConfig>,
+    /// 环境配置（不同步，清空）
+    #[serde(default)]
     pub env: Option<serde_json::Value>,
     /// 云同步配置
+    #[serde(default)]
     pub cloud_sync: Option<CloudSyncConfig>,
-    /// 应用配置
-    pub app: Option<AppSettingsConfig>,
-}
-
-/// 云同步配置
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CloudSyncConfig {
-    /// 上次同步时间
-    pub last_sync_time: Option<u64>,
-    /// 是否正在同步
-    pub is_syncing: Option<bool>,
-    /// 自动同步设置
-    pub auto_sync_settings: Option<AutoSyncSettingsConfig>,
-}
-
-/// 自动同步设置
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AutoSyncSettingsConfig {
-    /// 是否启用
-    pub enabled: bool,
-    /// 同步间隔（小时）
-    pub interval_hours: u64,
 }
 
 /// 应用设置
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AppSettingsConfig {
+#[serde(rename_all = "camelCase")]
+pub struct AppConfigInner {
     /// 自动启动
+    #[serde(default)]
     pub auto_start: Option<bool>,
+    /// 显示菜单栏图标
+    #[serde(default)]
+    pub show_menubar_icon: Option<bool>,
     /// 显示任务栏图标
+    #[serde(default)]
     pub show_taskbar_icon: Option<bool>,
-    /// 静默启动
-    pub silent_start: Option<bool>,
+    /// 窗口行为
+    #[serde(default)]
+    pub window_behavior: Option<WindowBehaviorConfig>,
+}
+
+/// 窗口行为配置
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WindowBehaviorConfig {
+    /// 模式
+    #[serde(default)]
+    pub mode: Option<String>,
+    /// 回收延迟（秒）
+    #[serde(default)]
+    pub recycle_delay_seconds: Option<i64>,
+}
+
+/// 外观配置
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppearanceConfig {
+    /// 主题
+    #[serde(default)]
+    pub theme: Option<String>,
+    /// 是否深色
+    #[serde(default)]
+    pub is_dark: Option<bool>,
+    /// 行高
+    #[serde(default)]
+    pub row_height: Option<i64>,
+    /// 语言
+    #[serde(default)]
+    pub language: Option<String>,
+}
+
+/// 更新配置
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateConfig {
+    /// 自动更新
+    #[serde(default)]
+    pub auto: Option<bool>,
+    /// Beta 版
+    #[serde(default)]
+    pub beta: Option<bool>,
+}
+
+/// 快捷键配置
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShortcutConfig {
+    /// 剪贴板快捷键
+    #[serde(default)]
+    pub clipboard: Option<String>,
+    /// 设置快捷键
+    #[serde(default)]
+    pub preference: Option<String>,
+    /// 快速粘贴快捷键
+    #[serde(default)]
+    pub quick_paste: Option<QuickPasteConfig>,
+    /// 纯文本粘贴快捷键
+    #[serde(default)]
+    pub paste_plain: Option<String>,
+}
+
+/// 快速粘贴配置
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QuickPasteConfig {
+    /// 是否启用
+    #[serde(default)]
+    pub enable: Option<bool>,
+    /// 快捷键值
+    #[serde(default)]
+    pub value: Option<String>,
+}
+
+/// 云同步配置
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudSyncConfig {
+    /// 上次同步时间（不同步，清零）
+    #[serde(default)]
+    pub last_sync_time: Option<u64>,
+    /// 是否正在同步（不同步，清零）
+    #[serde(default)]
+    pub is_syncing: Option<bool>,
+    /// 自动同步设置
+    #[serde(default)]
+    pub auto_sync_settings: Option<AutoSyncSettingsConfig>,
+    /// 同步模式配置
+    #[serde(default)]
+    pub sync_mode_config: Option<SyncModeConfig>,
+}
+
+/// 自动同步设置
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutoSyncSettingsConfig {
+    /// 是否启用
+    #[serde(default)]
+    pub enabled: Option<bool>,
+    /// 同步间隔（小时）
+    #[serde(default)]
+    pub interval_hours: Option<i64>,
+}
+
+/// 同步模式配置
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncModeConfig {
+    /// 同步模式设置
+    #[serde(default)]
+    pub settings: Option<SyncModeSettings>,
+}
+
+/// 同步模式设置
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncModeSettings {
+    /// 包含文本
+    #[serde(default)]
+    pub include_text: Option<bool>,
+    /// 包含 HTML
+    #[serde(default)]
+    pub include_html: Option<bool>,
+    /// 包含 RTF
+    #[serde(default)]
+    pub include_rtf: Option<bool>,
+    /// 包含 Markdown
+    #[serde(default)]
+    pub include_markdown: Option<bool>,
+    /// 包含图片
+    #[serde(default)]
+    pub include_images: Option<bool>,
+    /// 包含文件
+    #[serde(default)]
+    pub include_files: Option<bool>,
+    /// 仅收藏
+    #[serde(default)]
+    pub only_favorites: Option<bool>,
 }
 
 /// 剪贴板存储配置
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ClipboardStoreConfig {
-    /// 内部复制状态
+    /// 窗口设置
+    #[serde(default)]
+    pub window: Option<WindowConfig>,
+    /// 音效设置
+    #[serde(default)]
+    pub audio: Option<AudioConfig>,
+    /// 搜索设置
+    #[serde(default)]
+    pub search: Option<SearchConfig>,
+    /// 内容设置
+    #[serde(default)]
+    pub content: Option<ContentConfig>,
+    /// 历史记录设置
+    #[serde(default)]
+    pub history: Option<HistoryConfig>,
+    /// 内部复制状态（不同步，清空）
+    #[serde(default)]
     pub internal_copy: Option<InternalCopyConfig>,
 }
 
-/// 内部复制配置
+/// 窗口配置
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WindowConfig {
+    /// 样式
+    #[serde(default)]
+    pub style: Option<String>,
+    /// 位置
+    #[serde(default)]
+    pub position: Option<String>,
+    /// 激活时回到顶部
+    #[serde(default)]
+    pub back_top: Option<bool>,
+    /// 激活时显示全部分组
+    #[serde(default)]
+    pub show_all: Option<bool>,
+}
+
+/// 音效配置
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioConfig {
+    /// 复制音效
+    #[serde(default)]
+    pub copy: Option<bool>,
+}
+
+/// 搜索配置
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchConfig {
+    /// 位置
+    #[serde(default)]
+    pub position: Option<String>,
+    /// 默认聚焦
+    #[serde(default)]
+    pub default_focus: Option<bool>,
+    /// 自动清除
+    #[serde(default)]
+    pub auto_clear: Option<bool>,
+}
+
+/// 内容配置
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContentConfig {
+    /// 自动粘贴
+    #[serde(default)]
+    pub auto_paste: Option<String>,
+    /// OCR
+    #[serde(default)]
+    pub ocr: Option<bool>,
+    /// 复制纯文本
+    #[serde(default)]
+    pub copy_plain: Option<bool>,
+    /// 粘贴纯文本
+    #[serde(default)]
+    pub paste_plain: Option<bool>,
+    /// 操作按钮
+    #[serde(default)]
+    pub operation_buttons: Option<Vec<String>>,
+    /// 自动收藏
+    #[serde(default)]
+    pub auto_favorite: Option<bool>,
+    /// 删除确认
+    #[serde(default)]
+    pub delete_confirm: Option<bool>,
+    /// 自动排序
+    #[serde(default)]
+    pub auto_sort: Option<bool>,
+    /// 显示原文
+    #[serde(default)]
+    pub show_original_content: Option<bool>,
+    /// 代码检测
+    #[serde(default)]
+    pub code_detection: Option<bool>,
+    /// 显示来源应用
+    #[serde(default)]
+    pub show_source_app: Option<bool>,
+    /// 颜色检测
+    #[serde(default)]
+    pub color_detection: Option<bool>,
+}
+
+/// 历史记录配置
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryConfig {
+    /// 时长
+    #[serde(default)]
+    pub duration: Option<i64>,
+    /// 单位
+    #[serde(default)]
+    pub unit: Option<i64>,
+    /// 最大数量
+    #[serde(default)]
+    pub max_count: Option<i64>,
+}
+
+/// 内部复制配置（临时状态，不同步）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct InternalCopyConfig {
     /// 是否正在复制
-    pub is_copying: bool,
-    /// 项目ID
+    #[serde(default)]
+    pub is_copying: Option<bool>,
+    /// 项目 ID
+    #[serde(default)]
     pub item_id: Option<String>,
 }
 
@@ -82,14 +341,11 @@ pub struct ConfigSyncResult {
 }
 
 /// 配置同步管理器
-/// 负责管理应用配置的云端同步
 pub struct ConfigSyncManager {
-    /// WebDAV客户端
     webdav_client: WebDAVClientState,
 }
 
 impl ConfigSyncManager {
-    /// 创建新的配置同步管理器
     pub fn new(webdav_client: WebDAVClientState) -> Self {
         Self { webdav_client }
     }
@@ -98,17 +354,9 @@ impl ConfigSyncManager {
     pub async fn upload_local_config(&self) -> Result<ConfigSyncResult, String> {
         log::info!("[Config] 开始上传本地配置到云端...");
 
-        // 获取应用数据目录（使用dirs crate，与数据库插件保持一致）
-        let save_data_dir = dirs::data_dir()
-            .or_else(|| dirs::config_dir())
-            .or_else(|| dirs::home_dir().map(|p| p.join(".local/share")))
-            .ok_or_else(|| "无法获取数据目录".to_string())?;
+        let config_path = get_config_path()?;
+        log::info!("[Config] 配置文件路径: {:?}", config_path);
 
-        let bundle_id = "com.Rains.EcoPaste-Sync";
-        let app_data_dir = save_data_dir.join(bundle_id);
-        let config_path = app_data_dir.join("store.json");
-
-        // 读取本地配置文件
         let config_content = match std::fs::read_to_string(&config_path) {
             Ok(content) => content,
             Err(e) => {
@@ -120,7 +368,6 @@ impl ConfigSyncManager {
             }
         };
 
-        // 解析配置并过滤
         let config_data: AppConfig = match serde_json::from_str(&config_content) {
             Ok(data) => data,
             Err(e) => {
@@ -136,7 +383,12 @@ impl ConfigSyncManager {
         let filtered_json = serde_json::to_string_pretty(&filtered_config)
             .map_err(|e| format!("序列化配置失败: {}", e))?;
 
-        // 上传到云端
+        log::info!(
+            "[Config] 上传配置: globalStore={}, clipboardStore={}",
+            filtered_config.global_store.is_some(),
+            filtered_config.clipboard_store.is_some()
+        );
+
         let client = self.webdav_client.lock().await;
         let remote_path = "store-config.json";
 
@@ -165,7 +417,6 @@ impl ConfigSyncManager {
         let client = self.webdav_client.lock().await;
         let remote_path = "store-config.json";
 
-        // 下载云端配置
         let download_result = match client.download_sync_data(remote_path).await {
             Ok(result) => result,
             Err(e) => {
@@ -187,7 +438,6 @@ impl ConfigSyncManager {
         }
 
         if let Some(data) = download_result.data {
-            // 解析云端配置
             let remote_config: AppConfig = match serde_json::from_str(&data) {
                 Ok(config) => config,
                 Err(e) => {
@@ -199,22 +449,13 @@ impl ConfigSyncManager {
                 }
             };
 
-            // 获取应用数据目录（使用dirs crate，与数据库插件保持一致）
-            let save_data_dir = dirs::data_dir()
-                .or_else(|| dirs::config_dir())
-                .or_else(|| dirs::home_dir().map(|p| p.join(".local/share")))
-                .ok_or_else(|| "无法获取数据目录".to_string())?;
+            let config_path = get_config_path()?;
+            log::info!("[Config] 写入配置文件路径: {:?}", config_path);
 
-            let bundle_id = "com.Rains.EcoPaste-Sync";
-            let app_data_dir = save_data_dir.join(bundle_id);
-            let config_path = app_data_dir.join("store.json");
-
-            // 确保目录存在
             if let Some(parent) = config_path.parent() {
                 std::fs::create_dir_all(parent).map_err(|e| format!("创建配置目录失败: {}", e))?;
             }
 
-            // 写入配置文件
             let config_json = serde_json::to_string_pretty(&remote_config)
                 .map_err(|e| format!("序列化配置失败: {}", e))?;
 
@@ -236,41 +477,56 @@ impl ConfigSyncManager {
 
     /// 过滤配置，移除环境相关和不需要同步的字段
     fn filter_config_for_sync(&self, mut config: AppConfig) -> AppConfig {
-        // 1. 移除环境相关的配置
+        // 1. 清空环境相关的配置
         if let Some(global_store) = &mut config.global_store {
-            if let Some(env) = &mut global_store.env {
-                *env = serde_json::Value::Object(serde_json::Map::new());
-            }
+            global_store.env = Some(serde_json::Value::Object(serde_json::Map::new()));
+        }
 
-            // 2. 移除运行时状态
+        // 2. 清除云同步的运行时状态（保留其他设置）
+        if let Some(global_store) = &mut config.global_store {
             if let Some(cloud_sync) = &mut global_store.cloud_sync {
                 cloud_sync.last_sync_time = Some(0);
                 cloud_sync.is_syncing = Some(false);
             }
-
-            // 3. 移除设备特定的配置项
-            if let Some(app) = &mut global_store.app {
-                // 保留基本设置，移除平台相关的配置
-                let auto_start = app.auto_start;
-                let show_taskbar_icon = app.show_taskbar_icon;
-                let silent_start = app.silent_start;
-
-                *app = AppSettingsConfig {
-                    auto_start,
-                    show_taskbar_icon,
-                    silent_start,
-                };
-            }
         }
 
-        // 4. 移除剪贴板存储中的临时状态
+        // 3. 清除剪贴板存储的临时状态
         if let Some(clipboard_store) = &mut config.clipboard_store {
-            if let Some(internal_copy) = &mut clipboard_store.internal_copy {
-                internal_copy.is_copying = false;
-                internal_copy.item_id = None;
-            }
+            clipboard_store.internal_copy = Some(InternalCopyConfig {
+                is_copying: Some(false),
+                item_id: None,
+            });
         }
 
         config
     }
+}
+
+/// 获取配置文件路径
+fn get_config_path() -> Result<std::path::PathBuf, String> {
+    let bundle_id = "com.Rains.EcoPaste-Sync";
+    let is_dev = cfg!(debug_assertions);
+
+    let config_filename = if is_dev {
+        ".store.dev.json"
+    } else {
+        "store.json"
+    };
+
+    if let Some(app_data_dir) = std::env::var_os("APPDATA") {
+        let config_path = std::path::PathBuf::from(app_data_dir)
+            .join(bundle_id)
+            .join(config_filename);
+
+        return Ok(config_path);
+    }
+
+    let save_data_dir = dirs::data_dir()
+        .or_else(|| dirs::config_dir())
+        .or_else(|| dirs::home_dir().map(|p| p.join(".local/share")))
+        .ok_or_else(|| "无法获取数据目录".to_string())?;
+
+    let config_path = save_data_dir.join(bundle_id).join(config_filename);
+
+    Ok(config_path)
 }

@@ -48,7 +48,7 @@ pub fn mark_window_hidden<R: Runtime>(app_handle: &AppHandle<R>, label: &str) {
             std::thread::sleep(std::time::Duration::from_millis(RECYCLE_CHECK_INTERVAL_MS));
 
             let delay_secs = {
-                let (_, delay) = super::get_window_behavior_from_config();
+                let (_, delay) = super::get_window_behavior_from_config(&app_inner);
                 delay as f64
             };
 
@@ -285,7 +285,7 @@ pub async fn create_window<R: Runtime>(
             api.prevent_close();
 
             // 从配置文件中读取窗口行为设置
-            let (mode, _delay_seconds) = super::get_window_behavior_from_config();
+            let (mode, _delay_seconds) = super::get_window_behavior_from_config(&app_handle_clone);
 
             match mode.as_str() {
                 "lightweight" => {

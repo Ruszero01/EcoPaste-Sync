@@ -15,6 +15,7 @@ log = { workspace = true }
 thiserror.workspace = true
 tauri-plugin-eco-window = { workspace = true }
 tauri-plugin-eco-clipboard = { workspace = true }
+tauri-plugin-eco-common = { workspace = true }
 
 [build-dependencies]
 tauri-plugin.workspace = true

@@ -12,6 +12,14 @@ const COMMANDS: &[&str] = &[
     "upload_local_config",
     "apply_remote_config",
     "set_bookmark_sync_data",
+    // 书签本地管理命令
+    "load_bookmark_data",
+    "save_bookmark_data",
+    "load_bookmark_last_modified",
+    "add_bookmark_group",
+    "update_bookmark_group",
+    "delete_bookmark_group",
+    "reorder_bookmark_groups",
 ];
 
 fn main() {

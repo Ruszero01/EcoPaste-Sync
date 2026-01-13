@@ -150,8 +150,6 @@ pub fn should_fetch_source_app() -> bool {
         .unwrap_or(true) // 默认为 true
 }
 
-
-
 /// 检查是否开启自动排序
 pub fn should_auto_sort() -> bool {
     read_config()
@@ -171,5 +169,3 @@ pub fn should_copy_plain() -> bool {
         .and_then(|c| c.copy_plain)
         .unwrap_or(false) // 默认为 false
 }
-
-

@@ -267,5 +267,3 @@ pub fn fetch_source_app_info_impl() -> Result<SourceAppInfo, String> {
         Err(e) => Err(format!("Failed to get source app info: {}", e)),
     }
 }
-
-

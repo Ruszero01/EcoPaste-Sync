@@ -231,8 +231,13 @@ impl FileSyncManager {
         // 2. 读取文件内容
         match tokio::fs::read(&task.local_path).await {
             Ok(file_data) => {
-                log::info!("[File] 上传: id={}, name={}, remote={}, size={}",
-                    task.metadata.id, task.metadata.file_name, task.remote_path, file_data.len());
+                log::info!(
+                    "[File] 上传: id={}, name={}, remote={}, size={}",
+                    task.metadata.id,
+                    task.metadata.file_name,
+                    task.remote_path,
+                    file_data.len()
+                );
 
                 // 3. 上传到WebDAV
                 let client = self.webdav_client.lock().await;
@@ -331,10 +336,7 @@ impl FileSyncManager {
 
                 // 2. 保存到本地路径
                 if let Some(file_data) = download_result.binary_data {
-                    log::info!(
-                        "[File] 下载数据: size={}",
-                        file_data.len()
-                    );
+                    log::info!("[File] 下载数据: size={}", file_data.len());
 
                     // 确保父目录存在
                     if let Some(parent) = task.local_path.parent() {

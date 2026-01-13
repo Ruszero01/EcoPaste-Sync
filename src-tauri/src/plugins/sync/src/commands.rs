@@ -1,6 +1,7 @@
 //! 命令实现
 //! 提供前端调用的完整 API
 
+use crate::bookmark_sync_manager::BookmarkGroup;
 use crate::sync_engine::CloudSyncEngine;
 use crate::types::*;
 use crate::webdav::{ConnectionTestResult, WebDAVClientState};
@@ -8,6 +9,14 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime, State};
 use tauri_plugin_eco_database::DatabaseState;
 use tokio::sync::Mutex;
+
+/// 获取当前时间戳（毫秒）
+fn current_timestamp_millis() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
 
 /// 初始化同步
 #[tauri::command]
@@ -19,7 +28,11 @@ pub async fn init_sync(
     let mut engine = state.lock().await;
 
     log::info!("[Sync] 开始初始化同步引擎...");
-    log::info!("[Sync] 服务器: {}, 路径: {}", config.server_url, config.path);
+    log::info!(
+        "[Sync] 服务器: {}, 路径: {}",
+        config.server_url,
+        config.path
+    );
 
     match engine.init(config, &db_state).await {
         Ok(result) => {
@@ -65,7 +78,9 @@ pub async fn trigger_sync<R: Runtime>(
     log::info!("[Sync] 触发同步: only_favorites={}", only_favorites);
 
     // 直接从数据库查询并执行同步
-    let result = engine.sync_with_database(&db, only_favorites, include_files).await;
+    let result = engine
+        .sync_with_database(&db, only_favorites, include_files)
+        .await;
 
     match result {
         Ok(process_result) => {
@@ -218,21 +233,220 @@ pub async fn reload_config_from_file(
     let mut engine = state.lock().await;
 
     match crate::read_sync_config_from_file() {
-        Some(config) => {
-            match engine.init(config, &db_state).await {
-                Ok(result) => {
-                    log::info!("[Sync] 从本地文件重新加载配置成功");
-                    Ok(result)
-                }
-                Err(e) => {
-                    log::error!("[Sync] 初始化引擎失败: {}", e);
-                    Err(format!("初始化引擎失败: {}", e))
-                }
+        Some(config) => match engine.init(config, &db_state).await {
+            Ok(result) => {
+                log::info!("[Sync] 从本地文件重新加载配置成功");
+                Ok(result)
             }
-        }
+            Err(e) => {
+                log::error!("[Sync] 初始化引擎失败: {}", e);
+                Err(format!("初始化引擎失败: {}", e))
+            }
+        },
         None => {
             log::warn!("[Sync] 本地配置文件不存在或格式错误");
             Err("本地配置文件不存在".to_string())
         }
     }
+}
+
+// ================================
+// 书签本地管理命令
+// ================================
+
+/// 加载本地书签数据
+#[tauri::command]
+pub async fn load_bookmark_data() -> Result<BookmarkGroupData, String> {
+    log::info!("[Bookmark] 加载本地书签数据");
+
+    // 获取应用数据目录
+    let data_dir = dirs::data_dir()
+        .or_else(|| dirs::config_dir())
+        .or_else(|| dirs::home_dir().map(|p| p.join(".local/share")))
+        .map(|p| p.join("com.Rains.EcoPaste-Sync"))
+        .ok_or_else(|| "无法获取数据目录".to_string())?;
+
+    let bookmark_path = data_dir.join("bookmark-data.json");
+
+    if !bookmark_path.exists() {
+        log::info!("[Bookmark] 书签文件不存在，返回空数据");
+        return Ok(BookmarkGroupData {
+            last_modified: 0,
+            groups: vec![],
+        });
+    }
+
+    match std::fs::read_to_string(&bookmark_path) {
+        Ok(content) => {
+            serde_json::from_str(&content).map_err(|e| format!("解析书签数据失败: {}", e))
+        }
+        Err(e) => {
+            log::error!("[Bookmark] 读取书签文件失败: {}", e);
+            Err(format!("读取书签文件失败: {}", e))
+        }
+    }
+}
+
+/// 保存本地书签数据
+#[tauri::command]
+pub async fn save_bookmark_data(data: BookmarkGroupData) -> Result<bool, String> {
+    log::info!("[Bookmark] 保存本地书签数据: {} 分组", data.groups.len());
+
+    // 获取应用数据目录
+    let data_dir = dirs::data_dir()
+        .or_else(|| dirs::config_dir())
+        .or_else(|| dirs::home_dir().map(|p| p.join(".local/share")))
+        .map(|p| p.join("com.Rains.EcoPaste-Sync"))
+        .ok_or_else(|| "无法获取数据目录".to_string())?;
+
+    // 确保目录存在
+    std::fs::create_dir_all(&data_dir).map_err(|e| format!("创建数据目录失败: {}", e))?;
+
+    let bookmark_path = data_dir.join("bookmark-data.json");
+
+    let json =
+        serde_json::to_string_pretty(&data).map_err(|e| format!("序列化书签数据失败: {}", e))?;
+
+    std::fs::write(&bookmark_path, json).map_err(|e| format!("写入书签文件失败: {}", e))?;
+
+    log::info!("[Bookmark] 书签数据保存成功");
+    Ok(true)
+}
+
+/// 加载最后修改时间
+#[tauri::command]
+pub async fn load_bookmark_last_modified() -> Result<i64, String> {
+    let data = load_bookmark_data().await?;
+    Ok(data.last_modified)
+}
+
+/// 添加书签分组
+#[tauri::command]
+pub async fn add_bookmark_group(name: String, color: String) -> Result<BookmarkGroup, String> {
+    log::info!("[Bookmark] 添加书签分组: {}", name);
+
+    let mut data = load_bookmark_data().await?;
+
+    // 检查是否已存在同名分组
+    if data.groups.iter().any(|g| g.name == name.trim()) {
+        return Err("已存在同名分组".to_string());
+    }
+
+    let new_group = BookmarkGroup {
+        id: format!("custom_{}", current_timestamp_millis()),
+        name: name.trim().to_string(),
+        color,
+        create_time: current_timestamp_millis(),
+        update_time: current_timestamp_millis(),
+    };
+
+    data.groups.push(new_group.clone());
+    data.last_modified = current_timestamp_millis();
+
+    save_bookmark_data(data).await?;
+
+    Ok(new_group)
+}
+
+/// 更新书签分组
+#[tauri::command]
+pub async fn update_bookmark_group(
+    id: String,
+    name: Option<String>,
+    color: Option<String>,
+) -> Result<BookmarkGroup, String> {
+    log::info!("[Bookmark] 更新书签分组: {}", id);
+
+    let mut data = load_bookmark_data().await?;
+    let now = current_timestamp_millis();
+
+    // 先克隆要返回的分组
+    let updated_group = match data.groups.iter().find(|g| g.id == id) {
+        Some(g) => g.clone(),
+        None => return Err("分组不存在".to_string()),
+    };
+
+    // 先检查名称冲突（如果需要更新名称）
+    if let Some(ref name) = name {
+        if data
+            .groups
+            .iter()
+            .any(|g| g.id != id && g.name == name.trim())
+        {
+            return Err("已存在同名分组".to_string());
+        }
+    }
+
+    // 再查找并更新分组
+    let group = data
+        .groups
+        .iter_mut()
+        .find(|g| g.id == id)
+        .ok_or_else(|| "分组不存在".to_string())?;
+
+    if let Some(name) = name {
+        group.name = name.trim().to_string();
+    }
+
+    if let Some(color) = color {
+        group.color = color;
+    }
+
+    group.update_time = now;
+    data.last_modified = now;
+
+    save_bookmark_data(data).await?;
+
+    Ok(updated_group)
+}
+
+/// 删除书签分组
+#[tauri::command]
+pub async fn delete_bookmark_group(id: String) -> Result<bool, String> {
+    log::info!("[Bookmark] 删除书签分组: {}", id);
+
+    let mut data = load_bookmark_data().await?;
+    let initial_len = data.groups.len();
+
+    data.groups.retain(|g| g.id != id);
+
+    if data.groups.len() == initial_len {
+        return Err("分组不存在".to_string());
+    }
+
+    data.last_modified = current_timestamp_millis();
+    save_bookmark_data(data).await?;
+
+    Ok(true)
+}
+
+/// 重新排序书签分组
+#[tauri::command]
+pub async fn reorder_bookmark_groups(groups: Vec<BookmarkGroup>) -> Result<bool, String> {
+    log::info!("[Bookmark] 重新排序书签分组: {} 个", groups.len());
+
+    let mut data = load_bookmark_data().await?;
+
+    // 验证所有分组ID都存在
+    let existing_ids: std::collections::HashSet<String> =
+        data.groups.iter().map(|g| g.id.clone()).collect();
+
+    for group in &groups {
+        if !existing_ids.contains(&group.id) {
+            return Err(format!("分组不存在: {}", group.id));
+        }
+    }
+
+    data.groups = groups;
+    data.last_modified = current_timestamp_millis();
+    save_bookmark_data(data).await?;
+
+    Ok(true)
+}
+
+/// 书签分组数据
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct BookmarkGroupData {
+    pub last_modified: i64,
+    pub groups: Vec<BookmarkGroup>,
 }
