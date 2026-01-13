@@ -4,6 +4,43 @@
 use crate::webdav::WebDAVClientState;
 use serde::{Deserialize, Serialize};
 
+// ================================
+// 服务器配置（本地管理，不参与云同步）
+// ================================
+
+/// WebDAV 服务器配置（仅本地管理，不参与云同步）
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ServerConfig {
+    pub url: Option<String>,
+    pub username: Option<String>,
+    pub password: Option<String>,
+    pub path: Option<String>,
+    pub timeout: Option<u64>,
+}
+
+// ================================
+// 文件同步配置（参与云同步）
+// ================================
+
+/// 文件同步配置
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct FileSyncConfig {
+    pub enabled: Option<bool>,
+    pub max_file_size: Option<i64>,
+    pub supported_types: Option<FileSyncSupportedTypes>,
+}
+
+/// 文件同步支持的文件类型
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct FileSyncSupportedTypes {
+    pub images: Option<bool>,
+    pub documents: Option<bool>,
+    pub text: Option<bool>,
+}
+
 /// 应用配置结构（与前端 globalStore 对应）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -140,12 +177,19 @@ pub struct CloudSyncConfig {
     /// 是否正在同步（不同步，清零）
     #[serde(default)]
     pub is_syncing: Option<bool>,
+    /// 服务器配置（本地管理，不参与云同步）
+    #[serde(skip_serializing)]
+    #[serde(default)]
+    pub server_config: Option<ServerConfig>,
     /// 自动同步设置
     #[serde(default)]
     pub auto_sync_settings: Option<AutoSyncSettingsConfig>,
     /// 同步模式配置
     #[serde(default)]
     pub sync_mode_config: Option<SyncModeConfig>,
+    /// 文件同步设置
+    #[serde(default)]
+    pub file_sync: Option<FileSyncConfig>,
 }
 
 /// 自动同步设置
@@ -476,6 +520,7 @@ impl ConfigSyncManager {
     }
 
     /// 过滤配置，移除环境相关和不需要同步的字段
+    /// 注意：serverConfig 已隔离到单独文件，不参与云同步
     fn filter_config_for_sync(&self, mut config: AppConfig) -> AppConfig {
         // 1. 清空环境相关的配置
         if let Some(global_store) = &mut config.global_store {
@@ -487,6 +532,7 @@ impl ConfigSyncManager {
             if let Some(cloud_sync) = &mut global_store.cloud_sync {
                 cloud_sync.last_sync_time = Some(0);
                 cloud_sync.is_syncing = Some(false);
+                // serverConfig 已隔离到单独文件，不需要清空
             }
         }
 

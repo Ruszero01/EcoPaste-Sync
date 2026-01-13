@@ -116,14 +116,14 @@ pub fn read_sync_config_from_file() -> Option<types::SyncConfig> {
                             .and_then(|v| v.get("onlyFavorites"))
                             .and_then(|v| v.as_bool())
                             .unwrap_or(false);
+                        let include_images = sync_mode_settings
+                            .and_then(|v| v.get("includeImages"))
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false);
                         let include_files = sync_mode_settings
                             .and_then(|v| v.get("includeFiles"))
                             .and_then(|v| v.as_bool())
-                            .unwrap_or(false)
-                            || sync_mode_settings
-                                .and_then(|v| v.get("includeImages"))
-                                .and_then(|v| v.as_bool())
-                                .unwrap_or(false);
+                            .unwrap_or(false);
 
                         Some(types::SyncConfig {
                             server_url: server_config
@@ -153,6 +153,7 @@ pub fn read_sync_config_from_file() -> Option<types::SyncConfig> {
                             auto_sync,
                             auto_sync_interval_minutes,
                             only_favorites,
+                            include_images,
                             include_files,
                         })
                     } else {
@@ -190,6 +191,9 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::update_bookmark_group,
             commands::delete_bookmark_group,
             commands::reorder_bookmark_groups,
+            // 服务器配置本地管理命令（不参与云同步）
+            commands::save_server_config,
+            commands::load_server_config,
         ])
         .setup(|app_handle, _webview_manager| {
             // 在插件初始化时创建共享实例

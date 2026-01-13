@@ -5,6 +5,7 @@ use crate::bookmark_sync_manager::BookmarkGroup;
 use crate::sync_engine::CloudSyncEngine;
 use crate::types::*;
 use crate::webdav::{ConnectionTestResult, WebDAVClientState};
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime, State};
 use tauri_plugin_eco_database::DatabaseState;
@@ -449,4 +450,108 @@ pub async fn reorder_bookmark_groups(groups: Vec<BookmarkGroup>) -> Result<bool,
 pub struct BookmarkGroupData {
     pub last_modified: i64,
     pub groups: Vec<BookmarkGroup>,
+}
+
+// ================================
+// 服务器配置本地管理命令（不参与云同步）
+// ================================
+
+/// 服务器配置数据结构
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServerConfigData {
+    pub url: String,
+    pub username: String,
+    pub password: String,
+    pub path: String,
+    pub timeout: u64,
+}
+
+impl Default for ServerConfigData {
+    fn default() -> Self {
+        Self {
+            url: String::new(),
+            username: String::new(),
+            password: String::new(),
+            path: "/EcoPaste-Sync".to_string(),
+            timeout: 60000,
+        }
+    }
+}
+
+/// 获取服务器配置文件路径
+fn get_server_config_path() -> Result<std::path::PathBuf, String> {
+    let data_dir = dirs::data_dir()
+        .or_else(|| dirs::config_dir())
+        .or_else(|| dirs::home_dir().map(|p| p.join(".local/share")))
+        .map(|p| p.join("com.Rains.EcoPaste-Sync"))
+        .ok_or_else(|| "无法获取数据目录".to_string())?;
+
+    let filename = if cfg!(debug_assertions) {
+        "server-config.dev.json"
+    } else {
+        "server-config.json"
+    };
+
+    Ok(data_dir.join(filename))
+}
+
+/// 服务器配置保存结果
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(tag = "type", content = "data")]
+pub enum SaveServerConfigResult {
+    Success,
+    Error(String),
+}
+
+/// 保存服务器配置到单独文件
+#[tauri::command]
+pub async fn save_server_config(config: ServerConfigData) -> SaveServerConfigResult {
+    log::info!("[Sync] 保存服务器配置");
+
+    let config_path = match get_server_config_path() {
+        Ok(path) => path,
+        Err(e) => return SaveServerConfigResult::Error(e),
+    };
+
+    if let Some(parent) = config_path.parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            return SaveServerConfigResult::Error(format!("创建配置目录失败: {}", e));
+        }
+    }
+
+    let json = match serde_json::to_string_pretty(&config) {
+        Ok(j) => j,
+        Err(e) => return SaveServerConfigResult::Error(format!("序列化配置失败: {}", e)),
+    };
+
+    if let Err(e) = std::fs::write(&config_path, json) {
+        return SaveServerConfigResult::Error(format!("写入配置文件失败: {}", e));
+    }
+
+    log::info!("[Sync] 服务器配置已保存到: {:?}", config_path);
+    SaveServerConfigResult::Success
+}
+
+/// 从单独文件加载服务器配置
+#[tauri::command]
+pub async fn load_server_config() -> Result<ServerConfigData, String> {
+    log::info!("[Sync] 加载服务器配置");
+
+    let config_path = get_server_config_path()?;
+
+    if !config_path.exists() {
+        log::info!("[Sync] 服务器配置文件不存在");
+        return Ok(ServerConfigData::default());
+    }
+
+    match std::fs::read_to_string(&config_path) {
+        Ok(content) => {
+            serde_json::from_str(&content).map_err(|e| format!("解析配置文件失败: {}", e))
+        }
+        Err(e) => {
+            log::error!("[Sync] 读取配置文件失败: {}", e);
+            Err(format!("读取配置文件失败: {}", e))
+        }
+    }
 }

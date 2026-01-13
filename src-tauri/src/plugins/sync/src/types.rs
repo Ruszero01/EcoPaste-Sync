@@ -24,6 +24,7 @@ mod tests {
             auto_sync: false,
             auto_sync_interval_minutes: 5,
             only_favorites: false,
+            include_images: false,
             include_files: false,
             timeout: 30000,
         };
@@ -123,6 +124,8 @@ pub struct SyncConfig {
     pub auto_sync_interval_minutes: u64,
     /// 是否仅同步收藏项目
     pub only_favorites: bool,
+    /// 是否包含图片同步
+    pub include_images: bool,
     /// 是否包含文件同步
     pub include_files: bool,
     /// 连接超时（毫秒）
