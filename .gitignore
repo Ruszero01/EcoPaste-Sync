@@ -28,6 +28,7 @@ auto-imports.d.ts
 .claude/
 tests/
 docs/
+.worktrees/
 .crush/
 .serena/
 .sisyphus/
