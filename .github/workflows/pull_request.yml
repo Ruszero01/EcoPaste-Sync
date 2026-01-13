@@ -2,6 +2,7 @@ name: Code quality
 
 on:
   push:
+    branches: [main, develop]
   pull_request:
 
 jobs:
@@ -16,3 +17,40 @@ jobs:
           version: latest
       - name: Run Biome
         run: biome ci .
+
+  frontend-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install
+      - name: Run frontend tests
+        run: pnpm test
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: frontend-coverage
+          path: coverage/
+
+  rust-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Run Rust tests
+        run: cargo test --workspace --lib --bins
+      - name: Run clippy
+        run: cargo clippy --workspace -- -D warnings

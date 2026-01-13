@@ -6531,6 +6531,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tauri-plugin-eco-common"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "serde",
+ "serde_json",
+ "tauri",
+]
+
+[[package]]
 name = "tauri-plugin-eco-database"
 version = "0.1.0"
 dependencies = [
@@ -6573,6 +6583,7 @@ dependencies = [
  "serde_json",
  "tauri",
  "tauri-plugin",
+ "tauri-plugin-eco-common",
  "tauri-plugin-eco-window",
  "tauri-plugin-global-shortcut",
  "tokio",
@@ -6639,6 +6650,7 @@ dependencies = [
  "tauri",
  "tauri-plugin",
  "tauri-plugin-eco-clipboard",
+ "tauri-plugin-eco-common",
  "tauri-plugin-eco-window",
  "thiserror 2.0.12",
 ]
@@ -6647,7 +6659,6 @@ dependencies = [
 name = "tauri-plugin-eco-window"
 version = "0.1.0"
 dependencies = [
- "dirs 5.0.1",
  "log",
  "once_cell",
  "scopeguard",
@@ -6656,6 +6667,7 @@ dependencies = [
  "tauri",
  "tauri-nspanel",
  "tauri-plugin",
+ "tauri-plugin-eco-common",
  "tokio",
  "window-vibrancy",
  "windows-version",

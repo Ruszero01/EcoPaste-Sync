@@ -27,6 +27,7 @@ tauri-plugin-eco-sync = { path = "./src-tauri/src/plugins/sync" }
 tauri-plugin-eco-detector = { path = "./src-tauri/src/plugins/detector" }
 tauri-plugin-eco-hotkey = { path = "./src-tauri/src/plugins/hotkey" }
 tauri-plugin-eco-tray = { path = "./src-tauri/src/plugins/tray" }
+tauri-plugin-eco-common = { path = "./src-tauri/src/plugins/common" }
 
 # 依赖版本统一
 thiserror = "2"
