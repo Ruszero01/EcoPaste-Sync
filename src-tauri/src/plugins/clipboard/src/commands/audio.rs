@@ -2,12 +2,34 @@ use rodio::{Decoder, OutputStream, Source};
 use std::io::Cursor;
 use std::thread;
 
+use tauri::{AppHandle, Runtime};
+
+use tauri_plugin_eco_common::config as common_config;
+
 /// 嵌入的音效数据（MP3 格式）
 const COPY_AUDIO_DATA: &[u8] = include_bytes!("../../../../../assets/audio/copy.mp3");
 
+/// 检查是否启用复制音效
+pub fn should_play_copy_audio<R: Runtime>(app_handle: &AppHandle<R>) -> bool {
+    match common_config::get_cached_config(app_handle) {
+        Ok(config) => {
+            // 检查 clipboardStore.audio.copy
+            common_config::get_nested(&config, &["clipboardStore", "audio", "copy"])
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false) // 默认关闭
+        }
+        Err(_) => false,
+    }
+}
+
 /// 播放复制音效
 /// 使用独立线程播放，不阻塞主流程
-pub fn play_copy_audio() {
+pub fn play_copy_audio<R: Runtime>(app_handle: &AppHandle<R>) {
+    // 检查是否启用音效
+    if !should_play_copy_audio(app_handle) {
+        return;
+    }
+
     thread::spawn(move || {
         // 获取默认音频输出设备
         let (_stream, stream_handle) = match OutputStream::try_default() {

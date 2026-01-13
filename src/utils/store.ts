@@ -1,5 +1,7 @@
+import { LISTEN_KEY } from "@/constants";
 import type { Language, Store } from "@/types/store";
 import { getName, getVersion } from "@tauri-apps/api/app";
+import { emit } from "@tauri-apps/api/event";
 import { appDataDir } from "@tauri-apps/api/path";
 import {
 	exists,
@@ -46,7 +48,10 @@ export const saveStore = async (backup = false) => {
 
 	const path = await getSaveStorePath(backup);
 
-	return writeTextFile(path, JSON.stringify(store, null, 2));
+	await writeTextFile(path, JSON.stringify(store, null, 2));
+
+	// 通知后端和其他窗口配置已变更
+	await emit(LISTEN_KEY.STORE_CHANGED, store);
 };
 
 // 导出数据库初始化函数，供外部调用

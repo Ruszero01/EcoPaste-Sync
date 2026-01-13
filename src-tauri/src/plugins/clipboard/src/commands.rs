@@ -398,7 +398,7 @@ where
         match db.insert_with_deduplication(&item) {
             Ok(result) => {
                 // 播放复制音效（反馈用户复制操作已完成）
-                play_copy_audio();
+                play_copy_audio(&app_handle);
 
                 // 发送事件通知前端，携带重复数据的 ID（如果是更新操作）
                 let payload = if result.is_update {
@@ -752,6 +752,6 @@ pub async fn get_image_dimensions(path: String) -> Result<ReadImage, String> {
 
 /// 预览音效（供前端偏好设置页面使用）
 #[command]
-pub async fn preview_audio() {
-    play_copy_audio();
+pub async fn preview_audio<R: Runtime>(app_handle: AppHandle<R>) {
+    play_copy_audio(&app_handle);
 }

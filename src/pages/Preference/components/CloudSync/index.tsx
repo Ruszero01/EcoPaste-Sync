@@ -97,7 +97,14 @@ const CloudSync = () => {
 		"idle" | "testing" | "success" | "failed"
 	>("idle");
 	const [isSyncing, setIsSyncing] = useState(false);
-	const [lastSyncTime, setLastSyncTime] = useState<number>(0);
+	const [lastSyncTime, setLastSyncTime] = useState<number>(() => {
+		try {
+			const saved = localStorage.getItem("ecopaste-last-sync-time");
+			return saved ? Number.parseInt(saved, 10) : 0;
+		} catch {
+			return 0;
+		}
+	});
 	const [renderKey, setRenderKey] = useState(0); // 用于强制重新渲染
 	const [autoSyncEnabled, setAutoSyncEnabled] = useState(false);
 	const [syncInterval, setSyncInterval] = useState(60); // 默认60分钟

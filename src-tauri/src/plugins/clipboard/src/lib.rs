@@ -2,7 +2,7 @@ use commands::ClipboardManager;
 use tauri::{
     generate_handler,
     plugin::{Builder, TauriPlugin},
-    Manager, Runtime,
+    Listener, Manager, Runtime,
 };
 
 mod commands;
@@ -16,8 +16,16 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
         .setup(move |app, _api| {
             app.manage(ClipboardManager::new());
 
+            // 监听配置变更事件，刷新配置缓存
+            let app_handle = app.app_handle().clone();
+            let app_handle_for_listen = app_handle.clone();
+            let _unlisten = app_handle.listen("store-changed", move |_event| {
+                // 通知 common 插件刷新配置缓存
+                tauri_plugin_eco_common::config::refresh_config_cache(&app_handle_for_listen);
+            });
+
             // 自动启动剪贴板监听（纯后端方案）
-            if let Err(e) = commands::start_listen_inner(&app) {
+            if let Err(e) = commands::start_listen_inner(app) {
                 log::error!("[Clipboard] 自动启动监听失败: {}", e);
             }
 

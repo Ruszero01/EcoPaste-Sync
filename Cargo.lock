@@ -6525,6 +6525,7 @@ dependencies = [
  "serde_json",
  "tauri",
  "tauri-plugin",
+ "tauri-plugin-eco-common",
  "tauri-plugin-eco-database",
  "tauri-plugin-eco-detector",
  "windows 0.58.0",
@@ -6535,6 +6536,7 @@ name = "tauri-plugin-eco-common"
 version = "0.1.0"
 dependencies = [
  "log",
+ "once_cell",
  "serde",
  "serde_json",
  "tauri",
