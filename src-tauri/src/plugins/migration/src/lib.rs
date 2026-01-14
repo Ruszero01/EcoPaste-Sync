@@ -1,6 +1,5 @@
 //! 数据迁移插件
 //! 提供数据迁移功能，支持从旧版本迁移到新版本
-//! 注意：此插件为纯后端运行，自动执行迁移，无需前端调用
 
 mod database_migrator;
 mod detector;
@@ -19,26 +18,21 @@ use tauri::{
 };
 use tokio::sync::broadcast;
 
-/// 迁移状态
 #[derive(Debug, Clone, Default)]
-pub struct MigrationStatusInner {
-    pub is_migrating: bool,
-    pub progress: Option<MigrationProgress>,
-    pub last_error: Option<String>,
+struct MigrationStatusInner {
+    is_migrating: bool,
+    progress: Option<MigrationProgress>,
+    last_error: Option<String>,
 }
 
-/// 创建迁移插件
-/// 此插件在初始化时会自动检查并执行迁移
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("eco-migration")
         .setup(|app_handle, _webview_manager| {
-            // 创建迁移状态
             let migration_state = Arc::new(Mutex::new(MigrationStatusInner::default()));
             app_handle.manage(migration_state);
 
             log::info!("[Migration] 迁移插件初始化完成");
 
-            // 自动执行迁移检查
             let app_handle_clone = app_handle.clone();
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = auto_migrate(&app_handle_clone).await {
@@ -51,8 +45,6 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
         .build()
 }
 
-/// 自动迁移检查（应用启动时调用）
-/// 检查是否需要迁移，如需要则自动执行迁移
 pub async fn auto_migrate<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     let data_dir = get_data_dir(app)?;
     let is_dev = cfg!(debug_assertions);
@@ -74,15 +66,12 @@ pub async fn auto_migrate<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> 
                 check_result.local_items_to_migrate
             );
 
-            // 显示警告信息
             for warning in &check_result.warnings {
                 log::warn!("[Migration] {}", warning);
             }
 
-            // 创建进度广播通道
             let (sender, mut receiver) = broadcast::channel(100);
 
-            // 在后台执行迁移
             let _app_clone = app.clone();
             let data_dir_clone = data_dir.clone();
 
@@ -100,7 +89,6 @@ pub async fn auto_migrate<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> 
                 }
             });
 
-            // 监听进度并记录日志
             while let Ok(progress) = receiver.recv().await {
                 log::info!(
                     "[Migration] 进度: {}% - {}",
@@ -138,8 +126,7 @@ pub async fn auto_migrate<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> 
     }
 }
 
-/// 获取数据目录
-fn get_data_dir<R: Runtime>(_app: &AppHandle<R>) -> Result<PathBuf, String> {
+fn get_data_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
     let data_dir = dirs::data_dir()
         .or_else(|| dirs::config_dir())
         .or_else(|| dirs::home_dir().map(|p| p.join(".local/share")))
@@ -149,7 +136,6 @@ fn get_data_dir<R: Runtime>(_app: &AppHandle<R>) -> Result<PathBuf, String> {
     Ok(data_dir.join(bundle_id))
 }
 
-/// 检查是否需要迁移（供其他插件调用）
 pub fn check_needs_migration(
     data_dir: &PathBuf,
     is_dev: bool,
@@ -157,13 +143,11 @@ pub fn check_needs_migration(
     check_migration_status(data_dir, is_dev)
 }
 
-/// 获取迁移标记文件路径
 pub fn get_migration_marker_path(data_dir: &PathBuf, is_dev: bool) -> PathBuf {
     let suffix = if is_dev { ".dev" } else { "" };
     data_dir.join(format!(".migration{}", suffix))
 }
 
-/// 清除迁移标记（供其他插件调用）
 pub fn clear_migration_flag(data_dir: &PathBuf, is_dev: bool) -> Result<(), String> {
     let marker_path = get_migration_marker_path(data_dir, is_dev);
 
