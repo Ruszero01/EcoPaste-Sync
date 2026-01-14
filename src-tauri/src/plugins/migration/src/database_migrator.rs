@@ -1,8 +1,15 @@
 //! 数据库迁移模块
 //! 执行数据库结构迁移和数据转换
+//!
+//! 迁移内容：
+//! 1. createTime (字符串时间) → time (Unix 时间戳)
+//! 2. 同步状态映射：none→not_synced, syncing→changed, error→not_synced
+//! 3. 添加缺失的列：sourceAppName, sourceAppIcon, position
+//! 4. 确保必要索引存在
 
 use crate::models::MigrationProgress;
 use rusqlite::Connection;
+use std::fs;
 use std::path::PathBuf;
 
 /// 执行数据库迁移
@@ -17,7 +24,66 @@ pub fn migrate_database(
 
     let conn = Connection::open(db_path).map_err(|e| format!("打开数据库失败: {}", e))?;
 
-    // 1. 检查是否需要添加新列
+    // 1. 检测旧版本数据库特征
+    let has_create_time = conn
+        .prepare("SELECT createTime FROM history LIMIT 1")
+        .is_ok();
+
+    // 2. 如果存在 createTime 列，进行时间戳转换
+    if has_create_time {
+        progress_callback(MigrationProgress {
+            current_phase: "转换时间戳格式".to_string(),
+            processed_items: 0,
+            total_items: 0,
+            percentage: 0.0,
+            current_operation: "将 createTime 转换为 Unix 时间戳".to_string(),
+            completed: false,
+            error: None,
+        });
+
+        // 统计需要转换的行数
+        let time_to_convert: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM history WHERE time IS NULL OR time = 0",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+
+        if time_to_convert > 0 {
+            // 执行时间转换
+            // 尝试解析 ISO 8601 时间格式并转换为 Unix 时间戳
+            // 如果解析失败，使用当前时间
+            conn.execute(
+                r#"
+                UPDATE history SET time = COALESCE(
+                    CAST(
+                        CASE
+                            WHEN length(createTime) = 13 AND createTime GLOB '[0-9]*'
+                            THEN createTime
+                            WHEN createTime LIKE '%-%-%'
+                            THEN CAST(
+                                COALESCE(
+                                    (julianday(substr(createTime, 1, 19)) - 2440587.5) * 86400000,
+                                    (strftime('%s', substr(createTime, 1, 19)) * 1000)
+                                ) AS INTEGER
+                            )
+                            ELSE NULL
+                        END
+                    AS INTEGER),
+                    (strftime('%s', 'now') * 1000)
+                )
+                WHERE createTime IS NOT NULL AND (time IS NULL OR time = 0)
+                "#,
+                [],
+            )
+            .map_err(|e| format!("转换时间戳失败: {}", e))?;
+
+            log::info!("[Migration] 已转换 {} 条时间戳记录", time_to_convert);
+        }
+    }
+
+    // 3. 检查是否需要添加新列
     let needs_source_app_name = conn
         .prepare("SELECT sourceAppName FROM history LIMIT 1")
         .is_err();
@@ -30,7 +96,7 @@ pub fn migrate_database(
         .prepare("SELECT position FROM history LIMIT 1")
         .is_err();
 
-    // 2. 添加缺失的列
+    // 4. 添加缺失的列
     if needs_source_app_name {
         progress_callback(MigrationProgress {
             current_phase: "添加 sourceAppName 列".to_string(),
@@ -59,7 +125,7 @@ pub fn migrate_database(
         .map_err(|e| format!("添加 position 列失败: {}", e))?;
     }
 
-    // 3. 确保索引存在
+    // 5. 确保索引存在
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_history_deleted ON history(deleted)",
         [],
@@ -84,19 +150,66 @@ pub fn migrate_database(
     )
     .map_err(|e| format!("创建 idx_history_time 索引失败: {}", e))?;
 
-    // 4. 初始化 position 字段（如果没有）
+    // 6. 初始化 position 字段（如果没有）
     conn.execute(
-        "UPDATE history SET position = rowid WHERE position = 0 AND position IS NULL",
+        "UPDATE history SET position = rowid WHERE (position = 0 OR position IS NULL) AND position IS NOT 1",
         [],
     )
     .ok();
 
-    // 5. 统计迁移的项目数
+    // 7. 统计迁移的项目数
     let total_items: i32 = conn
         .query_row("SELECT COUNT(*) FROM history", [], |row| row.get(0))
         .map_err(|e| format!("统计项目数失败: {}", e))?;
 
-    // 6. 更新同步状态（如果需要）
+    // 8. 更新同步状态（如果需要）
+    // 旧版：none, synced, syncing, error
+    // 新版：not_synced, synced, changed
+    let needs_sync_status_update = conn
+        .prepare("SELECT COUNT(*) FROM history WHERE syncStatus IN ('none', 'syncing', 'error')")
+        .map(|mut stmt| stmt.query_row([], |row| row.get::<_, i32>(0)))
+        .and_then(|r| r)
+        .unwrap_or(0);
+
+    if needs_sync_status_update > 0 {
+        progress_callback(MigrationProgress {
+            current_phase: "更新同步状态".to_string(),
+            processed_items: 0,
+            total_items: needs_sync_status_update as usize,
+            percentage: 0.0,
+            current_operation: "映射旧版 syncStatus 到新版".to_string(),
+            completed: false,
+            error: None,
+        });
+
+        // none → not_synced
+        conn.execute(
+            "UPDATE history SET syncStatus = 'not_synced' WHERE syncStatus = 'none'",
+            [],
+        )
+        .ok();
+
+        // syncing → changed (表示需要重新同步)
+        conn.execute(
+            "UPDATE history SET syncStatus = 'changed' WHERE syncStatus = 'syncing'",
+            [],
+        )
+        .ok();
+
+        // error → not_synced
+        conn.execute(
+            "UPDATE history SET syncStatus = 'not_synced' WHERE syncStatus = 'error'",
+            [],
+        )
+        .ok();
+
+        log::info!(
+            "[Migration] 已更新 {} 条同步状态记录",
+            needs_sync_status_update
+        );
+    }
+
+    // 9. 初始化未设置的同步状态
     let uninitialized_sync_status: i32 = conn
         .query_row(
             "SELECT COUNT(*) FROM history WHERE syncStatus IS NULL OR syncStatus = ''",
@@ -106,16 +219,6 @@ pub fn migrate_database(
         .unwrap_or(0);
 
     if uninitialized_sync_status > 0 {
-        progress_callback(MigrationProgress {
-            current_phase: "初始化同步状态".to_string(),
-            processed_items: 0,
-            total_items: uninitialized_sync_status as usize,
-            percentage: 0.0,
-            current_operation: "更新 syncStatus 字段".to_string(),
-            completed: false,
-            error: None,
-        });
-
         conn.execute(
             "UPDATE history SET syncStatus = 'not_synced' WHERE syncStatus IS NULL OR syncStatus = ''",
             [],
@@ -123,7 +226,7 @@ pub fn migrate_database(
         .map_err(|e| format!("初始化同步状态失败: {}", e))?;
     }
 
-    // 7. 更新 deleted 字段（如果需要）
+    // 10. 更新 deleted 字段（如果需要）
     let uninitialized_deleted: i32 = conn
         .query_row(
             "SELECT COUNT(*) FROM history WHERE deleted IS NULL",
@@ -135,6 +238,30 @@ pub fn migrate_database(
     if uninitialized_deleted > 0 {
         conn.execute("UPDATE history SET deleted = 0 WHERE deleted IS NULL", [])
             .map_err(|e| format!("初始化 deleted 字段失败: {}", e))?;
+    }
+
+    // 11. 确保 time 字段有值
+    let uninitialized_time: i32 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM history WHERE time IS NULL OR time = 0",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+
+    if uninitialized_time > 0 {
+        let now = (std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis()) as i64;
+        conn.execute(
+            &format!(
+                "UPDATE history SET time = {} WHERE time IS NULL OR time = 0",
+                now
+            ),
+            [],
+        )
+        .ok();
     }
 
     let end_time = std::time::SystemTime::now()
@@ -200,15 +327,19 @@ pub fn migrate_config(store_path: &PathBuf) -> Result<(), String> {
 
         // 构建新的 syncModeConfig 结构
         let sync_mode_config = serde_json::json!({
-            "settings": {
+            "autoSync": false,
+            "autoSyncIntervalMinutes": 5,
+            "onlyFavorites": only_favorites,
+            "includeImages": include_images,
+            "includeFiles": include_files,
+            "contentTypes": {
                 "includeText": true,
                 "includeHtml": true,
                 "includeRtf": true,
-                "includeMarkdown": true,
-                "includeImages": include_images,
-                "includeFiles": include_files,
-                "onlyFavorites": only_favorites
-            }
+                "includeMarkdown": true
+            },
+            "conflictResolution": "local",
+            "deviceId": ""
         });
 
         cloud_sync["syncModeConfig"] = sync_mode_config;
@@ -222,6 +353,3 @@ pub fn migrate_config(store_path: &PathBuf) -> Result<(), String> {
 
     Ok(())
 }
-
-/// 添加缺失的导入
-use std::fs;

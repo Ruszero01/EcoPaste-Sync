@@ -106,7 +106,21 @@ fn detect_database_version(db_path: &PathBuf) -> Result<(Option<String>, bool), 
 
     let conn = rusqlite::Connection::open(db_path).map_err(|e| format!("打开数据库失败: {}", e))?;
 
-    // 检查是否存在新字段
+    // 检查是否存在旧版本特征字段
+    // 旧版本：存在 createTime 列（字符串时间）
+    // 新版本：存在 time 列（Unix 时间戳），不存在 createTime 列
+    let has_create_time = conn
+        .prepare("SELECT createTime FROM history LIMIT 1")
+        .is_ok();
+
+    let has_time = conn.prepare("SELECT time FROM history LIMIT 1").is_ok();
+
+    // 如果存在 createTime 且没有正确的 time 值，说明是旧版本
+    if has_create_time && !has_time {
+        return Ok((Some("v0.6.x (createTime)".to_string()), true));
+    }
+
+    // 如果存在 sourceAppName，说明是新版本
     let has_new_fields = conn
         .prepare("SELECT sourceAppName FROM history LIMIT 1")
         .is_ok();
