@@ -5,7 +5,6 @@ use crate::bookmark_sync_manager::BookmarkGroup;
 use crate::sync_engine::CloudSyncEngine;
 use crate::types::*;
 use crate::webdav::{ConnectionTestResult, WebDAVClientState};
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime, State};
 use tauri_plugin_eco_database::DatabaseState;
