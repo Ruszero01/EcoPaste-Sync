@@ -71,7 +71,7 @@ pub async fn auto_migrate<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> 
             log::info!(
                 "[Migration] 检测到需要迁移，版本: {:?}, 需要迁移 {} 项",
                 check_result.old_version,
-                check_result.items_to_migrate
+                check_result.local_items_to_migrate
             );
 
             // 显示警告信息
@@ -92,7 +92,7 @@ pub async fn auto_migrate<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> 
                 if result.success {
                     log::info!(
                         "[Migration] 迁移成功完成，迁移了 {} 项，耗时 {}ms",
-                        result.migrated_items,
+                        result.migrated_local_items,
                         result.duration_ms
                     );
                 } else {
