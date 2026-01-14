@@ -206,7 +206,50 @@ pub(crate) fn calculate_safe_position_in_monitor(
     (final_x, final_y)
 }
 
-// 显示主窗口
+/// WebView2 初始化等待时间（毫秒）
+const WEBVIEW2_INIT_DELAY_MS: u64 = 150;
+
+/// 焦点重试间隔（毫秒）
+const FOCUS_RETRY_INTERVAL_MS: u64 = 50;
+
+/// 焦点重试次数
+const FOCUS_RETRY_COUNT: u32 = 5;
+
+/// 安全的窗口激活函数（带重试机制和焦点冲突处理）
+async fn activate_window_safely<R: Runtime>(window: &WebviewWindow<R>) {
+    let _ = window.show();
+    let _ = window.unminimize();
+
+    // 多次尝试设置焦点，处理 WebView2 还没准备好的情况
+    for attempt in 0..FOCUS_RETRY_COUNT {
+        #[cfg(target_os = "windows")]
+        {
+            // Windows 上使用更激进的激活策略来强制获取焦点
+            // 先尝试 set_always_on_top 切换来帮助激活
+            let _ = window.set_always_on_top(true);
+            let _ = window.set_always_on_top(false);
+
+            // 额外尝试：使用 set_always_on_top 切换来帮助激活
+            let _ = window.set_always_on_top(true);
+            let _ = window.set_always_on_top(false);
+        }
+
+        let focus_result = window.set_focus();
+
+        if focus_result.is_ok() {
+            // 成功获取焦点，跳出循环
+            if attempt > 0 {
+                log::debug!("[Window] 第 {} 次尝试成功获取焦点", attempt + 1);
+            }
+            break;
+        }
+
+        if attempt < FOCUS_RETRY_COUNT - 1 {
+            // 等待后重试
+            tokio::time::sleep(tokio::time::Duration::from_millis(FOCUS_RETRY_INTERVAL_MS)).await;
+        }
+    }
+}
 #[tauri::command]
 pub async fn show_main_window<R: Runtime>(app_handle: AppHandle<R>, position_mode: Option<String>) {
     let app_handle_clone = app_handle.clone();
@@ -299,17 +342,11 @@ pub async fn show_main_window<R: Runtime>(app_handle: AppHandle<R>, position_mod
         }
         #[cfg(not(target_os = "macos"))]
         {
-            // Windows 上使用类似 clash-verge-rev 的激活方式
-            let _ = window.show();
-            let _ = window.unminimize();
-            let _ = window.set_focus();
+            // 等待 WebView2 初始化完成
+            tokio::time::sleep(tokio::time::Duration::from_millis(WEBVIEW2_INIT_DELAY_MS)).await;
 
-            // Windows 上尝试额外的激活方法
-            #[cfg(target_os = "windows")]
-            {
-                let _ = window.set_always_on_top(true);
-                let _ = window.set_always_on_top(false);
-            }
+            // 使用安全的激活函数
+            activate_window_safely(&window).await;
         }
     }
 }
@@ -456,7 +493,7 @@ fn show_window_by_label<R: Runtime>(
                     return;
                 }
                 // 等待窗口管理器更新状态
-                std::thread::sleep(std::time::Duration::from_millis(100));
+                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
                 window_opt = app_handle_clone.get_webview_window(&label_clone);
             }
         }
@@ -479,9 +516,11 @@ fn show_window_by_label<R: Runtime>(
             }
             #[cfg(not(target_os = "macos"))]
             {
-                let _ = window.show();
-                let _ = window.unminimize();
-                let _ = window.set_focus();
+                // 等待 WebView2 初始化完成
+                tokio::time::sleep(tokio::time::Duration::from_millis(WEBVIEW2_INIT_DELAY_MS)).await;
+
+                // 使用安全的激活函数
+                activate_window_safely(&window).await;
             }
         }
     });
