@@ -5,6 +5,7 @@ use log::error;
 use std::sync::atomic::AtomicBool;
 use tauri::{generate_context, Builder, Listener, Manager, WindowEvent};
 use tauri_plugin_autostart::MacosLauncher;
+use tauri_plugin_eco_migration::auto_migrate;
 use tauri_plugin_eco_tray::create_tray;
 use tauri_plugin_eco_window::{show_main_window, MAIN_WINDOW_LABEL, PREFERENCE_WINDOW_LABEL};
 use tauri_plugin_log::{Target, TargetKind};
@@ -49,6 +50,16 @@ pub fn run() {
             }
 
             setup::default(&app_handle, main_window, preference_window);
+
+            // 自动迁移检查（应用启动时执行）
+            {
+                let app_handle = app_handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(e) = auto_migrate(&app_handle).await {
+                        log::error!("[Lib] 自动迁移失败: {}", e);
+                    }
+                });
+            }
 
             // 监听托盘退出允许事件
             {
@@ -141,6 +152,8 @@ pub fn run() {
         .plugin(tauri_plugin_eco_hotkey::init())
         // 系统托盘插件
         .plugin(tauri_plugin_eco_tray::init())
+        // 数据迁移插件
+        .plugin(tauri_plugin_eco_migration::init())
         // Shell 插件：https://github.com/tauri-apps/plugins-workspace/tree/v2/plugins/shell
         .plugin(tauri_plugin_shell::init())
         .on_window_event(|window, event| match event {

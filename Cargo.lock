@@ -1519,6 +1519,7 @@ dependencies = [
  "tauri-plugin-eco-database",
  "tauri-plugin-eco-detector",
  "tauri-plugin-eco-hotkey",
+ "tauri-plugin-eco-migration",
  "tauri-plugin-eco-ocr",
  "tauri-plugin-eco-paste",
  "tauri-plugin-eco-sync",
@@ -6589,6 +6590,21 @@ dependencies = [
  "tauri-plugin-eco-window",
  "tauri-plugin-global-shortcut",
  "tokio",
+]
+
+[[package]]
+name = "tauri-plugin-eco-migration"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "dirs 5.0.1",
+ "log",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]

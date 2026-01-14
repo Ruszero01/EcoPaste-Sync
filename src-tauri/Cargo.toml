@@ -49,6 +49,7 @@ tauri-plugin-eco-sync.workspace = true
 tauri-plugin-eco-detector.workspace = true
 tauri-plugin-eco-hotkey.workspace = true
 tauri-plugin-eco-tray.workspace = true
+tauri-plugin-eco-migration.workspace = true
 
 [target."cfg(target_os = \"macos\")".dependencies]
 tauri-nspanel.workspace = true
