@@ -517,7 +517,8 @@ fn show_window_by_label<R: Runtime>(
             #[cfg(not(target_os = "macos"))]
             {
                 // 等待 WebView2 初始化完成
-                tokio::time::sleep(tokio::time::Duration::from_millis(WEBVIEW2_INIT_DELAY_MS)).await;
+                tokio::time::sleep(tokio::time::Duration::from_millis(WEBVIEW2_INIT_DELAY_MS))
+                    .await;
 
                 // 使用安全的激活函数
                 activate_window_safely(&window).await;
