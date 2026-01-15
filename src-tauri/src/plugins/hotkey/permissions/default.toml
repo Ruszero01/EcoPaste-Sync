@@ -3,11 +3,5 @@
 [default]
 description = "Default permissions for the hotkey plugin"
 permissions = [
-    "allow-register-shortcut",
-    "allow-unregister-shortcut",
-    "allow-unregister-all-shortcuts",
-    "allow-register-default-shortcuts",
-    "allow-register-all-shortcuts",
-    "allow-quick-paste",
-    "allow-get-shortcut-state"
+    "allow-register-all-shortcuts"
 ]
