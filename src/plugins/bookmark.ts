@@ -9,6 +9,7 @@ const COMMAND = {
 	UPDATE_BOOKMARK_GROUP: "plugin:eco-sync|update_bookmark_group",
 	DELETE_BOOKMARK_GROUP: "plugin:eco-sync|delete_bookmark_group",
 	REORDER_BOOKMARK_GROUPS: "plugin:eco-sync|reorder_bookmark_groups",
+	CLEAR_BOOKMARK_DATA: "plugin:eco-sync|clear_bookmark_data",
 };
 
 export interface BookmarkData {
@@ -72,4 +73,11 @@ export const reorderBookmarkGroups = async (
 	groups: BookmarkGroup[],
 ): Promise<boolean> => {
 	return invoke(COMMAND.REORDER_BOOKMARK_GROUPS, { groups });
+};
+
+/**
+ * 清空书签数据（仅开发模式使用）
+ */
+export const clearBookmarkData = async (): Promise<boolean> => {
+	return invoke(COMMAND.CLEAR_BOOKMARK_DATA);
 };

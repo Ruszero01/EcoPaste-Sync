@@ -16,6 +16,7 @@ permissions = [
     "allow-upload-local-config",
     "allow-apply-remote-config",
     "allow-set-bookmark-sync-data",
+    "allow-clear-bookmark-data",
     "allow-save-server-config",
     "allow-load-server-config"
 ]

@@ -1,7 +1,7 @@
 import BookmarkTooltip from "@/components/BookmarkTooltip";
 import { LISTEN_KEY } from "@/constants";
+import * as bookmarkApi from "@/plugins/bookmark";
 import type { BookmarkGroup } from "@/types/sync";
-import { bookmarkManager } from "@/utils/bookmarkManager";
 import {
 	DndContext,
 	KeyboardSensor,
@@ -19,7 +19,6 @@ import {
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { listen } from "@tauri-apps/api/event";
-// 移除了useKeyPress导入，因为不再需要Tab键切换功能
 import { Input, Modal } from "antd";
 import clsx from "clsx";
 import { useCallback, useContext, useEffect, useState } from "react";
@@ -161,7 +160,7 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 					}));
 
 					// 使用新的reorderGroups方法更新顺序
-					await bookmarkManager.reorderGroups(bookmarkGroups);
+					await bookmarkApi.reorderBookmarkGroups(bookmarkGroups);
 
 					onHasGroupsChange?.(newGroups.length > 0);
 				} catch (error) {
@@ -281,7 +280,7 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 	);
 
 	const handleDeleteCustomGroup = async (id: string) => {
-		const success = await bookmarkManager.deleteGroup(id);
+		const success = await bookmarkApi.deleteBookmarkGroup(id);
 		if (success) {
 			setCustomGroups(customGroups.filter((group) => group.id !== id));
 			if (checked === id) {
@@ -329,10 +328,13 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 	const handleSaveEdit = async () => {
 		if (selectedGroup && editGroupName.trim()) {
 			// 使用bookmarkManager更新分组
-			const updatedGroup = await bookmarkManager.updateGroup(selectedGroup.id, {
-				name: editGroupName.trim(),
-				color: editGroupColor,
-			});
+			const updatedGroup = await bookmarkApi.updateBookmarkGroup(
+				selectedGroup.id,
+				{
+					name: editGroupName.trim(),
+					color: editGroupColor,
+				},
+			);
 
 			if (updatedGroup) {
 				// 更新本地状态
@@ -375,9 +377,9 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 	useEffect(() => {
 		const loadBookmarks = async () => {
 			try {
-				const groups = await bookmarkManager.getGroups();
+				const data = await bookmarkApi.loadBookmarkData();
 				// 转换为CustomGroup格式
-				const customGroups: CustomGroup[] = groups.map((group) => ({
+				const customGroups: CustomGroup[] = data.groups.map((group) => ({
 					id: group.id,
 					name: group.name,
 					color: group.color,
@@ -402,9 +404,9 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 			LISTEN_KEY.BOOKMARK_DATA_CHANGED,
 			async () => {
 				try {
-					const groups = await bookmarkManager.getGroups();
+					const data = await bookmarkApi.loadBookmarkData();
 					// 转换为CustomGroup格式
-					const customGroups: CustomGroup[] = groups.map((group) => ({
+					const customGroups: CustomGroup[] = data.groups.map((group) => ({
 						id: group.id,
 						name: group.name,
 						color: group.color,
@@ -460,7 +462,7 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 			const randomIndex = Math.floor(Math.random() * colors.length);
 
 			// 使用bookmarkManager创建新分组
-			const newGroup = await bookmarkManager.addGroup(
+			const newGroup = await bookmarkApi.addBookmarkGroup(
 				groupName,
 				colors[randomIndex],
 			);
@@ -562,7 +564,7 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 						<div
 							className="group relative flex h-6 w-10 shrink-0 cursor-pointer items-center justify-center rounded-md bg-orange-500/20 transition-all duration-200 hover:bg-orange-500/30"
 							onClick={async () => {
-								await bookmarkManager.clearForNewDevice();
+								await bookmarkApi.clearBookmarkData();
 								// 刷新UI
 								setCustomGroups([]);
 								onHasGroupsChange?.(false);

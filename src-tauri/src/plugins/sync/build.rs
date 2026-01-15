@@ -20,6 +20,7 @@ const COMMANDS: &[&str] = &[
     "update_bookmark_group",
     "delete_bookmark_group",
     "reorder_bookmark_groups",
+    "clear_bookmark_data",
     // 服务器配置本地管理命令
     "save_server_config",
     "load_server_config",

@@ -190,6 +190,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::update_bookmark_group,
             commands::delete_bookmark_group,
             commands::reorder_bookmark_groups,
+            commands::clear_bookmark_data,
             // 服务器配置本地管理命令（不参与云同步）
             commands::save_server_config,
             commands::load_server_config,

@@ -5,6 +5,7 @@ import { transferData } from "@/pages/Preference/components/Clipboard/components
 import { clipboardStore } from "@/stores/clipboard";
 import type { HistoryTablePayload } from "@/types/database";
 import type { OperationButton } from "@/types/store";
+import { getLanguageDisplayName } from "@/utils/codeDetector";
 import { useCreation } from "ahooks";
 import { Flex } from "antd";
 import clsx from "clsx";

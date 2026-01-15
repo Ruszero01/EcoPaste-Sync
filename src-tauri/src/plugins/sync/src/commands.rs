@@ -492,6 +492,21 @@ pub async fn reorder_bookmark_groups(groups: Vec<BookmarkGroup>) -> Result<bool,
     Ok(true)
 }
 
+/// 清空书签数据（仅开发模式使用）
+#[tauri::command]
+pub async fn clear_bookmark_data() -> Result<bool, String> {
+    log::info!("[Bookmark] 清空书签数据（开发模式）");
+
+    let empty_data = BookmarkGroupData {
+        last_modified: 0,
+        groups: Vec::new(),
+    };
+
+    save_bookmark_data(empty_data).await?;
+
+    Ok(true)
+}
+
 /// 书签分组数据
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct BookmarkGroupData {
