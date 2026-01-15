@@ -4,7 +4,6 @@ import { invoke } from "@tauri-apps/api/core";
 const COMMAND = {
 	LOAD_BOOKMARK_DATA: "plugin:eco-sync|load_bookmark_data",
 	SAVE_BOOKMARK_DATA: "plugin:eco-sync|save_bookmark_data",
-	LOAD_BOOKMARK_LAST_MODIFIED: "plugin:eco-sync|load_bookmark_last_modified",
 	ADD_BOOKMARK_GROUP: "plugin:eco-sync|add_bookmark_group",
 	UPDATE_BOOKMARK_GROUP: "plugin:eco-sync|update_bookmark_group",
 	DELETE_BOOKMARK_GROUP: "plugin:eco-sync|delete_bookmark_group",
@@ -29,13 +28,6 @@ export const loadBookmarkData = async (): Promise<BookmarkData> => {
  */
 export const saveBookmarkData = (data: BookmarkData): Promise<boolean> => {
 	return invoke(COMMAND.SAVE_BOOKMARK_DATA, { data });
-};
-
-/**
- * 加载最后修改时间
- */
-export const loadBookmarkLastModified = async (): Promise<number> => {
-	return invoke(COMMAND.LOAD_BOOKMARK_LAST_MODIFIED);
 };
 
 /**

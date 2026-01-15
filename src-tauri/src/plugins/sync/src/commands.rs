@@ -258,20 +258,6 @@ pub async fn apply_remote_config(
     engine.apply_remote_config().await
 }
 
-/// 设置书签同步数据
-#[tauri::command]
-pub async fn set_bookmark_sync_data(
-    bookmark_data: crate::bookmark_sync_manager::BookmarkSyncData,
-    state: State<'_, Arc<Mutex<CloudSyncEngine>>>,
-) -> Result<SyncResult, String> {
-    let mut engine = state.lock().await;
-    engine.set_bookmark_sync_data(bookmark_data).await;
-    Ok(SyncResult {
-        success: true,
-        message: "书签数据已设置".to_string(),
-    })
-}
-
 /// 从本地文件重新加载配置
 #[tauri::command]
 pub async fn reload_config_from_file(
@@ -359,13 +345,6 @@ pub async fn save_bookmark_data(data: BookmarkGroupData) -> Result<bool, String>
 
     log::info!("[Bookmark] 书签数据保存成功");
     Ok(true)
-}
-
-/// 加载最后修改时间
-#[tauri::command]
-pub async fn load_bookmark_last_modified() -> Result<i64, String> {
-    let data = load_bookmark_data().await?;
-    Ok(data.last_modified)
 }
 
 /// 添加书签分组
