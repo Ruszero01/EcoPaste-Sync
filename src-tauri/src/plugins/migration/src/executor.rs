@@ -3,7 +3,7 @@
 use crate::{
     database_migrator::{migrate_config, migrate_database},
     detector::check_migration_status,
-    models::{MigrationMarker, MigrationProgress, MigrationResult, MigrationStatus},
+    models::{MigrationMarker, MigrationProgress, MigrationResult, MigrationStatus, MigrationType},
 };
 use std::fs;
 use std::path::PathBuf;
@@ -177,5 +177,3 @@ fn write_migration_marker(path: &PathBuf, marker: &MigrationMarker) {
         let _ = fs::write(path, content);
     }
 }
-
-use crate::models::MigrationType;

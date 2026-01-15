@@ -13,20 +13,6 @@ use rusqlite::Connection;
 use std::fs;
 use std::path::PathBuf;
 
-/// 检测是否为旧版本数据库
-#[allow(dead_code)]
-pub fn is_old_database(db_path: &PathBuf) -> bool {
-    if !db_path.exists() {
-        return false;
-    }
-    if let Ok(conn) = Connection::open(db_path) {
-        conn.prepare("SELECT createTime FROM history LIMIT 1")
-            .is_ok()
-    } else {
-        false
-    }
-}
-
 /// 完整迁移流程：导出 → 删除 → 创建新版 → 写入
 pub fn migrate_database(
     old_db_path: &PathBuf,

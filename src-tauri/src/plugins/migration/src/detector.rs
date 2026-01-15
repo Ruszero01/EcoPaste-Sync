@@ -10,7 +10,7 @@ pub fn check_migration_status(
     data_dir: &PathBuf,
     is_dev: bool,
 ) -> Result<MigrationCheckResult, String> {
-    let marker_path = get_migration_marker_path(data_dir, is_dev);
+    let marker_path = crate::get_migration_marker_path(data_dir, is_dev);
     let old_db_path = get_old_database_path(data_dir, is_dev);
     let new_db_path = get_new_database_path(data_dir, is_dev);
     let store_path = get_store_path(data_dir, is_dev);
@@ -174,12 +174,6 @@ fn detect_config_version(store_path: &PathBuf) -> Result<(String, bool), String>
     }
 
     Ok(("new".to_string(), false))
-}
-
-/// 获取迁移标记文件路径
-fn get_migration_marker_path(data_dir: &PathBuf, is_dev: bool) -> PathBuf {
-    let suffix = if is_dev { ".dev" } else { "" };
-    data_dir.join(format!(".migration{}", suffix))
 }
 
 /// 获取旧版数据库文件路径

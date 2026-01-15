@@ -8,29 +8,18 @@ mod models;
 
 use crate::detector::check_migration_status;
 use crate::executor::perform_migration;
-use crate::models::{MigrationCheckResult, MigrationProgress, MigrationStatus};
+use crate::models::{MigrationCheckResult, MigrationStatus};
 use std::fs;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
 use tauri::{
     plugin::{Builder, TauriPlugin},
-    AppHandle, Manager, Runtime,
+    AppHandle, Runtime,
 };
 use tokio::sync::broadcast;
-
-#[derive(Debug, Clone, Default)]
-struct MigrationStatusInner {
-    is_migrating: bool,
-    progress: Option<MigrationProgress>,
-    last_error: Option<String>,
-}
 
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("eco-migration")
         .setup(|app_handle, _webview_manager| {
-            let migration_state = Arc::new(Mutex::new(MigrationStatusInner::default()));
-            app_handle.manage(migration_state);
-
             log::info!("[Migration] 迁移插件初始化完成");
 
             let app_handle_clone = app_handle.clone();
@@ -72,7 +61,6 @@ pub async fn auto_migrate<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> 
 
             let (sender, mut receiver) = broadcast::channel(100);
 
-            let _app_clone = app.clone();
             let data_dir_clone = data_dir.clone();
 
             tauri::async_runtime::spawn(async move {
@@ -126,7 +114,7 @@ pub async fn auto_migrate<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> 
     }
 }
 
-fn get_data_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
+fn get_data_dir<R: Runtime>(_app: &AppHandle<R>) -> Result<PathBuf, String> {
     let data_dir = dirs::data_dir()
         .or_else(|| dirs::config_dir())
         .or_else(|| dirs::home_dir().map(|p| p.join(".local/share")))
