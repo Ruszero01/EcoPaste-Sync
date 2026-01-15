@@ -12,7 +12,6 @@ mod data_manager;
 mod file_sync_manager;
 mod sync_core;
 mod sync_engine;
-mod sync_utils;
 mod types;
 mod webdav;
 

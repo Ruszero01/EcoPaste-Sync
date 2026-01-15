@@ -172,13 +172,61 @@ pub async fn update_auto_sync_interval(
 pub async fn test_webdav_connection(
     webdav_client: State<'_, WebDAVClientState>,
 ) -> Result<ConnectionTestResult, String> {
-    let client = webdav_client.lock().await;
+    let mut client = webdav_client.lock().await;
 
-    if !client.is_initialized() {
-        return Err("WebDAV 客户端未初始化".to_string());
+    // 1. 从配置文件加载服务器配置
+    let server_config = match load_server_config().await {
+        Ok(config) => config,
+        Err(e) => {
+            log::warn!("[Sync] 加载配置文件失败: {}", e);
+            return Err("请先保存服务器配置".to_string());
+        }
+    };
+
+    // 转换为 WebDAVConfig
+    let config = crate::webdav::WebDAVConfig {
+        url: server_config.url,
+        username: server_config.username,
+        password: server_config.password,
+        path: server_config.path,
+        timeout: server_config.timeout,
+    };
+
+    // 2. 检查是否需要重新初始化
+    let needs_reinit = if client.is_initialized() {
+        match client.get_config() {
+            Some(current_config) => {
+                current_config.url != config.url
+                    || current_config.username != config.username
+                    || current_config.password != config.password
+                    || current_config.path != config.path
+            }
+            None => true,
+        }
+    } else {
+        true
+    };
+
+    // 3. 如果需要，重新初始化
+    if needs_reinit {
+        log::info!("[Sync] 配置已更改/未初始化，重新初始化客户端");
+        if let Err(e) = client.initialize(config).await {
+            return Err(format!("初始化失败: {}", e));
+        }
     }
 
-    client.test_connection().await
+    // 4. 测试连接
+    let result = client.test_connection().await?;
+
+    // 5. 处理结果
+    if result.success {
+        log::info!("[Sync] 测试连接成功");
+        Ok(result)
+    } else {
+        log::warn!("[Sync] 测试连接失败，销毁客户端");
+        client.reset();
+        Err(result.error_message.unwrap_or("连接失败".to_string()))
+    }
 }
 
 /// 更新同步配置
