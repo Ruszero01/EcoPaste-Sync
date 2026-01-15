@@ -545,14 +545,8 @@ const CloudSync = () => {
 
 		setConnectionStatus("testing");
 		try {
-			// 使用后端API测试连接
-			const result = await backendSync.backendTestWebdavConnection({
-				url: webdavConfig.url,
-				username: webdavConfig.username,
-				password: webdavConfig.password,
-				path: webdavConfig.path || "/EcoPaste-Sync",
-				timeout: 30000,
-			});
+			// 使用后端API测试连接（后端使用已初始化的同步引擎）
+			const result = await backendSync.backendTestWebdavConnection();
 
 			if (result.success) {
 				setConnectionStatus("success");

@@ -108,6 +108,17 @@ impl WebDAVClient {
         self.config.is_some() && self.http_client.is_some()
     }
 
+    /// 获取当前配置（用于比较配置是否更改）
+    pub fn get_config(&self) -> Option<&WebDAVConfig> {
+        self.config.as_ref()
+    }
+
+    /// 重置客户端状态（测试失败时调用）
+    pub fn reset(&mut self) {
+        self.config = None;
+        self.http_client = None;
+    }
+
     /// 获取配置
     fn config(&self) -> Result<&WebDAVConfig, String> {
         self.config
@@ -289,12 +300,14 @@ impl WebDAVClient {
         let start_time = Instant::now();
         let client = self.client()?;
         let auth_header = self.build_auth_header()?;
+        let sync_path = self.build_sync_path("")?;
 
-        // 直接测试连接，不检查目录（避免 TLS 握手不稳定导致误判）
-        let test_url = self.build_sync_path("")?;
-
+        // 使用 MKCOL 方法直接测试创建目录
+        // 群晖对 MKCOL 的处理是正常的，不会像 HEAD 那样返回重定向问题
+        // MKCOL 是 WebDAV 标准方法，需要自定义
+        let mkcol_method = Method::from_bytes(b"MKCOL").map_err(|_| "Invalid method")?;
         let response = client
-            .head(&test_url)
+            .request(mkcol_method, &sync_path)
             .header("Authorization", &auth_header)
             .header("User-Agent", "EcoPaste-CloudSync/1.0")
             .send()
@@ -311,8 +324,8 @@ impl WebDAVClient {
                     .and_then(|v| v.to_str().ok())
                     .map(|s| s.to_string());
 
-                let success =
-                    resp.status().is_success() || status_code == 405 || status_code == 207;
+                // 201 = 创建成功，405 = 目录已存在，都认为连接成功
+                let success = status_code == 201 || status_code == 405;
 
                 Ok(ConnectionTestResult {
                     success,
