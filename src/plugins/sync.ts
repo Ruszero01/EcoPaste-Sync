@@ -14,16 +14,7 @@ export interface BackendSyncConfig {
 	timeout: number;
 }
 
-// WebDAV 连接测试配置（用于测试连接）
-export interface BackendWebDAVTestConfig {
-	url: string;
-	username: string;
-	password: string;
-	path: string;
-	timeout: number;
-}
-
-// 同步状态
+// 连接测试结果
 export interface BackendSyncStatus {
 	is_syncing: boolean;
 	last_sync_time: number;
@@ -47,18 +38,8 @@ export interface BackendConnectionTestResult {
 	error_message?: string;
 }
 
-// 同步进度
-export interface BackendSyncProgress {
-	total: number;
-	completed: number;
-	current_item: string;
-	phase: string;
-}
-
 const COMMAND = {
 	INIT_SYNC: "plugin:eco-sync|init_sync",
-	START_SYNC: "plugin:eco-sync|start_sync",
-	STOP_SYNC: "plugin:eco-sync|stop_sync",
 	GET_SYNC_STATUS: "plugin:eco-sync|get_sync_status",
 	TRIGGER_SYNC: "plugin:eco-sync|trigger_sync",
 	START_AUTO_SYNC: "plugin:eco-sync|start_auto_sync",
@@ -66,9 +47,7 @@ const COMMAND = {
 	GET_AUTO_SYNC_STATUS: "plugin:eco-sync|get_auto_sync_status",
 	UPDATE_AUTO_SYNC_INTERVAL: "plugin:eco-sync|update_auto_sync_interval",
 	TEST_WEBDAV_CONNECTION: "plugin:eco-sync|test_webdav_connection",
-	GET_SYNC_PROGRESS: "plugin:eco-sync|get_sync_progress",
 	UPDATE_SYNC_CONFIG: "plugin:eco-sync|update_sync_config",
-	GET_SYNC_CONFIG: "plugin:eco-sync|get_sync_config",
 	UPLOAD_LOCAL_CONFIG: "plugin:eco-sync|upload_local_config",
 	APPLY_REMOTE_CONFIG: "plugin:eco-sync|apply_remote_config",
 	// 服务器配置本地管理命令（不参与云同步）
@@ -83,20 +62,6 @@ export const backendInitSync = (config: BackendSyncConfig) => {
 	return invoke<{ success: boolean; message: string }>(COMMAND.INIT_SYNC, {
 		config,
 	});
-};
-
-/**
- * 开始后端同步
- */
-export const backendStartSync = () => {
-	return invoke<{ success: boolean; message: string }>(COMMAND.START_SYNC);
-};
-
-/**
- * 停止后端同步
- */
-export const backendStopSync = () => {
-	return invoke<{ success: boolean; message: string }>(COMMAND.STOP_SYNC);
 };
 
 /**
@@ -150,21 +115,10 @@ export const backendUpdateAutoSyncInterval = (intervalMinutes: number) => {
 };
 
 /**
- * 测试后端 WebDAV 连接
+ * 测试后端 WebDAV 连接（使用后端已初始化的同步引擎）
  */
-export const backendTestWebdavConnection = (
-	config: BackendWebDAVTestConfig,
-) => {
-	return invoke<BackendConnectionTestResult>(COMMAND.TEST_WEBDAV_CONNECTION, {
-		config,
-	});
-};
-
-/**
- * 获取后端同步进度
- */
-export const backendGetSyncProgress = () => {
-	return invoke<BackendSyncProgress>(COMMAND.GET_SYNC_PROGRESS);
+export const backendTestWebdavConnection = () => {
+	return invoke<BackendConnectionTestResult>(COMMAND.TEST_WEBDAV_CONNECTION);
 };
 
 /**
@@ -175,13 +129,6 @@ export const backendUpdateSyncConfig = (config: BackendSyncConfig) => {
 		COMMAND.UPDATE_SYNC_CONFIG,
 		{ config },
 	);
-};
-
-/**
- * 获取后端同步配置
- */
-export const backendGetSyncConfig = () => {
-	return invoke<BackendSyncConfig | null>(COMMAND.GET_SYNC_CONFIG);
 };
 
 /**
