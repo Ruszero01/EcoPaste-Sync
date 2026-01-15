@@ -1,12 +1,10 @@
 mod core;
 
 use core::{prevent_default, setup};
-use log::error;
 use std::sync::atomic::AtomicBool;
 use tauri::{generate_context, Builder, Listener, Manager, WindowEvent};
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_eco_migration::auto_migrate;
-use tauri_plugin_eco_tray::create_tray;
 use tauri_plugin_eco_window::{show_main_window, MAIN_WINDOW_LABEL, PREFERENCE_WINDOW_LABEL};
 use tauri_plugin_log::{Target, TargetKind};
 
@@ -71,14 +69,6 @@ pub fn run() {
                     });
                 });
             }
-
-            // 创建系统托盘（异步执行，不阻塞启动）
-            let tray_app_handle = app_handle.clone();
-            tauri::async_runtime::spawn(async move {
-                if let Err(e) = create_tray(tray_app_handle).await {
-                    error!("[Lib] 创建系统托盘失败: {}", e);
-                }
-            });
 
             Ok(())
         })

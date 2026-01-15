@@ -11,7 +11,6 @@ import { fullName, metadata } from "tauri-plugin-fs-pro-api";
 import { pasteWithFocus } from "./paste";
 
 const COMMAND = {
-	START_LISTEN: "plugin:eco-clipboard|start_listen",
 	STOP_LISTEN: "plugin:eco-clipboard|stop_listen",
 	HAS_FILES: "plugin:eco-clipboard|has_files",
 	HAS_IMAGE: "plugin:eco-clipboard|has_image",
@@ -28,7 +27,6 @@ const COMMAND = {
 	WRITE_HTML: "plugin:eco-clipboard|write_html",
 	WRITE_RTF: "plugin:eco-clipboard|write_rtf",
 	WRITE_TEXT: "plugin:eco-clipboard|write_text",
-	GET_CLIPBOARD_SOURCE_INFO: "plugin:eco-clipboard|get_clipboard_source_info",
 	GET_IMAGE_DIMENSIONS: "plugin:eco-clipboard|get_image_dimensions",
 	DETECT_CONTENT: "plugin:eco-detector|detect_content",
 	CONVERT_COLOR: "plugin:eco-detector|convert_color",
@@ -54,29 +52,6 @@ interface TypeDetectionResult {
 	isMarkdown: boolean;
 	colorNormalized: string;
 }
-
-/**
- * 开启监听
- */
-export const startListen = () => {
-	return invoke(COMMAND.START_LISTEN);
-};
-
-/**
- * 停止监听
- */
-export const stopListen = () => {
-	return invoke(COMMAND.STOP_LISTEN);
-};
-
-// 切换监听
-export const toggleListen = (value: boolean) => {
-	if (value) {
-		startListen();
-	} else {
-		stopListen();
-	}
-};
 
 /**
  * 剪贴板是否有文件
