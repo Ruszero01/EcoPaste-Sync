@@ -3,37 +3,7 @@ use std::path::PathBuf;
 use clipboard_rs::common::{RustImage, RustImageData};
 use tauri::{AppHandle, Manager, Runtime};
 
-/// 获取文件大小（字节），失败返回 1
-pub fn get_file_size(path: &PathBuf) -> i32 {
-    std::fs::metadata(path)
-        .ok()
-        .map(|m| m.len() as i32)
-        .unwrap_or(1)
-}
-
-/// 检查文件是否为图片格式
-pub fn is_image_file(path: &str) -> bool {
-    static IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "bmp", "webp", "tiff"];
-    let ext = std::path::Path::new(path)
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|e| e.to_lowercase());
-    ext.map(|e| IMAGE_EXTENSIONS.contains(&e.as_str()))
-        .unwrap_or(false)
-}
-
-pub fn is_all_images(files: &[String]) -> bool {
-    files.iter().all(|f| is_image_file(f))
-}
-
-/// 生成唯一 ID（基于时间戳的纳秒级哈希）
-pub fn generate_id() -> String {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    format!("{:x}", timestamp)
-}
+use tauri_plugin_eco_common::{file::get_file_size, id::generate_id};
 
 /// 保存剪贴板图片到应用数据目录
 /// copy_from: 如果指定，则从该路径复制图片；否则保存 RustImageData

@@ -2,32 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-/// 类型检测结果
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TypeDetectionResult {
-    /// 子类型: url/email/path/color 等
-    pub subtype: Option<String>,
-    /// 是否为代码
-    pub is_code: bool,
-    /// 代码语言
-    pub code_language: Option<String>,
-    /// 是否为 Markdown
-    pub is_markdown: bool,
-    /// 颜色标准化值（RGB向量字符串），用于颜色去重
-    pub color_normalized: Option<String>,
-}
-
-impl Default for TypeDetectionResult {
-    fn default() -> Self {
-        Self {
-            subtype: None,
-            is_code: false,
-            code_language: None,
-            is_markdown: false,
-            color_normalized: None,
-        }
-    }
-}
+pub use tauri_plugin_eco_common::types::detection::TypeDetectionResult;
 
 /// 内容类型枚举（预留用于未来扩展）
 #[allow(dead_code)]

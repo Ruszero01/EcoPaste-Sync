@@ -14,7 +14,9 @@ use tauri::{command, AppHandle, Emitter, Manager, Runtime, State};
 mod audio;
 mod utils;
 pub use audio::play_copy_audio;
-pub use utils::{generate_id, is_all_images, save_clipboard_image};
+pub use utils::save_clipboard_image;
+
+use tauri_plugin_eco_common::{file::is_all_images, id::generate_id};
 
 // 引入 database 插件
 use tauri_plugin_eco_database::{DatabaseState, InsertItem};

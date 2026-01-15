@@ -6,7 +6,10 @@ use crate::{
     detectors::{conversion, DetectionOptions, DetectionResult, TargetType},
     models::TypeDetectionResult,
 };
-use serde::{Deserialize, Serialize};
+
+pub use tauri_plugin_eco_common::types::detection::{
+    ColorConvertResult, ColorConvertType, LegacyDetectionOptions,
+};
 
 /// 检测内容类型
 ///
@@ -99,30 +102,6 @@ pub fn run_detection(content: &str, options: &DetectionOptions) -> DetectionResu
     DetectionResult::default()
 }
 
-/// 检测选项（兼容旧接口）
-#[derive(Debug, Serialize, Deserialize)]
-pub struct LegacyDetectionOptions {
-    pub detect_url: bool,
-    pub detect_email: bool,
-    pub detect_path: bool,
-    pub detect_color: bool,
-    pub detect_code: bool,
-    pub detect_markdown: bool,
-}
-
-impl Default for LegacyDetectionOptions {
-    fn default() -> Self {
-        Self {
-            detect_url: true,
-            detect_email: true,
-            detect_path: true,
-            detect_color: true,
-            detect_code: false,
-            detect_markdown: true,
-        }
-    }
-}
-
 impl From<LegacyDetectionOptions> for DetectionOptions {
     fn from(opt: LegacyDetectionOptions) -> Self {
         Self {
@@ -137,20 +116,6 @@ impl From<LegacyDetectionOptions> for DetectionOptions {
     }
 }
 
-/// 颜色转换类型
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum ColorConvertType {
-    /// 转换为 RGB 向量格式 (r, g, b)
-    RgbVector,
-    /// 转换为 HEX 格式 (#RRGGBB)
-    Hex,
-    /// 转换为 CMYK 格式 (c, m, y, k)
-    Cmyk,
-    /// 转换为 RGB 格式 (r, g, b)
-    Rgb,
-}
-
 impl From<ColorConvertType> for TargetType {
     fn from(t: ColorConvertType) -> Self {
         match t {
@@ -160,19 +125,6 @@ impl From<ColorConvertType> for TargetType {
             ColorConvertType::Rgb => TargetType::Rgb,
         }
     }
-}
-
-/// 颜色转换结果
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ColorConvertResult {
-    /// 转换后的值
-    pub value: String,
-    /// 是否转换成功
-    pub success: bool,
-    /// 错误信息（如果失败）
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
 }
 
 /// 转换颜色格式
