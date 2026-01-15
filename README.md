@@ -127,7 +127,51 @@ graph TB
     SE --> FS2
 ```
 
-📖 **详细架构文档**：查看 [云同步架构文档](./docs/CLOUD_SYNC_ARCHITECTURE.md) 和 [架构图](./docs/architecture-diagram.md) 了解技术实现细节。
+---
+
+## 架构迁移说明
+
+项目已完成前后端架构重构，核心功能从 TypeScript 前端迁移至 Rust 后端实现：
+
+### 已迁移到后端的功能
+
+| 功能模块 | 原前端位置 | 新后端位置 |
+|---------|-----------|-----------|
+| **同步引擎** | | |
+| 同步引擎核心 | `utils/syncEngine.ts` | `plugins/sync/src/sync_engine.rs` + `sync_core.rs` |
+| 数据管理 | `utils/cloudDataManager.ts` + `utils/localDataManager.ts` | `plugins/sync/src/data_manager.rs` |
+| 文件同步 | `utils/fileSyncManager.ts` | `plugins/sync/src/file_sync_manager.rs` |
+| 自动同步 | `utils/autoSync.ts` | `plugins/sync/src/auto_sync_manager.rs` |
+| 配置同步 | `utils/configSync.ts` | `plugins/sync/src/config_sync_manager.rs` |
+| 书签同步 | `utils/bookmarkSync.ts` | `plugins/sync/src/bookmark_sync_manager.rs` |
+| 删除管理 | `utils/deleteManager.ts` | `plugins/sync/src/sync_core.rs` |
+| WebDAV 客户端 | `plugins/webdav.ts` | `plugins/sync/src/webdav.rs` |
+| **系统交互** | | |
+| 托盘管理 | `hooks/useTray.ts` | `plugins/tray/` |
+| 快捷键注册 | `hooks/useRegister.ts` | `plugins/hotkey/` |
+| 剪贴板监听 | 前端调用 | `plugins/clipboard/` |
+| 窗口管理 | `hooks/useWindowState.ts` | `plugins/window/` |
+| **内容处理** | | |
+| 内容检测 | 前端检测逻辑 | `plugins/detector/` (颜色/代码/链接/Markdown) |
+| 粘贴功能 | 快捷键+事件 | `plugins/paste/` |
+| **数据存储** | | |
+| 数据库操作 | 新实现 | `plugins/database/` |
+| 数据迁移 | 新实现 | `plugins/migration/` |
+
+### 已移除的功能
+
+| 功能模块 | 原前端位置 | 说明 |
+|---------|-----------|------|
+| 活跃窗口检测 | `plugins/activeWindow.ts` | 功能移除 |
+| 应用图标获取 | `hooks/useAppIcon.ts` | 功能移除 |
+| 缩略图生成 | `hooks/useThumbnail.ts` | 功能简化 |
+
+### 保留的前端组件
+
+- **UI 组件**：颜色选择器、代码编辑器、语法高亮、列表组件、拖拽预览、滚动条等
+- **前端 Hooks**：主题管理、窗口状态监听、事件订阅等
+
+---
 
 ## 贡献者
 
