@@ -41,9 +41,7 @@ pub fn create_shared_database() -> DatabaseState {
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("eco-database")
         .invoke_handler(tauri::generate_handler![
-            commands::query_history,
             commands::query_history_with_filter,
-            commands::insert_with_deduplication,
             commands::delete_items,
             commands::update_field,
             cleanup::cleanup_history,

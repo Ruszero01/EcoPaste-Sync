@@ -1,7 +1,5 @@
 const COMMANDS: &[&str] = &[
-    "query_history",
     "query_history_with_filter",
-    "insert_with_deduplication",
     "delete_items",
     "update_field",
     "cleanup_history",

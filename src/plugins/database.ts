@@ -87,7 +87,6 @@ const COMMAND = {
 	RESET_DATABASE: "plugin:eco-database|reset_database",
 	QUERY_HISTORY: "plugin:eco-database|query_history",
 	INSERT_WITH_DEDUPLICATION: "plugin:eco-database|insert_with_deduplication",
-	GET_STATISTICS: "plugin:eco-database|get_statistics",
 	GET_DATABASE_INFO: "plugin:eco-database|get_database_info",
 } as const;
 

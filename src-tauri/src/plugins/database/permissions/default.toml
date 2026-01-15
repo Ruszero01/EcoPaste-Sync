@@ -3,9 +3,7 @@
 [default]
 description = "Default permissions for the database plugin"
 permissions = [
-    "allow-query-history",
     "allow-query-history-with-filter",
-    "allow-insert-with-deduplication",
     "allow-delete-items",
     "allow-update-field",
     "allow-cleanup-history",
