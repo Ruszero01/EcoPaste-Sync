@@ -163,14 +163,16 @@ graph TB
 | **数据存储** | | |
 | 数据库操作 | 新实现 | `plugins/database/` |
 | 数据迁移 | 新实现 | `plugins/migration/` |
+| **内容处理** | | |
+| 应用图标获取 | `hooks/useAppIcon.ts` | `plugins/database/src/source_app.rs` |
+| 音频播放 | 前端实现 | `plugins/common/src/audio.rs` + `plugins/clipboard/src/commands/audio.rs` |
 
 ### 已移除的功能
 
 | 功能模块 | 原前端位置 | 说明 |
 |---------|-----------|------|
 | 活跃窗口检测 | `plugins/activeWindow.ts` | 功能移除 |
-| 应用图标获取 | `hooks/useAppIcon.ts` | 功能移除 |
-| 缩略图生成 | `hooks/useThumbnail.ts` | 功能简化 |
+| 缩略图生成 | `hooks/useThumbnail.ts` | 功能简化，仅保留基础图片预览 |
 
 ### 保留的前端组件
 
