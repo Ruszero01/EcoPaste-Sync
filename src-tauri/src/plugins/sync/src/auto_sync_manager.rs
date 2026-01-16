@@ -69,11 +69,13 @@ impl AutoSyncManager {
         self.enabled = true;
         self.interval_minutes = interval_minutes;
 
+        // 注意：不在启动时设置 last_sync_time
+        // last_sync_time 只在同步真正完成时由 update_sync_time() 更新
+
         let current_time = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        self.last_sync_time = Some(current_time);
         self.next_sync_time = Some(current_time + (interval_minutes * 60));
 
         // 启动异步定时器任务

@@ -172,6 +172,24 @@ impl CloudSyncEngine {
             return Err(e);
         }
 
+        // 释放锁后再执行同步，避免死锁
+        drop(manager);
+
+        // 立即执行一次同步
+        let mut sync_engine_clone = self.clone();
+        let database_state_clone = database_state.clone();
+        let app_handle_clone = app_handle.clone();
+        tauri::async_runtime::spawn(async move {
+            let _ = sync_engine_clone
+                .sync_with_database(
+                    &database_state_clone,
+                    only_favorites,
+                    include_files,
+                    &app_handle_clone,
+                )
+                .await;
+        });
+
         Ok(SyncResult {
             success: true,
             message: format!("自动同步已启动 ({}分钟)", interval_minutes),
