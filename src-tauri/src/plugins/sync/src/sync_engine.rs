@@ -147,10 +147,12 @@ impl CloudSyncEngine {
         let sync_core = self.sync_core.clone();
         let database_state_clone = database_state.clone();
         let app_handle_clone = app_handle.clone();
+        let auto_sync_manager_clone = auto_sync_manager.clone();
         manager.set_sync_callback(Box::new(move || {
             let sync_core = sync_core.clone();
             let database_state = database_state_clone.clone();
             let app_handle = app_handle_clone.clone();
+            let auto_sync_manager = auto_sync_manager_clone.clone();
             tauri::async_runtime::spawn(async move {
                 let mut core = sync_core.lock().await;
                 let mode_config = crate::sync_core::SyncModeConfig {
@@ -160,9 +162,15 @@ impl CloudSyncEngine {
                     include_images: true,
                     include_files,
                 };
-                let _ = core
+                let result = core
                     .perform_sync(mode_config, &database_state, &app_handle)
                     .await;
+
+                // 同步完成后更新时间戳
+                if result.is_ok() {
+                    let mut manager = auto_sync_manager.lock().await;
+                    manager.update_sync_time();
+                }
             });
         }));
 
