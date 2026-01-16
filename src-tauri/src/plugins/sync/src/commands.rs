@@ -48,12 +48,34 @@ pub async fn init_sync<R: Runtime>(
 }
 
 /// 获取同步状态（返回包含 last_sync_time 的完整状态）
+/// 直接从配置文件读取 last_sync_time，避免时序问题
 #[tauri::command]
 pub async fn get_sync_status(
     state: State<'_, Arc<Mutex<CloudSyncEngine>>>,
 ) -> Result<AutoSyncStatus, String> {
     let engine = state.lock().await;
-    Ok(engine.get_auto_sync_status().await)
+
+    // 从配置文件读取 last_sync_time
+    let config_last_sync_time = match load_server_config().await {
+        Ok(config) => config.last_sync_time,
+        Err(e) => {
+            log::warn!("[Sync] 读取同步时间失败: {}", e);
+            None
+        }
+    };
+
+    let status = engine.get_auto_sync_status().await;
+
+    // 使用配置文件中的时间，覆盖内存中的值（如果配置文件有值）
+    let last_sync_time = config_last_sync_time.or(status.last_sync_time);
+
+    Ok(AutoSyncStatus {
+        enabled: status.enabled,
+        interval_minutes: status.interval_minutes,
+        last_sync_time,
+        next_sync_time: status.next_sync_time,
+        is_syncing: status.is_syncing,
+    })
 }
 
 /// 手动触发同步（后端直接从数据库读取数据）
