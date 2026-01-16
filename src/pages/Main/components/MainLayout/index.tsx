@@ -1,9 +1,5 @@
 import UnoIcon from "@/components/UnoIcon";
-import {
-	initializeMicaEffect,
-	showWindow,
-	updateMicaTheme,
-} from "@/plugins/window";
+import { initializeMicaEffect, updateMicaTheme } from "@/plugins/window";
 import { clipboardStore } from "@/stores/clipboard";
 import { isWin } from "@/utils/is";
 import { Flex } from "antd";
@@ -61,7 +57,7 @@ const MainLayout = () => {
 							hoverable
 							name="i-lets-icons:setting-alt-line"
 							onClick={() => {
-								showWindow("preference");
+								toggleWindow("preference", undefined);
 							}}
 						/>
 					</Flex>

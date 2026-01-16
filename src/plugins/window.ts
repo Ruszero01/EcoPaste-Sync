@@ -21,85 +21,51 @@ const isTauriEnvironment = () => {
 };
 
 const COMMAND = {
-	SHOW_WINDOW: "plugin:eco-window|show_window",
-	SHOW_WINDOW_WITH_POSITION: "plugin:eco-window|show_window_with_position",
-	DESTROY_WINDOW: "plugin:eco-window|destroy_window",
+	TOGGLE_WINDOW: "plugin:eco-window|toggle_window",
 	SHOW_TASKBAR_ICON: "plugin:eco-window|show_taskbar_icon",
-	SHOW_MAIN_WINDOW: "plugin:eco-window|show_main_window",
-	SHOW_PREFERENCE_WINDOW: "plugin:eco-window|show_preference_window",
 	APPLY_MICA_EFFECT: "plugin:eco-window|apply_mica_effect",
 	CLEAR_MICA_EFFECT: "plugin:eco-window|clear_mica_effect",
 	IS_MICA_SUPPORTED: "plugin:eco-window|is_mica_supported",
-	CREATE_WINDOW: "plugin:eco-window|create_window",
-	HIDE_WINDOW_WITH_BEHAVIOR: "plugin:eco-window|hide_window_with_behavior",
+};
+
+export { COMMAND };
+
+/**
+ * 隐藏窗口（使用窗口行为模式配置）
+ * @param label 窗口标签，默认主窗口
+ */
+export const hideWindow = async (label?: WindowLabel) => {
+	const targetLabel = label ?? "main";
+	await invoke(COMMAND.TOGGLE_WINDOW, {
+		label: targetLabel,
+		position_mode: undefined, // 隐藏时不需要位置模式
+	});
 };
 
 /**
- * 显示窗口
+ * 统一窗口切换命令
+ * 根据窗口当前状态自动显示或隐藏
+ * 显示时遵循位置模式配置，隐藏时遵循行为模式配置
  */
-export const showWindow = (label?: WindowLabel) => {
-	// 获取窗口位置设置
-	const windowPosition = clipboardStore.window.position;
-
-	if (label) {
-		// 根据标签调用相应的命令
-		if (label === "main") {
-			invoke(COMMAND.SHOW_MAIN_WINDOW, { position_mode: windowPosition });
-		} else if (label === "preference") {
-			invoke(COMMAND.SHOW_PREFERENCE_WINDOW, { position_mode: windowPosition });
-		} else {
-			// 如果没有匹配的标签，默认显示主窗口
-			invoke(COMMAND.SHOW_MAIN_WINDOW, { position_mode: windowPosition });
-		}
-
-		// 触发回到顶部事件
-		const LISTEN_KEY = {
-			ACTIVATE_BACK_TOP: "activate-back-top",
-		} as const;
-		emit(LISTEN_KEY.ACTIVATE_BACK_TOP, "window-activate");
-	} else {
-		invoke(COMMAND.SHOW_WINDOW);
-	}
-};
-
-/**
- * 显示窗口并设置位置
- */
-export const showWindowWithPosition = (
-	position: string,
+export const toggleWindow = async (
 	label?: WindowLabel,
+	positionMode?: string,
 ) => {
-	if (label) {
-		// 直接调用 Rust 命令，不通过事件系统
-		invoke(COMMAND.SHOW_WINDOW_WITH_POSITION, { position, label });
+	const targetLabel = label ?? "main";
+	await invoke(COMMAND.TOGGLE_WINDOW, {
+		label: targetLabel,
+		position_mode: positionMode ?? clipboardStore.window.position,
+	});
 
-		// 触发回到顶部事件
-		const LISTEN_KEY = {
-			ACTIVATE_BACK_TOP: "activate-back-top",
-		} as const;
-		emit(LISTEN_KEY.ACTIVATE_BACK_TOP, "window-activate");
-	} else {
-		invoke(COMMAND.SHOW_WINDOW_WITH_POSITION, { position });
-	}
+	// 触发回到顶部事件
+	const LISTEN_KEY = {
+		ACTIVATE_BACK_TOP: "activate-back-top",
+	} as const;
+	emit(LISTEN_KEY.ACTIVATE_BACK_TOP, "window-activate");
 };
 
 /**
- * 销毁当前窗口
- */
-export const destroyWindow = async () => {
-	invoke(COMMAND.DESTROY_WINDOW);
-};
-
-/**
- * 隐藏窗口（已废弃，请使用 destroyWindow）
- * TODO: 后续迁移到后端统一处理
- */
-export const hideWindow = async () => {
-	destroyWindow();
-};
-
-/**
- * 切换窗口的显示和隐藏
+ * 切换窗口的显示和隐藏（自动检测当前窗口状态）
  */
 export const toggleWindowVisible = async () => {
 	const appWindow = getCurrentWebviewWindow();
@@ -114,17 +80,17 @@ export const toggleWindowVisible = async () => {
 	}
 
 	if (focused) {
-		hideWindow();
+		// 窗口聚焦，隐藏它
+		await invoke(COMMAND.TOGGLE_WINDOW, {
+			label: "main",
+			position_mode: undefined,
+		});
 	} else {
-		// 获取窗口位置设置
-		const windowPosition = clipboardStore.window.position;
-
-		// 根据设置显示窗口
-		if (windowPosition === "remember") {
-			showWindow("main");
-		} else {
-			showWindowWithPosition(windowPosition, "main");
-		}
+		// 窗口未聚焦，显示它
+		await invoke(COMMAND.TOGGLE_WINDOW, {
+			label: "main",
+			position_mode: clipboardStore.window.position,
+		});
 	}
 };
 
@@ -189,13 +155,4 @@ export const updateMicaTheme = async (isDark: boolean) => {
 	if (supported && isTauriEnvironment()) {
 		await applyMicaEffect(isDark);
 	}
-};
-
-/**
- * 根据窗口行为模式隐藏或销毁窗口
- * 窗口行为设置从配置文件中读取
- * @param label 窗口标签
- */
-export const hideWindowWithBehavior = async (label: string) => {
-	invoke(COMMAND.HIDE_WINDOW_WITH_BEHAVIOR, { label });
 };

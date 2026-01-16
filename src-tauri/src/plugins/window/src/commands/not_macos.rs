@@ -2,7 +2,6 @@ use super::{
     calculate_safe_position_in_monitor, find_monitor_at_position, get_saved_window_state,
     MAIN_WINDOW_LABEL, PREFERENCE_WINDOW_LABEL,
 };
-use crate::{set_window_follow_cursor, shared_show_window};
 use std::collections::HashMap;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -72,8 +71,19 @@ pub fn mark_window_hidden<R: Runtime>(app_handle: &AppHandle<R>, label: &str) {
 
                 if should_destroy {
                     if let Some(win) = app_inner.get_webview_window(&label) {
-                        let _ = win.destroy();
-                        log::info!("[Window] 自动回收：已销毁窗口 {}", label);
+                        // 再次检查窗口是否可见，只销毁不可见的窗口
+                        if let Ok(visible) = win.is_visible() {
+                            if !visible {
+                                let _ = win.destroy();
+                                log::info!("[Window] 自动回收：已销毁窗口 {}", label);
+                            } else {
+                                log::info!("[Window] 自动回收：窗口 {} 仍可见，跳过销毁", label);
+                                // 窗口可见，移除隐藏标记防止后续错误回收
+                                let mut hidden = hidden_inner.lock().unwrap();
+                                hidden.remove(&label);
+                                continue;
+                            }
+                        }
                     }
                     let mut hidden = hidden_inner.lock().unwrap();
                     hidden.remove(&label);
@@ -91,50 +101,6 @@ pub fn clear_hidden_mark(label: &str) {
 
 #[cfg(target_os = "windows")]
 use window_vibrancy::{apply_mica, clear_mica};
-
-// 显示窗口
-#[command]
-pub async fn show_window<R: Runtime>(_app_handle: AppHandle<R>, window: WebviewWindow<R>) {
-    shared_show_window(&window);
-}
-
-// 显示窗口并设置位置
-#[command]
-pub async fn show_window_with_position<R: Runtime>(
-    _app_handle: AppHandle<R>,
-    window: WebviewWindow<R>,
-    position: String,
-) {
-    match position.as_str() {
-        "follow" => {
-            // 跟随鼠标位置
-            set_window_follow_cursor(&window);
-        }
-        "center" => {
-            // 居中显示，不设置特定位置
-        }
-        "remember" => {
-            // 记住位置，在 restoreState 中已处理
-        }
-        _ => {}
-    }
-
-    shared_show_window(&window);
-}
-
-// 销毁窗口
-#[command]
-pub async fn destroy_window<R: Runtime>(window: WebviewWindow<R>) {
-    #[cfg(target_os = "windows")]
-    {
-        let _ = window.destroy();
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = window.hide();
-    }
-}
 
 // 创建窗口
 // position_mode: "remember" | "center" | "follow" | "default" - 控制窗口位置策略

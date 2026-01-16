@@ -1,7 +1,7 @@
 import ProList from "@/components/ProList";
 import UnoIcon from "@/components/UnoIcon";
 import { LISTEN_KEY } from "@/constants";
-import { showWindow } from "@/plugins/window";
+import { toggleWindow } from "@/plugins/window";
 import { formatDate } from "@/utils/dayjs";
 import { getSaveDataPath, joinPath } from "@/utils/path";
 import { saveStore } from "@/utils/store";
@@ -46,7 +46,7 @@ const Manual: FC<{ state: State }> = (props) => {
 				filters: [{ name: "", extensions: [extname()] }],
 			});
 
-			showWindow();
+			await toggleWindow("preference", undefined);
 
 			if (!path) return;
 

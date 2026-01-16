@@ -1,20 +1,12 @@
 "$schema" = "schemas/schema.json"
 
 [default]
-description = "Default permissions for the plugin"
+description = "Default permissions for the window plugin"
 permissions = [
-    "allow-show-window",
-    "allow-show-window-with-position",
-    "allow-destroy-window",
-    "allow-destroy-all-windows",
-    "allow-exit-app",
+    "allow-toggle-window",
     "allow-show-taskbar-icon",
-    "allow-show-main-window",
-    "allow-show-preference-window",
     "allow-apply-mica-effect",
     "allow-clear-mica-effect",
     "allow-is-mica-supported",
-    "allow-create-window",
-    "allow-hide-window-with-behavior",
-    "allow-close-webview-for-test"
+    "allow-create-window"
 ]

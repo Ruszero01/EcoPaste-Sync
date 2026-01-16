@@ -1,4 +1,5 @@
 import { useShortcutSubscription } from "@/hooks/useShortcutSubscription";
+import { hideWindow } from "@/plugins/window";
 import { HappyProvider } from "@ant-design/happy-work-theme";
 import { error } from "@tauri-apps/plugin-log";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -90,7 +91,9 @@ const App = () => {
 	});
 
 	// 隐藏窗口
-	useKeyPress(["esc", PRESET_SHORTCUT.HIDE_WINDOW], hideWindow);
+	useKeyPress(["esc", PRESET_SHORTCUT.HIDE_WINDOW], () => {
+		hideWindow("main");
+	});
 
 	// 监听 promise 的错误，输出到日志
 	useEventListener("unhandledrejection", ({ reason }) => {

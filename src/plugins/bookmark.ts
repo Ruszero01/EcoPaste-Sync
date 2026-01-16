@@ -12,7 +12,7 @@ const COMMAND = {
 };
 
 export interface BookmarkData {
-	last_modified: number;
+	last_modified?: number;
 	groups: BookmarkGroup[];
 }
 

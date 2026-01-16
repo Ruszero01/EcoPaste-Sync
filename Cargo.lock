@@ -6790,6 +6790,7 @@ dependencies = [
 name = "tauri-plugin-eco-window"
 version = "0.1.0"
 dependencies = [
+ "dirs 5.0.1",
  "log",
  "once_cell",
  "scopeguard",

@@ -1,8 +1,8 @@
 import UnoIcon from "@/components/UnoIcon";
 // import UpdateApp from "@/components/UpdateApp"; // fork分支不需要更新功能
 import {
-	hideWindowWithBehavior,
 	initializeMicaEffect,
+	toggleWindow,
 	updateMicaTheme,
 } from "@/plugins/window";
 import { isWin } from "@/utils/is";
@@ -28,14 +28,14 @@ const Preference = () => {
 
 	// ESC 销毁窗口
 	useKeyPress("esc", () => {
-		hideWindowWithBehavior("preference");
+		toggleWindow("preference", undefined);
 	});
 
 	useMount(async () => {
 		const autostart = await isAutostart();
 
 		if (!autostart) {
-			showWindow();
+			toggleWindow("preference", undefined);
 		}
 
 		// 初始化偏好设置窗口的 Mica 效果

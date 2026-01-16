@@ -526,3 +526,213 @@ fn show_window_by_label<R: Runtime>(
         }
     });
 }
+
+// Window state enum - returned to frontend for state synchronization
+#[derive(Debug, Clone, serde::Serialize)]
+pub enum WindowState {
+    Shown,
+    Hidden,
+    Created,
+}
+
+// Hide window using behavior mode
+async fn hide_with_behavior<R: Runtime>(
+    app_handle: &AppHandle<R>,
+    label: &str,
+) -> Result<(), String> {
+    let (mode, _delay_seconds) = get_window_behavior_from_config(&app_handle);
+
+    if let Some(win) = app_handle.get_webview_window(label) {
+        match mode.as_str() {
+            "lightweight" => {
+                log::info!("[Window] Lightweight mode: destroying window {}", label);
+                let _ = win.destroy();
+            }
+            "resident" => {
+                log::info!("[Window] Resident mode: hiding window {}", label);
+                let _ = win.hide();
+            }
+            "auto_recycle" => {
+                log::info!(
+                    "[Window] Auto-recycle mode: delayed destroy for window {}",
+                    label
+                );
+                let _ = win.hide();
+
+                #[cfg(not(target_os = "macos"))]
+                {
+                    mark_window_hidden(app_handle, label);
+                }
+
+                #[cfg(target_os = "macos")]
+                {
+                    let app_inner = app_handle.clone();
+                    let label_inner = label.to_string();
+                    let delay_ms = delay_seconds * 1000;
+
+                    spawn(async move {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms as u64))
+                            .await;
+                        if let Some(win) = app_inner.get_webview_window(&label_inner) {
+                            if let Ok(visible) = win.is_visible() {
+                                if !visible {
+                                    let _ = win.destroy();
+                                    log::info!(
+                                        "[Window] Auto-recycle: window {} destroyed",
+                                        label_inner
+                                    );
+                                }
+                            }
+                        }
+                    });
+                }
+            }
+            _ => {
+                log::warn!(
+                    "[Window] Unknown window behavior: {}, using default hide",
+                    mode
+                );
+                let _ = win.hide();
+            }
+        }
+    }
+
+    Ok(())
+}
+
+// Show window using position mode
+async fn show_with_position<R: Runtime>(
+    app_handle: &AppHandle<R>,
+    label: &str,
+    position_mode: Option<&str>,
+) -> Result<(), String> {
+    let position_mode = position_mode.unwrap_or("center");
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        clear_hidden_mark(label);
+    }
+
+    let mut window_opt = app_handle.get_webview_window(label);
+
+    // If window doesn't exist, create it (all platforms)
+    if window_opt.is_none() {
+        if let Err(e) =
+            super::create_window(app_handle.clone(), label.to_string(), Some(position_mode)).await
+        {
+            log::error!("[Window] Failed to create window: {}", e);
+            return Err(format!("Failed to create window: {}", e));
+        }
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        window_opt = app_handle.get_webview_window(label);
+    }
+
+    if let Some(window) = window_opt {
+        match position_mode {
+            "remember" => {
+                if let Ok(Some(state)) = get_saved_window_state(app_handle, label) {
+                    let (x, y, saved_width, saved_height) = state;
+                    let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+                    if saved_width > 0 && saved_height > 0 {
+                        let _ =
+                            window.set_size(tauri::PhysicalSize::new(saved_width, saved_height));
+                    }
+                }
+            }
+            "follow" => {
+                if let Ok(cursor_pos) = app_handle.cursor_position() {
+                    let mut window_width = 360;
+                    let mut window_height = 600;
+
+                    if let Ok(size) = window.inner_size() {
+                        window_width = size.width;
+                        window_height = size.height;
+                    }
+
+                    let (safe_x, safe_y) =
+                        match find_monitor_at_position(app_handle, cursor_pos.x, cursor_pos.y) {
+                            Some(monitor) => calculate_safe_position_in_monitor(
+                                cursor_pos.x as i32,
+                                cursor_pos.y as i32,
+                                window_width,
+                                window_height,
+                                &monitor,
+                            ),
+                            None => (cursor_pos.x as i32, cursor_pos.y as i32),
+                        };
+
+                    let _ = window.set_position(tauri::PhysicalPosition::new(safe_x, safe_y));
+                }
+            }
+            "center" | "default" | _ => {}
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            if is_main_window(&window) {
+                if let Ok(mac) = app_handle.try_state::<super::macos::MacOSPanelState>() {
+                    let state = mac.lock().unwrap();
+                    if let Some(panel) = &state.panel {
+                        let _ = panel.set_visible(true);
+                    }
+                }
+            } else {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            tokio::time::sleep(tokio::time::Duration::from_millis(WEBVIEW2_INIT_DELAY_MS)).await;
+            activate_window_safely(&window).await;
+        }
+    }
+
+    Ok(())
+}
+
+// Unified window toggle command
+// If window is visible, hide it; otherwise show it
+// position_mode: Position mode when showing ("center", "follow", "remember", "default")
+#[tauri::command]
+pub async fn toggle_window<R: Runtime>(
+    app_handle: AppHandle<R>,
+    label: String,
+    position_mode: Option<String>,
+) -> Result<WindowState, String> {
+    let window = app_handle.get_webview_window(&label);
+
+    match window {
+        Some(win) => {
+            if let Ok(is_visible) = win.is_visible() {
+                if is_visible {
+                    hide_with_behavior(&app_handle, &label).await?;
+                    log::info!("[Window] Window {} hidden", label);
+                    Ok(WindowState::Hidden)
+                } else {
+                    show_with_position(&app_handle, &label, position_mode.as_deref()).await?;
+                    log::info!("[Window] Window {} shown", label);
+                    Ok(WindowState::Shown)
+                }
+            } else {
+                show_with_position(&app_handle, &label, position_mode.as_deref()).await?;
+                Ok(WindowState::Shown)
+            }
+        }
+        None => {
+            show_with_position(&app_handle, &label, position_mode.as_deref()).await?;
+            log::info!("[Window] Window {} created and shown", label);
+            Ok(WindowState::Created)
+        }
+    }
+}
+
+// Internal exit command for tray control
+// This is NOT exposed to frontend - only called by tray plugin
+// Allows graceful exit when webview2 processes are being closed
+#[tauri::command]
+pub async fn exit_app<R: Runtime>(app_handle: AppHandle<R>) {
+    allow_exit();
+    log::info!("[Window] Exit command received, shutting down application");
+    let _ = app_handle.exit(0);
+}

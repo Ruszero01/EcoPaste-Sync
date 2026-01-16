@@ -489,6 +489,7 @@ pub async fn clear_bookmark_data() -> Result<bool, String> {
 /// 书签分组数据
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct BookmarkGroupData {
+    #[serde(default)]
     pub last_modified: i64,
     pub groups: Vec<BookmarkGroup>,
 }

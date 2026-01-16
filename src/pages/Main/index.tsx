@@ -1,8 +1,9 @@
 import { LISTEN_KEY } from "@/constants";
 import { backendQueryHistoryWithFilter } from "@/plugins/database";
-import { hideWindowWithBehavior, initializeMicaEffect } from "@/plugins/window";
+import { COMMAND, initializeMicaEffect, toggleWindow } from "@/plugins/window";
 import type { HistoryTablePayload, TablePayload } from "@/types/database";
 import type { Store } from "@/types/store";
+import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import { useReactive } from "ahooks";
 import type { EventEmitter } from "ahooks/lib/useEventEmitter";
@@ -117,7 +118,13 @@ const Main = () => {
 	});
 
 	// 监听是否显示任务栏图标
-	useImmediateKey(globalStore.app, "showTaskbarIcon", showTaskbarIcon);
+	useImmediateKey(globalStore.app, "showTaskbarIcon", (value) => {
+		const isVisible =
+			typeof value === "boolean"
+				? value
+				: ((value as { showTaskbarIcon?: boolean }).showTaskbarIcon ?? true);
+		invoke(COMMAND.SHOW_TASKBAR_ICON, { visible: isVisible });
+	});
 
 	// 监听刷新列表
 	useTauriListen(LISTEN_KEY.REFRESH_CLIPBOARD_LIST, () => {
@@ -189,7 +196,7 @@ const Main = () => {
 			const delay = 300;
 
 			windowHideTimer.current = setTimeout(() => {
-				hideWindowWithBehavior("main");
+				toggleWindow("main", undefined);
 				windowHideTimer.current = undefined;
 			}, delay);
 		},
@@ -200,11 +207,6 @@ const Main = () => {
 		event.preventDefault();
 
 		// const data = find(state.list, { id: state.activeId });
-	});
-
-	// 打开偏好设置窗口
-	useKeyPress(PRESET_SHORTCUT.OPEN_PREFERENCES, () => {
-		showWindow("preference");
 	});
 
 	// Ctrl+A 全选功能
