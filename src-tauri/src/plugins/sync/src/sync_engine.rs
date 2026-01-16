@@ -106,7 +106,6 @@ impl CloudSyncEngine {
             let mut auto_sync_manager = self.auto_sync_manager.lock().await;
             if let Ok(server_config) = crate::commands::load_server_config().await {
                 auto_sync_manager.set_last_sync_time(server_config.last_sync_time);
-                log::info!("[Sync] 已加载同步时间: {:?}", server_config.last_sync_time);
             }
         }
 

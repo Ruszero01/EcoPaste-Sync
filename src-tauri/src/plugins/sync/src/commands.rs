@@ -602,12 +602,9 @@ pub async fn save_server_config(config: ServerConfigData) -> SaveServerConfigRes
 /// 从单独文件加载服务器配置
 #[tauri::command]
 pub async fn load_server_config() -> Result<ServerConfigData, String> {
-    log::info!("[Sync] 加载服务器配置");
-
     let config_path = get_server_config_path()?;
 
     if !config_path.exists() {
-        log::info!("[Sync] 服务器配置文件不存在");
         return Ok(ServerConfigData::default());
     }
 
@@ -615,10 +612,7 @@ pub async fn load_server_config() -> Result<ServerConfigData, String> {
         Ok(content) => {
             serde_json::from_str(&content).map_err(|e| format!("解析配置文件失败: {}", e))
         }
-        Err(e) => {
-            log::error!("[Sync] 读取配置文件失败: {}", e);
-            Err(format!("读取配置文件失败: {}", e))
-        }
+        Err(e) => Err(format!("读取配置文件失败: {}", e)),
     }
 }
 
@@ -659,12 +653,10 @@ pub async fn update_last_sync_time(timestamp: u64) {
 
             if let Err(e) = std::fs::write(&config_path, json) {
                 log::error!("[Sync] 写入配置文件失败: {}", e);
-            } else {
-                log::info!("[Sync] 同步时间已更新: {}", timestamp);
             }
         }
         Err(e) => {
-            log::error!("[Sync] 读取配置文件失败: {}", e);
+            log::warn!("[Sync] 读取配置文件失败: {}", e);
         }
     }
 }
