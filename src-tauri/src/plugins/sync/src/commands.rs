@@ -6,7 +6,7 @@ use crate::sync_engine::CloudSyncEngine;
 use crate::types::*;
 use crate::webdav::{ConnectionTestResult, WebDAVClientState};
 use std::sync::Arc;
-use tauri::{AppHandle, Runtime, State};
+use tauri::{AppHandle, Emitter, Runtime, State};
 use tauri_plugin_eco_database::DatabaseState;
 use tokio::sync::Mutex;
 
@@ -346,7 +346,10 @@ pub async fn load_bookmark_data() -> Result<BookmarkGroupData, String> {
 
 /// 保存本地书签数据
 #[tauri::command]
-pub async fn save_bookmark_data(data: BookmarkGroupData) -> Result<bool, String> {
+pub async fn save_bookmark_data<R: Runtime>(
+    data: BookmarkGroupData,
+    app_handle: AppHandle<R>,
+) -> Result<bool, String> {
     log::info!("[Bookmark] 保存本地书签数据: {} 分组", data.groups.len());
 
     // 获取应用数据目录
@@ -366,13 +369,20 @@ pub async fn save_bookmark_data(data: BookmarkGroupData) -> Result<bool, String>
 
     std::fs::write(&bookmark_path, json).map_err(|e| format!("写入书签文件失败: {}", e))?;
 
+    // 发送事件通知前端书签数据已更改
+    let _ = app_handle.emit("bookmark-data-changed", ());
+
     log::info!("[Bookmark] 书签数据保存成功");
     Ok(true)
 }
 
 /// 添加书签分组
 #[tauri::command]
-pub async fn add_bookmark_group(name: String, color: String) -> Result<BookmarkGroup, String> {
+pub async fn add_bookmark_group<R: Runtime>(
+    name: String,
+    color: String,
+    app_handle: AppHandle<R>,
+) -> Result<BookmarkGroup, String> {
     log::info!("[Bookmark] 添加书签分组: {}", name);
 
     let mut data = load_bookmark_data().await?;
@@ -393,17 +403,18 @@ pub async fn add_bookmark_group(name: String, color: String) -> Result<BookmarkG
     data.groups.push(new_group.clone());
     data.last_modified = current_timestamp_millis();
 
-    save_bookmark_data(data).await?;
+    save_bookmark_data(data, app_handle).await?;
 
     Ok(new_group)
 }
 
 /// 更新书签分组
 #[tauri::command]
-pub async fn update_bookmark_group(
+pub async fn update_bookmark_group<R: Runtime>(
     id: String,
     name: Option<String>,
     color: Option<String>,
+    app_handle: AppHandle<R>,
 ) -> Result<BookmarkGroup, String> {
     log::info!("[Bookmark] 更新书签分组: {}", id);
 
@@ -445,14 +456,17 @@ pub async fn update_bookmark_group(
     group.update_time = now;
     data.last_modified = now;
 
-    save_bookmark_data(data).await?;
+    save_bookmark_data(data, app_handle).await?;
 
     Ok(updated_group)
 }
 
 /// 删除书签分组
 #[tauri::command]
-pub async fn delete_bookmark_group(id: String) -> Result<bool, String> {
+pub async fn delete_bookmark_group<R: Runtime>(
+    id: String,
+    app_handle: AppHandle<R>,
+) -> Result<bool, String> {
     log::info!("[Bookmark] 删除书签分组: {}", id);
 
     let mut data = load_bookmark_data().await?;
@@ -465,14 +479,17 @@ pub async fn delete_bookmark_group(id: String) -> Result<bool, String> {
     }
 
     data.last_modified = current_timestamp_millis();
-    save_bookmark_data(data).await?;
+    save_bookmark_data(data, app_handle).await?;
 
     Ok(true)
 }
 
 /// 重新排序书签分组
 #[tauri::command]
-pub async fn reorder_bookmark_groups(groups: Vec<BookmarkGroup>) -> Result<bool, String> {
+pub async fn reorder_bookmark_groups<R: Runtime>(
+    groups: Vec<BookmarkGroup>,
+    app_handle: AppHandle<R>,
+) -> Result<bool, String> {
     log::info!("[Bookmark] 重新排序书签分组: {} 个", groups.len());
 
     let mut data = load_bookmark_data().await?;
@@ -489,14 +506,14 @@ pub async fn reorder_bookmark_groups(groups: Vec<BookmarkGroup>) -> Result<bool,
 
     data.groups = groups;
     data.last_modified = current_timestamp_millis();
-    save_bookmark_data(data).await?;
+    save_bookmark_data(data, app_handle).await?;
 
     Ok(true)
 }
 
 /// 清空书签数据（仅开发模式使用）
 #[tauri::command]
-pub async fn clear_bookmark_data() -> Result<bool, String> {
+pub async fn clear_bookmark_data<R: Runtime>(app_handle: AppHandle<R>) -> Result<bool, String> {
     log::info!("[Bookmark] 清空书签数据（开发模式）");
 
     let empty_data = BookmarkGroupData {
@@ -504,7 +521,7 @@ pub async fn clear_bookmark_data() -> Result<bool, String> {
         groups: Vec::new(),
     };
 
-    save_bookmark_data(empty_data).await?;
+    save_bookmark_data(empty_data, app_handle).await?;
 
     Ok(true)
 }
