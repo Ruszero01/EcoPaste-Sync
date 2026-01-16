@@ -32,12 +32,6 @@ const Preference = () => {
 	});
 
 	useMount(async () => {
-		const autostart = await isAutostart();
-
-		if (!autostart) {
-			toggleWindow("preference", undefined);
-		}
-
 		// 初始化偏好设置窗口的 Mica 效果
 		await initializeMicaEffect();
 	});

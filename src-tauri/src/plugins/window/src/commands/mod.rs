@@ -547,6 +547,8 @@ async fn hide_with_behavior<R: Runtime>(
             "lightweight" => {
                 log::info!("[Window] Lightweight mode: destroying window {}", label);
                 let _ = win.destroy();
+                // 清除隐藏标记，防止回收器误操作
+                clear_hidden_mark(label);
             }
             "resident" => {
                 log::info!("[Window] Resident mode: hiding window {}", label);
