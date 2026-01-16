@@ -48,15 +48,17 @@ pub async fn init_sync<R: Runtime>(
 }
 
 /// 获取同步状态（返回包含 last_sync_time 的完整状态）
-/// 直接从配置文件读取 last_sync_time，避免时序问题
+/// 从缓存读取 last_sync_time，避免频繁文件 IO
 #[tauri::command]
 pub async fn get_sync_status(
     state: State<'_, Arc<Mutex<CloudSyncEngine>>>,
 ) -> Result<AutoSyncStatus, String> {
+    use tauri_plugin_eco_common::server_config::get_cached_server_config;
+
     let engine = state.lock().await;
 
-    // 从配置文件读取 last_sync_time
-    let config_last_sync_time = match load_server_config().await {
+    // 从缓存读取 last_sync_time
+    let config_last_sync_time = match get_cached_server_config() {
         Ok(config) => config.last_sync_time,
         Err(e) => {
             log::warn!("[Sync] 读取同步时间失败: {}", e);
@@ -66,7 +68,7 @@ pub async fn get_sync_status(
 
     let status = engine.get_auto_sync_status().await;
 
-    // 使用配置文件中的时间，覆盖内存中的值（如果配置文件有值）
+    // 使用缓存中的时间
     let last_sync_time = config_last_sync_time.or(status.last_sync_time);
 
     Ok(AutoSyncStatus {
@@ -519,48 +521,9 @@ pub struct BookmarkGroupData {
 // 服务器配置本地管理命令（不参与云同步）
 // ================================
 
-/// 服务器配置数据结构
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ServerConfigData {
-    pub url: String,
-    pub username: String,
-    pub password: String,
-    pub path: String,
-    pub timeout: u64,
-    /// 上次同步时间（Unix 时间戳，秒）
-    pub last_sync_time: Option<u64>,
-}
-
-impl Default for ServerConfigData {
-    fn default() -> Self {
-        Self {
-            url: String::new(),
-            username: String::new(),
-            password: String::new(),
-            path: "/EcoPaste-Sync".to_string(),
-            timeout: 60000,
-            last_sync_time: None,
-        }
-    }
-}
-
-/// 获取服务器配置文件路径
-fn get_server_config_path() -> Result<std::path::PathBuf, String> {
-    let data_dir = dirs::data_dir()
-        .or_else(|| dirs::config_dir())
-        .or_else(|| dirs::home_dir().map(|p| p.join(".local/share")))
-        .map(|p| p.join("com.Rains.EcoPaste-Sync"))
-        .ok_or_else(|| "无法获取数据目录".to_string())?;
-
-    let filename = if cfg!(debug_assertions) {
-        "server-config.dev.json"
-    } else {
-        "server-config.json"
-    };
-
-    Ok(data_dir.join(filename))
-}
+use tauri_plugin_eco_common::server_config::{
+    get_cached_server_config, save_server_config as save_server_config_common, ServerConfigData,
+};
 
 /// 服务器配置保存结果
 #[derive(Debug, Clone, serde::Serialize)]
@@ -570,93 +533,25 @@ pub enum SaveServerConfigResult {
     Error(String),
 }
 
+/// 从单独文件加载服务器配置（使用缓存）
+#[tauri::command]
+pub async fn load_server_config() -> Result<ServerConfigData, String> {
+    get_cached_server_config()
+}
+
 /// 保存服务器配置到单独文件
 #[tauri::command]
 pub async fn save_server_config(config: ServerConfigData) -> SaveServerConfigResult {
     log::info!("[Sync] 保存服务器配置");
 
-    let config_path = match get_server_config_path() {
-        Ok(path) => path,
-        Err(e) => return SaveServerConfigResult::Error(e),
-    };
-
-    if let Some(parent) = config_path.parent() {
-        if let Err(e) = std::fs::create_dir_all(parent) {
-            return SaveServerConfigResult::Error(format!("创建配置目录失败: {}", e));
-        }
-    }
-
-    let json = match serde_json::to_string_pretty(&config) {
-        Ok(j) => j,
-        Err(e) => return SaveServerConfigResult::Error(format!("序列化配置失败: {}", e)),
-    };
-
-    if let Err(e) = std::fs::write(&config_path, json) {
-        return SaveServerConfigResult::Error(format!("写入配置文件失败: {}", e));
-    }
-
-    log::info!("[Sync] 服务器配置已保存到: {:?}", config_path);
-    SaveServerConfigResult::Success
-}
-
-/// 从单独文件加载服务器配置
-#[tauri::command]
-pub async fn load_server_config() -> Result<ServerConfigData, String> {
-    let config_path = get_server_config_path()?;
-
-    if !config_path.exists() {
-        return Ok(ServerConfigData::default());
-    }
-
-    match std::fs::read_to_string(&config_path) {
-        Ok(content) => {
-            serde_json::from_str(&content).map_err(|e| format!("解析配置文件失败: {}", e))
-        }
-        Err(e) => Err(format!("读取配置文件失败: {}", e)),
-    }
-}
-
-/// 更新同步时间到配置文件
-pub async fn update_last_sync_time(timestamp: u64) {
-    let config_path = match get_server_config_path() {
-        Ok(path) => path,
-        Err(e) => {
-            log::error!("[Sync] 获取配置文件路径失败: {}", e);
-            return;
-        }
-    };
-
-    if !config_path.exists() {
-        log::warn!("[Sync] 配置文件不存在，无法更新同步时间");
-        return;
-    }
-
-    match std::fs::read_to_string(&config_path) {
-        Ok(content) => {
-            let mut config: ServerConfigData = match serde_json::from_str(&content) {
-                Ok(c) => c,
-                Err(e) => {
-                    log::error!("[Sync] 解析配置文件失败: {}", e);
-                    return;
-                }
-            };
-
-            config.last_sync_time = Some(timestamp);
-
-            let json = match serde_json::to_string_pretty(&config) {
-                Ok(j) => j,
-                Err(e) => {
-                    log::error!("[Sync] 序列化配置文件失败: {}", e);
-                    return;
-                }
-            };
-
-            if let Err(e) = std::fs::write(&config_path, json) {
-                log::error!("[Sync] 写入配置文件失败: {}", e);
-            }
+    match save_server_config_common(config) {
+        Ok(()) => {
+            log::info!("[Sync] 服务器配置已保存");
+            SaveServerConfigResult::Success
         }
         Err(e) => {
-            log::warn!("[Sync] 读取配置文件失败: {}", e);
+            log::error!("[Sync] 保存服务器配置失败: {}", e);
+            SaveServerConfigResult::Error(e)
         }
     }
 }

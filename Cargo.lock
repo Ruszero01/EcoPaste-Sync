@@ -6645,6 +6645,7 @@ dependencies = [
 name = "tauri-plugin-eco-common"
 version = "0.1.0"
 dependencies = [
+ "dirs 5.0.1",
  "log",
  "once_cell",
  "rodio",
@@ -6767,6 +6768,7 @@ dependencies = [
  "sha2",
  "tauri",
  "tauri-plugin",
+ "tauri-plugin-eco-common",
  "tauri-plugin-eco-database",
  "tokio",
 ]

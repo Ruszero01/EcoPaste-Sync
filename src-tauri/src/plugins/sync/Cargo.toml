@@ -23,6 +23,7 @@ md5 = "0.7"
 chrono = { version = "0.4", features = ["serde"] }
 dirs = "5.0"
 tauri-plugin-eco-database.workspace = true
+tauri-plugin-eco-common.workspace = true
 
 [features]
 default = []

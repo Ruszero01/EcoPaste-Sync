@@ -3,7 +3,6 @@
 
 use crate::auto_sync_manager::AutoSyncManagerState;
 use crate::bookmark_sync_manager::BookmarkSyncManager;
-use crate::commands::update_last_sync_time;
 use crate::config_sync_manager::ConfigSyncManager;
 use crate::data_manager::{create_shared_manager as create_data_manager, DataManager};
 use crate::file_sync_manager::{
@@ -14,6 +13,7 @@ use crate::types::*;
 use crate::webdav::WebDAVClientState;
 use std::sync::Arc;
 use tauri::{AppHandle, Runtime};
+use tauri_plugin_eco_common::server_config::{get_last_sync_time, update_last_sync_time};
 use tauri_plugin_eco_database::DatabaseState;
 use tokio::sync::Mutex;
 
@@ -101,12 +101,11 @@ impl CloudSyncEngine {
 
         self.status = SyncStatus::Idle;
 
-        // 从配置文件加载同步时间
+        // 从缓存读取同步时间
+        let cached_sync_time = get_last_sync_time();
         {
             let mut auto_sync_manager = self.auto_sync_manager.lock().await;
-            if let Ok(server_config) = crate::commands::load_server_config().await {
-                auto_sync_manager.set_last_sync_time(server_config.last_sync_time);
-            }
+            auto_sync_manager.set_last_sync_time(cached_sync_time);
         }
 
         // 同步配置到 SyncCore（统一配置入口）
@@ -307,11 +306,11 @@ impl CloudSyncEngine {
         let mut manager = auto_sync_manager.lock().await;
         manager.update_sync_time();
 
-        // 持久化同步时间到配置文件
+        // 持久化同步时间到缓存
         if result.is_ok() {
             if let Some(last_sync_time) = manager.get_last_sync_time() {
                 tauri::async_runtime::spawn(async move {
-                    update_last_sync_time(last_sync_time).await;
+                    update_last_sync_time(last_sync_time);
                 });
             }
         }

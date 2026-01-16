@@ -1,3 +1,4 @@
+use dirs::home_dir;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager, Runtime};
 
@@ -17,10 +18,16 @@ pub fn get_config_filename() -> &'static str {
     }
 }
 
-/// 获取配置文件路径
-///
-/// 优先使用 APPDATA 环境变量（Windows 上始终可用）
-/// 最终兜底：Tauri app_data_dir()
+#[inline]
+pub fn get_server_config_filename() -> &'static str {
+    if is_dev_mode() {
+        "server-config.dev.json"
+    } else {
+        "server-config.json"
+    }
+}
+
+/// 获取配置文件路径（主配置 .store.json）
 pub fn get_config_path<R: Runtime>(app_handle: &AppHandle<R>) -> Option<PathBuf> {
     let config_filename = get_config_filename();
 
@@ -37,4 +44,17 @@ pub fn get_config_path<R: Runtime>(app_handle: &AppHandle<R>) -> Option<PathBuf>
         .app_data_dir()
         .ok()
         .map(|p| p.join(config_filename))
+}
+
+/// 获取数据目录（用于存放非敏感配置如 server-config.json）
+pub fn get_data_path() -> Option<PathBuf> {
+    dirs::data_dir()
+        .or_else(|| dirs::config_dir())
+        .or_else(|| home_dir().map(|p| p.join(".local/share")))
+        .map(|p| p.join(BUNDLE_ID))
+}
+
+/// 获取服务器配置文件路径
+pub fn get_server_config_path() -> Option<PathBuf> {
+    get_data_path().map(|p| p.join(get_server_config_filename()))
 }
