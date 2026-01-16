@@ -11,6 +11,23 @@ import { useSnapshot } from "valtio";
 
 const { defaultAlgorithm, darkAlgorithm } = theme;
 
+// 初始化系统主题检测
+const initTheme = async () => {
+	if (globalStore.appearance.theme === "auto") {
+		try {
+			const { getCurrentWebviewWindow } = await import(
+				"@tauri-apps/api/webviewWindow"
+			);
+			const appWindow = getCurrentWebviewWindow();
+			const actualTheme = await appWindow.theme();
+			globalStore.appearance.isDark = actualTheme === "dark";
+		} catch {
+			// 如果获取系统主题失败，默认使用浅色
+			globalStore.appearance.isDark = false;
+		}
+	}
+};
+
 const App = () => {
 	const { appearance } = useSnapshot(globalStore);
 	const { restoreState } = useWindowState();
@@ -25,6 +42,9 @@ const App = () => {
 
 		// 生成 antd 的颜色变量
 		generateColorVars();
+
+		// 初始化系统主题
+		await initTheme();
 
 		// 初始化托盘 - 使用更强的防护机制
 		// TODO: 临时注释掉托盘，测试 WebView2 进程能否正常关闭
