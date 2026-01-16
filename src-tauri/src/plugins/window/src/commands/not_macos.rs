@@ -113,6 +113,8 @@ pub async fn create_window<R: Runtime>(
     // 先检查窗口是否已存在，如果存在则销毁旧窗口
     if let Some(existing_window) = app_handle.get_webview_window(&label) {
         let _ = existing_window.destroy();
+        // 清除隐藏标记，防止回收器误销毁新窗口
+        clear_hidden_mark(&label);
     }
 
     let is_main = label == MAIN_WINDOW_LABEL;
