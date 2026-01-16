@@ -161,7 +161,7 @@ graph TB
 | 内容检测 | 前端检测逻辑 | `plugins/detector/` (颜色/代码/链接/Markdown) |
 | 粘贴功能 | 快捷键+事件 | `plugins/paste/` |
 | **数据存储** | | |
-| 数据库操作 | 新实现 | `plugins/database/` |
+| 数据库操作 | 前端实现 | `plugins/database/` |
 | 数据迁移 | 新实现 | `plugins/migration/` |
 | **内容处理** | | |
 | 应用图标获取 | `hooks/useAppIcon.ts` | `plugins/database/src/source_app.rs` |
