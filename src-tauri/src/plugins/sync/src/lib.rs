@@ -218,7 +218,10 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
                         .clone();
 
                     let mut engine = sync_engine_clone.lock().await;
-                    match engine.init(config, &database_state).await {
+                    match engine
+                        .init(config, &database_state, &app_handle_clone)
+                        .await
+                    {
                         Ok(result) => {
                             log::info!("[Sync] 自动初始化成功: {}", result.message);
                         }

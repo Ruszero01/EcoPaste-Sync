@@ -7,6 +7,7 @@ use crate::types::*;
 use crate::webdav::WebDAVClientState;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use tauri::{AppHandle, Emitter, Runtime};
 use tauri_plugin_eco_database::{DatabaseState, DeleteManager};
 use tokio::sync::Mutex;
 
@@ -94,10 +95,11 @@ impl SyncCore {
 
     /// 执行同步操作（优化后流程）
     /// 流程：获取云端索引 -> 处理索引删除 -> 获取本地数据 -> 双向同步 -> 处理文件
-    pub async fn perform_sync(
+    pub async fn perform_sync<R: Runtime>(
         &mut self,
         mode_config: SyncModeConfig,
         database_state: &DatabaseState,
+        app_handle: &AppHandle<R>,
     ) -> Result<SyncProcessResult, String> {
         if self.sync_in_progress {
             return Err("同步正在进行中".to_string());
@@ -255,6 +257,15 @@ impl SyncCore {
             }
         } else {
             log::error!("[Sync] 完成，有 {} 个错误", result.errors.len());
+        }
+
+        // 通知前端刷新列表（如果有数据变更）
+        if !result.uploaded_items.is_empty()
+            || !result.downloaded_items.is_empty()
+            || !result.deleted_items.is_empty()
+        {
+            let payload = serde_json::json!({ "duplicate_id": null });
+            let _ = app_handle.emit("plugin:eco-clipboard://database_updated", payload);
         }
 
         self.sync_in_progress = false;

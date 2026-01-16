@@ -12,6 +12,7 @@ use crate::sync_core::{SyncCore, SyncModeConfig, SyncProcessResult};
 use crate::types::*;
 use crate::webdav::WebDAVClientState;
 use std::sync::Arc;
+use tauri::{AppHandle, Runtime};
 use tauri_plugin_eco_database::DatabaseState;
 use tokio::sync::Mutex;
 
@@ -71,10 +72,11 @@ impl CloudSyncEngine {
     }
 
     /// 初始化同步引擎
-    pub async fn init(
+    pub async fn init<R: Runtime>(
         &mut self,
         config: SyncConfig,
         database_state: &DatabaseState,
+        app_handle: &AppHandle<R>,
     ) -> Result<SyncResult, String> {
         // 提取需要的配置字段
         let auto_sync = config.auto_sync;
@@ -113,7 +115,7 @@ impl CloudSyncEngine {
 
         // 如果配置中启用了自动同步，启动它
         if auto_sync {
-            self.start_auto_sync(auto_sync_interval, database_state)
+            self.start_auto_sync(auto_sync_interval, database_state, app_handle)
                 .await?;
         }
 
@@ -124,10 +126,11 @@ impl CloudSyncEngine {
     }
 
     /// 启动自动同步
-    pub async fn start_auto_sync(
+    pub async fn start_auto_sync<R: Runtime>(
         &mut self,
         interval_minutes: u64,
         database_state: &DatabaseState,
+        app_handle: &AppHandle<R>,
     ) -> Result<SyncResult, String> {
         let auto_sync_manager = self.auto_sync_manager.clone();
         let mut manager = auto_sync_manager.lock().await;
@@ -143,9 +146,11 @@ impl CloudSyncEngine {
         // 设置自动同步回调
         let sync_core = self.sync_core.clone();
         let database_state_clone = database_state.clone();
+        let app_handle_clone = app_handle.clone();
         manager.set_sync_callback(Box::new(move || {
             let sync_core = sync_core.clone();
             let database_state = database_state_clone.clone();
+            let app_handle = app_handle_clone.clone();
             tauri::async_runtime::spawn(async move {
                 let mut core = sync_core.lock().await;
                 let mode_config = crate::sync_core::SyncModeConfig {
@@ -155,7 +160,9 @@ impl CloudSyncEngine {
                     include_images: true,
                     include_files,
                 };
-                let _ = core.perform_sync(mode_config, &database_state).await;
+                let _ = core
+                    .perform_sync(mode_config, &database_state, &app_handle)
+                    .await;
             });
         }));
 
@@ -221,11 +228,12 @@ impl CloudSyncEngine {
 
     /// 使用数据库状态执行同步
     /// 从数据库直接读取数据并执行同步流程
-    pub async fn sync_with_database(
+    pub async fn sync_with_database<R: Runtime>(
         &mut self,
         database_state: &DatabaseState,
         only_favorites: bool,
         include_files: bool,
+        app_handle: &AppHandle<R>,
     ) -> Result<SyncProcessResult, String> {
         // 从 SyncCore 获取配置
         let config = {
@@ -260,7 +268,9 @@ impl CloudSyncEngine {
         );
 
         // 直接执行同步，让 perform_sync 负责所有数据库操作
-        let result = core.perform_sync(mode_config, database_state).await;
+        let result = core
+            .perform_sync(mode_config, database_state, app_handle)
+            .await;
 
         // 执行书签同步（只在主同步成功且有书签数据时）
         if result.is_ok() {

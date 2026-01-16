@@ -20,10 +20,11 @@ fn current_timestamp_millis() -> i64 {
 
 /// 初始化同步
 #[tauri::command]
-pub async fn init_sync(
+pub async fn init_sync<R: Runtime>(
     config: SyncConfig,
     state: State<'_, Arc<Mutex<CloudSyncEngine>>>,
     db_state: State<'_, DatabaseState>,
+    app_handle: AppHandle<R>,
 ) -> Result<SyncResult, String> {
     let mut engine = state.lock().await;
 
@@ -34,7 +35,7 @@ pub async fn init_sync(
         config.path
     );
 
-    match engine.init(config, &db_state).await {
+    match engine.init(config, &db_state, &app_handle).await {
         Ok(result) => {
             log::info!("[Sync] 同步引擎初始化成功: {}", result.message);
             Ok(result)
@@ -79,7 +80,7 @@ pub async fn trigger_sync<R: Runtime>(
 
     // 直接从数据库查询并执行同步
     let result = engine
-        .sync_with_database(&db, only_favorites, include_files)
+        .sync_with_database(&db, only_favorites, include_files, &app_handle)
         .await;
 
     match result {
@@ -130,13 +131,16 @@ pub async fn trigger_sync<R: Runtime>(
 
 /// 启动自动同步
 #[tauri::command]
-pub async fn start_auto_sync(
+pub async fn start_auto_sync<R: Runtime>(
     interval_minutes: u64,
     state: State<'_, Arc<Mutex<CloudSyncEngine>>>,
     db_state: State<'_, DatabaseState>,
+    app_handle: AppHandle<R>,
 ) -> Result<SyncResult, String> {
     let mut engine = state.lock().await;
-    engine.start_auto_sync(interval_minutes, &db_state).await
+    engine
+        .start_auto_sync(interval_minutes, &db_state, &app_handle)
+        .await
 }
 
 /// 停止自动同步
@@ -231,13 +235,14 @@ pub async fn test_webdav_connection(
 
 /// 更新同步配置
 #[tauri::command]
-pub async fn update_sync_config(
+pub async fn update_sync_config<R: Runtime>(
     config: SyncConfig,
     state: State<'_, Arc<Mutex<CloudSyncEngine>>>,
     db_state: State<'_, DatabaseState>,
+    app_handle: AppHandle<R>,
 ) -> Result<SyncResult, String> {
     let mut engine = state.lock().await;
-    engine.init(config, &db_state).await
+    engine.init(config, &db_state, &app_handle).await
 }
 
 /// 上传本地配置到云端
@@ -260,14 +265,15 @@ pub async fn apply_remote_config(
 
 /// 从本地文件重新加载配置
 #[tauri::command]
-pub async fn reload_config_from_file(
+pub async fn reload_config_from_file<R: Runtime>(
     state: State<'_, Arc<Mutex<CloudSyncEngine>>>,
     db_state: State<'_, DatabaseState>,
+    app_handle: AppHandle<R>,
 ) -> Result<SyncResult, String> {
     let mut engine = state.lock().await;
 
     match crate::read_sync_config_from_file() {
-        Some(config) => match engine.init(config, &db_state).await {
+        Some(config) => match engine.init(config, &db_state, &app_handle).await {
             Ok(result) => {
                 log::info!("[Sync] 从本地文件重新加载配置成功");
                 Ok(result)
