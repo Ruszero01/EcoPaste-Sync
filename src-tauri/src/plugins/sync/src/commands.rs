@@ -6,7 +6,7 @@ use crate::sync_engine::CloudSyncEngine;
 use crate::types::*;
 use crate::webdav::{ConnectionTestResult, WebDAVClientState};
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter, Runtime, State};
+use tauri::{AppHandle, Runtime, State};
 use tauri_plugin_eco_database::DatabaseState;
 use tokio::sync::Mutex;
 
@@ -64,7 +64,6 @@ pub async fn trigger_sync<R: Runtime>(
     db_state: State<'_, DatabaseState>,
 ) -> Result<SyncResult, String> {
     let mut engine = state.lock().await;
-    let db = db_state;
 
     // 检查引擎是否已初始化
     let config = engine.get_config().await;
@@ -74,13 +73,16 @@ pub async fn trigger_sync<R: Runtime>(
     }
 
     let config = config.unwrap();
-    let only_favorites = config.only_favorites;
-    let include_files = config.include_files;
-    log::info!("[Sync] 触发同步: only_favorites={}", only_favorites);
+    log::info!("[Sync] 触发同步: only_favorites={}", config.only_favorites);
 
-    // 直接从数据库查询并执行同步
+    // 直接从数据库查询并执行同步（sync_with_database 包含完整流程）
     let result = engine
-        .sync_with_database(&db, only_favorites, include_files, &app_handle)
+        .sync_with_database(
+            &db_state,
+            config.only_favorites,
+            config.include_files,
+            &app_handle,
+        )
         .await;
 
     match result {
@@ -91,15 +93,6 @@ pub async fn trigger_sync<R: Runtime>(
                 process_result.downloaded_items.len(),
                 process_result.deleted_items.len()
             );
-
-            // 如果有数据变更，通知前端刷新列表
-            if !process_result.uploaded_items.is_empty()
-                || !process_result.downloaded_items.is_empty()
-                || !process_result.deleted_items.is_empty()
-            {
-                let payload = serde_json::json!({ "duplicate_id": null });
-                let _ = app_handle.emit("plugin:eco-clipboard://database_updated", payload);
-            }
 
             Ok(SyncResult {
                 success: process_result.success,

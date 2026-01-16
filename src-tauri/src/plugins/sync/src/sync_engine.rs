@@ -19,6 +19,7 @@ use tokio::sync::Mutex;
 /// 云同步引擎
 /// 专注于协调各子模块，不包含具体同步逻辑
 /// 实现清晰的数据流向：CloudSyncEngine -> SyncCore -> DataManager/FileSyncManager
+#[derive(Clone)]
 pub struct CloudSyncEngine {
     /// 当前状态
     pub status: SyncStatus,
@@ -144,33 +145,18 @@ impl CloudSyncEngine {
         let include_files = config.as_ref().map(|c| c.include_files).unwrap_or(false);
 
         // 设置自动同步回调
-        let sync_core = self.sync_core.clone();
+        let sync_engine_clone = self.clone();
         let database_state_clone = database_state.clone();
         let app_handle_clone = app_handle.clone();
-        let auto_sync_manager_clone = auto_sync_manager.clone();
         manager.set_sync_callback(Box::new(move || {
-            let sync_core = sync_core.clone();
+            let mut engine = sync_engine_clone.clone();
             let database_state = database_state_clone.clone();
             let app_handle = app_handle_clone.clone();
-            let auto_sync_manager = auto_sync_manager_clone.clone();
             tauri::async_runtime::spawn(async move {
-                let mut core = sync_core.lock().await;
-                let mode_config = crate::sync_core::SyncModeConfig {
-                    auto_sync: true,
-                    auto_sync_interval_minutes: 60,
-                    only_favorites,
-                    include_images: true,
-                    include_files,
-                };
-                let result = core
-                    .perform_sync(mode_config, &database_state, &app_handle)
+                // 使用 sync_with_database 执行完整同步流程（包含书签同步和事件通知）
+                let _ = engine
+                    .sync_with_database(&database_state, only_favorites, include_files, &app_handle)
                     .await;
-
-                // 同步完成后更新时间戳
-                if result.is_ok() {
-                    let mut manager = auto_sync_manager.lock().await;
-                    manager.update_sync_time();
-                }
             });
         }));
 
