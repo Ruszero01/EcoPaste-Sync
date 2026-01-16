@@ -506,6 +506,8 @@ pub struct ServerConfigData {
     pub password: String,
     pub path: String,
     pub timeout: u64,
+    /// 上次同步时间（Unix 时间戳，秒）
+    pub last_sync_time: Option<u64>,
 }
 
 impl Default for ServerConfigData {
@@ -516,6 +518,7 @@ impl Default for ServerConfigData {
             password: String::new(),
             path: "/EcoPaste-Sync".to_string(),
             timeout: 60000,
+            last_sync_time: None,
         }
     }
 }
@@ -593,6 +596,53 @@ pub async fn load_server_config() -> Result<ServerConfigData, String> {
         Err(e) => {
             log::error!("[Sync] 读取配置文件失败: {}", e);
             Err(format!("读取配置文件失败: {}", e))
+        }
+    }
+}
+
+/// 更新同步时间到配置文件
+pub async fn update_last_sync_time(timestamp: u64) {
+    let config_path = match get_server_config_path() {
+        Ok(path) => path,
+        Err(e) => {
+            log::error!("[Sync] 获取配置文件路径失败: {}", e);
+            return;
+        }
+    };
+
+    if !config_path.exists() {
+        log::warn!("[Sync] 配置文件不存在，无法更新同步时间");
+        return;
+    }
+
+    match std::fs::read_to_string(&config_path) {
+        Ok(content) => {
+            let mut config: ServerConfigData = match serde_json::from_str(&content) {
+                Ok(c) => c,
+                Err(e) => {
+                    log::error!("[Sync] 解析配置文件失败: {}", e);
+                    return;
+                }
+            };
+
+            config.last_sync_time = Some(timestamp);
+
+            let json = match serde_json::to_string_pretty(&config) {
+                Ok(j) => j,
+                Err(e) => {
+                    log::error!("[Sync] 序列化配置文件失败: {}", e);
+                    return;
+                }
+            };
+
+            if let Err(e) = std::fs::write(&config_path, json) {
+                log::error!("[Sync] 写入配置文件失败: {}", e);
+            } else {
+                log::info!("[Sync] 同步时间已更新: {}", timestamp);
+            }
+        }
+        Err(e) => {
+            log::error!("[Sync] 读取配置文件失败: {}", e);
         }
     }
 }

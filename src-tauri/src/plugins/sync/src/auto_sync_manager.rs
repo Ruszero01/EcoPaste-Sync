@@ -181,6 +181,16 @@ impl AutoSyncManager {
         }
     }
 
+    /// 获取上次同步时间
+    pub fn get_last_sync_time(&self) -> Option<u64> {
+        self.last_sync_time
+    }
+
+    /// 设置上次同步时间（从配置文件加载）
+    pub fn set_last_sync_time(&mut self, timestamp: Option<u64>) {
+        self.last_sync_time = timestamp;
+    }
+
     /// 计算到下次同步的剩余时间（秒）
     /// # Returns
     /// 返回剩余秒数，如果未启用自动同步则返回 None
