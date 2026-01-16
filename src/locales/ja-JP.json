@@ -347,7 +347,9 @@
 			"config_reset_success": "設定がリセットされました、アプリケーションの再起動をお勧め",
 			"operation_failed": "操作失敗",
 			"sync_interval_updated": "同期間隔が更新されました（バックグラウンドで有効）",
-			"update_interval_failed": "間隔の更新失敗"
+			"update_interval_failed": "間隔の更新失敗",
+			"please_fill_server_config": "サーバー設定を入力してください",
+			"config_saved": "設定が保存されました"
 		}
 	},
 	"sidebar_group": {

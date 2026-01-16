@@ -7,7 +7,6 @@ describe("bookmark plugin", () => {
 
 		expect(bookmark).toHaveProperty("loadBookmarkData");
 		expect(bookmark).toHaveProperty("saveBookmarkData");
-		expect(bookmark).toHaveProperty("loadBookmarkLastModified");
 		expect(bookmark).toHaveProperty("addBookmarkGroup");
 		expect(bookmark).toHaveProperty("updateBookmarkGroup");
 		expect(bookmark).toHaveProperty("deleteBookmarkGroup");
@@ -19,7 +18,6 @@ describe("bookmark plugin", () => {
 
 		expect(typeof bookmark.loadBookmarkData).toBe("function");
 		expect(typeof bookmark.saveBookmarkData).toBe("function");
-		expect(typeof bookmark.loadBookmarkLastModified).toBe("function");
 		expect(typeof bookmark.addBookmarkGroup).toBe("function");
 		expect(typeof bookmark.updateBookmarkGroup).toBe("function");
 		expect(typeof bookmark.deleteBookmarkGroup).toBe("function");

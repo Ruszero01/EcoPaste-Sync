@@ -330,10 +330,8 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 			// 使用bookmarkManager更新分组
 			const updatedGroup = await bookmarkApi.updateBookmarkGroup(
 				selectedGroup.id,
-				{
-					name: editGroupName.trim(),
-					color: editGroupColor,
-				},
+				editGroupName.trim(),
+				editGroupColor,
 			);
 
 			if (updatedGroup) {

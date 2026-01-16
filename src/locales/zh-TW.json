@@ -347,7 +347,9 @@
 			"config_reset_success": "配置已重置，建議重新啟動應用",
 			"operation_failed": "操作失敗",
 			"sync_interval_updated": "同步間隔已更新（後台生效）",
-			"update_interval_failed": "更新間隔失敗"
+			"update_interval_failed": "更新間隔失敗",
+			"please_fill_server_config": "請先填寫伺服器配置",
+			"config_saved": "配置已儲存"
 		}
 	},
 	"sidebar_group": {

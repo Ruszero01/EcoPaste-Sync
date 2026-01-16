@@ -539,7 +539,7 @@ const CloudSync = () => {
 			!webdavConfig?.username ||
 			!webdavConfig?.password
 		) {
-			appMessage.warning("请先填写服务器配置");
+			appMessage.warning(t("preference.cloud_sync.please_fill_server_config"));
 			return;
 		}
 
@@ -603,6 +603,9 @@ const CloudSync = () => {
 				appMessage.error(t("preference.cloud_sync.save_failed"));
 				return;
 			}
+
+			// 更新前端状态，确保测试连接能获取到最新配置
+			setWebdavConfig(config);
 
 			// 通知后端重新加载配置
 			try {

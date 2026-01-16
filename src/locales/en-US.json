@@ -360,7 +360,9 @@
 			"database_reset_success": "Database has been reset",
 			"reset_failed": "Reset failed",
 			"sync_interval_updated": "Sync interval updated (effective in background)",
-			"update_interval_failed": "Failed to update interval"
+			"update_interval_failed": "Failed to update interval",
+			"please_fill_server_config": "Please fill in the server configuration first",
+			"config_saved": "Configuration saved"
 		}
 	},
 	"sidebar_group": {

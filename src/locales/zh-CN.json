@@ -356,7 +356,9 @@
 			"config_reset_success": "配置已重置，建议重启应用",
 			"operation_failed": "操作失败",
 			"sync_interval_updated": "同步间隔已更新（后台生效）",
-			"update_interval_failed": "更新间隔失败"
+			"update_interval_failed": "更新间隔失败",
+			"please_fill_server_config": "请先填写服务器配置",
+			"config_saved": "配置已保存"
 		}
 	},
 	"sidebar_group": {
