@@ -74,6 +74,17 @@ const Group = () => {
 		},
 	];
 
+	// 获取过滤后的可见分组列表（与渲染逻辑保持一致）
+	const visibleGroupList = groupList.filter((item) => {
+		if (item.key === "code") {
+			return content.codeDetection;
+		}
+		if (item.key === "color") {
+			return content.colorDetection;
+		}
+		return true;
+	});
+
 	useTauriFocus({
 		onFocus() {
 			if (!clipboardStore.window.showAll) return;
@@ -83,8 +94,9 @@ const Group = () => {
 	});
 
 	useKeyPress("tab", (event) => {
-		const index = groupList.findIndex((item) => item.key === checked);
-		const length = groupList.length;
+		// 使用过滤后的可见列表计算索引
+		const index = visibleGroupList.findIndex((item) => item.key === checked);
+		const length = visibleGroupList.length;
 
 		let nextIndex = index;
 
@@ -94,7 +106,7 @@ const Group = () => {
 			nextIndex = index === length - 1 ? 0 : index + 1;
 		}
 
-		handleChange(groupList[nextIndex]);
+		handleChange(visibleGroupList[nextIndex]);
 	});
 
 	const handleChange = (item: GroupItem) => {
