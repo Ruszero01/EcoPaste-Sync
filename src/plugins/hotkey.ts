@@ -7,6 +7,51 @@ const COMMAND = {
 	REGISTER_DEFAULT_SHORTCUTS: "plugin:eco-hotkey|register_default_shortcuts",
 	REGISTER_ALL_SHORTCUTS: "plugin:eco-hotkey|register_all_shortcuts",
 	GET_SHORTCUT_STATE: "plugin:eco-hotkey|get_shortcut_state",
+	GET_BLACKLIST: "plugin:eco-hotkey|get_blacklist_cmd",
+	ADD_TO_BLACKLIST: "plugin:eco-hotkey|add_to_blacklist_cmd",
+	REMOVE_FROM_BLACKLIST: "plugin:eco-hotkey|remove_from_blacklist_cmd",
+	CLEAR_BLACKLIST: "plugin:eco-hotkey|clear_blacklist_cmd",
+};
+
+/**
+ * 黑名单项
+ */
+export interface BlacklistItem {
+	processName: string;
+	addedTime: number;
+	enabled: boolean;
+}
+
+/**
+ * 获取黑名单列表
+ */
+export const getBlacklist = async (): Promise<BlacklistItem[]> => {
+	return invoke(COMMAND.GET_BLACKLIST);
+};
+
+/**
+ * 添加进程到黑名单
+ * @param processName 进程名称
+ */
+export const addToBlacklist = async (processName: string): Promise<void> => {
+	await invoke(COMMAND.ADD_TO_BLACKLIST, { processName });
+};
+
+/**
+ * 从黑名单移除进程
+ * @param processName 进程名称
+ */
+export const removeFromBlacklist = async (
+	processName: string,
+): Promise<void> => {
+	await invoke(COMMAND.REMOVE_FROM_BLACKLIST, { processName });
+};
+
+/**
+ * 清空黑名单
+ */
+export const clearBlacklist = async (): Promise<void> => {
+	await invoke(COMMAND.CLEAR_BLACKLIST);
 };
 
 /**

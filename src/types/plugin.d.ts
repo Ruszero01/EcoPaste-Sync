@@ -35,3 +35,21 @@ export interface WindowsOCR {
 		content: string;
 	}>;
 }
+
+/**
+ * 黑名单项
+ */
+export interface BlacklistItem {
+	processName: string;
+	addedTime: number;
+	enabled: boolean;
+}
+
+/**
+ * 前台窗口信息
+ */
+export interface ForegroundWindowInfo {
+	hwnd: number;
+	processName: string;
+	windowTitle: string;
+}

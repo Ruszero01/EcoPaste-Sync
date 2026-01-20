@@ -1,16 +1,25 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tauri::plugin::{Builder, TauriPlugin};
 
+mod commands;
+
 pub use commands::*;
 
-mod commands;
+mod blacklist;
+pub use blacklist::*;
 
 // 用于追踪 setup 是否已执行的原子计数器
 static SETUP_CALLED: AtomicUsize = AtomicUsize::new(0);
 
 pub fn init<R: tauri::Runtime>() -> TauriPlugin<R> {
     Builder::new("eco-hotkey")
-        .invoke_handler(tauri::generate_handler![commands::register_all_shortcuts])
+        .invoke_handler(tauri::generate_handler![
+            commands::register_all_shortcuts,
+            commands::get_blacklist_cmd,
+            commands::add_to_blacklist_cmd,
+            commands::remove_from_blacklist_cmd,
+            commands::clear_blacklist_cmd
+        ])
         .setup(|app, _api| {
             // 检查 setup 是否已执行过
             let call_count = SETUP_CALLED.fetch_add(1, Ordering::SeqCst);
@@ -21,6 +30,9 @@ pub fn init<R: tauri::Runtime>() -> TauriPlugin<R> {
                 );
                 return Ok(());
             }
+
+            // 初始化黑名单
+            init_blacklist(app.clone());
 
             // 默认快捷键配置
             let clipboard_shortcut = "Alt+C".to_string();

@@ -16,6 +16,8 @@ serde = { workspace = true }
 serde_json.workspace = true
 log = { workspace = true }
 tokio = { version = "1.0", features = ["sync"] }
+chrono = { version = "0.4", features = ["std"] }
+once_cell = "1.20"
 
 [build-dependencies]
 tauri-plugin.workspace = true

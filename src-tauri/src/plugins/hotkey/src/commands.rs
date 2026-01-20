@@ -3,7 +3,8 @@ use std::sync::Mutex;
 use tauri::{command, AppHandle, Emitter, Runtime};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutEvent};
 
-use tauri_plugin_eco_common::{config::get_nested, paths::get_config_path};
+use super::blacklist::{add_to_blacklist, clear_blacklist, get_blacklist, is_process_in_blacklist, remove_from_blacklist};
+use tauri_plugin_eco_common::{active_window::get_current_window_info, config::get_nested, paths::get_config_path};
 
 // 用于防止并发注册的互斥锁
 static REGISTRATION_LOCK: Mutex<()> = Mutex::new(());
@@ -54,6 +55,31 @@ fn handle_shortcut_event<R: Runtime>(
         let shortcut_normalized = shortcut_upper.replace("KEY", "").replace("DIGIT", "");
 
         log::info!("[Hotkey] 快捷键: {}", shortcut_normalized);
+
+        // 检查是否是主快捷键 (Alt+C 或 Alt+X)
+        let is_main_shortcut = matches!(
+            shortcut_normalized.as_str(),
+            "ALT+C" | "COMMAND+ALT+C" | "WIN+ALT+C" | "ALT+X" | "COMMAND+ALT+X" | "WIN+ALT+X"
+        );
+
+        // 如果是主快捷键，检查黑名单
+        if is_main_shortcut {
+            match get_current_window_info() {
+                Ok(window_info) => {
+                    if is_process_in_blacklist(&window_info.process_name) {
+                        log::info!(
+                            "[Hotkey] 快捷键被黑名单拦截: {} ({})",
+                            window_info.window_title,
+                            window_info.process_name
+                        );
+                        return;
+                    }
+                }
+                Err(e) => {
+                    log::warn!("[Hotkey] 获取当前窗口信息失败: {}", e);
+                }
+            }
+        }
 
         match shortcut_normalized.as_str() {
             // 显示主窗口
@@ -168,4 +194,26 @@ pub async fn register_all_shortcuts<R: Runtime>(
     }
 
     Ok(())
+}
+
+// ==================== 黑名单命令 ====================
+
+#[command]
+pub fn get_blacklist_cmd() -> Vec<super::BlacklistItem> {
+    get_blacklist()
+}
+
+#[command]
+pub fn add_to_blacklist_cmd<R: Runtime>(app_handle: AppHandle<R>, process_name: String) -> Result<(), String> {
+    add_to_blacklist(app_handle, process_name)
+}
+
+#[command]
+pub fn remove_from_blacklist_cmd<R: Runtime>(app_handle: AppHandle<R>, process_name: String) -> Result<(), String> {
+    remove_from_blacklist(app_handle, &process_name)
+}
+
+#[command]
+pub fn clear_blacklist_cmd<R: Runtime>(app_handle: AppHandle<R>) -> Result<(), String> {
+    clear_blacklist(app_handle)
 }
