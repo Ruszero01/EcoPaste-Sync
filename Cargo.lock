@@ -6645,11 +6645,8 @@ dependencies = [
 name = "tauri-plugin-eco-common"
 version = "0.1.0"
 dependencies = [
- "base64 0.21.7",
  "cocoa 0.26.0",
  "dirs 5.0.1",
- "file_icon_provider 0.4.0",
- "image",
  "log",
  "objc",
  "once_cell",
@@ -6657,16 +6654,20 @@ dependencies = [
  "serde",
  "serde_json",
  "tauri",
- "windows 0.58.0",
+ "winapi",
+ "windows 0.54.0",
 ]
 
 [[package]]
 name = "tauri-plugin-eco-database"
 version = "0.1.0"
 dependencies = [
+ "base64 0.21.7",
  "chrono",
  "cocoa 0.26.0",
  "dirs 5.0.1",
+ "file_icon_provider 0.4.0",
+ "image",
  "log",
  "objc",
  "rusqlite",
@@ -6674,7 +6675,6 @@ dependencies = [
  "serde_json",
  "tauri",
  "tauri-plugin",
- "tauri-plugin-eco-common",
  "tauri-plugin-eco-detector",
  "tokio",
  "windows 0.58.0",
@@ -6750,6 +6750,7 @@ dependencies = [
  "serde_json",
  "tauri",
  "tauri-plugin",
+ "tauri-plugin-eco-common",
  "tauri-plugin-eco-database",
  "tauri-plugin-eco-window",
  "tokio",

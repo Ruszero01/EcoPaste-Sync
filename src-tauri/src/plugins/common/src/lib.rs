@@ -1,3 +1,4 @@
+pub mod active_window;
 pub mod audio;
 pub mod config;
 pub mod constants;

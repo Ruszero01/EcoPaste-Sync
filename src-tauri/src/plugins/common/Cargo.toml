@@ -11,3 +11,11 @@ log = { workspace = true }
 once_cell = "1.20"
 rodio = "0.18"
 dirs = "5.0"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+winapi = { version = ">=0.3, <1", features = ["winuser", "windef"] }
+windows = { version = "0.54", features = ["Win32_System_Threading"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+cocoa = { workspace = true }
+objc = { workspace = true }
