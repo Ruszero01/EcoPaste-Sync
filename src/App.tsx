@@ -1,11 +1,9 @@
-import { useShortcutSubscription } from "@/hooks/useShortcutSubscription";
 import { hideWindow } from "@/plugins/window";
 import { HappyProvider } from "@ant-design/happy-work-theme";
 import { error } from "@tauri-apps/plugin-log";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { App as AntdApp, ConfigProvider, theme } from "antd";
 import { isString } from "lodash-es";
-import { useEffect } from "react";
 import { RouterProvider } from "react-router-dom";
 import { useSnapshot } from "valtio";
 
@@ -66,14 +64,6 @@ const App = () => {
 		}
 		*/
 	});
-
-	// 监听快捷键变化并自动重新注册
-	const unsubscribeShortcuts = useShortcutSubscription();
-
-	// 组件卸载时清理订阅
-	useEffect(() => {
-		return unsubscribeShortcuts;
-	}, [unsubscribeShortcuts]);
 
 	// 监听语言的变化
 	useImmediateKey(globalStore.appearance, "language", (language) => {

@@ -6,7 +6,7 @@ use tauri::{generate_context, Builder, Listener, Manager, WindowEvent};
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_eco_migration::auto_migrate;
 use tauri_plugin_eco_window::{
-    create_window, get_window_behavior_from_config, show_main_window, MAIN_WINDOW_LABEL,
+    create_window, get_window_behavior_from_config, toggle_window, MAIN_WINDOW_LABEL,
     PREFERENCE_WINDOW_LABEL,
 };
 use tauri_plugin_log::{Target, TargetKind};
@@ -79,7 +79,7 @@ pub fn run() {
             |app_handle, _argv, _cwd| {
                 let app_handle = app_handle.clone();
                 tauri::async_runtime::spawn(async move {
-                    show_main_window(app_handle, None).await;
+                    let _ = toggle_window(app_handle, MAIN_WINDOW_LABEL.to_string(), None).await;
                 });
             },
         ))
@@ -181,7 +181,7 @@ pub fn run() {
 
             let app_handle = app_handle.clone();
             tauri::async_runtime::spawn(async move {
-                tauri_plugin_eco_window::show_preference_window(app_handle, None).await;
+                let _ = toggle_window(app_handle, PREFERENCE_WINDOW_LABEL.to_string(), None).await;
             });
         }
         _ => {

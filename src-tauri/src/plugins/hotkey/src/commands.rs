@@ -1,5 +1,5 @@
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::Mutex;
+use std::sync::{atomic::{AtomicBool, AtomicUsize, Ordering}, Mutex, RwLock, OnceLock};
+use std::collections::HashMap;
 use tauri::{command, AppHandle, Emitter, Runtime};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutEvent};
 
@@ -12,6 +12,10 @@ static REGISTRATION_LOCK: Mutex<()> = Mutex::new(());
 // 用于防止快捷键事件重复触发的标记
 static LAST_EVENT_TIME: AtomicUsize = AtomicUsize::new(0);
 static EVENT_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+
+// 快捷键到操作的映射（使用运行时配置）
+static SHORTCUT_ACTION_MAP: OnceLock<RwLock<HashMap<String, String>>> =
+    OnceLock::new();
 
 /// 快捷键事件处理
 fn handle_shortcut_event<R: Runtime>(
@@ -56,11 +60,15 @@ fn handle_shortcut_event<R: Runtime>(
 
         log::info!("[Hotkey] 快捷键: {}", shortcut_normalized);
 
-        // 检查是否是主快捷键 (Alt+C 或 Alt+X)
-        let is_main_shortcut = matches!(
-            shortcut_normalized.as_str(),
-            "ALT+C" | "COMMAND+ALT+C" | "WIN+ALT+C" | "ALT+X" | "COMMAND+ALT+X" | "WIN+ALT+X"
-        );
+        // 从运行时映射中获取对应的操作
+        let action = {
+            let map = SHORTCUT_ACTION_MAP.get_or_init(|| RwLock::new(HashMap::new()));
+            let read_guard = map.read().unwrap();
+            read_guard.get(shortcut_normalized.as_str()).cloned()
+        };
+
+        // 检查是否是主快捷键 (基于配置的快捷键)
+        let is_main_shortcut = action.is_some() && matches!(action.as_deref(), Some("clipboard" | "preference"));
 
         // 如果是主快捷键，检查黑名单
         if is_main_shortcut {
@@ -81,29 +89,51 @@ fn handle_shortcut_event<R: Runtime>(
             }
         }
 
-        match shortcut_normalized.as_str() {
+        // 根据映射的操作执行对应功能
+        match action.as_deref() {
             // 显示主窗口
-            "ALT+C" | "COMMAND+ALT+C" | "WIN+ALT+C" => {
+            Some("clipboard") => {
                 show_main_window_by_label(&app_handle_clone, "main").await;
             }
             // 显示偏好设置
-            "ALT+X" | "COMMAND+ALT+X" | "WIN+ALT+X" => {
+            Some("preference") => {
                 show_main_window_by_label(&app_handle_clone, "preference").await;
             }
-            // 快速粘贴快捷键 (1-9)
-            _ => {
-                let parts: Vec<&str> = shortcut_normalized.split('+').collect();
-                for part in parts.iter().rev() {
-                    if let Ok(index) = part.trim().parse::<u32>() {
-                        if index >= 1 && index <= 9 {
-                            let _ = app_handle_clone.emit("plugin:eco-paste://quick_paste", index);
-                            return;
-                        }
+            // 快速粘贴快捷键
+            Some(action) if action.starts_with("quick_paste_") => {
+                if let Ok(index) = action.trim_start_matches("quick_paste_").parse::<u32>() {
+                    if index >= 1 && index <= 9 {
+                        let _ = app_handle_clone.emit("plugin:eco-paste://quick_paste", index);
+                        return;
                     }
                 }
-                // 其他快捷键
-                let _ =
-                    app_handle_clone.emit("plugin:eco-hotkey://shortcut-triggered", shortcut_str);
+            }
+            // 其他快捷键（向后兼容，保留原有逻辑）
+            _ => {
+                // 如果在配置映射中没找到，回退到硬编码的快捷键处理
+                match shortcut_normalized.as_str() {
+                    "ALT+C" | "COMMAND+ALT+C" | "WIN+ALT+C" => {
+                        show_main_window_by_label(&app_handle_clone, "main").await;
+                    }
+                    "ALT+X" | "COMMAND+ALT+X" | "WIN+ALT+X" => {
+                        show_main_window_by_label(&app_handle_clone, "preference").await;
+                    }
+                    _ => {
+                        // 尝试匹配数字快捷键（向后兼容）
+                        let parts: Vec<&str> = shortcut_normalized.split('+').collect();
+                        for part in parts.iter().rev() {
+                            if let Ok(index) = part.trim().parse::<u32>() {
+                                if index >= 1 && index <= 9 {
+                                    let _ = app_handle_clone.emit("plugin:eco-paste://quick_paste", index);
+                                    return;
+                                }
+                            }
+                        }
+                        // 其他快捷键
+                        let _ =
+                            app_handle_clone.emit("plugin:eco-hotkey://shortcut-triggered", shortcut_str);
+                    }
+                }
             }
         }
     });
@@ -114,11 +144,17 @@ async fn show_main_window_by_label<R: Runtime>(app_handle: &AppHandle<R>, label:
     if label == "main" {
         // 主窗口使用配置中设置的位置模式
         let position_mode = get_position_mode(app_handle);
-        tauri_plugin_eco_window::show_main_window(app_handle.clone(), position_mode).await;
+        let _ = tauri_plugin_eco_window::toggle_window(
+            app_handle.clone(),
+            label.to_string(),
+            position_mode,
+        )
+        .await;
     } else if label == "preference" {
         // 偏好设置窗口固定使用"center"模式，始终居中打开
-        tauri_plugin_eco_window::show_preference_window(
+        let _ = tauri_plugin_eco_window::toggle_window(
             app_handle.clone(),
+            label.to_string(),
             Some("center".to_string()),
         )
         .await;
@@ -180,16 +216,27 @@ pub async fn register_all_shortcuts<R: Runtime>(
     // 等待注销完全生效
     std::thread::sleep(std::time::Duration::from_millis(200));
 
-    // 注册新快捷键
+    // 更新快捷键映射表
+    let action_map = SHORTCUT_ACTION_MAP.get_or_init(|| RwLock::new(HashMap::new()));
+    let mut write_guard = action_map.write().unwrap();
+    write_guard.clear();
+
+    // 注册新快捷键并更新映射
     if !clipboard_shortcut.is_empty() {
         register_shortcut_internal(&global_shortcut, clipboard_shortcut.as_str())?;
+        let normalized = clipboard_shortcut.to_uppercase().replace("KEY", "").replace("DIGIT", "");
+        write_guard.insert(normalized, "clipboard".to_string());
     }
     if !preference_shortcut.is_empty() {
         register_shortcut_internal(&global_shortcut, preference_shortcut.as_str())?;
+        let normalized = preference_shortcut.to_uppercase().replace("KEY", "").replace("DIGIT", "");
+        write_guard.insert(normalized, "preference".to_string());
     }
-    for shortcut in quick_paste_shortcuts {
+    for (index, shortcut) in quick_paste_shortcuts.iter().enumerate() {
         if !shortcut.is_empty() {
             register_shortcut_internal(&global_shortcut, shortcut.as_str())?;
+            let normalized = shortcut.to_uppercase().replace("KEY", "").replace("DIGIT", "");
+            write_guard.insert(normalized, format!("quick_paste_{}", index + 1));
         }
     }
 

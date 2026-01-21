@@ -1,5 +1,6 @@
 import ProList from "@/components/ProList";
 import ProShortcut from "@/components/ProShortcut";
+import { useShortcutSubscription } from "@/hooks/useShortcutSubscription";
 import { useSnapshot } from "valtio";
 import Blacklist from "./components/Blacklist";
 import Preset from "./components/Preset";
@@ -8,6 +9,9 @@ import QuickPaste from "./components/QuickPaste";
 const Shortcut = () => {
 	const { shortcut } = useSnapshot(globalStore);
 	const { t } = useTranslation();
+
+	// 监听快捷键配置变化，自动重新注册
+	useShortcutSubscription();
 
 	return (
 		<>

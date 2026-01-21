@@ -7,7 +7,7 @@ use tauri::{
     AppHandle, Emitter, Manager, Runtime,
 };
 use tauri_plugin_eco_clipboard::{is_listen_enabled, toggle_listen as clipboard_toggle_listen};
-use tauri_plugin_eco_window::{show_main_window, show_preference_window};
+use tauri_plugin_eco_window::toggle_window;
 
 use tauri_plugin_eco_common::config::{get_nested, read_config};
 
@@ -198,15 +198,7 @@ pub async fn update_tray_menu<R: Runtime>(
 fn show_window_from_tray<R: Runtime>(app: AppHandle<R>, window_label: String) {
     let app_handle = app.clone();
     tauri::async_runtime::spawn(async move {
-        match window_label.as_str() {
-            "main" => {
-                show_main_window(app_handle, None).await;
-            }
-            "preference" => {
-                show_preference_window(app_handle, Some("center".to_string())).await;
-            }
-            _ => {}
-        }
+        let _ = toggle_window(app_handle, window_label, None).await;
     });
 }
 
