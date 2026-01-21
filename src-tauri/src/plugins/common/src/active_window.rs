@@ -6,9 +6,6 @@ use serde::Serialize;
 use std::ptr;
 use std::sync::Mutex;
 
-// EcoPaste 主窗口标题常量（用于过滤自身窗口）
-const MAIN_WINDOW_TITLE: &str = "EcoPaste-Sync";
-
 // ==================== 类型定义 ====================
 
 /// 活动窗口信息
