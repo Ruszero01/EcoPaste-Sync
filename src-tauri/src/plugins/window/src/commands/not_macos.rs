@@ -342,3 +342,25 @@ pub async fn is_mica_supported() -> bool {
         false
     }
 }
+
+// 使用 Windows API 强制置顶（比 setAlwaysOnTop 更可靠）
+#[command]
+pub async fn set_window_always_on_top<R: Runtime>(
+    window: WebviewWindow<R>,
+    always_on_top: bool,
+) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        // 使用 tauri 的 WebviewWindow API
+        window
+            .set_always_on_top(always_on_top)
+            .map_err(|e| format!("设置置顶失败: {}", e))
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        window
+            .set_always_on_top(always_on_top)
+            .map_err(|e| format!("设置置顶失败: {}", e))
+    }
+}

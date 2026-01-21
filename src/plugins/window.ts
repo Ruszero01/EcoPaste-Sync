@@ -26,6 +26,7 @@ const COMMAND = {
 	APPLY_MICA_EFFECT: "plugin:eco-window|apply_mica_effect",
 	CLEAR_MICA_EFFECT: "plugin:eco-window|clear_mica_effect",
 	IS_MICA_SUPPORTED: "plugin:eco-window|is_mica_supported",
+	SET_ALWAYS_ON_TOP: "plugin:eco-window|set_window_always_on_top",
 };
 
 export { COMMAND };
@@ -155,4 +156,14 @@ export const updateMicaTheme = async (isDark: boolean) => {
 	if (supported && isTauriEnvironment()) {
 		await applyMicaEffect(isDark);
 	}
+};
+
+/**
+ * 设置窗口是否置顶
+ */
+export const setWindowAlwaysOnTop = async (alwaysOnTop: boolean) => {
+	await invoke(COMMAND.SET_ALWAYS_ON_TOP, {
+		alwaysOnTop,
+		always_on_top: alwaysOnTop,
+	});
 };

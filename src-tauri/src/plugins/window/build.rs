@@ -6,6 +6,7 @@ const COMMANDS: &[&str] = &[
     "is_mica_supported",
     "create_window",
     "exit_app", // Internal: only for tray plugin
+    "set_window_always_on_top",
 ];
 
 fn main() {

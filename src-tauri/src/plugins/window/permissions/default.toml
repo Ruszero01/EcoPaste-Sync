@@ -8,5 +8,6 @@ permissions = [
     "allow-apply-mica-effect",
     "allow-clear-mica-effect",
     "allow-is-mica-supported",
-    "allow-create-window"
+    "allow-create-window",
+    "allow-set-window-always-on-top"
 ]

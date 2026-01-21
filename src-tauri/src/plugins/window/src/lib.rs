@@ -15,6 +15,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::is_mica_supported,
             commands::create_window,
             commands::exit_app, // Internal: only for tray plugin
+            commands::set_window_always_on_top,
         ])
         .build()
 }

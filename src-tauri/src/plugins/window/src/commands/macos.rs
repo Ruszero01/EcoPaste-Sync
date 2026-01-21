@@ -146,3 +146,13 @@ pub async fn clear_mica_effect<R: Runtime>(_window: WebviewWindow<R>) -> Result<
 pub async fn is_mica_supported() -> bool {
     false
 }
+
+// macOS 上 panel 本身就是置顶的，此函数为占位实现
+#[command]
+pub async fn set_window_always_on_top<R: Runtime>(
+    _window: WebviewWindow<R>,
+    _always_on_top: bool,
+) -> Result<(), String> {
+    // macOS 上使用 NSPanel，天然置顶，无需额外设置
+    Ok(())
+}
