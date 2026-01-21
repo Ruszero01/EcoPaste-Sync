@@ -114,14 +114,6 @@ impl CloudSyncEngine {
             core.update_config(config).await;
         }
 
-        // 清理孤儿缓存文件
-        let file_sync_manager = self.file_sync_manager.clone();
-        file_sync_manager
-            .lock()
-            .await
-            .cleanup_stale_cache_files(database_state)
-            .await;
-
         // 如果配置中启用了自动同步，启动它
         if auto_sync {
             self.start_auto_sync(auto_sync_interval, database_state, app_handle)

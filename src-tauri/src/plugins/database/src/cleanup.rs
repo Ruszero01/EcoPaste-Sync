@@ -3,6 +3,7 @@
 //! 清理逻辑：
 //! 1. 清理超过保留天数的记录（不影响收藏）
 //! 2. 如果总数超过保留条数，清理最早的记录（不影响收藏）
+//! 3. 清理孤儿缓存文件（与历史记录关联的临时文件）
 
 use crate::DatabaseState;
 use tauri::State;
@@ -42,6 +43,9 @@ pub async fn cleanup_history(
             deleted_count += delete_oldest_non_favorites(&mut db, excess_count)?;
         }
     }
+
+    // 3. 清理孤儿缓存文件
+    cleanup_stale_cache_files(&db);
 
     log::info!(
         "历史记录自动清理完成: 删除 {} 条记录 (保留天数={}, 保留条数={})",
@@ -144,4 +148,106 @@ fn get_active_count(db: &crate::DatabaseManager) -> Result<usize, String> {
         .map_err(|e| format!("查询失败: {}", e))?;
 
     Ok(count as usize)
+}
+
+/// 获取缓存目录路径
+fn get_cache_dir() -> Result<std::path::PathBuf, String> {
+    let mut cache_dir = std::env::temp_dir();
+    cache_dir.push("eco-paste-files");
+
+    std::fs::create_dir_all(&cache_dir).map_err(|e| format!("创建缓存目录失败: {}", e))?;
+
+    Ok(cache_dir)
+}
+
+/// 递归收集目录中的所有文件
+fn collect_files_recursive(dir: &std::path::Path, files: &mut Vec<String>) {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(path_str) = path.to_str().map(|s| s.to_string()) {
+                    files.push(path_str);
+                }
+            } else if path.is_dir() {
+                collect_files_recursive(&path, files);
+            }
+        }
+    }
+}
+
+/// 清理孤儿缓存文件
+/// 递归扫描缓存目录，删除不在数据库中的文件（这些是已删除项目的缓存）
+fn cleanup_stale_cache_files(db: &crate::DatabaseManager) {
+    log::info!("[Database] 开始清理缓存文件...");
+
+    let cache_dir = match get_cache_dir() {
+        Ok(path) => path,
+        Err(e) => {
+            log::warn!("[Database] 无法获取缓存目录，跳过清理: {}", e);
+            return;
+        }
+    };
+
+    if !cache_dir.exists() {
+        log::info!("[Database] 缓存目录不存在，无需清理");
+        return;
+    }
+
+    // 递归获取缓存目录中的所有文件（包括子目录）
+    let mut cache_files = Vec::new();
+    collect_files_recursive(&cache_dir, &mut cache_files);
+
+    if cache_files.is_empty() {
+        log::info!("[Database] 缓存目录为空，无需清理");
+        return;
+    }
+
+    log::info!("[Database] 缓存目录中有 {} 个文件", cache_files.len());
+
+    // 获取数据库中所有文件记录的本地路径
+    let options = crate::QueryOptions {
+        where_clause: None,
+        order_by: None,
+        limit: None,
+        offset: None,
+        only_favorites: false,
+        exclude_deleted: false,
+        params: None,
+    };
+
+    let cache_dir_str = cache_dir.to_string_lossy().to_string();
+    let db_files: std::collections::HashSet<String> = match db.query_history(options) {
+        Ok(items) => items
+            .iter()
+            .filter(|item| {
+                item.item_type.as_deref() == Some("files")
+                    || item.item_type.as_deref() == Some("image")
+            })
+            .filter_map(|item| item.value.clone())
+            .filter(|v| v.starts_with(&cache_dir_str))
+            .collect(),
+        Err(e) => {
+            log::error!("[Database] 查询数据库失败: {}", e);
+            return;
+        }
+    };
+
+    // 找出不在数据库中的缓存文件（孤儿文件）
+    let mut orphaned_count = 0;
+    for cache_file in &cache_files {
+        if !db_files.contains(cache_file) {
+            match std::fs::remove_file(cache_file) {
+                Ok(_) => {
+                    log::info!("[Database] 已删除孤儿缓存: {}", cache_file);
+                    orphaned_count += 1;
+                }
+                Err(e) => {
+                    log::warn!("[Database] 删除缓存失败: {} ({})", cache_file, e);
+                }
+            }
+        }
+    }
+
+    log::info!("[Database] 缓存清理完成，删除 {} 个文件", orphaned_count);
 }
