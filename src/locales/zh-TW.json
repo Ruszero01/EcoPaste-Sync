@@ -430,8 +430,14 @@
 			"create_group_description": "將當前搜索關鍵詞創建為自定義分組",
 			"no_custom_groups": "暫無自定義分組",
 			"new_group_placeholder": "輸入分組名稱",
-			"added_to_blacklist": "{{0}} 已加入黑名單"
+			"added_to_blacklist": "{{0}} 已加入黑名單",
+			"add_to_blacklist_confirm": "確定要將 {{0}} 加入黑名單嗎？加入後，該應用的快捷鍵將被攔截",
+			"add_to_blacklist_failed": "添加 {{0}} 到黑名單失敗"
 		}
+	},
+	"common": {
+		"confirm": "確定",
+		"cancel": "取消"
 	},
 	"component": {
 		"shortcut_key": {

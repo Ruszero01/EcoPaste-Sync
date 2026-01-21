@@ -443,8 +443,14 @@
 			"create_group_description": "Create a custom group from the current search keyword",
 			"no_custom_groups": "No custom groups yet",
 			"new_group_placeholder": "Enter group name",
-			"added_to_blacklist": "{{0}} has been added to blacklist"
+			"added_to_blacklist": "{{0}} has been added to blacklist",
+			"add_to_blacklist_confirm": "Are you sure you want to add {{0}} to blacklist? Shortcuts for this app will be intercepted",
+			"add_to_blacklist_failed": "Failed to add {{0}} to blacklist"
 		}
+	},
+	"common": {
+		"confirm": "Confirm",
+		"cancel": "Cancel"
 	},
 	"component": {
 		"shortcut_key": {

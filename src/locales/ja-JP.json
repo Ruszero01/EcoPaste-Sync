@@ -430,8 +430,14 @@
 			"create_group_description": "現在の検索キーワードをカスタムグループとして作成",
 			"no_custom_groups": "カスタムグループがありません",
 			"new_group_placeholder": "グループ名を入力",
-			"added_to_blacklist": "{{0}}はブラックリストに追加されました"
+			"added_to_blacklist": "{{0}}はブラックリストに追加されました",
+			"add_to_blacklist_confirm": "{{0}}をブラックリストに追加しますか？追加後、このアプリのショートカットは傍受されます",
+			"add_to_blacklist_failed": "{{0}}をブラックリストに追加できませんでした"
 		}
+	},
+	"common": {
+		"confirm": "確認",
+		"cancel": "キャンセル"
 	},
 	"component": {
 		"shortcut_key": {

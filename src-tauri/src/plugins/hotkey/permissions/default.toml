@@ -3,5 +3,9 @@
 [default]
 description = "Default permissions for the hotkey plugin"
 permissions = [
-    "allow-register-all-shortcuts"
+    "allow-register-all-shortcuts",
+    "allow-get-blacklist-cmd",
+    "allow-add-to-blacklist-cmd",
+    "allow-remove-from-blacklist-cmd",
+    "allow-clear-blacklist-cmd"
 ]

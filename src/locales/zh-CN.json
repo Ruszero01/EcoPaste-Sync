@@ -439,8 +439,14 @@
 			"create_group_description": "将当前搜索关键词创建为自定义分组",
 			"no_custom_groups": "暂无自定义分组",
 			"new_group_placeholder": "输入分组名称",
-			"added_to_blacklist": "{{0}} 已加入黑名单"
+			"added_to_blacklist": "{{0}} 已加入黑名单",
+			"add_to_blacklist_confirm": "确定要将 {{0}} 加入黑名单吗？加入后，该应用的快捷键将被拦截",
+			"add_to_blacklist_failed": "添加 {{0}} 到黑名单失败"
 		}
+	},
+	"common": {
+		"confirm": "确定",
+		"cancel": "取消"
 	},
 	"component": {
 		"shortcut_key": {
