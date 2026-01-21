@@ -1,0 +1,111 @@
+import UnoIcon from "@/components/UnoIcon";
+import { getForegroundWindowInfo } from "@/plugins/activeWindow";
+import { App, Flex } from "antd";
+import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+
+interface BottomStatusBarProps {
+	className?: string;
+}
+
+interface WindowInfo {
+	processName: string;
+	windowTitle: string;
+}
+
+const BottomStatusBar: React.FC<BottomStatusBarProps> = ({ className }) => {
+	const { message } = App.useApp();
+	const { t } = useTranslation();
+	const [windowInfo, setWindowInfo] = useState<WindowInfo | null>(null);
+
+	// 获取前台窗口信息
+	const fetchWindowInfo = useCallback(async () => {
+		try {
+			const info = await getForegroundWindowInfo();
+			if (info?.process_name) {
+				setWindowInfo({
+					processName: info.process_name.replace(/\.exe$/i, ""),
+					windowTitle: info.window_title || "",
+				});
+			} else {
+				setWindowInfo(null);
+			}
+		} catch {
+			setWindowInfo(null);
+		}
+	}, []);
+
+	// 初始化 + 监听窗口聚焦事件
+	useEffect(() => {
+		fetchWindowInfo();
+
+		// 监听窗口重新获得焦点
+		const unlisten = import("@tauri-apps/api/window")
+			.then(({ getCurrentWindow }) => {
+				const appWindow = getCurrentWindow();
+				return appWindow.onFocusChanged(({ payload: focused }) => {
+					if (focused) {
+						fetchWindowInfo();
+					}
+				});
+			})
+			.catch(() => null);
+
+		return () => {
+			unlisten.then((u) => u?.());
+		};
+	}, [fetchWindowInfo]);
+
+	// 没有窗口信息，不显示
+	if (!windowInfo) return null;
+
+	return (
+		<Flex
+			align="center"
+			justify="space-between"
+			gap={8}
+			className={className}
+			style={{
+				padding: "6px 12px",
+				borderTop: "1px solid var(--ant-colorBorderSecondary)",
+			}}
+		>
+			{/* 左侧：应用图标和名称 */}
+			<Flex
+				align="center"
+				gap={6}
+				className="min-w-0 flex-1 overflow-hidden text-xs"
+			>
+				<UnoIcon
+					name="i-lucide:app-window"
+					className="shrink-0 text-color-3 text-sm"
+				/>
+				<span className="shrink-0 font-medium text-color-3">
+					{windowInfo.processName}
+				</span>
+				{windowInfo.windowTitle && (
+					<span className="truncate opacity-35" style={{ opacity: 0.35 }}>
+						- {windowInfo.windowTitle}
+					</span>
+				)}
+			</Flex>
+
+			{/* 右侧：加入黑名单按钮 */}
+			<UnoIcon
+				name="i-lucide:ban"
+				hoverable
+				title={t("clipboard.button.add_to_blacklist")}
+				className="shrink-0 cursor-pointer text-color-3 text-sm transition hover:text-red-500"
+				onClick={() => {
+					message.success(
+						t("clipboard.hints.added_to_blacklist", {
+							replace: [windowInfo.processName],
+						}),
+					);
+				}}
+			/>
+		</Flex>
+	);
+};
+
+export default BottomStatusBar;

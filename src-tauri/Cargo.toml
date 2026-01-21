@@ -48,6 +48,7 @@ tauri-plugin-eco-database.workspace = true
 tauri-plugin-eco-sync.workspace = true
 tauri-plugin-eco-detector.workspace = true
 tauri-plugin-eco-hotkey.workspace = true
+tauri-plugin-eco-common.workspace = true
 tauri-plugin-eco-tray.workspace = true
 tauri-plugin-eco-migration.workspace = true
 

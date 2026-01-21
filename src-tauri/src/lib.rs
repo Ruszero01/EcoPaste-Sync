@@ -140,6 +140,8 @@ pub fn run() {
         .plugin(tauri_plugin_eco_detector::init())
         // 快捷键插件
         .plugin(tauri_plugin_eco_hotkey::init())
+        // 通用功能插件
+        .plugin(tauri_plugin_eco_common::init())
         // 系统托盘插件
         .plugin(tauri_plugin_eco_tray::init())
         // 数据迁移插件

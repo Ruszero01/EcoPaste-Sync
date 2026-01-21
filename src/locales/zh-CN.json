@@ -404,7 +404,8 @@
 				"paste_as_cmyk": "粘贴为CMYK",
 				"delete": "删除"
 			},
-			"create_group": "新建分组"
+			"create_group": "新建分组",
+			"add_to_blacklist": "加入黑名单"
 		},
 		"label": {
 			"tab": {
@@ -437,7 +438,8 @@
 			"delete_modal_content": "确定要删除此项吗？",
 			"create_group_description": "将当前搜索关键词创建为自定义分组",
 			"no_custom_groups": "暂无自定义分组",
-			"new_group_placeholder": "输入分组名称"
+			"new_group_placeholder": "输入分组名称",
+			"added_to_blacklist": "{{0}} 已加入黑名单"
 		}
 	},
 	"component": {

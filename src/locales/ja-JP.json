@@ -395,7 +395,8 @@
 				"paste_as_cmyk": "CMYKとして貼り付け",
 				"delete": "削除"
 			},
-			"create_group": "新規グループ作成"
+			"create_group": "新規グループ作成",
+			"add_to_blacklist": "ブラックリストに追加"
 		},
 		"label": {
 			"tab": {
@@ -428,7 +429,8 @@
 			"delete_modal_content": "本当に削除しますか？",
 			"create_group_description": "現在の検索キーワードをカスタムグループとして作成",
 			"no_custom_groups": "カスタムグループがありません",
-			"new_group_placeholder": "グループ名を入力"
+			"new_group_placeholder": "グループ名を入力",
+			"added_to_blacklist": "{{0}}はブラックリストに追加されました"
 		}
 	},
 	"component": {

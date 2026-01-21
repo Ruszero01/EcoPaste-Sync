@@ -1,0 +1,9 @@
+"$schema" = "schemas/schema.json"
+
+[default]
+description = "Default permissions for the common plugin"
+permissions = [
+    "allow-get-current-window-info",
+    "allow-get-last-window-info",
+    "allow-get-foreground-window-info"
+]

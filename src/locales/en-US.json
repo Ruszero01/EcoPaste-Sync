@@ -408,7 +408,8 @@
 				"paste_as_cmyk": "Paste as CMYK",
 				"delete": "Delete"
 			},
-			"create_group": "Create Group"
+			"create_group": "Create Group",
+			"add_to_blacklist": "Add to Blacklist"
 		},
 		"label": {
 			"tab": {
@@ -441,7 +442,8 @@
 			"delete_modal_content": "Are you sure you want to delete this?",
 			"create_group_description": "Create a custom group from the current search keyword",
 			"no_custom_groups": "No custom groups yet",
-			"new_group_placeholder": "Enter group name"
+			"new_group_placeholder": "Enter group name",
+			"added_to_blacklist": "{{0}} has been added to blacklist"
 		}
 	},
 	"component": {

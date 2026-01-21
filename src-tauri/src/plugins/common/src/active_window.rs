@@ -2,6 +2,7 @@
 //! 提供统一的窗口信息获取和监听功能
 
 use once_cell::sync::Lazy;
+use serde::Serialize;
 use std::ptr;
 use std::sync::Mutex;
 
@@ -11,7 +12,7 @@ const MAIN_WINDOW_TITLE: &str = "EcoPaste-Sync";
 // ==================== 类型定义 ====================
 
 /// 活动窗口信息
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ForegroundWindowInfo {
     pub hwnd: isize,
     pub process_name: String,
@@ -141,20 +142,26 @@ mod windows_impl {
     ) {
         if event == EVENT_SYSTEM_FOREGROUND {
             let window_title = get_window_title(hwnd);
-
-            // 忽略 EcoPaste 自己的窗口
-            if window_title == MAIN_WINDOW_TITLE || window_title.contains("EcoPaste") {
+            if window_title.is_empty() {
                 return;
             }
 
-            // 检查窗口是否有效
-            if hwnd.is_null() {
-                return;
-            }
+            // 通过进程名判断是否是自己的窗口
+            if let Ok(info) = get_window_info_by_hwnd(hwnd) {
+                if info.process_name.contains("eco-paste") || info.process_name.contains("EcoPaste")
+                {
+                    return;
+                }
 
-            let mut last_window = LAST_VALID_WINDOW.lock().unwrap();
-            let _ = last_window.insert(hwnd as isize);
-            log::debug!("[ActiveWindow] 记录上一个窗口: {}", window_title);
+                // 记录窗口
+                let mut last_window = LAST_VALID_WINDOW.lock().unwrap();
+                let _ = last_window.insert(hwnd as isize);
+                log::debug!(
+                    "[ActiveWindow] 记录: {} - {}",
+                    info.process_name,
+                    window_title
+                );
+            }
         }
     }
 
@@ -171,6 +178,19 @@ mod windows_impl {
 
     /// 启动前台窗口监听（winapi）
     pub fn start_foreground_listener() {
+        // 首次获取当前窗口并记录（排除 EcoPaste 自身）
+        if let Ok(info) = get_current_window_info() {
+            if !info.process_name.contains("eco-paste") && !info.process_name.contains("EcoPaste") {
+                let mut last_window = LAST_VALID_WINDOW.lock().unwrap();
+                let _ = last_window.insert(info.hwnd);
+                log::debug!(
+                    "[ActiveWindow] 初始化记录窗口: {} - {}",
+                    info.process_name,
+                    info.window_title
+                );
+            }
+        }
+
         unsafe {
             let hook = SetWinEventHook(
                 EVENT_SYSTEM_FOREGROUND,
@@ -433,5 +453,29 @@ pub fn get_all_windows_info() -> Vec<ForegroundWindowInfo> {
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
     {
         Vec::new()
+    }
+}
+
+/// 获取当前显示的窗口（如果当前是 EcoPaste 则返回上一个，否则返回当前）
+pub fn get_foreground_window_info() -> Result<ForegroundWindowInfo, String> {
+    match get_current_window_info() {
+        Ok(info) => {
+            // 如果是 EcoPaste 自身，返回上一个
+            if info.window_title.contains("EcoPaste") {
+                if let Some(last_info) = get_last_valid_window_info() {
+                    log::debug!(
+                        "[ActiveWindow] 返回上一个: {} - {}",
+                        last_info.process_name,
+                        last_info.window_title
+                    );
+                    return Ok(last_info);
+                }
+            }
+            Ok(info)
+        }
+        Err(e) => {
+            log::debug!("[ActiveWindow] 获取当前窗口失败: {}", e);
+            get_last_valid_window_info().ok_or_else(|| "No foreground window found".to_string())
+        }
     }
 }

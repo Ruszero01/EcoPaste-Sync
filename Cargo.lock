@@ -1559,6 +1559,7 @@ dependencies = [
  "tauri-plugin-drag",
  "tauri-plugin-eco-autostart",
  "tauri-plugin-eco-clipboard",
+ "tauri-plugin-eco-common",
  "tauri-plugin-eco-database",
  "tauri-plugin-eco-detector",
  "tauri-plugin-eco-hotkey",
@@ -6654,6 +6655,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tauri",
+ "tauri-plugin",
  "winapi",
  "windows 0.54.0",
 ]

@@ -4,8 +4,6 @@ use tauri::{
     Listener, Manager, Runtime,
 };
 
-use tauri_plugin_eco_common::active_window::start_foreground_listener;
-
 mod commands;
 
 pub use commands::*;
@@ -13,8 +11,6 @@ pub use commands::*;
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("eco-paste")
         .setup(move |app, _api| {
-            start_foreground_listener();
-
             // 监听来自 hotkey 插件的快速粘贴事件
             let app_handle = app.app_handle().clone();
             log::info!("[Paste] 开始注册快速粘贴事件监听器");

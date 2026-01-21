@@ -395,7 +395,8 @@
 				"paste_as_cmyk": "貼上為CMYK",
 				"delete": "刪除"
 			},
-			"create_group": "新建分組"
+			"create_group": "新建分組",
+			"add_to_blacklist": "加入黑名單"
 		},
 		"label": {
 			"tab": {
@@ -425,10 +426,11 @@
 		},
 		"hints": {
 			"search_placeholder": "搜尋",
-			"delete_modal_content": "確定要删除此項嗎？",
+			"delete_modal_content": "確定要刪除此項嗎？",
 			"create_group_description": "將當前搜索關鍵詞創建為自定義分組",
 			"no_custom_groups": "暫無自定義分組",
-			"new_group_placeholder": "輸入分組名稱"
+			"new_group_placeholder": "輸入分組名稱",
+			"added_to_blacklist": "{{0}} 已加入黑名單"
 		}
 	},
 	"component": {

@@ -5,6 +5,7 @@ import { isWin } from "@/utils/is";
 import { Flex } from "antd";
 import clsx from "clsx";
 import { useSnapshot } from "valtio";
+import BottomStatusBar from "../BottomStatusBar";
 import Group from "../Group";
 import List from "../List";
 import Pin from "../Pin";
@@ -26,17 +27,17 @@ const MainLayout = () => {
 	);
 	return (
 		<div
-			className={clsx("flex h-screen", {
+			className={clsx("flex h-screen flex-col", {
 				"bg-color-1": !isWin,
-				"bg-transparent": isWin, // Windows 上使用透明背景以显示 Mica 效果
+				"bg-transparent": isWin,
 			})}
 		>
-			{/* 主内容区 */}
+			{/* 主内容区 - 分组和搜索栏固定，只有列表滚动 */}
 			<Flex
 				data-tauri-drag-region
 				vertical
 				gap={12}
-				className={clsx("h-full flex-1 py-3", {
+				className={clsx("h-full flex-1 overflow-hidden py-3", {
 					"flex-col-reverse": search.position === "bottom",
 				})}
 			>
@@ -77,6 +78,9 @@ const MainLayout = () => {
 					<List />
 				</div>
 			</Flex>
+
+			{/* 底部状态栏 */}
+			<BottomStatusBar />
 		</div>
 	);
 };
