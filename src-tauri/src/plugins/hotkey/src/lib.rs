@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
-use tauri::plugin::{Builder, TauriPlugin};
+use tauri::{plugin::Builder, plugin::TauriPlugin, AppHandle, Runtime};
 
 mod commands;
 
@@ -10,6 +10,27 @@ pub use blacklist::*;
 
 // 用于追踪 setup 是否已执行的原子计数器
 static SETUP_CALLED: AtomicUsize = AtomicUsize::new(0);
+
+/// 从配置中读取用户保存的快捷键配置
+fn load_user_shortcuts<R: Runtime>(app_handle: &AppHandle<R>) -> (String, String, Vec<String>) {
+    let config = match tauri_plugin_eco_common::config::get_cached_config(app_handle) {
+        Ok(config) => config,
+        _ => return ("Alt+C".to_string(), "Alt+X".to_string(), vec![]),
+    };
+
+    let clipboard_shortcut = tauri_plugin_eco_common::config::get_nested(&config, &["clipboardStore", "shortcut", "clipboard"])
+        .and_then(|v| v.as_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| "Alt+C".to_string());
+
+    let preference_shortcut = tauri_plugin_eco_common::config::get_nested(&config, &["clipboardStore", "shortcut", "preference"])
+        .and_then(|v| v.as_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| "Alt+X".to_string());
+
+    // 快速粘贴快捷键由前端管理
+    let quick_paste_shortcuts: Vec<String> = vec![];
+
+    (clipboard_shortcut, preference_shortcut, quick_paste_shortcuts)
+}
 
 pub fn init<R: tauri::Runtime>() -> TauriPlugin<R> {
     Builder::new("eco-hotkey")
@@ -34,12 +55,11 @@ pub fn init<R: tauri::Runtime>() -> TauriPlugin<R> {
             // 初始化黑名单
             init_blacklist(app.clone());
 
-            // 默认快捷键配置
-            let clipboard_shortcut = "Alt+C".to_string();
-            let preference_shortcut = "Alt+X".to_string();
-            let quick_paste_shortcuts: Vec<String> = vec![];
+            // 从用户配置中读取快捷键
+            let (clipboard_shortcut, preference_shortcut, quick_paste_shortcuts) =
+                load_user_shortcuts(&app);
 
-            // 在后台注册默认快捷键
+            // 在后台注册用户快捷键
             let app_handle = app.clone();
             std::thread::spawn(move || {
                 std::thread::sleep(std::time::Duration::from_millis(500));
@@ -53,9 +73,9 @@ pub fn init<R: tauri::Runtime>() -> TauriPlugin<R> {
                     )
                     .await;
                     if let Err(e) = result {
-                        log::error!("[Hotkey] 默认快捷键注册失败: {}", e);
+                        log::error!("[Hotkey] 用户快捷键注册失败: {}", e);
                     } else {
-                        log::info!("[Hotkey] 默认快捷键注册成功");
+                        log::info!("[Hotkey] 用户快捷键注册成功");
                     }
                 });
             });
