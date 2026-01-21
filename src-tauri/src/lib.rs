@@ -5,7 +5,10 @@ use std::sync::atomic::AtomicBool;
 use tauri::{generate_context, Builder, Listener, Manager, WindowEvent};
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_eco_migration::auto_migrate;
-use tauri_plugin_eco_window::{show_main_window, MAIN_WINDOW_LABEL, PREFERENCE_WINDOW_LABEL};
+use tauri_plugin_eco_window::{
+    create_window, get_window_behavior_from_config, show_main_window, MAIN_WINDOW_LABEL,
+    PREFERENCE_WINDOW_LABEL,
+};
 use tauri_plugin_log::{Target, TargetKind};
 
 /// 标志：是否允许应用退出（由 window 插件控制）
@@ -28,26 +31,25 @@ pub fn run() {
             // 动态获取或创建设置窗口
             let preference_window = app.get_webview_window(PREFERENCE_WINDOW_LABEL);
 
-            // 在 Windows 11 上自动应用 Mica 效果（如果窗口已存在）
-            #[cfg(target_os = "windows")]
-            if let Some(ref main_win) = main_window {
-                let main_window_clone = main_win.clone();
-                std::thread::spawn(move || {
-                    // 等待窗口完全初始化
-                    std::thread::sleep(std::time::Duration::from_millis(500));
+            setup::default(&app_handle, main_window, preference_window);
 
-                    use window_vibrancy::apply_mica;
+            // 常驻模式下静默创建主窗口（创建但不显示，加速首次显示）
+            {
+                let app_handle = app_handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    let (behavior_mode, _) = get_window_behavior_from_config(&app_handle);
 
-                    // 应用 Mica 效果，使用 None 自动匹配系统主题
-                    if let Err(e) = apply_mica(&main_window_clone, None) {
-                        eprintln!("Failed to apply Mica effect: {}", e);
-                    } else {
-                        println!("Mica effect applied to main window");
+                    if behavior_mode == "resident" {
+                        if app_handle.get_webview_window(MAIN_WINDOW_LABEL).is_none() {
+                            if let Err(e) = create_window(app_handle.clone(), MAIN_WINDOW_LABEL.to_string(), Some("center")).await {
+                                log::error!("[Lib] 常驻模式静默创建主窗口失败: {}", e);
+                            } else {
+                                log::info!("[Lib] 常驻模式：主窗口已静默创建");
+                            }
+                        }
                     }
                 });
             }
-
-            setup::default(&app_handle, main_window, preference_window);
 
             // 自动迁移检查（应用启动时执行）
             {

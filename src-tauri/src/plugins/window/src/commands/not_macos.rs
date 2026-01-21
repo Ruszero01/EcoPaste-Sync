@@ -244,6 +244,37 @@ pub async fn create_window<R: Runtime>(
         .build()
         .map_err(|e| format!("创建窗口失败: {}", e))?;
 
+    // Windows 上应用 Mica 效果
+    #[cfg(target_os = "windows")]
+    if is_main {
+        let window = _window.clone();
+        let app_handle = app_handle.clone();
+        tauri::async_runtime::spawn(async move {
+            // 等待窗口完全初始化
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+            // 从全局状态获取暗色模式设置
+            let is_dark = {
+                let config = tauri_plugin_eco_common::config::get_cached_config(&app_handle);
+                match config {
+                    Ok(c) => c
+                        .get("globalStore")
+                        .and_then(|g| g.get("appearance"))
+                        .and_then(|a| a.get("isDark"))
+                        .and_then(|d| d.as_bool())
+                        .unwrap_or(true),
+                    Err(_) => true,
+                }
+            };
+
+            if let Err(e) = apply_mica(&window, Some(is_dark)) {
+                log::error!("[Window] 应用 Mica 效果失败: {}", e);
+            } else {
+                log::info!("[Window] Mica 效果已应用到主窗口");
+            }
+        });
+    }
+
     // 监听窗口关闭事件，根据窗口行为模式处理
     let window_clone = _window.clone();
     let app_handle_clone = app_handle.clone();

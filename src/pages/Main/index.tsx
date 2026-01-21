@@ -5,6 +5,7 @@ import type { HistoryTablePayload, TablePayload } from "@/types/database";
 import type { Store } from "@/types/store";
 import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useReactive } from "ahooks";
 import type { EventEmitter } from "ahooks/lib/useEventEmitter";
 import { range } from "lodash-es";
@@ -192,13 +193,16 @@ const Main = () => {
 		onBlur() {
 			if (state.pin) return;
 
-			// 固定延迟后隐藏/销毁窗口（根据窗口行为模式）
-			const delay = 300;
+			// 只有窗口可见时才设置自动隐藏计时器
+			const appWindow = getCurrentWebviewWindow();
+			void appWindow.isVisible().then((isVisible) => {
+				if (!isVisible) return;
 
-			windowHideTimer.current = setTimeout(() => {
-				toggleWindow("main", undefined);
-				windowHideTimer.current = undefined;
-			}, delay);
+				windowHideTimer.current = setTimeout(() => {
+					toggleWindow("main", undefined);
+					windowHideTimer.current = undefined;
+				}, 300);
+			});
 		},
 	});
 
