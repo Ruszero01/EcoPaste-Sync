@@ -2,7 +2,7 @@ import UnoIcon from "@/components/UnoIcon";
 import { getForegroundWindowInfo } from "@/plugins/activeWindow";
 import { addToBlacklist } from "@/plugins/hotkey";
 import { emit } from "@tauri-apps/api/event";
-import { App, Flex } from "antd";
+import { App, Flex, Popconfirm } from "antd";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -16,7 +16,7 @@ interface WindowInfo {
 }
 
 const BottomStatusBar: React.FC<BottomStatusBarProps> = ({ className }) => {
-	const { message, modal } = App.useApp();
+	const { message } = App.useApp();
 	const { t } = useTranslation();
 	const [windowInfo, setWindowInfo] = useState<WindowInfo | null>(null);
 	const [loading, setLoading] = useState(false);
@@ -63,36 +63,25 @@ const BottomStatusBar: React.FC<BottomStatusBarProps> = ({ className }) => {
 	if (!windowInfo) return null;
 
 	// 添加到黑名单
-	const handleAddToBlacklist = () => {
-		modal.confirm({
-			title: t("clipboard.button.add_to_blacklist"),
-			content: t("clipboard.hints.add_to_blacklist_confirm", {
-				replace: [windowInfo.processName],
-			}),
-			okText: t("common.confirm"),
-			cancelText: t("common.cancel"),
-			okButtonProps: { danger: true },
-			onOk: async () => {
-				setLoading(true);
-				try {
-					await addToBlacklist(windowInfo.processName);
-					message.success(
-						t("clipboard.hints.added_to_blacklist", {
-							replace: [windowInfo.processName],
-						}),
-					);
-					// 发送事件通知设置页面刷新
-					await emit("ecopaste:blacklist-changed");
-				} catch {
-					message.error(
-						t("clipboard.hints.add_to_blacklist_failed", {
-							replace: [windowInfo.processName],
-						}),
-					);
-				}
-				setLoading(false);
-			},
-		});
+	const handleAddToBlacklist = async () => {
+		setLoading(true);
+		try {
+			await addToBlacklist(windowInfo.processName);
+			message.success(
+				t("clipboard.hints.added_to_blacklist", {
+					replace: [windowInfo.processName],
+				}),
+			);
+			// 发送事件通知设置页面刷新
+			await emit("ecopaste:blacklist-changed");
+		} catch {
+			message.error(
+				t("clipboard.hints.add_to_blacklist_failed", {
+					replace: [windowInfo.processName],
+				}),
+			);
+		}
+		setLoading(false);
 	};
 
 	return (
@@ -127,14 +116,24 @@ const BottomStatusBar: React.FC<BottomStatusBarProps> = ({ className }) => {
 			</Flex>
 
 			{/* 右侧：加入黑名单按钮 */}
-			<UnoIcon
-				name="i-lucide:ban"
-				hoverable
+			<Popconfirm
 				title={t("clipboard.button.add_to_blacklist")}
-				className="shrink-0 cursor-pointer text-color-3 text-sm transition hover:text-red-500"
-				onClick={handleAddToBlacklist}
-				style={{ opacity: loading ? 0.5 : 1 }}
-			/>
+				description={t("clipboard.hints.add_to_blacklist_confirm", {
+					replace: [windowInfo.processName],
+				})}
+				okText={t("common.confirm")}
+				cancelText={t("common.cancel")}
+				okButtonProps={{ danger: true }}
+				onConfirm={handleAddToBlacklist}
+			>
+				<UnoIcon
+					name="i-lucide:ban"
+					hoverable
+					title={t("clipboard.button.add_to_blacklist")}
+					className="shrink-0 cursor-pointer text-color-3 text-sm transition hover:text-red-500"
+					style={{ opacity: loading ? 0.5 : 1 }}
+				/>
+			</Popconfirm>
 		</Flex>
 	);
 };
