@@ -126,6 +126,7 @@ const BottomStatusBar: React.FC<BottomStatusBarProps> = ({ className }) => {
 				okButtonProps={{ danger: true }}
 				onConfirm={handleAddToBlacklist}
 				overlayStyle={{ maxWidth: 240 }}
+				placement="topRight"
 			>
 				<UnoIcon
 					name="i-lucide:ban"
