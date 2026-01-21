@@ -221,6 +221,16 @@
 				"fixed_window": "Fixed Window",
 				"open_preferences": "Open Preferences",
 				"hide_window": "Hide Window"
+			},
+			"blacklist": {
+				"title": "Shortcut Blacklist",
+				"empty": "No blacklisted apps",
+				"disabled": "Disabled",
+				"added_time": "Added: {{0}}",
+				"remove_title": "Remove from Blacklist",
+				"remove_content": "Are you sure you want to remove {{0}} from the blacklist? Shortcuts for this app will be restored",
+				"remove_success": "Removed from blacklist",
+				"remove_failed": "Failed to remove"
 			}
 		},
 		"data_backup": {
@@ -450,7 +460,8 @@
 	},
 	"common": {
 		"confirm": "Confirm",
-		"cancel": "Cancel"
+		"cancel": "Cancel",
+		"delete": "Delete"
 	},
 	"component": {
 		"shortcut_key": {

@@ -1,7 +1,6 @@
 import { getKeySymbol } from "@/components/ProShortcut/keyboard";
 import { Card, Flex, Tag } from "antd";
 import { castArray, union } from "lodash-es";
-import Masonry from "react-masonry-css";
 
 const Preset = () => {
 	const { t } = useTranslation();
@@ -61,29 +60,27 @@ const Preset = () => {
 	}));
 
 	return (
-		<Masonry
-			breakpointCols={3}
-			className="-mt-2 flex gap-2"
-			columnClassName="flex flex-col gap-2 bg-clip-padding"
-		>
+		<div className="grid grid-cols-2 gap-2">
 			{list.map((item) => {
 				const { label, value } = item;
 
 				return (
 					<Card key={label} size="small">
-						<div className="mb-4 break-all">{t(label)}</div>
+						<Flex justify="space-between" align="center" className="h-[22px]">
+							<span className="line-clamp-1 break-all">{t(label)}</span>
 
-						<Flex wrap gap="small">
-							{value.map((item) => (
-								<Tag key={item} className="m-0">
-									{item}
-								</Tag>
-							))}
+							<Flex wrap gap="small">
+								{value.map((v) => (
+									<Tag key={v} className="m-0">
+										{v}
+									</Tag>
+								))}
+							</Flex>
 						</Flex>
 					</Card>
 				);
 			})}
-		</Masonry>
+		</div>
 	);
 };
 

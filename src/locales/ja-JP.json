@@ -212,6 +212,16 @@
 				"fixed_window": "固定ウィンドウ",
 				"open_preferences": "環境設定を開く",
 				"hide_window": "ウィンドウを隠す"
+			},
+			"blacklist": {
+				"title": "ショートカットキーブラックリスト",
+				"empty": "ブラックリストに登録されたアプリはありません",
+				"disabled": "無効",
+				"added_time": "追加日時：{{0}}",
+				"remove_title": "ブラックリストから削除",
+				"remove_content": "{{0}}をブラックリストから削除してもよろしいですか？削除後、このアプリのショートカットは正常に戻ります",
+				"remove_success": "ブラックリストから削除されました",
+				"remove_failed": "削除に失敗しました"
 			}
 		},
 		"data_backup": {
@@ -437,7 +447,8 @@
 	},
 	"common": {
 		"confirm": "確認",
-		"cancel": "キャンセル"
+		"cancel": "キャンセル",
+		"delete": "削除"
 	},
 	"component": {
 		"shortcut_key": {

@@ -221,6 +221,16 @@
 				"fixed_window": "固定窗口",
 				"open_preferences": "打开偏好设置",
 				"hide_window": "隐藏窗口"
+			},
+			"blacklist": {
+				"title": "快捷键黑名单",
+				"empty": "暂无黑名单应用",
+				"disabled": "已禁用",
+				"added_time": "添加时间：{{0}}",
+				"remove_title": "移除黑名单",
+				"remove_content": "确定要将 {{0}} 从黑名单中移除吗？移除后，该应用的快捷键将恢复正常",
+				"remove_success": "已从黑名单移除",
+				"remove_failed": "移除失败"
 			}
 		},
 		"data_backup": {
@@ -446,7 +456,8 @@
 	},
 	"common": {
 		"confirm": "确定",
-		"cancel": "取消"
+		"cancel": "取消",
+		"delete": "删除"
 	},
 	"component": {
 		"shortcut_key": {

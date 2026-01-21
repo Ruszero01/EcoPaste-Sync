@@ -1,6 +1,7 @@
 import ProList from "@/components/ProList";
 import ProShortcut from "@/components/ProShortcut";
 import { useSnapshot } from "valtio";
+import Blacklist from "./components/Blacklist";
 import Preset from "./components/Preset";
 import QuickPaste from "./components/QuickPaste";
 
@@ -41,6 +42,10 @@ const Shortcut = () => {
 			</ProList>
 
 			<Preset />
+
+			<div className="mt-4">
+				<Blacklist />
+			</div>
 		</>
 	);
 };

@@ -11,6 +11,7 @@ use tauri_plugin_eco_common::config::{get_cached_config, get_nested, refresh_con
 
 /// 黑名单项
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BlacklistItem {
     pub process_name: String,
     pub added_time: i64,

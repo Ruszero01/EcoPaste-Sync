@@ -1,6 +1,7 @@
 import UnoIcon from "@/components/UnoIcon";
 import { getForegroundWindowInfo } from "@/plugins/activeWindow";
 import { addToBlacklist } from "@/plugins/hotkey";
+import { emit } from "@tauri-apps/api/event";
 import { App, Flex } from "antd";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -80,6 +81,8 @@ const BottomStatusBar: React.FC<BottomStatusBarProps> = ({ className }) => {
 							replace: [windowInfo.processName],
 						}),
 					);
+					// 发送事件通知设置页面刷新
+					await emit("ecopaste:blacklist-changed");
 				} catch {
 					message.error(
 						t("clipboard.hints.add_to_blacklist_failed", {
