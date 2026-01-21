@@ -8,15 +8,17 @@ const QuickPaste = () => {
 	const { shortcut } = useSnapshot(globalStore);
 	const { t } = useTranslation();
 
-	const options: DefaultOptionType[] = modifierKeys.map((item) => {
-		const { tauriKey, symbol } = item;
+	const options: DefaultOptionType[] = modifierKeys
+		.filter((item) => item.tauriKey !== "Command") // 过滤掉 Super 键
+		.map((item) => {
+			const { tauriKey, symbol } = item;
 
-		return {
-			label: symbol,
-			value: tauriKey,
-			disabled: globalStore.shortcut.quickPaste.value === tauriKey,
-		};
-	});
+			return {
+				label: symbol,
+				value: tauriKey,
+				disabled: globalStore.shortcut.quickPaste.value === tauriKey,
+			};
+		});
 
 	return (
 		<ProListItem

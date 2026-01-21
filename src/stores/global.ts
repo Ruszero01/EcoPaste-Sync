@@ -28,7 +28,7 @@ export const globalStore = proxy<GlobalStore>({
 		preference: "Alt+X",
 		quickPaste: {
 			enable: false,
-			value: "Command+Shift",
+			value: "Shift+Alt",
 		},
 		pastePlain: "",
 	},

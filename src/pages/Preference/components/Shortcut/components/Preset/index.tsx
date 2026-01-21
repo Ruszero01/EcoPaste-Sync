@@ -12,11 +12,11 @@ const Preset = () => {
 		},
 		{
 			label: "preference.shortcut.preset.select_item",
-			value: ["tab", "shift.tab"],
+			value: ["uparrow", "downarrow"],
 		},
 		{
 			label: "preference.shortcut.preset.select_group",
-			value: ["uparrow", "downarrow"],
+			value: ["tab", "shift.tab"],
 		},
 		{
 			label: "preference.shortcut.preset.paste",
@@ -41,10 +41,6 @@ const Preset = () => {
 		{
 			label: "preference.shortcut.preset.fixed_window",
 			value: PRESET_SHORTCUT.FIXED_WINDOW,
-		},
-		{
-			label: "preference.shortcut.preset.open_preferences",
-			value: PRESET_SHORTCUT.OPEN_PREFERENCES,
 		},
 		{
 			label: "preference.shortcut.preset.hide_window",
