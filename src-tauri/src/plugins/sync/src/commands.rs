@@ -112,10 +112,10 @@ pub async fn trigger_sync<R: Runtime>(
     match result {
         Ok(process_result) => {
             log::info!(
-                "[Sync] 同步成功: {} 上传, {} 下载, {} 删除",
-                process_result.uploaded_items.len(),
-                process_result.downloaded_items.len(),
-                process_result.deleted_items.len()
+                "[Sync] 同步成功: 共 {} 条",
+                process_result.uploaded_items.len()
+                    + process_result.downloaded_items.len()
+                    + process_result.deleted_items.len()
             );
 
             Ok(SyncResult {
@@ -127,12 +127,10 @@ pub async fn trigger_sync<R: Runtime>(
                     {
                         "同步完成".to_string()
                     } else {
-                        format!(
-                            "同步: 上传{} 下{} 删{}",
-                            process_result.uploaded_items.len(),
-                            process_result.downloaded_items.len(),
-                            process_result.deleted_items.len()
-                        )
+                        let total = process_result.uploaded_items.len()
+                            + process_result.downloaded_items.len()
+                            + process_result.deleted_items.len();
+                        format!("已同步 {} 条数据", total)
                     }
                 } else {
                     "同步失败".to_string()
