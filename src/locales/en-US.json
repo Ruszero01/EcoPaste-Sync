@@ -455,6 +455,7 @@
 			"new_group_placeholder": "Enter group name",
 			"added_to_blacklist": "{{0}} has been added to blacklist",
 			"add_to_blacklist_confirm": "Are you sure you want to add {{0}} to blacklist? Shortcuts for this app will be intercepted",
+			"add_to_blacklist_confirm_short": "Add {{0}} to blacklist?",
 			"add_to_blacklist_failed": "Failed to add {{0}} to blacklist"
 		}
 	},

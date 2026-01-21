@@ -442,6 +442,7 @@
 			"new_group_placeholder": "グループ名を入力",
 			"added_to_blacklist": "{{0}}はブラックリストに追加されました",
 			"add_to_blacklist_confirm": "{{0}}をブラックリストに追加しますか？追加後、このアプリのショートカットは傍受されます",
+			"add_to_blacklist_confirm_short": "{{0}}をブラックリストに追加？",
 			"add_to_blacklist_failed": "{{0}}をブラックリストに追加できませんでした"
 		}
 	},

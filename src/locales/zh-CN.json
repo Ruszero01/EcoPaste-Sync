@@ -451,6 +451,7 @@
 			"new_group_placeholder": "输入分组名称",
 			"added_to_blacklist": "{{0}} 已加入黑名单",
 			"add_to_blacklist_confirm": "确定要将 {{0}} 加入黑名单吗？加入后，该应用的快捷键将被拦截",
+			"add_to_blacklist_confirm_short": "确定要将 {{0}} 加入黑名单吗？",
 			"add_to_blacklist_failed": "添加 {{0}} 到黑名单失败"
 		}
 	},

@@ -118,17 +118,17 @@ const BottomStatusBar: React.FC<BottomStatusBarProps> = ({ className }) => {
 			{/* 右侧：加入黑名单按钮 */}
 			<Popconfirm
 				title={t("clipboard.button.add_to_blacklist")}
-				description={t("clipboard.hints.add_to_blacklist_confirm", {
+				description={t("clipboard.hints.add_to_blacklist_confirm_short", {
 					replace: [windowInfo.processName],
 				})}
 				okText={t("common.confirm")}
 				cancelText={t("common.cancel")}
 				okButtonProps={{ danger: true }}
 				onConfirm={handleAddToBlacklist}
+				overlayStyle={{ maxWidth: 240 }}
 			>
 				<UnoIcon
 					name="i-lucide:ban"
-					hoverable
 					title={t("clipboard.button.add_to_blacklist")}
 					className="shrink-0 cursor-pointer text-color-3 text-sm transition hover:text-red-500"
 					style={{ opacity: loading ? 0.5 : 1 }}
