@@ -134,6 +134,8 @@ pub fn run() {
         .plugin(tauri_plugin_eco_paste::init())
         // 自定义判断是否自动启动的插件
         .plugin(tauri_plugin_eco_autostart::init())
+        // 数据迁移插件（必须在数据库插件之前）
+        .plugin(tauri_plugin_eco_migration::init())
         // 统一数据库插件
         .plugin(tauri_plugin_eco_database::init())
         // 云同步引擎插件
@@ -146,8 +148,6 @@ pub fn run() {
         .plugin(tauri_plugin_eco_common::init())
         // 系统托盘插件
         .plugin(tauri_plugin_eco_tray::init())
-        // 数据迁移插件
-        .plugin(tauri_plugin_eco_migration::init())
         // Shell 插件：https://github.com/tauri-apps/plugins-workspace/tree/v2/plugins/shell
         .plugin(tauri_plugin_shell::init())
         .on_window_event(|window, event| match event {
