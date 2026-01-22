@@ -116,14 +116,29 @@ const App = () => {
 	const lightThemeConfig = {
 		algorithm: defaultAlgorithm,
 		token: {
-			colorBgBase: "#f5f5f5", // 基础背景色，从纯白改为浅灰
-			colorBgContainer: "#ffffff", // 容器背景保持白色但稍微柔和
+			colorBgBase: "#eeeeee", // 基础背景色，更灰一点
+			colorBgContainer: "#f5f5f5", // 容器背景
 			colorBgElevated: "#ffffff", // 浮层背景
-			colorBgLayout: "#f5f5f5", // 布局背景
+			colorBgLayout: "#ececec", // 布局背景
 			colorText: "#262626", // 文字颜色，使用更深的灰色
 			colorTextSecondary: "#595959", // 次要文字颜色
 			colorBorder: "#d9d9d9", // 边框颜色
-			colorBorderSecondary: "#f0f0f0", // 次要边框颜色
+			colorBorderSecondary: "#e8e8e8", // 次要边框颜色
+		},
+	};
+
+	// 自定义暗色主题配置，避免纯黑死黑
+	const darkThemeConfig = {
+		algorithm: darkAlgorithm,
+		token: {
+			colorBgBase: "#1f1f1f", // 基础背景色，深灰
+			colorBgContainer: "#262626", // 容器背景，深灰偏浅
+			colorBgElevated: "#2d2d2d", // 浮层背景
+			colorBgLayout: "#1f1f1f", // 布局背景
+			colorText: "#e6e6e6", // 文字颜色，浅灰
+			colorTextSecondary: "#a6a6a6", // 次要文字颜色
+			colorBorder: "#434343", // 边框颜色
+			colorBorderSecondary: "#303030", // 次要边框颜色
 		},
 	};
 
@@ -132,9 +147,11 @@ const App = () => {
 			locale={getAntdLocale(appearance.language)}
 			theme={{
 				algorithm: appearance.isDark
-					? darkAlgorithm
+					? darkThemeConfig.algorithm
 					: lightThemeConfig.algorithm,
-				token: appearance.isDark ? undefined : lightThemeConfig.token,
+				token: appearance.isDark
+					? darkThemeConfig.token
+					: lightThemeConfig.token,
 			}}
 		>
 			<AntdApp>
