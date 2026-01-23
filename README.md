@@ -137,7 +137,7 @@ graph TB
 
 ## 架构迁移说明
 
-项目已完成前后端架构重构，核心功能从 TypeScript 前端迁移至 Rust 后端实现，提高运行效率并可支持闲置时回收前端webview2进程：
+项目已完成前后端架构重构，核心功能从 TypeScript 前端迁移至 Rust 后端实现，提高运行效率并可支持闲置时回收前端 webview2 进程：
 
 ### 已迁移到后端的功能
 
@@ -158,20 +158,20 @@ graph TB
 | 剪贴板监听 | 前端调用 | `plugins/clipboard/` |
 | 窗口管理 | `hooks/useWindowState.ts` | `plugins/window/` |
 | **内容处理** | | |
-| 内容检测 | 前端检测逻辑 | `plugins/detector/` (颜色/代码/链接/Markdown) |
+| 内容检测 | 前端检测逻辑 | `plugins/detector/` (颜色/代码/链接/Markdown/路径/邮箱) |
 | 粘贴功能 | 快捷键+事件 | `plugins/paste/` |
 | **数据存储** | | |
 | 数据库操作 | 前端实现 | `plugins/database/` |
 | 数据迁移 | 新实现 | `plugins/migration/` |
-| **内容处理** | | |
 | 应用图标获取 | `hooks/useAppIcon.ts` | `plugins/database/src/source_app.rs` |
+| 活跃窗口检测 | `plugins/activeWindow.ts` | `plugins/common/src/active_window.rs` |
+| **其他功能** | | |
 | 音频播放 | 前端实现 | `plugins/common/src/audio.rs` + `plugins/clipboard/src/commands/audio.rs` |
 
 ### 已移除的功能
 
 | 功能模块 | 原前端位置 | 说明 |
 |---------|-----------|------|
-| 活跃窗口检测 | `plugins/activeWindow.ts` | 功能移除 |
 | 缩略图生成 | `hooks/useThumbnail.ts` | 功能简化，仅保留基础图片预览 |
 
 ### 保留的前端组件
