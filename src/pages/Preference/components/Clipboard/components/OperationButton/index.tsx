@@ -148,25 +148,27 @@ const SortableButtonItem: React.FC<{
 			style={style}
 			align="center"
 			gap={8}
-			className="h-8 cursor-pointer rounded px-2 hover:bg-gray-100 dark:hover:bg-gray-700"
-			onClick={() => onCheck(data.key)}
+			className="h-8 rounded px-2 hover:bg-gray-100 dark:hover:bg-gray-700"
+			{...attributes}
+			{...listeners}
 		>
+			<UnoIcon name="i-lucide:grip-vertical" className="text-gray-400" />
 			<input
 				type="checkbox"
 				checked={isChecked}
 				readOnly
 				className="cursor-pointer"
+				onPointerDown={(e) => e.stopPropagation()}
+				onClick={() => !isDragging && onCheck(data.key)}
 			/>
-			<div
-				{...attributes}
-				{...listeners}
-				onClick={(e) => e.stopPropagation()}
-				className="cursor-grab active:cursor-grabbing"
-			>
-				<UnoIcon name="i-lucide:grip-vertical" className="text-gray-400" />
-			</div>
 			<UnoIcon name={data.icon} />
-			<span className="truncate text-sm">{t(data.title)}</span>
+			<span
+				className="truncate text-sm"
+				onPointerDown={(e) => e.stopPropagation()}
+				onClick={() => !isDragging && onCheck(data.key)}
+			>
+				{t(data.title)}
+			</span>
 		</Flex>
 	);
 };
