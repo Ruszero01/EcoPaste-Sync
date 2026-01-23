@@ -136,3 +136,13 @@ pub fn should_copy_plain<R: Runtime>(app_handle: &AppHandle<R>) -> bool {
         .and_then(|c| c.copy_plain)
         .unwrap_or(false) // 默认为 false
 }
+
+/// 检查是否开启OCR功能
+pub fn should_enable_ocr<R: Runtime>(app_handle: &AppHandle<R>) -> bool {
+    read_config(app_handle)
+        .ok()
+        .and_then(|c| c.clipboard_store)
+        .and_then(|c| c.content)
+        .and_then(|c| c.ocr)
+        .unwrap_or(true) // 默认为 true
+}

@@ -74,16 +74,19 @@ export const registerDefaultShortcuts = async (
  * @param clipboardShortcut 显示主窗口的快捷键
  * @param preferenceShortcut 显示偏好设置的快捷键
  * @param quickPasteShortcuts 快速粘贴的快捷键列表
+ * @param pastePlainShortcut 粘贴纯文本的快捷键
  */
 export const registerAllShortcuts = async (
 	clipboardShortcut: string,
 	preferenceShortcut: string,
 	quickPasteShortcuts: string[],
+	pastePlainShortcut: string,
 ): Promise<void> => {
 	await invoke(COMMAND.REGISTER_ALL_SHORTCUTS, {
 		clipboardShortcut,
 		preferenceShortcut,
 		quickPasteShortcuts,
+		pastePlainShortcut,
 	});
 };
 

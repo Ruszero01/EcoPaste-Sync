@@ -12,24 +12,27 @@ pub use blacklist::*;
 static SETUP_CALLED: AtomicUsize = AtomicUsize::new(0);
 
 /// 从配置中读取用户保存的快捷键配置
-fn load_user_shortcuts<R: Runtime>(app_handle: &AppHandle<R>) -> (String, String, Vec<String>) {
+fn load_user_shortcuts<R: Runtime>(app_handle: &AppHandle<R>) -> (String, String, Vec<String>, String) {
     let config = match tauri_plugin_eco_common::config::get_cached_config(app_handle) {
         Ok(config) => config,
-        _ => return ("Alt+C".to_string(), "Alt+X".to_string(), vec![]),
+        _ => return ("Alt+C".to_string(), "Alt+X".to_string(), vec![], "".to_string()),
     };
 
-    let clipboard_shortcut = tauri_plugin_eco_common::config::get_nested(&config, &["clipboardStore", "shortcut", "clipboard"])
+    let clipboard_shortcut = tauri_plugin_eco_common::config::get_nested(&config, &["globalStore", "shortcut", "clipboard"])
         .and_then(|v| v.as_str().map(|s| s.to_string()))
         .unwrap_or_else(|| "Alt+C".to_string());
 
-    let preference_shortcut = tauri_plugin_eco_common::config::get_nested(&config, &["clipboardStore", "shortcut", "preference"])
+    let preference_shortcut = tauri_plugin_eco_common::config::get_nested(&config, &["globalStore", "shortcut", "preference"])
         .and_then(|v| v.as_str().map(|s| s.to_string()))
         .unwrap_or_else(|| "Alt+X".to_string());
 
-    // 快速粘贴快捷键由前端管理
     let quick_paste_shortcuts: Vec<String> = vec![];
 
-    (clipboard_shortcut, preference_shortcut, quick_paste_shortcuts)
+    let paste_plain_shortcut = tauri_plugin_eco_common::config::get_nested(&config, &["globalStore", "shortcut", "pastePlain"])
+        .and_then(|v| v.as_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| "".to_string());
+
+    (clipboard_shortcut, preference_shortcut, quick_paste_shortcuts, paste_plain_shortcut)
 }
 
 pub fn init<R: tauri::Runtime>() -> TauriPlugin<R> {
@@ -56,7 +59,7 @@ pub fn init<R: tauri::Runtime>() -> TauriPlugin<R> {
             init_blacklist(app.clone());
 
             // 从用户配置中读取快捷键
-            let (clipboard_shortcut, preference_shortcut, quick_paste_shortcuts) =
+            let (clipboard_shortcut, preference_shortcut, quick_paste_shortcuts, paste_plain_shortcut) =
                 load_user_shortcuts(&app);
 
             // 在后台注册用户快捷键
@@ -70,6 +73,7 @@ pub fn init<R: tauri::Runtime>() -> TauriPlugin<R> {
                         clipboard_shortcut,
                         preference_shortcut,
                         quick_paste_shortcuts,
+                        paste_plain_shortcut,
                     )
                     .await;
                     if let Err(e) = result {

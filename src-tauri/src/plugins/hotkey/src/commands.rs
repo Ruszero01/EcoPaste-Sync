@@ -99,6 +99,10 @@ fn handle_shortcut_event<R: Runtime>(
             Some("preference") => {
                 show_main_window_by_label(&app_handle_clone, "preference").await;
             }
+            // 粘贴纯文本快捷键
+            Some("paste_plain") => {
+                let _ = app_handle_clone.emit("plugin:eco-paste://paste_plain", ());
+            }
             // 快速粘贴快捷键
             Some(action) if action.starts_with("quick_paste_") => {
                 if let Ok(index) = action.trim_start_matches("quick_paste_").parse::<u32>() {
@@ -201,10 +205,11 @@ fn register_shortcut_internal<R: Runtime>(
 /// 4. 注册新的快捷键
 #[command]
 pub async fn register_all_shortcuts<R: Runtime>(
-    app_handle: AppHandle<R>,
-    clipboard_shortcut: String,
-    preference_shortcut: String,
-    quick_paste_shortcuts: Vec<String>,
+	app_handle: AppHandle<R>,
+	clipboard_shortcut: String,
+	preference_shortcut: String,
+	quick_paste_shortcuts: Vec<String>,
+	paste_plain_shortcut: String,
 ) -> Result<(), String> {
     // 获取锁，防止并发调用
     let _guard = REGISTRATION_LOCK.lock().map_err(|e| e.to_string())?;
@@ -238,6 +243,12 @@ pub async fn register_all_shortcuts<R: Runtime>(
             let normalized = shortcut.to_uppercase().replace("KEY", "").replace("DIGIT", "");
             write_guard.insert(normalized, format!("quick_paste_{}", index + 1));
         }
+    }
+
+    if !paste_plain_shortcut.is_empty() {
+        register_shortcut_internal(&global_shortcut, paste_plain_shortcut.as_str())?;
+        let normalized = paste_plain_shortcut.to_uppercase().replace("KEY", "").replace("DIGIT", "");
+        write_guard.insert(normalized, "paste_plain".to_string());
     }
 
     Ok(())

@@ -13,12 +13,14 @@ const registerAllShortcutsSync = async () => {
 	const quickPasteShortcuts = globalStore.shortcut.quickPaste.enable
 		? generateQuickPasteShortcuts(globalStore.shortcut.quickPaste.value ?? "")
 		: [];
+	const pastePlainShortcut = globalStore.shortcut.pastePlain ?? "";
 
 	try {
 		await registerAllShortcuts(
 			clipboardShortcut,
 			preferenceShortcut,
 			quickPasteShortcuts,
+			pastePlainShortcut,
 		);
 	} catch (err) {
 		console.error("[useShortcutSubscription] 注册失败:", err);
@@ -71,12 +73,18 @@ export const useShortcutSubscription = (): UnsubscribeFn => {
 			}
 		},
 	);
+	const unsubPastePlain = subscribeKey(
+		globalStore.shortcut,
+		"pastePlain",
+		debouncedRegister,
+	);
 
 	return () => {
 		unsubClipboard();
 		unsubPreference();
 		unsubQuickPasteEnable();
 		unsubQuickPasteValue();
+		unsubPastePlain();
 		if (debounceTimer) {
 			clearTimeout(debounceTimer);
 		}

@@ -6639,6 +6639,7 @@ dependencies = [
  "tauri-plugin-eco-common",
  "tauri-plugin-eco-database",
  "tauri-plugin-eco-detector",
+ "tauri-plugin-eco-ocr",
  "windows 0.58.0",
 ]
 

@@ -135,6 +135,20 @@ const Main = () => {
 		getListDebounced(50);
 	});
 
+	useTauriListen("plugin:eco-paste://paste_plain", async () => {
+		if (!state.activeId) {
+			return;
+		}
+
+		const data = state.list.find((item) => item.id === state.activeId);
+		if (!data) {
+			return;
+		}
+
+		const { smartPasteClipboard } = await import("@/plugins/clipboard");
+		smartPasteClipboard(data, true);
+	});
+
 	// 监听搜索状态变化，自动刷新列表
 	useEffect(() => {
 		const currentAutoSort = clipboardStore.content.autoSort;
