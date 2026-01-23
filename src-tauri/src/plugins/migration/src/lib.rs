@@ -1,9 +1,12 @@
 //! 数据迁移插件
 //!
-//! 迁移策略（调用 clipboard 插件的数据处理流程）：
-//! 1. 读取旧数据库的 id、value、sourceAppName、sourceAppIcon
-//! 2. 调用 detector 插件检测 value 类型
-//! 3. 构建 InsertItem（和 clipboard 插件一样）
+//! 迁移策略：
+//! 1. 读取旧数据库的所有字段（id、value、type、width、height、count、sourceAppName、sourceAppIcon）
+//! 2. 根据旧 type 字段判断类型：
+//!    - image: 保留类型，设置 width、height、count（元数据来自旧数据库）
+//!    - files: 保留类型，设置 count（元数据来自旧数据库）
+//!    - 其他: 调用 detector 插件检测子类型，count 设为字符数
+//! 3. 构建 InsertItem
 //! 4. 调用 database 插件插入
 
 mod database_migrator;
@@ -110,26 +113,55 @@ async fn run_migration<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     let time = chrono::Utc::now().timestamp_millis();
 
     for item in &items {
-        // 调用 detector 插件检测类型（同步调用）
-        let detection_result = detector_state
-            .detect_content(item.value.clone(), "text".to_string(), Default::default());
+        // 根据原始类型决定处理方式
+        let (final_type, final_subtype, final_width, final_height, final_count, search) =
+            if item.item_type == "image" {
+                // 图片类型：使用原始类型和元数据
+                (
+                    "image".to_string(),
+                    Some("image".to_string()),
+                    item.width,
+                    item.height,
+                    item.count,
+                    None,
+                )
+            } else if item.item_type == "files" {
+                // 文件类型：使用原始类型
+                ("files".to_string(), None, None, None, item.count, None)
+            } else {
+                // 文本类型：调用 detector 插件检测子类型
+                let detection_result = detector_state
+                    .detect_content(item.value.clone(), "text".to_string(), Default::default());
 
-        // 检测是否为 HTML 或富文本
-        let (item_type, subtype, search) = detect_content_type(&item.value, detection_result);
+                let (detected_type, subtype, search) =
+                    detect_content_type(&item.value, detection_result);
+
+                // 对于文本类型，使用检测到的类型，count 设为字符数
+                let count = Some(item.value.len() as i32);
+
+                (
+                    detected_type,
+                    subtype,
+                    None,
+                    None,
+                    count,
+                    search,
+                )
+            };
 
         let insert_item = InsertItem {
             id: item.id.clone(),
-            item_type: Some(item_type),
+            item_type: Some(final_type),
             group: None,
             value: Some(item.value.clone()),
             search,
-            count: Some(1),
-            width: None,
-            height: None,
+            count: final_count,
+            width: final_width,
+            height: final_height,
             favorite: 0,
             time,
             note: None,
-            subtype,
+            subtype: final_subtype,
             deleted: Some(0),
             sync_status: Some("not_synced".to_string()),
             source_app_name: item.source_app_name.clone(),
