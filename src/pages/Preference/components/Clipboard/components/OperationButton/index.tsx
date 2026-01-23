@@ -341,8 +341,12 @@ const OperationButton = () => {
 						height: 320,
 					}}
 					selectedKeys={Array.from(selectedKeys)}
-					onSelectChange={(_, targetSelectedKeys) => {
-						setSelectedKeys(new Set(targetSelectedKeys.map(String)));
+					onSelectChange={(sourceSelectedKeys, targetSelectedKeys) => {
+						const allSelected = new Set([
+							...sourceSelectedKeys.map(String),
+							...targetSelectedKeys.map(String),
+						]);
+						setSelectedKeys(allSelected);
 					}}
 					onChange={(keys) => {
 						clipboardStore.content.operationButtons = keys as Key[];
