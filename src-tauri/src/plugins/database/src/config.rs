@@ -2,6 +2,8 @@
 //! 提供从 store.json 读取配置的通用方法
 
 use serde::Deserialize;
+use tauri::{AppHandle, Runtime};
+use tauri_plugin_eco_common::paths::get_config_path;
 
 /// 应用配置结构
 #[derive(Debug, Deserialize)]
@@ -92,44 +94,9 @@ pub struct HistoryConfig {
     pub max_count: Option<i32>,
 }
 
-/// 获取配置文件路径
-fn get_config_path() -> Result<std::path::PathBuf, String> {
-    let bundle_id = "com.Rains.EcoPaste-Sync";
-    let is_dev = cfg!(debug_assertions);
-
-    // 根据开发/发布模式选择配置文件名（与前端 path.ts 保持一致）
-    // 开发环境: .store.dev.json
-    // 生产环境: .store.json
-    let config_filename = if is_dev {
-        ".store.dev.json"
-    } else {
-        ".store.json"
-    };
-
-    // 优先使用 APPDATA 环境变量（与前端的 appDataDir 对应）
-    // 在 Windows 上通常是 C:\Users\<user>\AppData\Roaming
-    if let Some(app_data_dir) = std::env::var_os("APPDATA") {
-        let config_path = std::path::PathBuf::from(app_data_dir)
-            .join(bundle_id)
-            .join(config_filename);
-
-        return Ok(config_path);
-    }
-
-    // 备用方案：使用 dirs crate
-    let save_data_dir = dirs::data_dir()
-        .or_else(|| dirs::config_dir())
-        .or_else(|| dirs::home_dir().map(|p| p.join(".local/share")))
-        .ok_or_else(|| "无法获取数据目录".to_string())?;
-
-    let config_path = save_data_dir.join(bundle_id).join(config_filename);
-
-    Ok(config_path)
-}
-
 /// 读取完整配置
-pub fn read_config() -> Result<AppConfig, String> {
-    let config_path = get_config_path()?;
+pub fn read_config<R: Runtime>(app_handle: &AppHandle<R>) -> Result<AppConfig, String> {
+    let config_path = get_config_path(app_handle).ok_or("无法获取配置路径".to_string())?;
 
     let content =
         std::fs::read_to_string(&config_path).map_err(|e| format!("读取配置文件失败: {}", e))?;
@@ -141,8 +108,8 @@ pub fn read_config() -> Result<AppConfig, String> {
 }
 
 /// 检查是否应该获取来源应用信息
-pub fn should_fetch_source_app() -> bool {
-    read_config()
+pub fn should_fetch_source_app<R: Runtime>(app_handle: &AppHandle<R>) -> bool {
+    read_config(app_handle)
         .ok()
         .and_then(|c| c.clipboard_store)
         .and_then(|c| c.content)
@@ -151,8 +118,8 @@ pub fn should_fetch_source_app() -> bool {
 }
 
 /// 检查是否开启自动排序
-pub fn should_auto_sort() -> bool {
-    read_config()
+pub fn should_auto_sort<R: Runtime>(app_handle: &AppHandle<R>) -> bool {
+    read_config(app_handle)
         .ok()
         .and_then(|c| c.clipboard_store)
         .and_then(|c| c.content)
@@ -161,8 +128,8 @@ pub fn should_auto_sort() -> bool {
 }
 
 /// 检查是否应该以纯文本模式复制
-pub fn should_copy_plain() -> bool {
-    read_config()
+pub fn should_copy_plain<R: Runtime>(app_handle: &AppHandle<R>) -> bool {
+    read_config(app_handle)
         .ok()
         .and_then(|c| c.clipboard_store)
         .and_then(|c| c.content)

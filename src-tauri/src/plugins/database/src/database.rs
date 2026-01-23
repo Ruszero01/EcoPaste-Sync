@@ -77,7 +77,7 @@ impl DatabaseManager {
         self.db_path = Some(db_path.clone());
         self.initialized = true;
 
-        log::info!("数据库管理器已初始化: {:?}", self.db_path);
+        log::info!("✅ 数据库初始化成功: {}", db_path.display());
         Ok(())
     }
 
@@ -497,7 +497,12 @@ impl DatabaseManager {
     ///
     /// # Arguments
     /// * `item` - 要插入的数据项
-    pub fn insert_with_deduplication(&self, item: &InsertItem) -> Result<InsertResult, String> {
+    /// * `app_handle` - Tauri 应用句柄，用于读取配置
+    pub fn insert_with_deduplication<R: tauri::Runtime>(
+        &self,
+        item: &InsertItem,
+        app_handle: &tauri::AppHandle<R>,
+    ) -> Result<InsertResult, String> {
         let conn = self.get_connection()?;
 
         // 检查是否已存在（优先使用ID去重）
@@ -628,7 +633,7 @@ impl DatabaseManager {
             // 根据自动排序设置决定是否更新 position
             // 自动排序开启：更新 position 为新最大值（移动到顶部）
             // 自动排序关闭：保持原有 position 不变（不更新 position 字段）
-            let auto_sort = should_auto_sort();
+            let auto_sort = should_auto_sort(app_handle);
 
             if auto_sort {
                 // 获取新的 max_position 并更新
@@ -683,7 +688,7 @@ impl DatabaseManager {
                 app_name: item.source_app_name.clone().unwrap_or_default(),
                 app_icon: item.source_app_icon.clone(),
             })
-        } else if should_fetch_source_app() {
+        } else if should_fetch_source_app(app_handle) {
             match fetch_source_app_info_impl() {
                 Ok(info) => Some(info),
                 Err(e) => {

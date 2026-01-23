@@ -58,3 +58,18 @@ pub fn get_data_path() -> Option<PathBuf> {
 pub fn get_server_config_path() -> Option<PathBuf> {
     get_data_path().map(|p| p.join(get_server_config_filename()))
 }
+
+/// 获取数据库文件名
+#[inline]
+pub fn get_database_filename() -> &'static str {
+    if is_dev_mode() {
+        "EcoPaste-Sync.dev.db"
+    } else {
+        "EcoPaste-Sync.db"
+    }
+}
+
+/// 获取数据库文件路径（使用 get_data_path）
+pub fn get_database_path() -> Option<PathBuf> {
+    get_data_path().map(|p| p.join(get_database_filename()))
+}

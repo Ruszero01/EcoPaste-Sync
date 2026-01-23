@@ -27,6 +27,8 @@ image.workspace = true
 base64 = "0.21"
 # 用于颜色检测和容差匹配
 tauri-plugin-eco-detector.workspace = true
+# 用于通用路径和配置
+tauri-plugin-eco-common.workspace = true
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.58", features = [

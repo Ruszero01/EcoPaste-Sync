@@ -8,6 +8,7 @@ use crate::webdav::{ConnectionTestResult, WebDAVClientState};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime, State};
 use tauri_plugin_eco_database::DatabaseState;
+use tauri_plugin_eco_common::paths::get_data_path;
 use tokio::sync::Mutex;
 
 /// 获取当前时间戳（毫秒）
@@ -287,7 +288,7 @@ pub async fn reload_config_from_file<R: Runtime>(
 ) -> Result<SyncResult, String> {
     let mut engine = state.lock().await;
 
-    match crate::read_sync_config_from_file() {
+    match crate::read_sync_config_from_file(&app_handle) {
         Some(config) => match engine.init(config, &db_state, &app_handle).await {
             Ok(result) => {
                 log::info!("[Sync] 从本地文件重新加载配置成功");
@@ -312,19 +313,10 @@ pub async fn reload_config_from_file<R: Runtime>(
 /// 加载本地书签数据
 #[tauri::command]
 pub async fn load_bookmark_data() -> Result<BookmarkGroupData, String> {
-    log::info!("[Bookmark] 加载本地书签数据");
-
-    // 获取应用数据目录
-    let data_dir = dirs::data_dir()
-        .or_else(|| dirs::config_dir())
-        .or_else(|| dirs::home_dir().map(|p| p.join(".local/share")))
-        .map(|p| p.join("com.Rains.EcoPaste-Sync"))
-        .ok_or_else(|| "无法获取数据目录".to_string())?;
-
+    let data_dir = get_data_path().ok_or_else(|| "无法获取数据目录".to_string())?;
     let bookmark_path = data_dir.join("bookmark-data.json");
 
     if !bookmark_path.exists() {
-        log::info!("[Bookmark] 书签文件不存在，返回空数据");
         return Ok(BookmarkGroupData {
             last_modified: 0,
             groups: vec![],
@@ -336,7 +328,7 @@ pub async fn load_bookmark_data() -> Result<BookmarkGroupData, String> {
             serde_json::from_str(&content).map_err(|e| format!("解析书签数据失败: {}", e))
         }
         Err(e) => {
-            log::error!("[Bookmark] 读取书签文件失败: {}", e);
+            log::error!("[Bookmark] 读取失败: {}", e);
             Err(format!("读取书签文件失败: {}", e))
         }
     }
@@ -348,29 +340,16 @@ pub async fn save_bookmark_data<R: Runtime>(
     data: BookmarkGroupData,
     app_handle: AppHandle<R>,
 ) -> Result<bool, String> {
-    log::info!("[Bookmark] 保存本地书签数据: {} 分组", data.groups.len());
-
-    // 获取应用数据目录
-    let data_dir = dirs::data_dir()
-        .or_else(|| dirs::config_dir())
-        .or_else(|| dirs::home_dir().map(|p| p.join(".local/share")))
-        .map(|p| p.join("com.Rains.EcoPaste-Sync"))
-        .ok_or_else(|| "无法获取数据目录".to_string())?;
-
-    // 确保目录存在
+    let data_dir = get_data_path().ok_or_else(|| "无法获取数据目录".to_string())?;
     std::fs::create_dir_all(&data_dir).map_err(|e| format!("创建数据目录失败: {}", e))?;
-
     let bookmark_path = data_dir.join("bookmark-data.json");
 
     let json =
-        serde_json::to_string_pretty(&data).map_err(|e| format!("序列化书签数据失败: {}", e))?;
+        serde_json::to_string_pretty(&data).map_err(|e| format!("序列化失败: {}", e))?;
+    std::fs::write(&bookmark_path, json).map_err(|e| format!("写入失败: {}", e))?;
 
-    std::fs::write(&bookmark_path, json).map_err(|e| format!("写入书签文件失败: {}", e))?;
-
-    // 发送事件通知前端书签数据已更改
     let _ = app_handle.emit("bookmark-data-changed", ());
-
-    log::info!("[Bookmark] 书签数据保存成功");
+    log::info!("[Bookmark] 已保存[{}个分组]", data.groups.len());
     Ok(true)
 }
 
@@ -381,8 +360,6 @@ pub async fn add_bookmark_group<R: Runtime>(
     color: String,
     app_handle: AppHandle<R>,
 ) -> Result<BookmarkGroup, String> {
-    log::info!("[Bookmark] 添加书签分组: {}", name);
-
     let mut data = load_bookmark_data().await?;
 
     // 检查是否已存在同名分组
@@ -400,9 +377,8 @@ pub async fn add_bookmark_group<R: Runtime>(
 
     data.groups.push(new_group.clone());
     data.last_modified = current_timestamp_millis();
-
     save_bookmark_data(data, app_handle).await?;
-
+    log::info!("[Bookmark] 新增分组[{}]", new_group.name);
     Ok(new_group)
 }
 
@@ -414,8 +390,6 @@ pub async fn update_bookmark_group<R: Runtime>(
     color: Option<String>,
     app_handle: AppHandle<R>,
 ) -> Result<BookmarkGroup, String> {
-    log::info!("[Bookmark] 更新书签分组: {}", id);
-
     let mut data = load_bookmark_data().await?;
     let now = current_timestamp_millis();
 
@@ -453,9 +427,8 @@ pub async fn update_bookmark_group<R: Runtime>(
 
     group.update_time = now;
     data.last_modified = now;
-
     save_bookmark_data(data, app_handle).await?;
-
+    log::info!("[Bookmark] 更新分组[{}]", updated_group.name);
     Ok(updated_group)
 }
 
@@ -465,8 +438,6 @@ pub async fn delete_bookmark_group<R: Runtime>(
     id: String,
     app_handle: AppHandle<R>,
 ) -> Result<bool, String> {
-    log::info!("[Bookmark] 删除书签分组: {}", id);
-
     let mut data = load_bookmark_data().await?;
     let initial_len = data.groups.len();
 
@@ -478,7 +449,7 @@ pub async fn delete_bookmark_group<R: Runtime>(
 
     data.last_modified = current_timestamp_millis();
     save_bookmark_data(data, app_handle).await?;
-
+    log::info!("[Bookmark] 删除分组");
     Ok(true)
 }
 
@@ -488,8 +459,6 @@ pub async fn reorder_bookmark_groups<R: Runtime>(
     groups: Vec<BookmarkGroup>,
     app_handle: AppHandle<R>,
 ) -> Result<bool, String> {
-    log::info!("[Bookmark] 重新排序书签分组: {} 个", groups.len());
-
     let mut data = load_bookmark_data().await?;
 
     // 验证所有分组ID都存在
@@ -512,15 +481,13 @@ pub async fn reorder_bookmark_groups<R: Runtime>(
 /// 清空书签数据（仅开发模式使用）
 #[tauri::command]
 pub async fn clear_bookmark_data<R: Runtime>(app_handle: AppHandle<R>) -> Result<bool, String> {
-    log::info!("[Bookmark] 清空书签数据（开发模式）");
-
     let empty_data = BookmarkGroupData {
         last_modified: 0,
         groups: Vec::new(),
     };
 
     save_bookmark_data(empty_data, app_handle).await?;
-
+    log::info!("[Bookmark] 清空分组");
     Ok(true)
 }
 

@@ -4,28 +4,30 @@ import { invoke } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
+// TODO: mica 效果在新版 webview 上存在 BUG，暂时禁用
 // 检查是否在Tauri环境中运行
-const isTauriEnvironment = () => {
-	try {
-		// 检查能否访问Tauri API
-		return (
-			(typeof window !== "undefined" &&
-				(window as any).__TAURI__ !== undefined) ||
-			window.location.protocol === "tauri:" ||
-			// 尝试检查Tauri核心API是否可用
-			typeof invoke === "function"
-		);
-	} catch {
-		return false;
-	}
-};
+// const isTauriEnvironment = () => {
+// 	try {
+// 		// 检查能否访问Tauri API
+// 		return (
+// 			(typeof window !== "undefined" &&
+// 				(window as any).__TAURI__ !== undefined) ||
+// 			window.location.protocol === "tauri:" ||
+// 			// 尝试检查Tauri核心API是否可用
+// 			typeof invoke === "function"
+// 		);
+// 	} catch {
+// 		return false;
+// 	}
+// };
 
 const COMMAND = {
 	TOGGLE_WINDOW: "plugin:eco-window|toggle_window",
 	SHOW_TASKBAR_ICON: "plugin:eco-window|show_taskbar_icon",
-	APPLY_MICA_EFFECT: "plugin:eco-window|apply_mica_effect",
-	CLEAR_MICA_EFFECT: "plugin:eco-window|clear_mica_effect",
-	IS_MICA_SUPPORTED: "plugin:eco-window|is_mica_supported",
+	// TODO: mica 效果在新版 webview 上存在 BUG，暂时禁用
+	// APPLY_MICA_EFFECT: "plugin:eco-window|apply_mica_effect",
+	// CLEAR_MICA_EFFECT: "plugin:eco-window|clear_mica_effect",
+	// IS_MICA_SUPPORTED: "plugin:eco-window|is_mica_supported",
 	SET_ALWAYS_ON_TOP: "plugin:eco-window|set_window_always_on_top",
 };
 
@@ -105,58 +107,59 @@ export const showTaskbarIcon = (visible = true) => {
 /**
  * 检查是否支持 Mica 效果
  */
-export const isMicaSupported = async (): Promise<boolean> => {
-	try {
-		return await invoke<boolean>(COMMAND.IS_MICA_SUPPORTED);
-	} catch {
-		return false;
-	}
-};
+// TODO: mica 效果在新版 webview 上存在 BUG，暂时禁用
+// export const isMicaSupported = async (): Promise<boolean> => {
+// 	try {
+// 		return await invoke<boolean>(COMMAND.IS_MICA_SUPPORTED);
+// 	} catch {
+// 		return false;
+// 	}
+// };
 
 /**
  * 应用 Mica 材质效果
  */
-export const applyMicaEffect = async (darkMode?: boolean) => {
-	try {
-		await invoke(COMMAND.APPLY_MICA_EFFECT, { darkMode: darkMode ?? true });
-	} catch (_error) {
-		// Silently fail for non-Windows platforms or unsupported cases
-	}
-};
+// export const applyMicaEffect = async (darkMode?: boolean) => {
+// 	try {
+// 		await invoke(COMMAND.APPLY_MICA_EFFECT, { darkMode: darkMode ?? true });
+// 	} catch (_error) {
+// 		// Silently fail for non-Windows platforms or unsupported cases
+// 	}
+// };
 
 /**
  * 清除 Mica 材质效果
  */
-export const clearMicaEffect = async () => {
-	try {
-		await invoke(COMMAND.CLEAR_MICA_EFFECT);
-	} catch (error) {
-		console.error("Failed to clear Mica effect:", error);
-		throw error;
-	}
-};
+// export const clearMicaEffect = async () => {
+// 	try {
+// 		await invoke(COMMAND.CLEAR_MICA_EFFECT);
+// 	} catch (error) {
+// 		console.error("Failed to clear Mica effect:", error);
+// 		throw error;
+// 	}
+// };
 
 /**
  * 初始化 Mica 效果（仅在支持的平台上）
  */
-export const initializeMicaEffect = async () => {
-	const supported = await isMicaSupported();
-
-	if (supported && isTauriEnvironment()) {
-		await applyMicaEffect(globalStore.appearance.isDark);
-	}
-};
+// export const initializeMicaEffect = async () => {
+// 	const supported = await isMicaSupported();
+//
+// 	if (supported && isTauriEnvironment()) {
+// 		await applyMicaEffect(globalStore.appearance.isDark);
+// 	}
+// };
 
 /**
  * 更新 Mica 主题（亮色/暗色模式）
  */
-export const updateMicaTheme = async (isDark: boolean) => {
-	const supported = await isMicaSupported();
-
-	if (supported && isTauriEnvironment()) {
-		await applyMicaEffect(isDark);
-	}
-};
+// export const updateMicaTheme = async (isDark: boolean) => {
+// 	const supported = await isMicaSupported();
+//
+// 	if (supported && isTauriEnvironment()) {
+// 		await applyMicaEffect(isDark);
+// 	}
+// };
 
 /**
  * 设置窗口是否置顶

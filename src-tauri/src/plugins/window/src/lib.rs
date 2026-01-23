@@ -10,9 +10,10 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
         .invoke_handler(generate_handler![
             commands::toggle_window,
             commands::show_taskbar_icon,
-            commands::apply_mica_effect,
-            commands::clear_mica_effect,
-            commands::is_mica_supported,
+            // TODO: mica 效果在新版 webview 上存在 BUG，暂时禁用
+            // commands::apply_mica_effect,
+            // commands::clear_mica_effect,
+            // commands::is_mica_supported,
             commands::create_window,
             commands::exit_app, // Internal: only for tray plugin
             commands::set_window_always_on_top,

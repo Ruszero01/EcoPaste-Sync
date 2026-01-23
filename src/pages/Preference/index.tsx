@@ -1,10 +1,6 @@
 import UnoIcon from "@/components/UnoIcon";
 // import UpdateApp from "@/components/UpdateApp"; // fork分支不需要更新功能
-import {
-	initializeMicaEffect,
-	toggleWindow,
-	updateMicaTheme,
-} from "@/plugins/window";
+import { toggleWindow } from "@/plugins/window";
 import { isWin } from "@/utils/is";
 import { emit } from "@tauri-apps/api/event";
 import { useKeyPress } from "ahooks";
@@ -31,17 +27,18 @@ const Preference = () => {
 		toggleWindow("preference", undefined);
 	});
 
-	useMount(async () => {
-		// 初始化偏好设置窗口的 Mica 效果
-		await initializeMicaEffect();
-	});
+	// TODO: mica 效果在新版 webview 上存在 BUG，暂时禁用
+	// useMount(async () => {
+	// 	初始化偏好设置窗口的 Mica 效果
+	// 	await initializeMicaEffect();
+	// });
 
 	// 监听主题变化并更新当前窗口的 Mica 效果
-	useImmediateKey(globalStore.appearance, "isDark", (isDark) => {
-		if (typeof isDark === "boolean") {
-			updateMicaTheme(isDark);
-		}
-	});
+	// useImmediateKey(globalStore.appearance, "isDark", (isDark) => {
+	// 	if (typeof isDark === "boolean") {
+	// 		updateMicaTheme(isDark);
+	// 	}
+	// });
 
 	// 监听全局配置项变化
 	useSubscribe(globalStore, () => handleStoreChanged());

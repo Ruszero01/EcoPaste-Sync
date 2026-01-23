@@ -55,12 +55,13 @@ pub struct QueryFilterArgs {
 
 /// 插入数据（带去重功能）
 #[tauri::command]
-pub fn insert_with_deduplication(
+pub fn insert_with_deduplication<R: tauri::Runtime>(
     item: InsertItem,
     state: State<'_, DatabaseState>,
+    app_handle: tauri::AppHandle<R>,
 ) -> Result<InsertResult, String> {
     let db = state.blocking_lock();
-    db.insert_with_deduplication(&item)
+    db.insert_with_deduplication(&item, &app_handle)
 }
 
 /// 统一删除命令

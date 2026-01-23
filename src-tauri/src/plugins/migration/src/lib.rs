@@ -17,6 +17,7 @@ use tauri::{
     plugin::{Builder, TauriPlugin},
     AppHandle, Emitter, Manager, Runtime,
 };
+use tauri_plugin_eco_common::paths::get_data_path;
 
 // 引入 database 插件类型
 use tauri_plugin_eco_database::InsertItem;
@@ -24,16 +25,12 @@ use tauri_plugin_eco_database::InsertItem;
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("eco-migration")
         .setup(|app_handle, _webview_manager| {
-            log::info!("[Migration] 迁移插件初始化开始");
-
             let app_handle_clone = app_handle.clone();
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = run_migration(&app_handle_clone).await {
                     log::error!("[Migration] 执行迁移失败: {}", e);
                 }
             });
-
-            log::info!("[Migration] 迁移插件初始化完成");
             Ok(())
         })
         .build()
@@ -41,13 +38,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
 
 /// 获取数据目录
 fn get_data_dir<R: Runtime>(_app: &AppHandle<R>) -> Result<PathBuf, String> {
-    let data_dir = dirs::data_dir()
-        .or_else(|| dirs::config_dir())
-        .or_else(|| dirs::home_dir().map(|p| p.join(".local/share")))
-        .ok_or_else(|| "无法获取数据目录".to_string())?;
-
-    let bundle_id = "com.Rains.EcoPaste-Sync";
-    Ok(data_dir.join(bundle_id))
+    get_data_path().ok_or_else(|| "无法获取数据目录".to_string())
 }
 
 /// 获取备份数据库文件路径（.bak 后缀）
@@ -72,7 +63,6 @@ async fn run_migration<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
 
     // 检查迁移标记
     if !marker_path.exists() {
-        log::info!("[Migration] 无迁移任务");
         return Ok(());
     }
 
@@ -82,17 +72,13 @@ async fn run_migration<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
         .map_err(|e| format!("解析迁移标记失败: {}", e))?;
 
     if marker.phase != Some(MigrationPhase::Phase1Completed) {
-        log::info!("[Migration] 迁移阶段不匹配，跳过");
         return Ok(());
     }
 
     // 检查备份数据库是否存在
     if !backup_db_path.exists() {
-        log::error!("[Migration] 备份数据库不存在");
         return Err("备份数据库不存在".to_string());
     }
-
-    log::info!("[Migration] 开始执行迁移...");
 
     // 发送事件通知 UI 开始迁移
     let _ = app.emit("migration://started", ());
@@ -100,12 +86,10 @@ async fn run_migration<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     // 读取备份数据库的 id 和 value
     let app_for_callback = app.clone();
     let items = read_backup_db(&backup_db_path, move |progress| {
-        log::info!("[Migration] 读取进度: {}% - {}", progress.percentage as u32, progress.current_operation);
         let _ = app_for_callback.emit("migration://progress", progress);
     }).await?;
 
     if items.is_empty() {
-        log::info!("[Migration] 备份数据库为空，直接删除备份");
         delete_backup_db(&backup_db_path)?;
         finish_migration(&marker_path, 0)?;
         return Ok(());
@@ -153,7 +137,7 @@ async fn run_migration<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
             position: None,
         };
 
-        match db_manager.insert_with_deduplication(&insert_item) {
+        match db_manager.insert_with_deduplication(&insert_item, app) {
             Ok(_) => {
                 inserted += 1;
                 log::debug!("[Migration] 插入成功: {}", item.id);

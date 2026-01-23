@@ -1,6 +1,6 @@
 import { LISTEN_KEY } from "@/constants";
 import { backendQueryHistoryWithFilter } from "@/plugins/database";
-import { COMMAND, initializeMicaEffect, toggleWindow } from "@/plugins/window";
+import { COMMAND, toggleWindow } from "@/plugins/window";
 import type { HistoryTablePayload, TablePayload } from "@/types/database";
 import type { Store } from "@/types/store";
 import { invoke } from "@tauri-apps/api/core";
@@ -104,8 +104,8 @@ const Main = () => {
 	useMount(() => {
 		state.$eventBus = $eventBus;
 
-		// 初始化 Windows 11 Mica 材质效果
-		initializeMicaEffect();
+		// TODO: mica 效果在新版 webview 上存在 BUG，暂时禁用
+		// initializeMicaEffect();
 	});
 
 	// 监听快速粘贴的启用状态变更

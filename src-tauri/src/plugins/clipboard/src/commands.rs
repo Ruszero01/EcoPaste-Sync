@@ -83,7 +83,7 @@ where
             let context = manager.context.lock().unwrap();
 
             // 检查是否开启"复制为纯文本"模式
-            let copy_plain = tauri_plugin_eco_database::config::should_copy_plain();
+            let copy_plain = tauri_plugin_eco_database::config::should_copy_plain(&app_handle);
 
             // 检查是否是图片类型
             let has_image = context.has(ContentFormat::Image);
@@ -342,7 +342,7 @@ where
 
         // 同步插入数据库
         let db = db_state.blocking_lock();
-        match db.insert_with_deduplication(&item) {
+        match db.insert_with_deduplication(&item, &app_handle) {
             Ok(result) => {
                 // 播放复制音效（反馈用户复制操作已完成）
                 play_copy_audio(&app_handle);

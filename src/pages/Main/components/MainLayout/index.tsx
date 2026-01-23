@@ -1,5 +1,4 @@
 import UnoIcon from "@/components/UnoIcon";
-import { initializeMicaEffect, updateMicaTheme } from "@/plugins/window";
 import { clipboardStore } from "@/stores/clipboard";
 import { isWin } from "@/utils/is";
 import { Flex } from "antd";
@@ -16,15 +15,16 @@ const MainLayout = () => {
 	const { search } = useSnapshot(clipboardStore);
 	const [hasGroups, setHasGroups] = useState(false);
 
+	// TODO: mica 效果在新版 webview 上存在 BUG，暂时禁用
 	// 初始化主窗口的 Mica 效果
-	useMount(async () => {
-		await initializeMicaEffect();
-	});
+	// useMount(async () => {
+	// 	await initializeMicaEffect();
+	// });
 
 	// 监听主题变化并更新当前窗口的 Mica 效果
-	useImmediateKey(globalStore.appearance, "isDark", (value) =>
-		updateMicaTheme(value as boolean),
-	);
+	// useImmediateKey(globalStore.appearance, "isDark", (value) =>
+	// 	updateMicaTheme(value as boolean),
+	// );
 	return (
 		<div
 			className={clsx("flex h-screen flex-col", {

@@ -28,6 +28,7 @@ use tauri::{
     plugin::{Builder, TauriPlugin},
     Manager, Runtime,
 };
+use tauri_plugin_eco_common::paths::get_database_path;
 use tokio::sync::Mutex;
 
 /// 数据库状态类型
@@ -60,32 +61,19 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             let mut db = database_state.blocking_lock();
 
             // 使用标准路径（与前端 appDataDir 对应）
-            let save_data_dir = dirs::data_dir()
-                .or_else(|| dirs::config_dir())
-                .or_else(|| dirs::home_dir().map(|p| p.join(".local/share")))
-                .ok_or_else(|| "无法获取数据目录".to_string())?;
-
-            // 获取应用标识符作为名称（与前端保持一致）
-            let bundle_id = "com.Rains.EcoPaste-Sync";
-            let app_name = "EcoPaste-Sync".to_string();
-
-            // 检查是否为开发模式
-            let is_dev = cfg!(debug_assertions);
-
-            // 构建数据目录：{saveDataDir}/{bundleId}
-            let data_dir = save_data_dir.join(bundle_id);
+            let db_path = get_database_path().ok_or_else(|| "无法获取数据库路径".to_string())?;
 
             // 确保数据目录存在
-            std::fs::create_dir_all(&data_dir).map_err(|e| format!("创建数据目录失败: {}", e))?;
+            if let Some(parent) = db_path.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| format!("创建数据目录失败: {}", e))?;
+            }
 
-            // 设置数据库路径并初始化 - 如果失败则应用启动失败
-            db.set_database_path(data_dir.to_string_lossy().to_string(), app_name, is_dev)
+            // 初始化数据库 - 如果失败则应用启动失败
+            db.init(db_path)
                 .map_err(|e| {
-                    log::error!("❌ 数据库插件初始化失败: {}", e);
+                    log::error!("❌ 数据库初始化失败: {}", e);
                     e
                 })?;
-
-            log::info!("✅ 数据库插件自动初始化成功");
 
             Ok(())
         })

@@ -44,7 +44,11 @@ pub struct CloudSyncEngine {
 
 impl CloudSyncEngine {
     /// 创建新实例
-    pub fn new(webdav_client: WebDAVClientState, auto_sync_manager: AutoSyncManagerState) -> Self {
+    pub fn new<R: Runtime>(
+        webdav_client: WebDAVClientState,
+        auto_sync_manager: AutoSyncManagerState,
+        app_handle: &AppHandle<R>,
+    ) -> Self {
         let data_manager = create_data_manager();
         let file_sync_manager = create_file_sync_manager(webdav_client.clone());
         let sync_core = Arc::new(Mutex::new(SyncCore::new(
@@ -52,8 +56,10 @@ impl CloudSyncEngine {
             data_manager.clone(),
             file_sync_manager.clone(),
         )));
-        let config_sync_manager =
-            Arc::new(Mutex::new(ConfigSyncManager::new(webdav_client.clone())));
+        let config_sync_manager = Arc::new(Mutex::new(ConfigSyncManager::new(
+            webdav_client.clone(),
+            app_handle,
+        )));
         let device_id = "device-".to_string() + &chrono::Utc::now().timestamp_millis().to_string();
         let bookmark_sync_manager = Arc::new(Mutex::new(BookmarkSyncManager::new(
             webdav_client.clone(),
@@ -74,11 +80,11 @@ impl CloudSyncEngine {
     }
 
     /// 初始化同步引擎
-    pub async fn init<R: Runtime>(
+    pub async fn init<T: Runtime>(
         &mut self,
         config: SyncConfig,
         database_state: &DatabaseState,
-        app_handle: &AppHandle<R>,
+        app_handle: &AppHandle<T>,
     ) -> Result<SyncResult, String> {
         // 提取需要的配置字段
         let auto_sync = config.auto_sync;
@@ -127,11 +133,11 @@ impl CloudSyncEngine {
     }
 
     /// 启动自动同步
-    pub async fn start_auto_sync<R: Runtime>(
+    pub async fn start_auto_sync<T: Runtime>(
         &mut self,
         interval_minutes: u64,
         database_state: &DatabaseState,
-        app_handle: &AppHandle<R>,
+        app_handle: &AppHandle<T>,
     ) -> Result<SyncResult, String> {
         let auto_sync_manager = self.auto_sync_manager.clone();
         let mut manager = auto_sync_manager.lock().await;
@@ -240,12 +246,12 @@ impl CloudSyncEngine {
 
     /// 使用数据库状态执行同步
     /// 从数据库直接读取数据并执行同步流程
-    pub async fn sync_with_database<R: Runtime>(
+    pub async fn sync_with_database<T: Runtime>(
         &mut self,
         database_state: &DatabaseState,
         only_favorites: bool,
         include_files: bool,
-        app_handle: &AppHandle<R>,
+        app_handle: &AppHandle<T>,
     ) -> Result<SyncProcessResult, String> {
         // 从 SyncCore 获取配置
         let config = {
@@ -400,12 +406,14 @@ impl CloudSyncEngine {
 }
 
 /// 创建共享的同步引擎实例
-pub fn create_shared_engine(
+pub fn create_shared_engine<R: tauri::Runtime>(
     webdav_client: WebDAVClientState,
     auto_sync_manager: AutoSyncManagerState,
+    app_handle: &AppHandle<R>,
 ) -> Arc<Mutex<CloudSyncEngine>> {
     Arc::new(Mutex::new(CloudSyncEngine::new(
         webdav_client,
         auto_sync_manager,
+        app_handle,
     )))
 }

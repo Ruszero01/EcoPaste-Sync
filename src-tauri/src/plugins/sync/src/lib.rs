@@ -27,28 +27,19 @@ pub use sync_core::{SyncCore, SyncDataItem, SyncModeConfig, SyncProcessResult};
 pub use sync_engine::{create_shared_engine, CloudSyncEngine};
 pub use types::*;
 pub use webdav::{create_shared_client, WebDAVClientState, WebDAVConfig};
+use tauri_plugin_eco_common::paths::get_config_path;
 
 /// 从本地文件读取同步配置
 /// 返回值：Some(SyncConfig) 表示配置有效，None 表示无有效配置
 /// 注意：连接测试会在 init() 时自动执行
-pub fn read_sync_config_from_file() -> Option<types::SyncConfig> {
+pub fn read_sync_config_from_file<R: tauri::Runtime>(
+    app_handle: &tauri::AppHandle<R>,
+) -> Option<types::SyncConfig> {
     use std::fs;
 
-    // 获取应用数据目录
-    let data_dir = dirs::data_dir()
-        .or_else(|| dirs::config_dir())
-        .or_else(|| dirs::home_dir().map(|p| p.join(".local/share")))
-        .map(|p| p.join("com.Rains.EcoPaste-Sync"));
-
-    let config_path = match data_dir {
-        Some(dir) if dir.exists() => {
-            if cfg!(debug_assertions) {
-                dir.join(".store.dev.json")
-            } else {
-                dir.join(".store.json")
-            }
-        }
-        _ => return None,
+    let config_path = match get_config_path(app_handle) {
+        Some(path) => path,
+        None => return None,
     };
 
     if !config_path.exists() {
@@ -78,7 +69,6 @@ pub fn read_sync_config_from_file() -> Option<types::SyncConfig> {
                             .is_some();
 
                         if !has_server_url || !has_username {
-                            log::info!("[Sync] 服务器配置不完整，跳过自动初始化");
                             return None;
                         }
 
@@ -198,7 +188,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             let webdav_client = create_shared_client();
             let auto_sync_manager = create_shared_manager();
             let sync_engine =
-                create_shared_engine(webdav_client.clone(), auto_sync_manager.clone());
+                create_shared_engine(webdav_client.clone(), auto_sync_manager.clone(), app_handle);
 
             // 注册状态管理器，让命令可以访问这些状态
             app_handle.manage(webdav_client.clone());
@@ -209,32 +199,35 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             let sync_engine_clone = sync_engine.clone();
             let app_handle_clone = app_handle.clone();
             tauri::async_runtime::spawn(async move {
-                if let Some(config) = read_sync_config_from_file() {
-                    log::info!("[Sync] 检测到已保存的服务器配置，正在测试连接并初始化...");
+                match read_sync_config_from_file(&app_handle_clone) {
+                    Some(config) => {
+                        // 保存服务器地址用于日志
+                        let server_url = config.server_url.clone();
 
-                    // 从应用状态获取已初始化的数据库状态
-                    let database_state = app_handle_clone
-                        .state::<tauri_plugin_eco_database::DatabaseState>()
-                        .clone();
+                        // 从应用状态获取已初始化的数据库状态
+                        let database_state = app_handle_clone
+                            .state::<tauri_plugin_eco_database::DatabaseState>()
+                            .clone();
 
-                    let mut engine = sync_engine_clone.lock().await;
-                    match engine
-                        .init(config, &database_state, &app_handle_clone)
-                        .await
-                    {
-                        Ok(result) => {
-                            log::info!("[Sync] 自动初始化成功: {}", result.message);
-                        }
-                        Err(e) => {
-                            log::error!("[Sync] 自动初始化失败: {}", e);
+                        let mut engine = sync_engine_clone.lock().await;
+                        match engine
+                            .init(config, &database_state, &app_handle_clone)
+                            .await
+                        {
+                            Ok(_) => {
+                                log::info!("[Sync] 检测到本地配置，已初始化[{}]", server_url);
+                            }
+                            Err(e) => {
+                                log::error!("[Sync] 同步引擎初始化失败: {}", e);
+                            }
                         }
                     }
-                } else {
-                    log::info!("[Sync] 未找到有效的服务器配置，跳过自动初始化");
+                    None => {
+                        log::info!("[Sync] 未检测到本地配置，跳过同步引擎初始化");
+                    }
                 }
             });
 
-            log::info!("[Sync] 插件初始化成功");
             Ok(())
         })
         .build()

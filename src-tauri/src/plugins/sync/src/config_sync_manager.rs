@@ -3,6 +3,9 @@
 
 use crate::webdav::WebDAVClientState;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+use tauri::{AppHandle, Manager};
+use tauri_plugin_eco_common::paths::{get_config_filename, BUNDLE_ID};
 
 // ================================
 // 服务器配置（本地管理，不参与云同步）
@@ -387,22 +390,48 @@ pub struct ConfigSyncResult {
 /// 配置同步管理器
 pub struct ConfigSyncManager {
     webdav_client: WebDAVClientState,
+    app_data_dir: PathBuf,
 }
 
 impl ConfigSyncManager {
-    pub fn new(webdav_client: WebDAVClientState) -> Self {
-        Self { webdav_client }
+    pub fn new<R: tauri::Runtime>(webdav_client: WebDAVClientState, app_handle: &AppHandle<R>) -> Self {
+        let _config_filename = get_config_filename();
+        let app_data_dir = app_handle
+            .path()
+            .app_data_dir()
+            .unwrap_or_else(|_| {
+                let appdata = std::env::var_os("APPDATA")
+                    .map(|p| PathBuf::from(p))
+                    .unwrap_or_else(|| PathBuf::from("C:/Users/Public/AppData"));
+                appdata.join(BUNDLE_ID)
+            });
+        Self {
+            webdav_client,
+            app_data_dir,
+        }
+    }
+
+    /// 获取配置路径
+    fn get_config_path(&self) -> PathBuf {
+        self.app_data_dir.join(get_config_filename())
     }
 
     /// 上传本地配置到云端
     pub async fn upload_local_config(&self) -> Result<ConfigSyncResult, String> {
         log::info!("[Config] 开始上传本地配置到云端...");
 
-        let config_path = get_config_path()?;
+        let config_path = self.get_config_path();
         log::info!("[Config] 配置文件路径: {:?}", config_path);
 
         let config_content = match std::fs::read_to_string(&config_path) {
             Ok(content) => content,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                log::info!("[Config] 本地配置文件不存在，跳过上传");
+                return Ok(ConfigSyncResult {
+                    success: true,
+                    message: "配置文件不存在，无需上传".to_string(),
+                });
+            }
             Err(e) => {
                 log::error!("[Config] 读取本地配置文件失败: {}", e);
                 return Ok(ConfigSyncResult {
@@ -493,7 +522,7 @@ impl ConfigSyncManager {
                 }
             };
 
-            let config_path = get_config_path()?;
+            let config_path = self.get_config_path();
             log::info!("[Config] 写入配置文件路径: {:?}", config_path);
 
             if let Some(parent) = config_path.parent() {
@@ -546,33 +575,4 @@ impl ConfigSyncManager {
 
         config
     }
-}
-
-/// 获取配置文件路径
-fn get_config_path() -> Result<std::path::PathBuf, String> {
-    let bundle_id = "com.Rains.EcoPaste-Sync";
-    let is_dev = cfg!(debug_assertions);
-
-    let config_filename = if is_dev {
-        ".store.dev.json"
-    } else {
-        "store.json"
-    };
-
-    if let Some(app_data_dir) = std::env::var_os("APPDATA") {
-        let config_path = std::path::PathBuf::from(app_data_dir)
-            .join(bundle_id)
-            .join(config_filename);
-
-        return Ok(config_path);
-    }
-
-    let save_data_dir = dirs::data_dir()
-        .or_else(|| dirs::config_dir())
-        .or_else(|| dirs::home_dir().map(|p| p.join(".local/share")))
-        .ok_or_else(|| "无法获取数据目录".to_string())?;
-
-    let config_path = save_data_dir.join(bundle_id).join(config_filename);
-
-    Ok(config_path)
 }
