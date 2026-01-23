@@ -107,7 +107,7 @@ async fn run_migration<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     if items.is_empty() {
         log::info!("[Migration] 备份数据库为空，直接删除备份");
         delete_backup_db(&backup_db_path)?;
-        finish_migration(&marker_path, &marker, 0)?;
+        finish_migration(&marker_path, 0)?;
         return Ok(());
     }
 
@@ -187,7 +187,7 @@ async fn run_migration<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     log::info!("[Migration] 已删除备份数据库");
 
     // 完成迁移
-    finish_migration(&marker_path, &marker, inserted)?;
+    finish_migration(&marker_path, inserted)?;
 
     // 发送完成事件
     let _ = app.emit("migration://completed", ());
@@ -278,19 +278,11 @@ fn detect_content_type(
     }
 }
 
-/// 完成迁移，更新标记文件
-fn finish_migration(marker_path: &PathBuf, marker: &MigrationMarker, migrated_items: usize) -> Result<(), String> {
-    let mut completed_marker = marker.clone();
-    completed_marker.success = true;
-    completed_marker.phase = Some(MigrationPhase::Phase2Completed);
-    completed_marker.migrated_local_items = migrated_items;
-    completed_marker.timestamp = chrono::Utc::now().timestamp_millis();
-    completed_marker.error = None;
-
-    if let Ok(content) = serde_json::to_string_pretty(&completed_marker) {
-        if let Err(e) = fs::write(marker_path, content) {
-            log::error!("[Migration] 写入迁移标记失败: {}", e);
-        }
+/// 完成迁移，删除标记文件
+fn finish_migration(marker_path: &PathBuf, migrated_items: usize) -> Result<(), String> {
+    // 删除迁移标记文件（迁移已完成，使用新版数据库）
+    if let Err(e) = fs::remove_file(marker_path) {
+        log::warn!("[Migration] 删除迁移标记文件失败: {}", e);
     }
 
     log::info!("[Migration] 迁移完成，共迁移 {} 条记录", migrated_items);
