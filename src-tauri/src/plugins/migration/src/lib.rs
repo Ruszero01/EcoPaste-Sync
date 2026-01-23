@@ -1,119 +1,45 @@
 //! 数据迁移插件
-//! 提供数据迁移功能，支持从旧版本迁移到新版本
+//!
+//! 迁移策略（调用 clipboard 插件的数据处理流程）：
+//! 1. 读取旧数据库的 id、value、sourceAppName、sourceAppIcon
+//! 2. 调用 detector 插件检测 value 类型
+//! 3. 构建 InsertItem（和 clipboard 插件一样）
+//! 4. 调用 database 插件插入
 
 mod database_migrator;
-mod detector;
-mod executor;
 mod models;
 
-use crate::detector::check_migration_status;
-use crate::executor::perform_migration;
-use crate::models::{MigrationCheckResult, MigrationStatus};
+use crate::database_migrator::{delete_backup_db, read_backup_db};
+use crate::models::{MigrationMarker, MigrationPhase, MigrationProgress};
 use std::fs;
 use std::path::PathBuf;
 use tauri::{
     plugin::{Builder, TauriPlugin},
-    AppHandle, Runtime,
+    AppHandle, Emitter, Manager, Runtime,
 };
-use tokio::sync::broadcast;
+
+// 引入 database 插件类型
+use tauri_plugin_eco_database::InsertItem;
 
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("eco-migration")
         .setup(|app_handle, _webview_manager| {
-            log::info!("[Migration] 迁移插件初始化完成");
+            log::info!("[Migration] 迁移插件初始化开始");
 
             let app_handle_clone = app_handle.clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(e) = auto_migrate(&app_handle_clone).await {
-                    log::error!("[Migration] 自动迁移失败: {}", e);
+                if let Err(e) = run_migration(&app_handle_clone).await {
+                    log::error!("[Migration] 执行迁移失败: {}", e);
                 }
             });
 
+            log::info!("[Migration] 迁移插件初始化完成");
             Ok(())
         })
         .build()
 }
 
-pub async fn auto_migrate<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
-    let data_dir = get_data_dir(app)?;
-    let is_dev = cfg!(debug_assertions);
-
-    log::info!("[Migration] 检查是否需要数据迁移...");
-
-    let check_result = check_migration_status(&data_dir, is_dev)
-        .map_err(|e| format!("检查迁移状态失败: {}", e))?;
-
-    match check_result.status {
-        MigrationStatus::UpToDate => {
-            log::info!("[Migration] 已是最新版本，无需迁移");
-            Ok(())
-        }
-        MigrationStatus::NeedMigration => {
-            log::info!(
-                "[Migration] 检测到需要迁移，版本: {:?}, 需要迁移 {} 项",
-                check_result.old_version,
-                check_result.local_items_to_migrate
-            );
-
-            for warning in &check_result.warnings {
-                log::warn!("[Migration] {}", warning);
-            }
-
-            let (sender, mut receiver) = broadcast::channel(100);
-
-            let data_dir_clone = data_dir.clone();
-
-            tauri::async_runtime::spawn(async move {
-                let result = perform_migration(data_dir_clone, is_dev, sender).await;
-
-                if result.success {
-                    log::info!(
-                        "[Migration] 迁移成功完成，迁移了 {} 项，耗时 {}ms",
-                        result.migrated_local_items,
-                        result.duration_ms
-                    );
-                } else {
-                    log::error!("[Migration] 迁移失败: {}", result.errors.join("; "));
-                }
-            });
-
-            while let Ok(progress) = receiver.recv().await {
-                log::info!(
-                    "[Migration] 进度: {}% - {}",
-                    progress.percentage as u32,
-                    progress.current_operation
-                );
-
-                if let Some(ref error) = progress.error {
-                    log::error!("[Migration] 错误: {}", error);
-                }
-
-                if progress.completed {
-                    break;
-                }
-            }
-
-            Ok(())
-        }
-        MigrationStatus::InProgress => {
-            log::warn!("[Migration] 检测到迁移正在进行中");
-            Ok(())
-        }
-        MigrationStatus::Failed => {
-            log::error!("[Migration] 检测到之前的迁移失败");
-            Err("之前的迁移失败，请手动清理迁移标记后重试".to_string())
-        }
-        MigrationStatus::Unknown => {
-            log::warn!("[Migration] 无法确定迁移状态");
-            Ok(())
-        }
-        MigrationStatus::Completed => {
-            log::info!("[Migration] 迁移已完成");
-            Ok(())
-        }
-    }
-}
-
+/// 获取数据目录
 fn get_data_dir<R: Runtime>(_app: &AppHandle<R>) -> Result<PathBuf, String> {
     let data_dir = dirs::data_dir()
         .or_else(|| dirs::config_dir())
@@ -124,25 +50,250 @@ fn get_data_dir<R: Runtime>(_app: &AppHandle<R>) -> Result<PathBuf, String> {
     Ok(data_dir.join(bundle_id))
 }
 
-pub fn check_needs_migration(
-    data_dir: &PathBuf,
-    is_dev: bool,
-) -> Result<MigrationCheckResult, String> {
-    check_migration_status(data_dir, is_dev)
+/// 获取备份数据库文件路径（.bak 后缀）
+fn get_backup_database_path(data_dir: &PathBuf, is_dev: bool) -> PathBuf {
+    let suffix = if is_dev { ".dev" } else { "" };
+    data_dir.join(format!("EcoPaste-Sync{}.db.bak", suffix))
 }
 
-pub fn get_migration_marker_path(data_dir: &PathBuf, is_dev: bool) -> PathBuf {
+/// 获取迁移标记文件路径
+fn get_migration_marker_path(data_dir: &PathBuf, is_dev: bool) -> PathBuf {
     let suffix = if is_dev { ".dev" } else { "" };
     data_dir.join(format!(".migration{}", suffix))
 }
 
-pub fn clear_migration_flag(data_dir: &PathBuf, is_dev: bool) -> Result<(), String> {
-    let marker_path = get_migration_marker_path(data_dir, is_dev);
+/// 执行迁移
+async fn run_migration<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+    let data_dir = get_data_dir(app)?;
+    let is_dev = cfg!(debug_assertions);
 
-    if marker_path.exists() {
-        fs::remove_file(&marker_path).map_err(|e| format!("删除迁移标记文件失败: {}", e))?;
-        log::info!("[Migration] 迁移标记已清除");
+    let backup_db_path = get_backup_database_path(&data_dir, is_dev);
+    let marker_path = get_migration_marker_path(&data_dir, is_dev);
+
+    // 检查迁移标记
+    if !marker_path.exists() {
+        log::info!("[Migration] 无迁移任务");
+        return Ok(());
     }
+
+    let content = fs::read_to_string(&marker_path)
+        .map_err(|e| format!("读取迁移标记失败: {}", e))?;
+    let marker: MigrationMarker = serde_json::from_str(&content)
+        .map_err(|e| format!("解析迁移标记失败: {}", e))?;
+
+    if marker.phase != Some(MigrationPhase::Phase1Completed) {
+        log::info!("[Migration] 迁移阶段不匹配，跳过");
+        return Ok(());
+    }
+
+    // 检查备份数据库是否存在
+    if !backup_db_path.exists() {
+        log::error!("[Migration] 备份数据库不存在");
+        return Err("备份数据库不存在".to_string());
+    }
+
+    log::info!("[Migration] 开始执行迁移...");
+
+    // 发送事件通知 UI 开始迁移
+    let _ = app.emit("migration://started", ());
+
+    // 读取备份数据库的 id 和 value
+    let app_for_callback = app.clone();
+    let items = read_backup_db(&backup_db_path, move |progress| {
+        log::info!("[Migration] 读取进度: {}% - {}", progress.percentage as u32, progress.current_operation);
+        let _ = app_for_callback.emit("migration://progress", progress);
+    }).await?;
+
+    if items.is_empty() {
+        log::info!("[Migration] 备份数据库为空，直接删除备份");
+        delete_backup_db(&backup_db_path)?;
+        finish_migration(&marker_path, &marker, 0)?;
+        return Ok(());
+    }
+
+    log::info!("[Migration] 读取完成，共 {} 条记录，开始插入...", items.len());
+
+    // 获取 database 插件状态
+    let db_state = app.state::<tauri_plugin_eco_database::DatabaseState>();
+    let db_manager = db_state.lock().await;
+
+    // 获取 detector 插件状态
+    let detector_state = app.state::<tauri_plugin_eco_detector::DetectorState>();
+
+    let total = items.len();
+    let mut inserted = 0;
+    let mut failed = 0;
+    let time = chrono::Utc::now().timestamp_millis();
+
+    for item in &items {
+        // 调用 detector 插件检测类型（同步调用）
+        let detection_result = detector_state
+            .detect_content(item.value.clone(), "text".to_string(), Default::default());
+
+        // 检测是否为 HTML 或富文本
+        let (item_type, subtype, search) = detect_content_type(&item.value, detection_result);
+
+        let insert_item = InsertItem {
+            id: item.id.clone(),
+            item_type: Some(item_type),
+            group: None,
+            value: Some(item.value.clone()),
+            search,
+            count: Some(1),
+            width: None,
+            height: None,
+            favorite: 0,
+            time,
+            note: None,
+            subtype,
+            deleted: Some(0),
+            sync_status: Some("not_synced".to_string()),
+            source_app_name: item.source_app_name.clone(),
+            source_app_icon: item.source_app_icon.clone(),
+            position: None,
+        };
+
+        match db_manager.insert_with_deduplication(&insert_item) {
+            Ok(_) => {
+                inserted += 1;
+                log::debug!("[Migration] 插入成功: {}", item.id);
+            }
+            Err(e) => {
+                failed += 1;
+                log::error!("[Migration] 插入失败 ({}): {}", item.id, e);
+            }
+        }
+
+        if inserted % 100 == 0 || inserted == total || failed % 100 == 0 {
+            let percentage = ((inserted + failed) as f64 / total as f64) * 100.0;
+            let progress = MigrationProgress {
+                current_phase: "写入新数据库".to_string(),
+                processed_items: inserted + failed,
+                total_items: total,
+                percentage,
+                current_operation: format!("已处理 {}/{} 条 (成功: {}, 失败: {})", inserted + failed, total, inserted, failed),
+                completed: inserted + failed == total,
+                error: if failed > 0 { Some(format!("失败 {} 条", failed)) } else { None },
+            };
+            log::info!("[Migration] 写入进度: {}%", percentage as u32);
+            let _ = app.emit("migration://progress", progress);
+        }
+    }
+
+    log::info!("[Migration] 插入完成，成功: {}, 失败: {}", inserted, failed);
+
+    // 删除备份数据库
+    delete_backup_db(&backup_db_path)?;
+    log::info!("[Migration] 已删除备份数据库");
+
+    // 完成迁移
+    finish_migration(&marker_path, &marker, inserted)?;
+
+    // 发送完成事件
+    let _ = app.emit("migration://completed", ());
+
+    Ok(())
+}
+
+/// 为颜色获取搜索字段
+fn search_for_color(s: &str) -> Option<String> {
+    let s = s.trim();
+    if s.starts_with('#') {
+        let hex = s.trim_start_matches('#');
+        let hex = if hex.len() == 3 {
+            let mut expanded = String::new();
+            for c in hex.chars() {
+                expanded.push(c);
+                expanded.push(c);
+            }
+            expanded
+        } else {
+            hex.to_string()
+        };
+        if hex.len() == 6 {
+            if let Ok(r) = u8::from_str_radix(&hex[0..2], 16) {
+                if let Ok(g) = u8::from_str_radix(&hex[2..4], 16) {
+                    if let Ok(b) = u8::from_str_radix(&hex[4..6], 16) {
+                        return Some(format!("{},{},{}", r, g, b));
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// 检测内容类型（参考 clipboard 插件的逻辑）
+/// 返回 (item_type, subtype, search)
+fn detect_content_type(
+    value: &str,
+    detection_result: Result<tauri_plugin_eco_common::types::detection::TypeDetectionResult, String>,
+) -> (String, Option<String>, Option<String>) {
+    let trimmed = value.trim();
+
+    // 1. 首先检测是否为 HTML 或 RTF（这些是格式文本）
+    let is_html = trimmed.starts_with("<!DOCTYPE")
+        || trimmed.starts_with("<html")
+        || trimmed.starts_with("<div")
+        || trimmed.starts_with("<table")
+        || trimmed.starts_with("<p ")
+        || (trimmed.starts_with("<") && trimmed.contains("</"));
+
+    let is_rtf = trimmed.starts_with("{\\rtf")
+        || trimmed.starts_with("\\rtf");
+
+    if is_html {
+        return ("formatted".to_string(), Some("html".to_string()), None);
+    }
+    if is_rtf {
+        return ("formatted".to_string(), Some("rich_text".to_string()), None);
+    }
+
+    // 2. 使用 detector 检测其他类型
+    match detection_result {
+        Ok(result) => {
+            let (item_type, subtype) = if result.is_code {
+                // 代码类型
+                let subtype = result.code_language.or(Some("code".to_string()));
+                ("code".to_string(), subtype)
+            } else if result.is_markdown {
+                // Markdown 属于格式文本
+                ("formatted".to_string(), Some("markdown".to_string()))
+            } else {
+                // 基础类型（text, url, email, path, color）或纯文本
+                let item_type = "text".to_string();
+                let subtype = result.subtype;
+                (item_type, subtype)
+            };
+
+            let search = if subtype.as_deref() == Some("color") {
+                result.color_normalized.or(search_for_color(value))
+            } else {
+                None
+            };
+
+            (item_type, subtype, search)
+        }
+        Err(_) => ("text".to_string(), None, None),
+    }
+}
+
+/// 完成迁移，更新标记文件
+fn finish_migration(marker_path: &PathBuf, marker: &MigrationMarker, migrated_items: usize) -> Result<(), String> {
+    let mut completed_marker = marker.clone();
+    completed_marker.success = true;
+    completed_marker.phase = Some(MigrationPhase::Phase2Completed);
+    completed_marker.migrated_local_items = migrated_items;
+    completed_marker.timestamp = chrono::Utc::now().timestamp_millis();
+    completed_marker.error = None;
+
+    if let Ok(content) = serde_json::to_string_pretty(&completed_marker) {
+        if let Err(e) = fs::write(marker_path, content) {
+            log::error!("[Migration] 写入迁移标记失败: {}", e);
+        }
+    }
+
+    log::info!("[Migration] 迁移完成，共迁移 {} 条记录", migrated_items);
 
     Ok(())
 }

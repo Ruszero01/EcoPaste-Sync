@@ -4,7 +4,6 @@ use core::{prevent_default, setup};
 use std::sync::atomic::AtomicBool;
 use tauri::{generate_context, Builder, Listener, Manager, WindowEvent};
 use tauri_plugin_autostart::MacosLauncher;
-use tauri_plugin_eco_migration::auto_migrate;
 use tauri_plugin_eco_window::{
     create_window, get_window_behavior_from_config, toggle_window, MAIN_WINDOW_LABEL,
     PREFERENCE_WINDOW_LABEL,
@@ -47,16 +46,6 @@ pub fn run() {
                                 log::info!("[Lib] 常驻模式：主窗口已静默创建");
                             }
                         }
-                    }
-                });
-            }
-
-            // 自动迁移检查（应用启动时执行）
-            {
-                let app_handle = app_handle.clone();
-                tauri::async_runtime::spawn(async move {
-                    if let Err(e) = auto_migrate(&app_handle).await {
-                        log::error!("[Lib] 自动迁移失败: {}", e);
                     }
                 });
             }
@@ -134,20 +123,20 @@ pub fn run() {
         .plugin(tauri_plugin_eco_paste::init())
         // 自定义判断是否自动启动的插件
         .plugin(tauri_plugin_eco_autostart::init())
-        // 数据迁移插件（必须在数据库插件之前）
-        .plugin(tauri_plugin_eco_migration::init())
-        // 统一数据库插件
-        .plugin(tauri_plugin_eco_database::init())
-        // 云同步引擎插件
-        .plugin(tauri_plugin_eco_sync::init())
-        // 类型检测插件
-        .plugin(tauri_plugin_eco_detector::init())
-        // 快捷键插件
-        .plugin(tauri_plugin_eco_hotkey::init())
         // 通用功能插件
         .plugin(tauri_plugin_eco_common::init())
+        // 统一数据库插件
+        .plugin(tauri_plugin_eco_database::init())
+        // 类型检测插件（在迁移插件之前）
+        .plugin(tauri_plugin_eco_detector::init())
+        // 数据迁移插件（在 database 和 detector 之后执行）
+        .plugin(tauri_plugin_eco_migration::init())
+        // 快捷键插件
+        .plugin(tauri_plugin_eco_hotkey::init())
         // 系统托盘插件
         .plugin(tauri_plugin_eco_tray::init())
+        // 云同步引擎插件
+        .plugin(tauri_plugin_eco_sync::init())
         // Shell 插件：https://github.com/tauri-apps/plugins-workspace/tree/v2/plugins/shell
         .plugin(tauri_plugin_shell::init())
         .on_window_event(|window, event| match event {

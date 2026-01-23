@@ -676,7 +676,14 @@ impl DatabaseManager {
             .unwrap_or(0);
 
         // 新记录，根据配置获取来源应用信息
-        let source_info = if should_fetch_source_app() {
+        // 如果传入的 source_app_name 不为空，则使用传入的值（迁移场景）
+        let source_info = if item.source_app_name.is_some() {
+            // 迁移场景：使用传入的来源应用信息
+            Some(crate::source_app::SourceAppInfo {
+                app_name: item.source_app_name.clone().unwrap_or_default(),
+                app_icon: item.source_app_icon.clone(),
+            })
+        } else if should_fetch_source_app() {
             match fetch_source_app_info_impl() {
                 Ok(info) => Some(info),
                 Err(e) => {
@@ -760,9 +767,83 @@ impl DatabaseManager {
         let db_path = Path::new(&save_data_dir).join(db_filename);
         let db_path_buf = PathBuf::from(db_path);
 
+        // 检查数据库版本，如果是旧版本则备份
+        if db_path_buf.exists() {
+            if self.is_old_database(&db_path_buf)? {
+                log::info!("[Database] 检测到旧版本数据库，开始备份...");
+
+                // 构建备份路径
+                let backup_extension = if is_dev { "dev.db.bak" } else { "db.bak" };
+                let backup_filename = format!("{}.{}", app_name, backup_extension);
+                let backup_path = Path::new(&save_data_dir).join(backup_filename);
+
+                // 删除旧备份（如果存在）
+                if backup_path.exists() {
+                    std::fs::remove_file(&backup_path)
+                        .map_err(|e| format!("删除旧备份失败: {}", e))?;
+                }
+
+                // 重命名数据库为备份
+                std::fs::rename(&db_path_buf, &backup_path)
+                    .map_err(|e| format!("重命名数据库失败: {}", e))?;
+
+                log::info!("[Database] 旧数据库已备份到: {:?}", backup_path);
+
+                // 写入迁移标记
+                self.write_migration_marker(&save_data_dir, is_dev, &backup_path)?;
+            }
+        }
+
         log::info!("设置数据库路径: {:?}", db_path_buf);
 
         self.init(db_path_buf)
+    }
+
+    /// 检查是否为旧版本数据库（通过是否存在 createTime 列判断）
+    fn is_old_database(&self, db_path: &PathBuf) -> Result<bool, String> {
+        if !db_path.exists() {
+            return Ok(false);
+        }
+
+        let conn = rusqlite::Connection::open(db_path)
+            .map_err(|e| format!("打开数据库失败: {}", e))?;
+
+        // 检查是否存在 createTime 列（旧版特征）
+        let has_create_time = conn
+            .prepare("SELECT createTime FROM history LIMIT 1")
+            .is_ok();
+
+        Ok(has_create_time)
+    }
+
+    /// 写入迁移标记文件
+    fn write_migration_marker(
+        &self,
+        data_dir: &str,
+        is_dev: bool,
+        backup_path: &PathBuf,
+    ) -> Result<(), String> {
+        let suffix = if is_dev { ".dev" } else { "" };
+        let marker_path = PathBuf::from(data_dir).join(format!(".migration{}", suffix));
+
+        let marker = serde_json::json!({
+            "version": env!("CARGO_PKG_VERSION"),
+            "timestamp": chrono::Utc::now().timestamp_millis(),
+            "from_version": "v0.6.x (createTime)",
+            "phase": "Phase1Completed",
+            "backup_db_path": backup_path.to_string_lossy().to_string(),
+            "success": false
+        });
+
+        let content = serde_json::to_string_pretty(&marker)
+            .map_err(|e| format!("序列化迁移标记失败: {}", e))?;
+
+        std::fs::write(&marker_path, content)
+            .map_err(|e| format!("写入迁移标记失败: {}", e))?;
+
+        log::info!("[Database] 迁移标记已写入: {:?}", marker_path);
+
+        Ok(())
     }
 }
 

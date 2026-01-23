@@ -10,7 +10,7 @@ mod debug;
 mod delete;
 mod filter;
 mod models;
-mod source_app;
+pub mod source_app;
 
 pub use change_tracker::*;
 pub use cleanup::*;
@@ -21,6 +21,7 @@ pub use debug::*;
 pub use delete::*;
 pub use filter::*;
 pub use models::*;
+pub use source_app::*;
 
 use std::sync::Arc;
 use tauri::{
