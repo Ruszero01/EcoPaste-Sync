@@ -210,7 +210,6 @@ const OperationButton = () => {
 
 			const newOrder = arrayMove(content.operationButtons, oldIndex, newIndex);
 			clipboardStore.content.operationButtons = newOrder;
-			setSelectedKeys(new Set(newOrder.map(String)));
 		}
 	};
 
