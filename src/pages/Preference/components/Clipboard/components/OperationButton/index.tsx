@@ -1,8 +1,26 @@
 import ProListItem from "@/components/ProListItem";
 import UnoIcon from "@/components/UnoIcon";
 import type { OperationButton as Key } from "@/types/store";
-import { Button, Flex, Modal, Transfer, Tree, type TreeProps } from "antd";
+import {
+	DndContext,
+	KeyboardSensor,
+	PointerSensor,
+	closestCenter,
+	useSensor,
+	useSensors,
+} from "@dnd-kit/core";
+import {
+	SortableContext,
+	arrayMove,
+	sortableKeyboardCoordinates,
+	verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { Button, Flex, Modal, Transfer } from "antd";
 import type { TransferCustomListBodyProps } from "antd/lib/transfer/list";
+import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useSnapshot } from "valtio";
 
 interface TransferData {
@@ -76,69 +94,211 @@ export const transferData: TransferData[] = [
 	},
 ];
 
+// 左侧按钮项
+const ButtonItem: React.FC<{
+	data: TransferData;
+	isChecked: boolean;
+	onCheck: (key: string) => void;
+	t: ReturnType<typeof useTranslation>[0];
+}> = ({ data, isChecked, onCheck, t }) => {
+	return (
+		<Flex
+			align="center"
+			gap={8}
+			className="h-8 cursor-pointer rounded px-2 hover:bg-gray-100 dark:hover:bg-gray-700"
+			onClick={() => onCheck(data.key)}
+		>
+			<input
+				type="checkbox"
+				checked={isChecked}
+				readOnly
+				className="cursor-pointer"
+			/>
+			<UnoIcon name={data.icon} />
+			<span className="truncate text-sm">{t(data.title)}</span>
+		</Flex>
+	);
+};
+
+// 右侧可排序按钮项
+const SortableButtonItem: React.FC<{
+	data: TransferData;
+	isChecked: boolean;
+	onCheck: (key: string) => void;
+	t: ReturnType<typeof useTranslation>[0];
+}> = ({ data, isChecked, onCheck, t }) => {
+	const {
+		attributes,
+		listeners,
+		setNodeRef,
+		transform,
+		transition,
+		isDragging,
+	} = useSortable({ id: data.key });
+
+	const style = {
+		transform: CSS.Transform.toString(transform),
+		transition,
+		opacity: isDragging ? 0.5 : 1,
+	};
+
+	return (
+		<Flex
+			ref={setNodeRef}
+			style={style}
+			align="center"
+			gap={8}
+			className="h-8 cursor-pointer rounded px-2 hover:bg-gray-100 dark:hover:bg-gray-700"
+			onClick={() => onCheck(data.key)}
+		>
+			<input
+				type="checkbox"
+				checked={isChecked}
+				readOnly
+				className="cursor-pointer"
+			/>
+			<div
+				{...attributes}
+				{...listeners}
+				onClick={(e) => e.stopPropagation()}
+				className="cursor-grab active:cursor-grabbing"
+			>
+				<UnoIcon name="i-lucide:grip-vertical" className="text-gray-400" />
+			</div>
+			<UnoIcon name={data.icon} />
+			<span className="truncate text-sm">{t(data.title)}</span>
+		</Flex>
+	);
+};
+
 const OperationButton = () => {
 	const { content } = useSnapshot(clipboardStore);
 	const [open, { toggle }] = useBoolean();
 	const { t } = useTranslation();
 
-	const treeData = useCreation(() => {
-		return content.operationButtons.map((key) => {
-			return transferData.find((data) => data.key === key)!;
-		});
-	}, [content.operationButtons]);
+	// 使用 state 管理选中状态
+	const [selectedKeys, setSelectedKeys] = useState<Set<string>>(
+		new Set(content.operationButtons.map(String)),
+	);
 
-	const handleDrop: TreeProps["onDrop"] = (info) => {
-		const { dragNode, node, dropPosition } = info;
+	const sensors = useSensors(
+		useSensor(PointerSensor, {
+			activationConstraint: {
+				distance: 8,
+			},
+		}),
+		useSensor(KeyboardSensor, {
+			coordinateGetter: sortableKeyboardCoordinates,
+		}),
+	);
 
-		const getIndex = (pos: string) => pos.split("-").map(Number)[1];
+	const handleDragEnd = (event: {
+		active: { id: string | number };
+		over: { id: string | number } | null;
+	}) => {
+		const { active, over } = event;
 
-		const dragIndex = getIndex(dragNode.pos);
-		let dropIndex = getIndex(node.pos);
+		if (over && active.id !== over.id) {
+			const oldIndex = content.operationButtons.findIndex(
+				(key) => key === active.id,
+			);
+			const newIndex = content.operationButtons.findIndex(
+				(key) => key === over.id,
+			);
 
-		if (dragIndex > dropIndex && dropPosition > 0) {
-			dropIndex++;
+			const newOrder = arrayMove(content.operationButtons, oldIndex, newIndex);
+			clipboardStore.content.operationButtons = newOrder;
+			setSelectedKeys(new Set(newOrder.map(String)));
 		}
+	};
 
-		const buttons = clipboardStore.content.operationButtons;
-		buttons.splice(dropIndex, 0, ...buttons.splice(dragIndex, 1));
+	const handleCheck = (key: string) => {
+		const newSet = new Set(selectedKeys);
+		if (newSet.has(key)) {
+			newSet.delete(key);
+		} else {
+			newSet.add(key);
+		}
+		setSelectedKeys(newSet);
 	};
 
 	const renderTransferData = (data: TransferData) => {
-		const { key, icon, title } = data;
-
 		return (
-			<Flex key={key} align="center" gap={4} className="max-w-31.25">
-				<UnoIcon name={icon} />
-				<span className="truncate" title="">
-					{t(title)}
-				</span>
+			<Flex key={data.key} align="center" gap={8} className="h-8">
+				<UnoIcon name={data.icon} />
+				<span className="truncate text-sm">{t(data.title)}</span>
 			</Flex>
 		);
 	};
 
 	const renderTree = (data: TransferCustomListBodyProps<TransferData>) => {
-		const { direction, selectedKeys, onItemSelect } = data;
+		const { direction } = data;
 
 		if (direction === "right" && content.operationButtons?.length) {
 			return (
-				<Tree
-					checkable
-					draggable
-					blockNode
-					className="[&_.ant-tree-switcher]:hidden"
-					selectable={false}
-					checkedKeys={selectedKeys}
-					treeData={treeData}
-					titleRender={renderTransferData}
-					onCheck={(_, info) => {
-						const { key } = info.node;
+				<DndContext
+					sensors={sensors}
+					collisionDetection={closestCenter}
+					onDragEnd={handleDragEnd}
+				>
+					<SortableContext
+						items={content.operationButtons}
+						strategy={verticalListSortingStrategy}
+					>
+						<div
+							className="space-y-1 overflow-y-auto px-1"
+							style={{ height: 280 }}
+						>
+							{content.operationButtons.map((key) => {
+								const itemData = transferData.find((d) => d.key === key);
+								if (!itemData) return null;
 
-						onItemSelect(key, !selectedKeys?.includes(key));
-					}}
-					onDrop={handleDrop}
-				/>
+								const isChecked = selectedKeys.has(String(key));
+
+								return (
+									<SortableButtonItem
+										key={key}
+										data={itemData}
+										isChecked={isChecked}
+										onCheck={(itemKey) => {
+											handleCheck(itemKey);
+										}}
+										t={t}
+									/>
+								);
+							})}
+						</div>
+					</SortableContext>
+				</DndContext>
 			);
 		}
+
+		if (direction === "left") {
+			// 左侧只显示未选中的项
+			const unselectedItems = transferData.filter(
+				(item) => !content.operationButtons.includes(item.key),
+			);
+			return (
+				<div className="space-y-1 overflow-y-auto px-1" style={{ height: 280 }}>
+					{unselectedItems.map((item) => {
+						const isChecked = selectedKeys.has(String(item.key));
+						return (
+							<ButtonItem
+								key={item.key}
+								data={item}
+								isChecked={isChecked}
+								onCheck={(itemKey) => {
+									handleCheck(itemKey);
+								}}
+								t={t}
+							/>
+						);
+					})}
+				</div>
+			);
+		}
+
+		return null;
 	};
 
 	return (
@@ -165,19 +325,23 @@ const OperationButton = () => {
 				title={t(
 					"preference.clipboard.content_settings.label.custom_operation_button_title",
 				)}
-				width={448}
+				width={480}
 				footer={null}
 				onCancel={toggle}
 			>
 				<Transfer
 					dataSource={transferData}
-					targetKeys={content.operationButtons}
+					targetKeys={Array.from(new Set(content.operationButtons.map(String)))}
 					render={renderTransferData}
 					showSearch={false}
 					titles={["", ""]}
 					listStyle={{
 						width: 200,
-						height: 300,
+						height: 320,
+					}}
+					selectedKeys={Array.from(selectedKeys)}
+					onSelectChange={(_, targetSelectedKeys) => {
+						setSelectedKeys(new Set(targetSelectedKeys.map(String)));
 					}}
 					onChange={(keys) => {
 						clipboardStore.content.operationButtons = keys as Key[];
