@@ -639,7 +639,7 @@ export const smartPasteClipboard = async (
 };
 
 /**
- * 批量粘贴剪贴板数据
+ * 批量粘贴剪贴板数据（后端实现，轻量模式兼容）
  * @param dataList 数据列表
  * @param plain 是否纯文本粘贴
  */
@@ -649,34 +649,12 @@ export const batchPasteClipboard = async (
 ) => {
 	if (!dataList || dataList.length === 0) return;
 
-	try {
-		// 依次粘贴每个条目
-		for (let i = 0; i < dataList.length; i++) {
-			const data = dataList[i];
-			if (!data) continue;
+	// 提取 ID 列表，调用后端批量粘贴
+	const ids = dataList.map((item) => item.id).filter(Boolean);
+	if (ids.length === 0) return;
 
-			// 使用与单个粘贴完全相同的逻辑
-			await pasteClipboard(data, plain);
-
-			// 减少延迟，确保粘贴操作完成
-			await new Promise((resolve) => setTimeout(resolve, 20));
-
-			// 如果不是最后一个项目，执行换行粘贴
-			if (i < dataList.length - 1) {
-				try {
-					await writeText("\n");
-					await new Promise((resolve) => setTimeout(resolve, 20));
-					await pasteWithFocus();
-					// 减少延迟，确保换行操作完成
-					await new Promise((resolve) => setTimeout(resolve, 20));
-				} catch {
-					// 换行粘贴失败时静默忽略，继续处理下一个条目
-				}
-			}
-		}
-	} finally {
-		// 无需清理内部状态，后端通过窗口检测跳过自身写入
-	}
+	const { batchPasteByIds } = await import("./paste");
+	await batchPasteByIds(ids, plain);
 };
 
 /// 颜色转换类型

@@ -234,3 +234,140 @@ pub async fn quick_paste<R: Runtime>(app_handle: AppHandle<R>, index: u32) -> Re
         }
     }
 }
+
+// ==================== 批量粘贴命令 ====================
+
+#[command]
+pub async fn batch_paste<R: Runtime>(
+    app_handle: AppHandle<R>,
+    ids: Vec<String>,
+    plain: bool,
+) -> Result<(), String> {
+    log::info!("[Paste] batch_paste 命令被调用, ids={:?}, plain={}", ids, plain);
+
+    if ids.is_empty() {
+        log::warn!("[Paste] 批量粘贴: 空 ID 列表");
+        return Ok(());
+    }
+
+    let db_state = match app_handle.try_state::<DatabaseState>() {
+        Some(state) => state,
+        None => {
+            log::error!("[Paste] 数据库插件未初始化");
+            return Err("数据库插件未初始化".to_string());
+        }
+    };
+
+    let db_state_arc = Arc::clone(&db_state);
+
+    // 查询所有指定 ID 的项目
+    let items: Vec<HistoryItem> = tokio::task::spawn_blocking(move || {
+        let db = db_state_arc.blocking_lock();
+        let mut all_items = Vec::new();
+
+        for id in &ids {
+            // 使用 query_history 查询单个 ID
+            let options = QueryOptions {
+                only_favorites: false,
+                exclude_deleted: true,
+                limit: Some(1),
+                offset: None,
+                order_by: None,
+                where_clause: Some("id = ?".to_string()),
+                params: Some(vec![id.clone()]),
+            };
+
+            match db.query_history(options) {
+                Ok(mut items) => {
+                    if let Some(item) = items.pop() {
+                        all_items.push(item);
+                    } else {
+                        log::warn!("[Paste] 批量粘贴: 未找到 id={}", id);
+                    }
+                }
+                Err(e) => {
+                    log::error!("[Paste] 批量粘贴: 查询 id={} 失败: {}", id, e);
+                }
+            }
+        }
+
+        all_items
+    })
+    .await
+    .map_err(|e| {
+        log::error!("[Paste] 数据库查询任务失败: {:?}", e);
+        "数据库查询任务失败".to_string()
+    })?;
+
+    log::info!("[Paste] 批量粘贴: 查询到 {} 条数据", items.len());
+
+    if items.is_empty() {
+        log::warn!("[Paste] 批量粘贴: 没有有效数据");
+        return Ok(());
+    }
+
+    // 逐个粘贴
+    for (i, item) in items.iter().enumerate() {
+        let item_type = item.item_type.as_deref().unwrap_or("text");
+        let value = item.value.clone().unwrap_or_default();
+        let search = item.search.clone().unwrap_or_default();
+
+        log::info!(
+            "[Paste] 批量粘贴: 第 {}/{} 项, id={}, type={}",
+            i + 1,
+            items.len(),
+            item.id,
+            item_type
+        );
+
+        // 写入剪贴板
+        let write_result = if plain {
+            // 纯文本模式：始终使用 search 字段
+            write_to_clipboard("text", &search, &search)
+        } else {
+            write_to_clipboard(item_type, &value, &search)
+        };
+
+        match write_result {
+            Ok(_) => {
+                log::debug!("[Paste] 批量粘贴: 第 {} 项剪贴板写入成功", i + 1);
+
+                // 执行粘贴
+                paste_with_focus().await;
+                log::debug!("[Paste] 批量粘贴: 第 {} 项粘贴完成", i + 1);
+
+                // 如果不是最后一项，添加换行粘贴
+                if i < items.len() - 1 {
+                    // 写入换行符
+                    let newline_result = {
+                        use clipboard_rs::{Clipboard, ClipboardContext};
+                        let context = ClipboardContext::new().map_err(|e| e.to_string())?;
+                        context.set_text("\n".to_string()).map_err(|e| e.to_string())
+                    };
+
+                    match newline_result {
+                        Ok(_) => {
+                            log::debug!("[Paste] 批量粘贴: 写入换行符");
+                            paste_with_focus().await;
+                            log::debug!("[Paste] 批量粘贴: 换行粘贴完成");
+
+                            // 等待换行操作完成
+                            for _ in 0..3 {
+                                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                            }
+                        }
+                        Err(e) => {
+                            log::warn!("[Paste] 批量粘贴: 换行符写入失败: {}", e);
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                log::error!("[Paste] 批量粘贴: 第 {} 项写入失败: {}", i + 1, e);
+            }
+        }
+    }
+
+    log::info!("[Paste] 批量粘贴完成，共 {} 项", items.len());
+    Ok(())
+}

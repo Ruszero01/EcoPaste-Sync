@@ -40,7 +40,8 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
         .invoke_handler(generate_handler![
             commands::paste,
             commands::paste_with_focus,
-            commands::quick_paste
+            commands::quick_paste,
+            commands::batch_paste
         ])
         .build()
 }

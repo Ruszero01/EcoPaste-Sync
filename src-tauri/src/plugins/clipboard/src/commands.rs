@@ -51,24 +51,45 @@ impl ClipboardManager {
     }
 
     /// 检查是否是自身写入的剪贴板（时间窗口 + 内容指纹检测）
-    pub fn is_own_write(&self, current_content: &str) -> bool {
+    /// 检测文本、图片、文件等多种格式
+    pub fn is_own_write(
+        &self,
+        current_text: &str,
+        has_image: bool,
+        has_files: bool,
+        current_files: &[String],
+    ) -> bool {
         let guard = self.last_write.lock().unwrap();
         let (write_time, ref fingerprint) = *guard;
         let now = chrono::Utc::now().timestamp_millis() as u64;
 
-        // 1. 时间窗口检查：500ms 内认为可能是自身写入
+        // 时间窗口检查：500ms 内认为可能是自身写入
         if now.saturating_sub(write_time) > 500 {
             return false;
         }
 
-        // 2. 内容指纹检查：提取指纹中的内容部分进行匹配
-        // 指纹格式: "text:hello", "image:/path", "html:text", "rtf:text"
+        // 图片检测：500ms 时间窗口内检测到图片内容变化，视为自身写入
+        if has_image && fingerprint.starts_with("image:") {
+            return true;
+        }
+
+        // 内容指纹检查（文本和文件）
         if let Some(fingerprint_content) = fingerprint.split(':').nth(1) {
-            // 匹配策略：当前内容包含指纹内容 或 指纹内容是当前内容的前缀
-            if current_content.contains(fingerprint_content)
-                || fingerprint_content.starts_with(current_content)
+            // 文本匹配
+            if !current_text.is_empty()
+                && (current_text.contains(fingerprint_content)
+                    || fingerprint_content.starts_with(current_text))
             {
                 return true;
+            }
+
+            // 文件匹配（指纹格式: "files:/path1|/path2"）
+            if has_files {
+                for file in current_files {
+                    if fingerprint_content == file || file.starts_with(fingerprint_content) {
+                        return true;
+                    }
+                }
             }
         }
 
@@ -102,15 +123,18 @@ where
         // 获取 manager 状态
         let manager = app_handle.state::<ClipboardManager>();
 
-        // 读取当前剪贴板文本内容（用于指纹检测）
-        let current_text = {
+        // 读取当前剪贴板内容（用于指纹检测）
+        let (current_text, has_image, has_files, current_files) = {
             let context = manager.context.lock().unwrap();
-            context.get_text().unwrap_or_default()
+            let text = context.get_text().unwrap_or_default();
+            let has_img = context.has(ContentFormat::Image);
+            let has_file = context.has(ContentFormat::Files);
+            let files = context.get_files().unwrap_or_default();
+            (text, has_img, has_file, files)
         };
 
         // 检查是否是自身写入的剪贴板（时间窗口 + 内容指纹检测）
-        if manager.is_own_write(&current_text) {
-            log::trace!("[Clipboard] 跳过自身写入的剪贴板（时间窗口+指纹检测）");
+        if manager.is_own_write(&current_text, has_image, has_files, &current_files) {
             return;
         }
 
@@ -655,13 +679,14 @@ pub async fn write_files(
 ) -> Result<(), String> {
     let fingerprint = format!("files:{}", value.join("|"));
     manager.record_write_fingerprint(fingerprint);
-    
+
     manager
         .context
         .lock()
         .map_err(|err| err.to_string())?
         .set_files(value)
-        .map_err(|err| err.to_string())
+        .map_err(|err| err.to_string())?;
+    Ok(())
 }
 
 #[command]
@@ -671,7 +696,7 @@ pub async fn write_image(
 ) -> Result<(), String> {
     let fingerprint = format!("image:{}", value);
     manager.record_write_fingerprint(fingerprint);
-    
+
     let image = RustImageData::from_path(&value).map_err(|err| err.to_string())?;
 
     manager
@@ -679,7 +704,8 @@ pub async fn write_image(
         .lock()
         .map_err(|err| err.to_string())?
         .set_image(image)
-        .map_err(|err| err.to_string())
+        .map_err(|err| err.to_string())?;
+    Ok(())
 }
 
 #[command]
@@ -690,7 +716,7 @@ pub async fn write_html(
 ) -> Result<(), String> {
     let fingerprint = format!("html:{}", text);
     manager.record_write_fingerprint(fingerprint);
-    
+
     let contents = vec![ClipboardContent::Text(text), ClipboardContent::Html(html)];
 
     manager
@@ -698,7 +724,8 @@ pub async fn write_html(
         .lock()
         .map_err(|err| err.to_string())?
         .set(contents)
-        .map_err(|err| err.to_string())
+        .map_err(|err| err.to_string())?;
+    Ok(())
 }
 
 #[command]
@@ -709,7 +736,7 @@ pub async fn write_rtf(
 ) -> Result<(), String> {
     let fingerprint = format!("rtf:{}", text);
     manager.record_write_fingerprint(fingerprint);
-    
+
     let mut contents = vec![ClipboardContent::Rtf(rtf)];
 
     if cfg!(not(target_os = "macos")) {
@@ -721,20 +748,22 @@ pub async fn write_rtf(
         .lock()
         .map_err(|err| err.to_string())?
         .set(contents)
-        .map_err(|err| err.to_string())
+        .map_err(|err| err.to_string())?;
+    Ok(())
 }
 
 #[command]
 pub async fn write_text(manager: State<'_, ClipboardManager>, value: String) -> Result<(), String> {
     let fingerprint = format!("text:{}", value);
     manager.record_write_fingerprint(fingerprint);
-    
+
     manager
         .context
         .lock()
         .map_err(|err| err.to_string())?
         .set_text(value)
-        .map_err(|err| err.to_string())
+        .map_err(|err| err.to_string())?;
+    Ok(())
 }
 
 #[command]
