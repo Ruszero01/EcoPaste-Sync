@@ -61,8 +61,19 @@ pub async fn perform_ocr<R: Runtime>(app_handle: &AppHandle<R>, image_path: &str
             }
         };
 
-        let output = std::process::Command::new(&sidecar_path)
-            .arg(image_path)
+        let mut cmd = std::process::Command::new(&sidecar_path);
+        cmd.arg(image_path);
+
+        // Windows: 避免显示控制台窗口
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            // CREATE_NO_WINDOW = 0x08000000
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            cmd.creation_flags(CREATE_NO_WINDOW);
+        }
+
+        let output = cmd
             .output()
             .map_err(|e| {
                 log::error!("[Clipboard] OCR sidecar 执行失败: {}", e);
