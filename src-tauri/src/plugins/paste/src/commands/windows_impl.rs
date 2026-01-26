@@ -47,7 +47,7 @@ fn write_to_clipboard(item_type: &str, value: &str, search: &str) -> Result<(), 
     match item_type {
         "image" => {
             if !value.is_empty() {
-                log::info!("[Paste] 写入图片到剪贴板");
+                log::debug!("[Paste] 写入图片到剪贴板");
                 let image = RustImageData::from_path(value).map_err(|e| e.to_string())?;
                 context.set_image(image).map_err(|e| e.to_string())
             } else {
@@ -56,7 +56,7 @@ fn write_to_clipboard(item_type: &str, value: &str, search: &str) -> Result<(), 
         }
         "formatted" | "html" => {
             if !value.is_empty() {
-                log::info!("[Paste] 写入 HTML 到剪贴板");
+                log::debug!("[Paste] 写入 HTML 到剪贴板");
                 let contents = vec![
                     ClipboardContent::Text(text.to_string()),
                     ClipboardContent::Html(value.to_string()),
@@ -67,7 +67,7 @@ fn write_to_clipboard(item_type: &str, value: &str, search: &str) -> Result<(), 
             }
         }
         "rtf" => {
-            log::info!("[Paste] 写入 RTF 到剪贴板");
+            log::debug!("[Paste] 写入 RTF 到剪贴板");
             let mut contents = vec![ClipboardContent::Rtf(value.to_string())];
             if !cfg!(target_os = "macos") {
                 contents.push(ClipboardContent::Text(text.to_string()));
@@ -75,11 +75,100 @@ fn write_to_clipboard(item_type: &str, value: &str, search: &str) -> Result<(), 
             context.set(contents).map_err(|e| e.to_string())
         }
         _ => {
-            log::info!("[Paste] 写入文本到剪贴板");
+            log::debug!("[Paste] 写入文本到剪贴板");
             context.set_text(text.to_string()).map_err(|e| e.to_string())
         }
     }
 }
+
+// ==================== 内容大小计算 ====================
+
+/// 计算内容大小（字节）
+/// - 文本：字符长度（UTF-8 编码）
+/// - 图片/文件：文件大小
+fn get_content_size(item_type: &str, value: &str) -> usize {
+    match item_type {
+        "image" | "files" => {
+            // 对于文件路径，尝试获取文件大小
+            if !value.is_empty() {
+                std::fs::metadata(value)
+                    .map(|meta| meta.len() as usize)
+                    .unwrap_or_else(|_| value.len())
+            } else {
+                value.len()
+            }
+        }
+        _ => value.len(), // 文本类型使用字符串长度
+    }
+}
+
+// ==================== 动态延迟计算 ====================
+
+/// 根据内容类型和大小计算写入后等待时间（毫秒）
+fn get_write_delay_ms(item_type: &str, size_bytes: usize) -> u64 {
+    match item_type {
+        "text" | "code" | "color" | "markdown" | "link" | "path" => {
+            if size_bytes < 100 {
+                15 // 短文本快速就绪
+            } else if size_bytes < 1000 {
+                25 // 中等文本
+            } else {
+                40 // 长文本
+            }
+        }
+        "image" => {
+            if size_bytes < 1_000_000 {
+                40 // 小图片 < 1MB
+            } else if size_bytes < 5_000_000 {
+                75 // 中等图片 1-5MB
+            } else {
+                150 // 大图片 > 5MB
+            }
+        }
+        "formatted" | "html" | "rtf" => {
+            if size_bytes < 1000 {
+                25
+            } else if size_bytes < 5000 {
+                35
+            } else {
+                50
+            }
+        }
+        "files" => 40,
+        _ => 30,
+    }
+}
+
+/// 根据内容类型和大小计算粘贴后等待时间（毫秒）
+fn get_paste_delay_ms(item_type: &str, size_bytes: usize) -> u64 {
+    match item_type {
+        "text" | "code" | "color" | "markdown" | "link" | "path" => {
+            if size_bytes < 100 {
+                20
+            } else if size_bytes < 1000 {
+                25
+            } else {
+                30
+            }
+        }
+        "image" => {
+            if size_bytes < 1_000_000 {
+                40 // 小图片
+            } else if size_bytes < 5_000_000 {
+                50 // 中等图片
+            } else {
+                60 // 大图片
+            }
+        }
+        "formatted" | "html" | "rtf" => 40,
+        "files" => 40,
+        _ => 30,
+    }
+}
+
+/// 获取换行符等待时间（毫秒）
+const NEWLINE_WRITE_DELAY_MS: u64 = 15;
+const NEWLINE_PASTE_DELAY_MS: u64 = 40;
 
 // ==================== 修饰键处理 ====================
 
@@ -164,7 +253,7 @@ pub async fn quick_paste<R: Runtime>(app_handle: AppHandle<R>, index: u32) -> Re
         }
     };
 
-    log::info!("[Paste] 正在查询数据库, offset={}", index - 1);
+    log::debug!("[Paste] 正在查询数据库, offset={}", index - 1);
 
     let db_state_arc = Arc::clone(&db_state);
     let query_index = index;
@@ -212,17 +301,16 @@ pub async fn quick_paste<R: Runtime>(app_handle: AppHandle<R>, index: u32) -> Re
         item_type
     );
 
-    log::info!("[Paste] 正在写入剪贴板, type={}", item_type);
+    log::debug!("[Paste] 正在写入剪贴板, type={}", item_type);
     let write_result = write_to_clipboard(item_type, &value, &search);
 
     match write_result {
         Ok(_) => {
-            log::info!("[Paste] 剪贴板写入成功, 等待粘贴...");
+            log::debug!("[Paste] 剪贴板写入成功, 等待粘贴...");
             for _ in 0..10 {
                 tokio::time::sleep(std::time::Duration::from_millis(20)).await;
             }
 
-            log::info!("[Paste] 执行粘贴操作");
             paste().await;
 
             log::info!("[Paste] 快速粘贴成功: id={}", id);
@@ -312,12 +400,18 @@ pub async fn batch_paste<R: Runtime>(
         let value = item.value.clone().unwrap_or_default();
         let search = item.search.clone().unwrap_or_default();
 
-        log::info!(
-            "[Paste] 批量粘贴: 第 {}/{} 项, id={}, type={}",
+        // 计算内容大小用于动态延迟
+        let content_size = if plain { search.len() } else { get_content_size(item_type, &value) };
+        let write_delay = get_write_delay_ms(item_type, content_size);
+        let paste_delay = get_paste_delay_ms(item_type, content_size);
+
+        log::debug!(
+            "[Paste] 批量粘贴: 第 {}/{} 项, id={}, type={}, size={}",
             i + 1,
             items.len(),
             item.id,
-            item_type
+            item_type,
+            content_size
         );
 
         // 写入剪贴板
@@ -330,14 +424,14 @@ pub async fn batch_paste<R: Runtime>(
 
         match write_result {
             Ok(_) => {
-                log::debug!("[Paste] 批量粘贴: 第 {} 项剪贴板写入成功", i + 1);
+                // 写入后动态等待
+                tokio::time::sleep(std::time::Duration::from_millis(write_delay)).await;
 
                 // 执行粘贴
                 paste_with_focus().await;
-                log::debug!("[Paste] 批量粘贴: 第 {} 项粘贴完成", i + 1);
 
-                // 等待粘贴完成（给目标应用更多处理时间）
-                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                // 粘贴后动态等待（给目标应用更多处理时间）
+                tokio::time::sleep(std::time::Duration::from_millis(paste_delay)).await;
 
                 // 如果不是最后一项，添加换行粘贴
                 if i < items.len() - 1 {
@@ -350,16 +444,13 @@ pub async fn batch_paste<R: Runtime>(
 
                     match newline_result {
                         Ok(_) => {
-                            log::debug!("[Paste] 批量粘贴: 写入换行符");
-
-                            // 换行符写入后等待，确保稳定
-                            tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+                            // 换行符写入后等待
+                            tokio::time::sleep(std::time::Duration::from_millis(NEWLINE_WRITE_DELAY_MS)).await;
 
                             paste_with_focus().await;
-                            log::debug!("[Paste] 批量粘贴: 换行粘贴完成");
 
                             // 换行后等待
-                            tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+                            tokio::time::sleep(std::time::Duration::from_millis(NEWLINE_PASTE_DELAY_MS)).await;
                         }
                         Err(e) => {
                             log::warn!("[Paste] 批量粘贴: 换行符写入失败: {}", e);
