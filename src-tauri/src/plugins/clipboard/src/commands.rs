@@ -50,13 +50,29 @@ impl ClipboardManager {
         *guard = (chrono::Utc::now().timestamp_millis() as u64, fingerprint);
     }
 
-    /// 检查是否是自身写入的剪贴板（时间窗口检测）
-    pub fn is_own_write(&self) -> bool {
+    /// 检查是否是自身写入的剪贴板（时间窗口 + 内容指纹检测）
+    pub fn is_own_write(&self, current_content: &str) -> bool {
         let guard = self.last_write.lock().unwrap();
-        let (write_time, _) = *guard;
+        let (write_time, ref fingerprint) = *guard;
         let now = chrono::Utc::now().timestamp_millis() as u64;
-        // 500ms 内认为是自身写入
-        now.saturating_sub(write_time) < 500
+
+        // 1. 时间窗口检查：500ms 内认为可能是自身写入
+        if now.saturating_sub(write_time) > 500 {
+            return false;
+        }
+
+        // 2. 内容指纹检查：提取指纹中的内容部分进行匹配
+        // 指纹格式: "text:hello", "image:/path", "html:text", "rtf:text"
+        if let Some(fingerprint_content) = fingerprint.split(':').nth(1) {
+            // 匹配策略：当前内容包含指纹内容 或 指纹内容是当前内容的前缀
+            if current_content.contains(fingerprint_content)
+                || fingerprint_content.starts_with(current_content)
+            {
+                return true;
+            }
+        }
+
+        false
     }
 }
 
@@ -86,9 +102,15 @@ where
         // 获取 manager 状态
         let manager = app_handle.state::<ClipboardManager>();
 
-        // 检查是否是自身写入的剪贴板（时间窗口检测）
-        if manager.is_own_write() {
-            log::trace!("[Clipboard] 跳过自身写入的剪贴板（时间窗口检测）");
+        // 读取当前剪贴板文本内容（用于指纹检测）
+        let current_text = {
+            let context = manager.context.lock().unwrap();
+            context.get_text().unwrap_or_default()
+        };
+
+        // 检查是否是自身写入的剪贴板（时间窗口 + 内容指纹检测）
+        if manager.is_own_write(&current_text) {
+            log::trace!("[Clipboard] 跳过自身写入的剪贴板（时间窗口+指纹检测）");
             return;
         }
 
