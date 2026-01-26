@@ -1,12 +1,11 @@
-import { systemOCR } from "@/plugins/ocr";
 import { clipboardStore } from "@/stores/clipboard";
 import type { HistoryTablePayload } from "@/types/database";
-import type { ClipboardPayload, ReadImage, WindowsOCR } from "@/types/plugin";
+import type { ClipboardPayload, ReadImage } from "@/types/plugin";
 import { resolveImagePath } from "@/utils/path";
 import { getSaveImagePath } from "@/utils/path";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { isEmpty, isEqual } from "lodash-es";
+import { isEqual } from "lodash-es";
 import { fullName, metadata } from "tauri-plugin-fs-pro-api";
 import { pasteWithFocus } from "./paste";
 
@@ -225,6 +224,7 @@ export const readFiles = async (): Promise<ClipboardPayload> => {
 
 /**
  * 读取剪贴板图片
+ * 注意：OCR识别已移到后端异步处理，此处只返回图片基本信息
  */
 export const readImage = async (): Promise<ClipboardPayload> => {
 	const imageData = await invoke<ReadImage>(COMMAND.READ_IMAGE, {
@@ -235,34 +235,14 @@ export const readImage = async (): Promise<ClipboardPayload> => {
 
 	const { size: count } = await metadata(image);
 
-	let search = "";
-
-	if (clipboardStore.content.ocr) {
-		try {
-			search = await systemOCR(image);
-
-			if (isWin) {
-				const { content, qr } = JSON.parse(search) as WindowsOCR;
-
-				if (isEmpty(qr)) {
-					search = content;
-				} else {
-					search = qr[0].content;
-				}
-			}
-		} catch (error) {
-			// OCR失败时静默处理，不影响正常的图片读取功能
-			console.warn("OCR识别失败，将保存为无搜索文本的图片:", error);
-		}
-	}
-
+	// search 字段由后端 OCR 完成后更新
 	const value = await fullName(image);
 
 	return {
 		...rest,
 		count,
 		value,
-		search,
+		search: "", // 后端 OCR 完成后会更新
 		group: "image",
 		width,
 		height,
