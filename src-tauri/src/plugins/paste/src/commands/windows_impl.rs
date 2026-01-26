@@ -336,6 +336,9 @@ pub async fn batch_paste<R: Runtime>(
                 paste_with_focus().await;
                 log::debug!("[Paste] 批量粘贴: 第 {} 项粘贴完成", i + 1);
 
+                // 等待粘贴完成（给目标应用更多处理时间）
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
                 // 如果不是最后一项，添加换行粘贴
                 if i < items.len() - 1 {
                     // 写入换行符
@@ -348,13 +351,15 @@ pub async fn batch_paste<R: Runtime>(
                     match newline_result {
                         Ok(_) => {
                             log::debug!("[Paste] 批量粘贴: 写入换行符");
+
+                            // 换行符写入后等待，确保稳定
+                            tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+
                             paste_with_focus().await;
                             log::debug!("[Paste] 批量粘贴: 换行粘贴完成");
 
-                            // 等待换行操作完成
-                            for _ in 0..3 {
-                                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-                            }
+                            // 换行后等待
+                            tokio::time::sleep(std::time::Duration::from_millis(80)).await;
                         }
                         Err(e) => {
                             log::warn!("[Paste] 批量粘贴: 换行符写入失败: {}", e);
