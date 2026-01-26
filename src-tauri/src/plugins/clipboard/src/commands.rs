@@ -16,7 +16,7 @@ mod utils;
 pub use audio::play_copy_audio;
 pub use utils::{save_clipboard_image, schedule_ocr_task};
 
-use tauri_plugin_eco_common::{active_window, file::is_all_images, id::generate_id};
+use tauri_plugin_eco_common::{file::is_all_images, id::generate_id};
 
 // 引入 database 插件
 use tauri_plugin_eco_database::{DatabaseState, InsertItem};
@@ -27,13 +27,8 @@ use tauri_plugin_eco_detector::DetectorState;
 pub struct ClipboardManager {
     context: Arc<Mutex<ClipboardContext>>,
     watcher_shutdown: Arc<Mutex<Option<WatcherShutdown>>>,
-}
-
-struct ClipboardListen<R>
-where
-    R: Runtime,
-{
-    app_handle: AppHandle<R>,
+    /// 记录最后一次写入剪贴板的时间和内容指纹（用于检测自身写入）
+    last_write: Arc<Mutex<(u64, String)>>,
 }
 
 impl ClipboardManager {
@@ -41,12 +36,35 @@ impl ClipboardManager {
         ClipboardManager {
             context: Arc::new(Mutex::new(ClipboardContext::new().unwrap())),
             watcher_shutdown: Arc::default(),
+            last_write: Arc::default(),
         }
     }
 
     fn has(&self, format: ContentFormat) -> bool {
         self.context.lock().unwrap().has(format)
     }
+
+    /// 记录剪贴板写入指纹
+    pub fn record_write_fingerprint(&self, fingerprint: String) {
+        let mut guard = self.last_write.lock().unwrap();
+        *guard = (chrono::Utc::now().timestamp_millis() as u64, fingerprint);
+    }
+
+    /// 检查是否是自身写入的剪贴板（时间窗口检测）
+    pub fn is_own_write(&self) -> bool {
+        let guard = self.last_write.lock().unwrap();
+        let (write_time, _) = *guard;
+        let now = chrono::Utc::now().timestamp_millis() as u64;
+        // 500ms 内认为是自身写入
+        now.saturating_sub(write_time) < 500
+    }
+}
+
+struct ClipboardListen<R>
+where
+    R: Runtime,
+{
+    app_handle: AppHandle<R>,
 }
 
 impl<R> ClipboardListen<R>
@@ -65,16 +83,13 @@ where
     fn on_clipboard_change(&mut self) {
         let app_handle = self.app_handle.clone();
 
-        // 检查是否是 EcoPaste 自身写入的剪贴板（跳过，避免粘贴时重复插入）
-        if let Ok(info) = active_window::get_current_window_info() {
-            let process_lower = info.process_name.to_lowercase();
-            if process_lower.contains("ecopaste") || process_lower.contains("eco-paste") {
-                log::trace!(
-                    "[Clipboard] 跳过 EcoPaste 自身写入的剪贴板: {}",
-                    info.process_name
-                );
-                return;
-            }
+        // 获取 manager 状态
+        let manager = app_handle.state::<ClipboardManager>();
+
+        // 检查是否是自身写入的剪贴板（时间窗口检测）
+        if manager.is_own_write() {
+            log::trace!("[Clipboard] 跳过自身写入的剪贴板（时间窗口检测）");
+            return;
         }
 
         // 获取数据库状态
@@ -616,6 +631,9 @@ pub async fn write_files(
     manager: State<'_, ClipboardManager>,
     value: Vec<String>,
 ) -> Result<(), String> {
+    let fingerprint = format!("files:{}", value.join("|"));
+    manager.record_write_fingerprint(fingerprint);
+    
     manager
         .context
         .lock()
@@ -629,6 +647,9 @@ pub async fn write_image(
     manager: State<'_, ClipboardManager>,
     value: String,
 ) -> Result<(), String> {
+    let fingerprint = format!("image:{}", value);
+    manager.record_write_fingerprint(fingerprint);
+    
     let image = RustImageData::from_path(&value).map_err(|err| err.to_string())?;
 
     manager
@@ -645,6 +666,9 @@ pub async fn write_html(
     text: String,
     html: String,
 ) -> Result<(), String> {
+    let fingerprint = format!("html:{}", text);
+    manager.record_write_fingerprint(fingerprint);
+    
     let contents = vec![ClipboardContent::Text(text), ClipboardContent::Html(html)];
 
     manager
@@ -661,6 +685,9 @@ pub async fn write_rtf(
     text: String,
     rtf: String,
 ) -> Result<(), String> {
+    let fingerprint = format!("rtf:{}", text);
+    manager.record_write_fingerprint(fingerprint);
+    
     let mut contents = vec![ClipboardContent::Rtf(rtf)];
 
     if cfg!(not(target_os = "macos")) {
@@ -677,6 +704,9 @@ pub async fn write_rtf(
 
 #[command]
 pub async fn write_text(manager: State<'_, ClipboardManager>, value: String) -> Result<(), String> {
+    let fingerprint = format!("text:{}", value);
+    manager.record_write_fingerprint(fingerprint);
+    
     manager
         .context
         .lock()
