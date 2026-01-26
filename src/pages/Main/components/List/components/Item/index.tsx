@@ -295,9 +295,11 @@ const Item: FC<ItemProps> = (props) => {
 		}
 	};
 
-	// 粘贴纯文本
+	// 粘贴纯文本（从全局状态获取最新数据，避免OCR更新后数据不同步）
 	const pastePlain = () => {
-		smartPasteClipboard(data, true);
+		// 从列表中获取最新的项目数据
+		const latestItem = state.list.find((item) => item.id === data.id);
+		smartPasteClipboard(latestItem || data, true);
 	};
 
 	// 切换收藏状态

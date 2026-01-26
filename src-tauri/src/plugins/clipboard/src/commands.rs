@@ -14,7 +14,7 @@ use tauri::{command, AppHandle, Emitter, Manager, Runtime, State};
 mod audio;
 mod utils;
 pub use audio::play_copy_audio;
-pub use utils::save_clipboard_image;
+pub use utils::{save_clipboard_image, schedule_ocr_task};
 
 use tauri_plugin_eco_common::{file::is_all_images, id::generate_id};
 
@@ -93,16 +93,24 @@ where
             if has_image {
                 match context.get_image() {
                     Ok(image) => match save_clipboard_image(&app_handle, Some(&image), None) {
-                        Ok((image_path, file_size, width, height)) => (
-                            "image".to_string(),
-                            "image".to_string(),
-                            Some(image_path.to_string_lossy().to_string()),
-                            Some(format!("{}x{} png", width, height)),
-                            Some(file_size),
-                            Some("image".to_string()),
-                            Some(width as i32),
-                            Some(height as i32),
-                        ),
+                        Ok((image_path, file_size, width, height)) => {
+                            let item_id = generate_id();
+                            let image_path_str = image_path.to_string_lossy().to_string();
+
+                            // 安排OCR任务（如果OCR功能开启）
+                            schedule_ocr_task(&app_handle, &image_path, &item_id);
+
+                            (
+                                "image".to_string(),
+                                "image".to_string(),
+                                Some(image_path_str),
+                                None, // search 留空，由OCR完成后更新
+                                Some(file_size),
+                                Some("image".to_string()),
+                                Some(width as i32),
+                                Some(height as i32),
+                            )
+                        }
                         Err(_) => return,
                     },
                     Err(_) => return,
@@ -117,16 +125,24 @@ where
                             // 所有文件都是图片，保存第一张作为主图片
                             if let Some(first_file) = files.first() {
                                 match save_clipboard_image(&app_handle, None, Some(first_file)) {
-                                    Ok((image_path, file_size, width, height)) => (
-                                        "image".to_string(),
-                                        "image".to_string(),
-                                        Some(image_path.to_string_lossy().to_string()),
-                                        Some(format!("{}x{} png", width, height)),
-                                        Some(file_size),
-                                        Some("image".to_string()),
-                                        Some(width as i32),
-                                        Some(height as i32),
-                                    ),
+                                    Ok((image_path, file_size, width, height)) => {
+                                        let item_id = generate_id();
+                                        let image_path_str = image_path.to_string_lossy().to_string();
+
+                                        // 安排OCR任务（如果OCR功能开启）
+                                        schedule_ocr_task(&app_handle, &image_path, &item_id);
+
+                                        (
+                                            "image".to_string(),
+                                            "image".to_string(),
+                                            Some(image_path_str),
+                                            None, // search 留空，由OCR完成后更新
+                                            Some(file_size),
+                                            Some("image".to_string()),
+                                            Some(width as i32),
+                                            Some(height as i32),
+                                        )
+                                    }
                                     Err(_) => (
                                         "files".to_string(),
                                         "files".to_string(),

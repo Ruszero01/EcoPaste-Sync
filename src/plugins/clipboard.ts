@@ -699,7 +699,7 @@ export const pasteClipboard = async (
 ) => {
 	if (!data) return;
 
-	const { type, value } = data;
+	const { type, value, search } = data;
 
 	// 设置内部复制标志，防止粘贴操作后触发重复处理
 	clipboardStore.internalCopy = {
@@ -714,7 +714,7 @@ export const pasteClipboard = async (
 
 				await writeText(pasteValue);
 			} else {
-				await writeText(data.search);
+				await writeText(search);
 			}
 		} else {
 			await writeClipboard(data);

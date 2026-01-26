@@ -69,7 +69,9 @@ const Main = () => {
 			// 清除缓存并刷新列表
 			getListCache.current.clear();
 			lastQueryParams = "";
-			await getList();
+
+			// 使用 forceRefreshList 确保缓存和防抖都被正确处理
+			forceRefreshList();
 
 			// 如果是重复数据，设置聚焦到被重复的项目
 			if (event.payload?.duplicate_id) {
