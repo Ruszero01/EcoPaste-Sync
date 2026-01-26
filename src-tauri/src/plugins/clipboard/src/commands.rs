@@ -16,7 +16,7 @@ mod utils;
 pub use audio::play_copy_audio;
 pub use utils::{save_clipboard_image, schedule_ocr_task};
 
-use tauri_plugin_eco_common::{file::is_all_images, id::generate_id};
+use tauri_plugin_eco_common::{active_window, file::is_all_images, id::generate_id};
 
 // 引入 database 插件
 use tauri_plugin_eco_database::{DatabaseState, InsertItem};
@@ -64,7 +64,18 @@ where
 {
     fn on_clipboard_change(&mut self) {
         let app_handle = self.app_handle.clone();
-        let manager = app_handle.state::<ClipboardManager>();
+
+        // 检查是否是 EcoPaste 自身写入的剪贴板（跳过，避免粘贴时重复插入）
+        if let Ok(info) = active_window::get_current_window_info() {
+            let process_lower = info.process_name.to_lowercase();
+            if process_lower.contains("ecopaste") || process_lower.contains("eco-paste") {
+                log::trace!(
+                    "[Clipboard] 跳过 EcoPaste 自身写入的剪贴板: {}",
+                    info.process_name
+                );
+                return;
+            }
+        }
 
         // 获取数据库状态
         let db_state = match app_handle.try_state::<DatabaseState>() {
@@ -74,6 +85,9 @@ where
 
         // 获取 detector 状态（可能不存在，检测是可选的）
         let detector_state = app_handle.try_state::<DetectorState>();
+
+        // 获取 manager 状态
+        let manager = app_handle.state::<ClipboardManager>();
 
         // 读取剪贴板内容
         // count 字段语义：

@@ -51,12 +51,6 @@ export const clipboardStore = proxy<ClipboardStore>({
 		maxCount: 0,
 	},
 
-	// 添加复制操作标志
-	internalCopy: {
-		isCopying: false,
-		itemId: null,
-	},
-
 	// 多选状态
 	multiSelect: {
 		isMultiSelecting: false,

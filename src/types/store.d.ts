@@ -155,12 +155,6 @@ export interface ClipboardStore {
 		maxCount: number;
 	};
 
-	// 内部复制操作标志
-	internalCopy: {
-		isCopying: boolean;
-		itemId: string | null;
-	};
-
 	// 多选状态
 	multiSelect: {
 		isMultiSelecting: boolean;

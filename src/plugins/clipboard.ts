@@ -1,11 +1,8 @@
 import { clipboardStore } from "@/stores/clipboard";
 import type { HistoryTablePayload } from "@/types/database";
 import type { ClipboardPayload, ReadImage } from "@/types/plugin";
-import { resolveImagePath } from "@/utils/path";
 import { getSaveImagePath } from "@/utils/path";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
-import { isEqual } from "lodash-es";
 import { fullName, metadata } from "tauri-plugin-fs-pro-api";
 import { pasteWithFocus } from "./paste";
 
@@ -29,7 +26,6 @@ const COMMAND = {
 	GET_IMAGE_DIMENSIONS: "plugin:eco-clipboard|get_image_dimensions",
 	DETECT_CONTENT: "plugin:eco-detector|detect_content",
 	CONVERT_COLOR: "plugin:eco-detector|convert_color",
-	CLIPBOARD_UPDATE: "plugin:eco-clipboard://clipboard_update",
 };
 
 /// 后端类型检测选项
@@ -406,7 +402,71 @@ export const writeText = (value: string) => {
 };
 
 /**
- * 读取剪贴板内容
+ * 根据数据类型写入剪贴板
+ */
+export const writeClipboard = async (
+	data: HistoryTablePayload,
+	plain = false,
+) => {
+	const { type, value, subtype, search } = data;
+	const textValue = plain ? search : value;
+
+	switch (type) {
+		case "image":
+			// 图片纯文本粘贴：写入OCR文本
+			if (plain) {
+				return writeText(search || value);
+			}
+			return writeImage(value);
+		case "files":
+			return writeFiles(value);
+		case "formatted":
+			if (subtype === "html") {
+				// HTML纯文本粘贴：写入纯文本内容
+				if (plain) {
+					return writeText(textValue);
+				}
+				return writeHTML(value, search);
+			}
+			if (subtype === "rtf") {
+				// RTF纯文本粘贴：写入纯文本内容
+				if (plain) {
+					return writeText(textValue);
+				}
+				return writeRTF(value, search);
+			}
+			return writeText(textValue);
+		default:
+			// 文本类型：纯文本模式使用 search 字段（OCR文本）
+			return writeText(textValue);
+	}
+};
+
+/**
+ * 粘贴剪贴板内容
+ * 1. 写入数据到剪贴板
+ * 2. 执行粘贴操作
+ */
+export const pasteClipboard = async (
+	data: HistoryTablePayload,
+	plain = false,
+) => {
+	await writeClipboard(data, plain);
+
+	// 始终执行粘贴操作
+	await pasteWithFocus();
+
+	// 如果是纯文本模式且用户设置了粘贴后清空
+	if (plain) {
+		const { pastePlain } = clipboardStore.content;
+		if (pastePlain) {
+			await writeText("");
+		}
+	}
+};
+
+/**
+ * 智能粘贴剪贴板数据
  */
 export const readClipboard = async (skipTypeDetection = false) => {
 	let payload!: ClipboardPayload;
@@ -511,208 +571,15 @@ export const readClipboard = async (skipTypeDetection = false) => {
 		// 来源应用信息由后端在插入新记录时统一获取
 		return payload;
 	} catch (error) {
-		// 如果是批量粘贴过程中的错误，返回一个空的文本payload
-		if (clipboardStore.internalCopy.isCopying) {
-			console.warn("批量粘贴过程中读取剪贴板失败，返回空内容:", error);
-			return {
-				value: "",
-				search: "",
-				count: 0,
-				group: "text" as const,
-				type: "text" as const,
-			};
-		}
-
-		// 其他情况下重新抛出错误
-		throw error;
-	}
-};
-
-/**
- * 剪贴板更新
- */
-export const onClipboardUpdate = (fn: (payload: ClipboardPayload) => void) => {
-	let lastUpdated = 0;
-	let previousPayload: ClipboardPayload;
-	let processing = false;
-	let retryCount = 0;
-	const MAX_RETRY = 3;
-
-	// 用于防重复处理的缓存
-	const contentHashCache = new Map<string, number>();
-
-	const processClipboardUpdate = async () => {
-		if (processing) {
-			retryCount++;
-			if (retryCount <= MAX_RETRY) {
-				// 根据重试次数调整延迟时间，递增延迟避免过度重试
-				const delay = Math.min(50 * retryCount, 150);
-				setTimeout(() => {
-					const retryEvent = new CustomEvent("clipboard-retry");
-					window.dispatchEvent(retryEvent);
-				}, delay);
-			}
-			return;
-		}
-
-		processing = true;
-		retryCount = 0;
-
-		try {
-			// 如果是内部复制操作，直接跳过处理，避免获取来源应用信息
-			if (clipboardStore.internalCopy.isCopying) {
-				return;
-			}
-
-			const payload = await readClipboard();
-
-			const { group, count, type, value } = payload;
-
-			if (group === "text" && count === 0) {
-				return;
-			}
-
-			// 创建内容哈希用于去重
-			const contentKey = `${type}:${group}:${value?.substring(0, 100)}`;
-			const now = Date.now();
-
-			// 更新缓存
-			contentHashCache.set(contentKey, now);
-
-			// 减少防抖时间到100ms，提高响应速度
-			const expired = now - lastUpdated > 100;
-
-			if (expired || !isEqual(payload, previousPayload)) {
-				fn(payload);
-			}
-
-			lastUpdated = now;
-			previousPayload = payload;
-		} catch (error) {
-			// 捕获剪贴板读取错误，特别是批量粘贴过程中的"No image data in clipboard"错误
-			console.warn(
-				"剪贴板更新处理失败，可能是批量粘贴过程中的临时错误:",
-				error,
-			);
-
-			// 如果是批量粘贴过程中的错误，直接忽略，不影响正常功能
-			if (clipboardStore.internalCopy.isCopying) {
-				return;
-			}
-
-			// 其他错误也静默处理，避免影响用户体验
-			return;
-		} finally {
-			processing = false;
-		}
-	};
-
-	// 监听原始剪贴板更新事件
-	const unlisten = listen(COMMAND.CLIPBOARD_UPDATE, processClipboardUpdate);
-
-	// 监听重试事件
-	const retryUnlisten = listen("clipboard-retry", processClipboardUpdate);
-
-	// 返回清理函数
-	return () => {
-		unlisten.then((fn) => fn());
-		retryUnlisten.then((fn) => fn());
-	};
-};
-
-/**
- * 将数据写入剪贴板
- * @param data 数据
- */
-export const writeClipboard = async (data?: HistoryTablePayload) => {
-	if (!data) return;
-
-	const { type, subtype, value, search } = data;
-
-	switch (type) {
-		case "text":
-			// 处理markdown subtype
-			if (subtype === "markdown") {
-				return writeText(value);
-			}
-			// 处理color subtype
-			if (subtype === "color") {
-				return writeText(value);
-			}
-			return writeText(value);
-		case "formatted":
-			// 根据subtype选择写入方式
-			if (subtype === "rtf") {
-				return writeRTF(search, value);
-			}
-			if (subtype === "html") {
-				return writeHTML(search, value);
-			}
-			// 默认按HTML格式写入
-			return writeHTML(search, value);
-		case "image":
-			return await writeImage(resolveImagePath(value));
-		case "files":
-			// 对于文件类型，确保value是有效的JSON字符串
-			if (typeof value === "string") {
-				return writeFiles(value);
-			}
-			// 如果value不是字符串，尝试转换为JSON字符串
-			try {
-				const jsonValue = JSON.stringify(value);
-				return writeFiles(jsonValue);
-			} catch (error) {
-				console.error("文件路径JSON序列化失败:", error);
-				throw new Error("无效的文件路径数据");
-			}
-	}
-};
-
-/**
- * 粘贴剪贴板数据
- * @param data 数据
- * @param plain 是否纯文本粘贴
- */
-export const pasteClipboard = async (
-	data?: HistoryTablePayload,
-	plain = false,
-) => {
-	if (!data) return;
-
-	const { type, value, search } = data;
-
-	// 设置内部复制标志，防止粘贴操作后触发重复处理
-	clipboardStore.internalCopy = {
-		isCopying: true,
-		itemId: data.id,
-	};
-
-	try {
-		if (plain) {
-			if (type === "files") {
-				const pasteValue = JSON.parse(value).join("\n");
-
-				await writeText(pasteValue);
-			} else {
-				await writeText(search);
-			}
-		} else {
-			await writeClipboard(data);
-		}
-
-		// 减少延迟确保剪贴板内容完全写入
-		await new Promise((resolve) => setTimeout(resolve, 30));
-
-		// 执行粘贴操作
-		await pasteWithFocus();
-
-		// 再减少一个短暂延迟，确保粘贴操作完成
-		await new Promise((resolve) => setTimeout(resolve, 20));
-	} finally {
-		// 清除内部复制标志
-		clipboardStore.internalCopy = {
-			isCopying: false,
-			itemId: null,
+		// 读取剪贴板失败时返回空的文本payload
+		// 批量粘贴过程中可能会读取到自身写入的内容，此时返回空内容避免干扰
+		console.warn("读取剪贴板失败，返回空内容:", error);
+		return {
+			value: "",
+			search: "",
+			count: 0,
+			group: "text" as const,
+			type: "text" as const,
 		};
 	}
 };
@@ -766,22 +633,9 @@ export const smartPasteClipboard = async (
 ) => {
 	if (!data) return;
 
-	// 设置内部复制标志，防止粘贴操作后触发重复处理
-	clipboardStore.internalCopy = {
-		isCopying: true,
-		itemId: data.id,
-	};
-
-	try {
-		// 直接使用原有逻辑，同步阶段已确保所有文件都是本地可用的
-		return await pasteClipboard(data, plain);
-	} finally {
-		// 清除内部复制标志
-		clipboardStore.internalCopy = {
-			isCopying: false,
-			itemId: null,
-		};
-	}
+	// 直接使用原有逻辑，同步阶段已确保所有文件都是本地可用的
+	// 后端会通过前台窗口检测跳过 EcoPaste 自身写入的剪贴板
+	return await pasteClipboard(data, plain);
 };
 
 /**
@@ -795,14 +649,8 @@ export const batchPasteClipboard = async (
 ) => {
 	if (!dataList || dataList.length === 0) return;
 
-	// 设置批量粘贴标志，避免批量粘贴过程中的换行符被误认为是新的剪贴板内容
-	clipboardStore.internalCopy = {
-		isCopying: true,
-		itemId: "batch-paste",
-	};
-
 	try {
-		// 依次粘贴每个条目，使用与拖拽粘贴相同的延迟逻辑
+		// 依次粘贴每个条目
 		for (let i = 0; i < dataList.length; i++) {
 			const data = dataList[i];
 			if (!data) continue;
@@ -815,33 +663,19 @@ export const batchPasteClipboard = async (
 
 			// 如果不是最后一个项目，执行换行粘贴
 			if (i < dataList.length - 1) {
-				// 设置内部复制标志，避免换行操作触发剪贴板更新
-				clipboardStore.internalCopy = {
-					isCopying: true,
-					itemId: "batch-newline",
-				};
-
 				try {
 					await writeText("\n");
 					await new Promise((resolve) => setTimeout(resolve, 20));
 					await pasteWithFocus();
 					// 减少延迟，确保换行操作完成
 					await new Promise((resolve) => setTimeout(resolve, 20));
-				} finally {
-					// 恢复批量粘贴标志
-					clipboardStore.internalCopy = {
-						isCopying: true,
-						itemId: "batch-paste",
-					};
+				} catch {
+					// 换行粘贴失败时静默忽略，继续处理下一个条目
 				}
 			}
 		}
 	} finally {
-		// 清除批量粘贴标志
-		clipboardStore.internalCopy = {
-			isCopying: false,
-			itemId: null,
-		};
+		// 无需清理内部状态，后端通过窗口检测跳过自身写入
 	}
 };
 
