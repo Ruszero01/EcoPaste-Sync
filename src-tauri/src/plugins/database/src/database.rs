@@ -571,7 +571,7 @@ impl DatabaseManager {
                 let conn = self.get_connection()?;
                 let _ = self
                     .change_tracker
-                    .mark_item_changed(&conn, &item.id, "update");
+                    .mark_item_changed(&conn, &item.id, "update", false);
 
                 return Ok(InsertResult {
                     is_update: true,
@@ -659,11 +659,11 @@ impl DatabaseManager {
                 .map_err(|e| format!("更新相同内容失败: {}", e))?;
             }
 
-            // 使用统一变更跟踪器
+            // 使用统一变更跟踪器（去重只更新时间戳，不标记为待同步）
             let conn = self.get_connection()?;
             let _ = self
                 .change_tracker
-                .mark_item_changed(&conn, &existing_id, "dedup");
+                .mark_item_changed(&conn, &existing_id, "dedup", true);
 
             return Ok(InsertResult {
                 is_update: true,
@@ -738,11 +738,11 @@ impl DatabaseManager {
         )
         .map_err(|e| format!("插入数据失败: {}", e))?;
 
-        // 使用统一变更跟踪器
+        // 使用统一变更跟踪器（新插入的记录需要同步）
         let conn = self.get_connection()?;
         let _ = self
             .change_tracker
-            .mark_item_changed(&conn, &item.id, "insert");
+            .mark_item_changed(&conn, &item.id, "insert", false);
 
         Ok(InsertResult {
             is_update: false,
@@ -810,8 +810,8 @@ impl DatabaseManager {
             return Ok(false);
         }
 
-        let conn = rusqlite::Connection::open(db_path)
-            .map_err(|e| format!("打开数据库失败: {}", e))?;
+        let conn =
+            rusqlite::Connection::open(db_path).map_err(|e| format!("打开数据库失败: {}", e))?;
 
         // 检查是否存在 createTime 列（旧版特征）
         let has_create_time = conn
@@ -843,8 +843,7 @@ impl DatabaseManager {
         let content = serde_json::to_string_pretty(&marker)
             .map_err(|e| format!("序列化迁移标记失败: {}", e))?;
 
-        std::fs::write(&marker_path, content)
-            .map_err(|e| format!("写入迁移标记失败: {}", e))?;
+        std::fs::write(&marker_path, content).map_err(|e| format!("写入迁移标记失败: {}", e))?;
 
         log::info!("[Database] 迁移标记已写入: {:?}", marker_path);
 

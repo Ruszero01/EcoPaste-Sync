@@ -49,7 +49,7 @@ impl ChangeTracker {
     /// 统一的变更跟踪方法
     /// 当数据发生任何变更时，统一处理：
     /// 1. 更新时间戳
-    /// 2. 如果当前状态是已同步，则更新为已更改
+    /// 2. 如果当前状态是已同步且需要同步，则更新为已更改
     /// 3. 记录变更
     /// 4. 返回变更信息供前端通知
     ///
@@ -57,6 +57,9 @@ impl ChangeTracker {
     /// * `conn` - 数据库连接
     /// * `item_id` - 项目ID
     /// * `change_type` - 变更类型（content, type, favorite, note等，用于日志记录）
+    /// * `ignore_for_sync` - 是否忽略此变更的同步标记（true=只更新时间戳，不标记为待同步）
+    ///     - 适用于 time、position 等无实质内容变更的字段
+    ///     - 不适用于 value、search、note、favorite 等有实质意义的变更
     ///
     /// # Returns
     /// * `Ok(Some(ChangeInfo))` - 总是返回变更信息（因为任何变更都应该通知前端）
@@ -66,6 +69,7 @@ impl ChangeTracker {
         conn: &Connection,
         item_id: &str,
         change_type: &str,
+        ignore_for_sync: bool,
     ) -> Result<Option<ChangeInfo>, String> {
         let current_time = chrono::Utc::now().timestamp_millis();
 
@@ -79,8 +83,8 @@ impl ChangeTracker {
         )
         .map_err(|e| format!("更新时间戳失败: {}", e))?;
 
-        // 如果当前状态是已同步，则更新为已更改
-        let new_status = if current_status == "synced" {
+        // 如果当前状态是已同步且需要同步，则更新为已更改
+        let new_status = if current_status == "synced" && !ignore_for_sync {
             conn.execute(
                 "UPDATE history SET syncStatus = ?1 WHERE id = ?2",
                 params!["changed", item_id],
@@ -91,16 +95,19 @@ impl ChangeTracker {
             "changed".to_string()
         } else {
             log::debug!(
-                "🔔 [{}] 项目状态: {}, 已更新戳",
+                "🔔 [{}] 项目状态: {} (ignore_for_sync={})",
                 change_type,
-                current_status
+                current_status,
+                ignore_for_sync
             );
             current_status.clone()
         };
 
-        // 标记为已变更
-        let mut items = self.changed_items.lock().unwrap();
-        items.insert(item_id.to_string());
+        // 标记为已变更（只有需要同步的变更才加入变更列表）
+        if !ignore_for_sync {
+            let mut items = self.changed_items.lock().unwrap();
+            items.insert(item_id.to_string());
+        }
 
         // 总是返回变更信息（任何字段变更都应该通知前端）
         Ok(Some(ChangeInfo {

@@ -181,7 +181,7 @@ impl DeleteManager {
                 db.update_field(id, "deleted", "1")?;
                 db.update_field(id, "time", &current_time.to_string())?;
                 db.get_change_tracker()
-                    .mark_item_changed(&conn, id, "delete")?;
+                    .mark_item_changed(&conn, id, "delete", false)?;
                 Ok(DeleteType::Soft)
             }
             DeleteType::Hard => {

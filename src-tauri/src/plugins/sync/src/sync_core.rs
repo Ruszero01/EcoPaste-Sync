@@ -836,7 +836,7 @@ impl SyncCore {
                 let tracker = db.get_change_tracker();
                 let conn = db.get_connection()?;
                 for item_id in items {
-                    if let Err(err) = tracker.mark_item_changed(&conn, item_id, "upload_failed") {
+                    if let Err(err) = tracker.mark_item_changed(&conn, item_id, "upload_failed", false) {
                         log::error!("[Sync] 标记变更失败: {}", err);
                     }
                 }

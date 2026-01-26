@@ -190,9 +190,9 @@ pub async fn perform_ocr_and_update<R: Runtime>(
                 log::error!("[Clipboard] 更新时间戳失败: {}", e);
             }
 
-            // 标记 change_tracker
+            // 标记 change_tracker（search 字段更新是实质变更，需要同步）
             if let Ok(conn) = db.get_connection() {
-                if let Err(e) = db.get_change_tracker().mark_item_changed(&conn, &actual_item_id, "search") {
+                if let Err(e) = db.get_change_tracker().mark_item_changed(&conn, &actual_item_id, "search", false) {
                     log::error!("[Clipboard] 标记 change_tracker 失败: {}", e);
                 }
             }

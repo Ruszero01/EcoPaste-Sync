@@ -107,14 +107,14 @@ pub fn update_field(
             db.update_field(&id, "time", &current_time.to_string())?;
             let conn = db.get_connection()?;
             db.get_change_tracker()
-                .mark_item_changed(&conn, &id, "favorite")?;
+                .mark_item_changed(&conn, &id, "favorite", false)?;
         }
         "note" => {
             db.update_field(&id, "note", &value)?;
             db.update_field(&id, "time", &current_time.to_string())?;
             let conn = db.get_connection()?;
             db.get_change_tracker()
-                .mark_item_changed(&conn, &id, "note")?;
+                .mark_item_changed(&conn, &id, "note", false)?;
         }
         "content" => {
             db.update_field(&id, "value", &value)?;
@@ -122,40 +122,39 @@ pub fn update_field(
             db.update_field(&id, "time", &current_time.to_string())?;
             let conn = db.get_connection()?;
             db.get_change_tracker()
-                .mark_item_changed(&conn, &id, "content")?;
+                .mark_item_changed(&conn, &id, "content", false)?;
         }
         "search" => {
             db.update_field(&id, "search", &value)?;
             db.update_field(&id, "time", &current_time.to_string())?;
             let conn = db.get_connection()?;
             db.get_change_tracker()
-                .mark_item_changed(&conn, &id, "search")?;
+                .mark_item_changed(&conn, &id, "search", false)?;
         }
         "type" => {
             db.update_field(&id, "type", &value)?;
             db.update_field(&id, "time", &current_time.to_string())?;
             let conn = db.get_connection()?;
             db.get_change_tracker()
-                .mark_item_changed(&conn, &id, "type")?;
+                .mark_item_changed(&conn, &id, "type", false)?;
         }
         "subtype" => {
             db.update_field(&id, "subtype", &value)?;
             db.update_field(&id, "time", &current_time.to_string())?;
             let conn = db.get_connection()?;
             db.get_change_tracker()
-                .mark_item_changed(&conn, &id, "subtype")?;
+                .mark_item_changed(&conn, &id, "subtype", false)?;
         }
         "time" => {
             db.update_field(&id, "time", &value)?;
+            // 时间戳更新不标记为待同步（无实质内容变更）
             let conn = db.get_connection()?;
             db.get_change_tracker()
-                .mark_item_changed(&conn, &id, "time")?;
+                .mark_item_changed(&conn, &id, "time", true)?;
         }
         "syncStatus" => {
             db.update_field(&id, "syncStatus", &value)?;
-            let conn = db.get_connection()?;
-            db.get_change_tracker()
-                .mark_item_changed(&conn, &id, "sync_status")?;
+            // 同步状态变更本身不需要再次触发变更跟踪
         }
         _ => return Err(format!("不支持的字段名: {}", field)),
     }
