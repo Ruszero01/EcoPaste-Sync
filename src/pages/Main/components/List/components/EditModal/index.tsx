@@ -332,6 +332,7 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 							value={content}
 							onChange={setContent}
 							codeLanguage={getCurrentCodeLanguage()}
+							editable={true}
 						/>
 					) : shouldUseMarkdownEditor() ? (
 						<div data-color-mode={isDark ? "dark" : "light"}>
