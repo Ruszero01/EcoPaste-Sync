@@ -5,6 +5,7 @@ import { Flex } from "antd";
 import clsx from "clsx";
 import { useSnapshot } from "valtio";
 import BottomStatusBar from "../BottomStatusBar";
+import FavoriteToggle from "../FavoriteToggle";
 import Group from "../Group";
 import List from "../List";
 import Pin from "../Pin";
@@ -52,6 +53,7 @@ const MainLayout = () => {
 					<Group />
 
 					<Flex align="center" gap={4} className="text-color-2 text-lg">
+						<FavoriteToggle />
 						<Pin />
 
 						<UnoIcon

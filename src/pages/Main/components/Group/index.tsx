@@ -66,12 +66,6 @@ const Group = () => {
 			type: "code",
 			icon: "i-lucide:code-2",
 		},
-		{
-			key: "favorite",
-			label: t("clipboard.label.tab.favorite"),
-			favorite: true,
-			icon: "i-lucide:star",
-		},
 	];
 
 	// 获取过滤后的可见分组列表（与渲染逻辑保持一致）
@@ -110,13 +104,12 @@ const Group = () => {
 	});
 
 	const handleChange = (item: GroupItem) => {
-		const { key, group, favorite, type, subtype } = item;
+		const { key, group, type, subtype } = item;
 
 		setChecked(key);
 
 		// 确保正确更新响应式状态
 		state.group = group;
-		state.favorite = favorite;
 		state.type = type;
 		// 代码分组通过 type = 'code' 识别
 		state.isCode = type === "code";
