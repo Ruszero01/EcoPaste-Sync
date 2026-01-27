@@ -33,6 +33,7 @@ import Files from "./components/Files";
 import HTML from "./components/HTML";
 import Header from "./components/Header";
 import Image from "./components/Image";
+import RTF from "./components/RTF";
 import SyncStatus from "./components/SyncStatus";
 import Text from "./components/Text";
 
@@ -1415,9 +1416,16 @@ const Item: FC<ItemProps> = (props) => {
 	// 渲染内容
 	const renderContent = () => {
 		switch (type) {
-			case "formatted":
-				// 格式文本统一使用 HTML 组件渲染（可渲染 HTML 和 Markdown）
+			case "formatted": {
+				// 基于内容检测 RTF：如果 value 以 {\rtf 开头
+				const isRtf =
+					value?.startsWith("{\\rtf") || value?.startsWith("{\\\\rtf");
+				if (isRtf) {
+					return <RTF {...data} />;
+				}
+				// HTML 和 Markdown 使用 HTML 组件
 				return <HTML {...data} />;
+			}
 			case "image":
 				return <Image {...data} />;
 			case "files":
