@@ -56,7 +56,6 @@ const Main = () => {
 
 	const state = useReactive<State>(INITIAL_STATE);
 	const $eventBus = useEventEmitter<string>();
-	const windowHideTimer = useRef<NodeJS.Timeout>();
 
 	// 监听后端数据库更新事件
 	const handleDatabaseUpdated = useCallback(
@@ -199,25 +198,15 @@ const Main = () => {
 
 	// 监听窗口焦点
 	useTauriFocus({
-		onFocus() {
-			// 重置隐藏计时器
-			if (windowHideTimer.current) {
-				clearTimeout(windowHideTimer.current);
-				windowHideTimer.current = undefined;
-			}
-		},
 		onBlur() {
 			if (state.pin) return;
 
-			// 只有窗口可见时才设置自动隐藏计时器
+			// 只有窗口可见时才隐藏
 			const appWindow = getCurrentWebviewWindow();
 			void appWindow.isVisible().then((isVisible) => {
 				if (!isVisible) return;
 
-				windowHideTimer.current = setTimeout(() => {
-					toggleWindow("main", undefined);
-					windowHideTimer.current = undefined;
-				}, 300);
+				toggleWindow("main", undefined);
 			});
 		},
 	});
@@ -474,11 +463,6 @@ const Main = () => {
 
 	// 清理计时器
 	useUnmount(() => {
-		if (windowHideTimer.current) {
-			clearTimeout(windowHideTimer.current);
-			windowHideTimer.current = undefined;
-		}
-
 		if (getListDebounceTimer.current) {
 			clearTimeout(getListDebounceTimer.current);
 			getListDebounceTimer.current = null;
