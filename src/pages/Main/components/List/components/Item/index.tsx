@@ -1363,26 +1363,12 @@ const Item: FC<ItemProps> = (props) => {
 				const remainingItems = batchDragInfo.items.slice(1);
 				if (remainingItems.length > 0) {
 					// 先执行一次换行操作，因为拖拽粘贴没有换行
-					// 设置内部复制标志，避免换行操作触发剪贴板更新
-					clipboardStore.internalCopy = {
-						isCopying: true,
-						itemId: "drag-newline",
-					};
-
-					try {
-						const { writeText } = await import("@/plugins/clipboard");
-						const { pasteWithFocus } = await import("@/plugins/paste");
-						await writeText("\n");
-						await pasteWithFocus();
-						// 添加短暂延迟，确保换行操作完成
-						await new Promise((resolve) => setTimeout(resolve, 50));
-					} finally {
-						// 清除换行操作的复制标志
-						clipboardStore.internalCopy = {
-							isCopying: false,
-							itemId: null,
-						};
-					}
+					const { writeText } = await import("@/plugins/clipboard");
+					const { pasteWithFocus } = await import("@/plugins/paste");
+					await writeText("\n");
+					await pasteWithFocus();
+					// 添加短暂延迟，确保换行操作完成
+					await new Promise((resolve) => setTimeout(resolve, 50));
 
 					// 然后批量粘贴剩余的项目
 					await batchPasteClipboard(remainingItems);

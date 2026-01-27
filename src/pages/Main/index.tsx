@@ -60,11 +60,6 @@ const Main = () => {
 	// 监听后端数据库更新事件
 	const handleDatabaseUpdated = useCallback(
 		async (event: { payload: { duplicate_id: string | null } }) => {
-			// 检查是否是应用内部复制操作
-			if (clipboardStore.internalCopy.isCopying) {
-				return;
-			}
-
 			// 清除缓存并刷新列表
 			getListCache.current.clear();
 			lastQueryParams = "";
