@@ -47,7 +47,7 @@ fn write_to_clipboard(item_type: &str, value: &str, search: &str) -> Result<(), 
     match item_type {
         "image" => {
             if !value.is_empty() {
-                log::debug!("[Paste] 写入图片到剪贴板");
+                log::info!("[Paste] 写入图片到剪贴板, path={}", value);
                 let image = RustImageData::from_path(value).map_err(|e| e.to_string())?;
                 context.set_image(image).map_err(|e| e.to_string())
             } else {
@@ -56,18 +56,19 @@ fn write_to_clipboard(item_type: &str, value: &str, search: &str) -> Result<(), 
         }
         "formatted" | "html" => {
             if !value.is_empty() {
-                log::debug!("[Paste] 写入 HTML 到剪贴板");
+                log::info!("[Paste] 写入 HTML 到剪贴板, type={}, value_len={}, value_preview={}", item_type, value.len(), &value[..std::cmp::min(value.len(), 200)]);
                 let contents = vec![
                     ClipboardContent::Text(text.to_string()),
                     ClipboardContent::Html(value.to_string()),
                 ];
                 context.set(contents).map_err(|e| e.to_string())
             } else {
+                log::info!("[Paste] 写入空值，使用纯文本, text={}", text);
                 context.set_text(text.to_string()).map_err(|e| e.to_string())
             }
         }
         "rtf" => {
-            log::debug!("[Paste] 写入 RTF 到剪贴板");
+            log::info!("[Paste] 写入 RTF 到剪贴板, value_len={}, value_preview={}", value.len(), &value[..std::cmp::min(value.len(), 200)]);
             let mut contents = vec![ClipboardContent::Rtf(value.to_string())];
             if !cfg!(target_os = "macos") {
                 contents.push(ClipboardContent::Text(text.to_string()));
@@ -75,7 +76,7 @@ fn write_to_clipboard(item_type: &str, value: &str, search: &str) -> Result<(), 
             context.set(contents).map_err(|e| e.to_string())
         }
         _ => {
-            log::debug!("[Paste] 写入文本到剪贴板");
+            log::info!("[Paste] 写入纯文本到剪贴板, type={}, text={}", item_type, text);
             context.set_text(text.to_string()).map_err(|e| e.to_string())
         }
     }
@@ -165,10 +166,6 @@ fn get_paste_delay_ms(item_type: &str, size_bytes: usize) -> u64 {
         _ => 30,
     }
 }
-
-/// 获取换行符等待时间（毫秒）
-const NEWLINE_WRITE_DELAY_MS: u64 = 15;
-const NEWLINE_PASTE_DELAY_MS: u64 = 40;
 
 // ==================== 修饰键处理 ====================
 
@@ -301,7 +298,7 @@ pub async fn quick_paste<R: Runtime>(app_handle: AppHandle<R>, index: u32) -> Re
         item_type
     );
 
-    log::debug!("[Paste] 正在写入剪贴板, type={}", item_type);
+    log::info!("[Paste] quick_paste 写入剪贴板: type={}, subtype={}, value_len={}", item_type, item.subtype.as_deref().unwrap_or("none"), value.len());
     let write_result = write_to_clipboard(item_type, &value, &search);
 
     match write_result {
@@ -405,13 +402,13 @@ pub async fn batch_paste<R: Runtime>(
         let write_delay = get_write_delay_ms(item_type, content_size);
         let paste_delay = get_paste_delay_ms(item_type, content_size);
 
-        log::debug!(
-            "[Paste] 批量粘贴: 第 {}/{} 项, id={}, type={}, size={}",
+        log::info!(
+            "[Paste] 批量粘贴: 第 {}/{} 项, id={}, type={}, subtype={}",
             i + 1,
             items.len(),
             item.id,
             item_type,
-            content_size
+            item.subtype.as_deref().unwrap_or("none")
         );
 
         // 写入剪贴板
@@ -433,29 +430,20 @@ pub async fn batch_paste<R: Runtime>(
                 // 粘贴后动态等待（给目标应用更多处理时间）
                 tokio::time::sleep(std::time::Duration::from_millis(paste_delay)).await;
 
-                // 如果不是最后一项，添加换行粘贴
+                // 如果不是最后一项，模拟 Enter 键换行
                 if i < items.len() - 1 {
-                    // 写入换行符
-                    let newline_result = {
-                        use clipboard_rs::{Clipboard, ClipboardContext};
-                        let context = ClipboardContext::new().map_err(|e| e.to_string())?;
-                        context.set_text("\n".to_string()).map_err(|e| e.to_string())
-                    };
+                    let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
+                    enigo.key(Key::Return, Click).map_err(|e| e.to_string())?;
 
-                    match newline_result {
-                        Ok(_) => {
-                            // 换行符写入后等待
-                            tokio::time::sleep(std::time::Duration::from_millis(NEWLINE_WRITE_DELAY_MS)).await;
+                    // Enter 键后等待
+                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
 
-                            paste_with_focus().await;
+                    // 恢复剪贴板内容（Enter 键可能覆盖了纯文本部分）
+                    let _ = write_to_clipboard(item_type, &value, &search);
 
-                            // 换行后等待
-                            tokio::time::sleep(std::time::Duration::from_millis(NEWLINE_PASTE_DELAY_MS)).await;
-                        }
-                        Err(e) => {
-                            log::warn!("[Paste] 批量粘贴: 换行符写入失败: {}", e);
-                        }
-                    }
+                    // 动态延迟
+                    let newline_delay = get_write_delay_ms("text", 1);
+                    tokio::time::sleep(std::time::Duration::from_millis(newline_delay)).await;
                 }
             }
             Err(e) => {
