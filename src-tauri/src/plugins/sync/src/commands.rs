@@ -313,6 +313,11 @@ pub async fn reload_config_from_file<R: Runtime>(
 /// 加载本地书签数据
 #[tauri::command]
 pub async fn load_bookmark_data() -> Result<BookmarkGroupData, String> {
+    load_bookmark_data_local().await
+}
+
+/// 加载本地书签数据（普通函数，供 engine 使用）
+pub async fn load_bookmark_data_local() -> Result<BookmarkGroupData, String> {
     let data_dir = get_data_path().ok_or_else(|| "无法获取数据目录".to_string())?;
     let bookmark_path = data_dir.join("bookmark-data.json");
 
@@ -371,8 +376,6 @@ pub async fn add_bookmark_group<R: Runtime>(
         id: format!("custom_{}", current_timestamp_millis()),
         name: name.trim().to_string(),
         color,
-        create_time: current_timestamp_millis(),
-        update_time: current_timestamp_millis(),
     };
 
     data.groups.push(new_group.clone());
@@ -425,7 +428,6 @@ pub async fn update_bookmark_group<R: Runtime>(
         group.color = color;
     }
 
-    group.update_time = now;
     data.last_modified = now;
     save_bookmark_data(data, app_handle).await?;
     log::info!("[Bookmark] 更新分组[{}]", updated_group.name);

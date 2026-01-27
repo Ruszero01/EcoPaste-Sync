@@ -2,7 +2,8 @@
 //! 协调各子模块，实现清晰的数据流向和职责分离
 
 use crate::auto_sync_manager::AutoSyncManagerState;
-use crate::bookmark_sync_manager::BookmarkSyncManager;
+use crate::bookmark_sync_manager::{BookmarkSyncData, BookmarkSyncManager};
+use crate::commands::load_bookmark_data_local;
 use crate::config_sync_manager::ConfigSyncManager;
 use crate::data_manager::{create_shared_manager as create_data_manager, DataManager};
 use crate::file_sync_manager::{
@@ -290,20 +291,37 @@ impl CloudSyncEngine {
             .perform_sync(mode_config, database_state, app_handle)
             .await;
 
-        // 执行书签同步（只在主同步成功且有书签数据时）
+        // 执行书签同步（只在主同步成功时）
         if result.is_ok() {
             log::info!("[Bookmark] 开始同步...");
+
+            // 先加载本地书签数据
+            match load_bookmark_data_local().await {
+                Ok(bookmark_data) => {
+                    let bookmark_sync_data = BookmarkSyncData {
+                        groups: bookmark_data.groups,
+                        time: bookmark_data.last_modified,
+                    };
+                    self.set_bookmark_sync_data(bookmark_sync_data).await;
+                }
+                Err(e) => {
+                    log::warn!("[Bookmark] 加载本地数据失败: {}", e);
+                }
+            }
+
+            // 再执行同步检查
             let bookmark_sync_manager = self.bookmark_sync_manager.clone();
             let manager = bookmark_sync_manager.lock().await;
 
             // 检查是否有书签数据需要同步
             if manager.has_bookmark_data() {
-                match manager.sync_bookmarks().await {
-                    Ok(bookmark_result) => {
-                        if bookmark_result.need_upload || bookmark_result.need_download {
-                            log::info!("[Bookmark] 同步: {}", bookmark_result.message);
+                drop(manager); // 释放锁，避免死锁
+                match self.sync_bookmarks().await {
+                    Ok(sync_result) => {
+                        if sync_result.success {
+                            log::info!("[Bookmark] 同步完成");
                         } else {
-                            log::info!("[Bookmark] 数据无需同步");
+                            log::warn!("[Bookmark] 同步失败");
                         }
                     }
                     Err(e) => {

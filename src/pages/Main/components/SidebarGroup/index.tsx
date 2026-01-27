@@ -29,7 +29,6 @@ interface CustomGroup {
 	id: string;
 	name: string;
 	color: string;
-	createTime: number;
 }
 
 interface SidebarGroupProps {
@@ -152,11 +151,11 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 
 				// 更新书签管理器中的数据
 				try {
-					// 转换为BookmarkGroup格式，更新修改时间
+					// 转换为BookmarkGroup格式
 					const bookmarkGroups: BookmarkGroup[] = newGroups.map((group) => ({
-						...group,
-						updateTime: Date.now(), // 更新修改时间以触发同步
-						createTime: group.createTime || Date.now(), // 确保有createTime
+						id: group.id,
+						name: group.name,
+						color: group.color,
 					}));
 
 					// 使用新的reorderGroups方法更新顺序
@@ -381,7 +380,6 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 					id: group.id,
 					name: group.name,
 					color: group.color,
-					createTime: group.createTime,
 				}));
 				setCustomGroups(customGroups);
 				onHasGroupsChange?.(customGroups.length > 0);
@@ -408,7 +406,6 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 						id: group.id,
 						name: group.name,
 						color: group.color,
-						createTime: group.createTime,
 					}));
 
 					// 检查是否有实际变化，避免不必要的重新渲染
@@ -477,7 +474,6 @@ const SidebarGroup: React.FC<SidebarGroupProps> = ({ onHasGroupsChange }) => {
 						id: newGroup.id,
 						name: newGroup.name,
 						color: newGroup.color,
-						createTime: newGroup.createTime,
 					};
 					handleChange(customGroup);
 				}, 100); // 增加延迟确保UI已更新

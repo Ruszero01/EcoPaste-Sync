@@ -10,29 +10,13 @@ pub struct BookmarkGroup {
     pub id: String,
     pub name: String,
     pub color: String,
-    pub create_time: i64,
-    pub update_time: i64,
-}
-
-/// 书签项
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BookmarkItem {
-    pub id: String,
-    pub group_id: String,
-    pub name: String,
-    pub content: String,
-    pub item_type: String,
-    pub create_time: i64,
-    pub update_time: i64,
 }
 
 /// 书签同步数据
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BookmarkSyncData {
     pub groups: Vec<BookmarkGroup>,
-    pub items: Vec<BookmarkItem>,
     pub time: i64,
-    pub device_id: String,
 }
 
 /// 书签同步结果
@@ -51,18 +35,14 @@ pub struct BookmarkSyncManager {
     webdav_client: WebDAVClientState,
     /// 本地书签数据
     local_data: Option<BookmarkSyncData>,
-    /// 设备ID
-    #[allow(dead_code)]
-    device_id: String,
 }
 
 impl BookmarkSyncManager {
     /// 创建新的书签同步管理器
-    pub fn new(webdav_client: WebDAVClientState, device_id: String) -> Self {
+    pub fn new(webdav_client: WebDAVClientState, _device_id: String) -> Self {
         Self {
             webdav_client,
             local_data: None,
-            device_id,
         }
     }
 
@@ -123,6 +103,7 @@ impl BookmarkSyncManager {
         // 如果云端没有书签数据
         if !download_result.success || download_result.data.is_none() {
             log::info!("[Bookmark] 云端无数据，上传本地书签");
+            drop(client); // 释放锁，避免与 upload_bookmarks 死锁
 
             let upload_result = self.upload_bookmarks(&local_data).await?;
             if upload_result.success {
@@ -158,15 +139,15 @@ impl BookmarkSyncManager {
             };
 
         log::info!(
-            "[Bookmark] 分析: 云端分组数={}, 时间戳={}, 设备ID={}",
+            "[Bookmark] 分析: 云端分组数={}, 时间戳={}",
             cloud_data.groups.len(),
-            cloud_data.time,
-            cloud_data.device_id
+            cloud_data.time
         );
 
         // 核心同步逻辑：只比较时间戳，最新的数据胜出
         if local_data.time > cloud_data.time {
             log::info!("[Bookmark] 本地更新，上传云端");
+            drop(client); // 释放锁，避免与 upload_bookmarks 死锁
             let upload_result = self.upload_bookmarks(&local_data).await?;
             return Ok(BookmarkSyncResult {
                 success: upload_result.success,
@@ -272,16 +253,6 @@ impl BookmarkSyncManager {
             data_string.push_str(&format!("{}:{}:{};", group.id, group.name, group.color));
         }
 
-        // 添加书签项信息
-        let mut items = data.items.clone();
-        items.sort_by(|a, b| a.id.cmp(&b.id));
-        for item in items {
-            data_string.push_str(&format!(
-                "{}:{}:{}:{};",
-                item.id, item.group_id, item.name, item.item_type
-            ));
-        }
-
         // 简单的哈希函数
         let mut hash: i64 = 0;
         for byte in data_string.as_bytes() {
@@ -295,7 +266,7 @@ impl BookmarkSyncManager {
     pub fn has_bookmark_data(&self) -> bool {
         self.local_data
             .as_ref()
-            .map(|d| !d.groups.is_empty() || !d.items.is_empty())
+            .map(|d| !d.groups.is_empty())
             .unwrap_or(false)
     }
 

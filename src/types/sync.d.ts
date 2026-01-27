@@ -1,13 +1,11 @@
 // ================================
-// 书签分组数据结构
+// 书签分组数据结构（仅存储搜索关键词）
 // ================================
 
 export interface BookmarkGroup {
 	id: string;
 	name: string;
 	color: string;
-	createTime: number;
-	updateTime: number;
 }
 
 // ================================
