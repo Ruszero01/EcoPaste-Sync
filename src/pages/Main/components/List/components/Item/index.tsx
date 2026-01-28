@@ -1318,7 +1318,11 @@ const Item: FC<ItemProps> = (props) => {
 					const plainTextValue = extractTextWithNewlines(actualValue);
 
 					dataTransfer.setData("text/plain", plainTextValue);
-					dataTransfer.setData("text/html", actualValue);
+					// 只有 HTML 类型才写入 text/html，RTF 类型由 text/rtf 处理
+					if (subtype === "html") {
+						dataTransfer.setData("text/html", actualValue);
+					}
+					// RTF 类型由 text/rtf 处理，无需额外设置
 				} else {
 					dataTransfer.setData("text/plain", actualValue);
 				}
