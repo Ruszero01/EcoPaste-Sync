@@ -6759,6 +6759,7 @@ dependencies = [
  "serde_json",
  "tauri",
  "tauri-plugin",
+ "tauri-plugin-eco-clipboard",
  "tauri-plugin-eco-common",
  "tauri-plugin-eco-database",
  "tauri-plugin-eco-window",
