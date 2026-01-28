@@ -2,7 +2,7 @@ use commands::ClipboardManager;
 use tauri::{
     generate_handler,
     plugin::{Builder, TauriPlugin},
-    Listener, Manager, Runtime,
+    AppHandle, Listener, Manager, Runtime, State,
 };
 
 mod commands;
@@ -10,6 +10,11 @@ mod commands;
 pub use commands::is_listen_enabled;
 pub use commands::play_copy_audio;
 pub use commands::toggle_listen;
+
+/// 获取 ClipboardManager 的公开函数，供其他插件使用
+pub fn get_clipboard_manager<R: Runtime>(app_handle: &AppHandle<R>) -> State<'_, ClipboardManager> {
+    app_handle.state::<ClipboardManager>()
+}
 
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("eco-clipboard")

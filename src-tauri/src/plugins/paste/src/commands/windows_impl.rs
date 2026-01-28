@@ -36,43 +36,45 @@ impl Drop for QuickPasteLockGuard {
 
 // ==================== 剪贴板写入 ====================
 
-fn write_to_clipboard(item_type: &str, subtype: Option<&str>, value: &str, search: &str) -> Result<(), String> {
-    use clipboard_rs::{
-        common::RustImage, Clipboard, ClipboardContent, ClipboardContext, RustImageData,
-    };
+/// 使用 ClipboardManager 写入剪贴板（会自动记录指纹，避免重复检测）
+fn write_to_clipboard<R: Runtime>(
+    app_handle: &AppHandle<R>,
+    item_type: &str,
+    subtype: Option<&str>,
+    value: &str,
+    search: &str,
+    plain: bool,
+) -> Result<(), String> {
+    // 获取 ClipboardManager
+    let manager = tauri_plugin_eco_clipboard::get_clipboard_manager(app_handle);
+    let manager = manager.inner();
 
-    let text = if search.is_empty() { value } else { search };
-    let context = ClipboardContext::new().map_err(|e| e.to_string())?;
+    // 默认粘贴用 value，纯文本粘贴用 search
+    let text = if plain {
+        if search.is_empty() { value } else { search }
+    } else {
+        value
+    };
 
     match item_type {
         "image" => {
-            if !value.is_empty() {
-                let image = RustImageData::from_path(value).map_err(|e| e.to_string())?;
-                context.set_image(image).map_err(|e| e.to_string())
-            } else {
-                Ok(())
+            if value.is_empty() {
+                return Ok(());
             }
+            manager.write_image(value.to_string())
         }
         "formatted" => {
             match subtype {
                 Some("rtf") => {
                     // RTF 写入
-                    let mut contents = vec![ClipboardContent::Rtf(value.to_string())];
-                    if !cfg!(target_os = "macos") {
-                        contents.push(ClipboardContent::Text(text.to_string()));
-                    }
-                    context.set(contents).map_err(|e| e.to_string())
+                    manager.write_rtf(text.to_string(), value.to_string())
                 }
                 _ => {
                     // HTML 写入（默认）
                     if !value.is_empty() {
-                        let contents = vec![
-                            ClipboardContent::Text(text.to_string()),
-                            ClipboardContent::Html(value.to_string()),
-                        ];
-                        context.set(contents).map_err(|e| e.to_string())
+                        manager.write_html(text.to_string(), value.to_string())
                     } else {
-                        context.set_text(text.to_string()).map_err(|e| e.to_string())
+                        manager.write_text(text.to_string())
                     }
                 }
             }
@@ -80,25 +82,18 @@ fn write_to_clipboard(item_type: &str, subtype: Option<&str>, value: &str, searc
         "html" => {
             // 保持旧兼容，直接写入 HTML
             if !value.is_empty() {
-                let contents = vec![
-                    ClipboardContent::Text(text.to_string()),
-                    ClipboardContent::Html(value.to_string()),
-                ];
-                context.set(contents).map_err(|e| e.to_string())
+                manager.write_html(text.to_string(), value.to_string())
             } else {
-                context.set_text(text.to_string()).map_err(|e| e.to_string())
+                manager.write_text(text.to_string())
             }
         }
         "rtf" => {
             // 保持旧兼容，直接写入 RTF
-            let mut contents = vec![ClipboardContent::Rtf(value.to_string())];
-            if !cfg!(target_os = "macos") {
-                contents.push(ClipboardContent::Text(text.to_string()));
-            }
-            context.set(contents).map_err(|e| e.to_string())
+            manager.write_rtf(text.to_string(), value.to_string())
         }
         _ => {
-            context.set_text(text.to_string()).map_err(|e| e.to_string())
+            // 纯文本写入
+            manager.write_text(text.to_string())
         }
     }
 }
@@ -295,7 +290,7 @@ pub async fn quick_paste<R: Runtime>(app_handle: AppHandle<R>, index: u32) -> Re
     let search = item.search.clone().unwrap_or_default();
 
     let _id = item.id.clone();
-    let write_result = write_to_clipboard(item_type, subtype, &value, &search);
+    let write_result = write_to_clipboard(&app_handle, item_type, subtype, &value, &search, false);
 
     match write_result {
         Ok(_) => {
@@ -371,7 +366,7 @@ pub async fn batch_paste<R: Runtime>(
 
     // 如果 prepend_newline 为 true，先写入换行并粘贴
     if prepend_newline.unwrap_or(false) {
-        let write_result = write_to_clipboard("text", None, "\n", "\n");
+        let write_result = write_to_clipboard(&app_handle, "text", None, "\n", "\n", true);
         match write_result {
             Ok(_) => {
                 let delay = get_write_delay_ms("text", 1);
@@ -399,9 +394,9 @@ pub async fn batch_paste<R: Runtime>(
 
         // 写入剪贴板
         let write_result = if plain {
-            write_to_clipboard("text", None, &search, &search)
+            write_to_clipboard(&app_handle, "text", None, &search, &search, true)
         } else {
-            write_to_clipboard(item_type, subtype, &value, &search)
+            write_to_clipboard(&app_handle, item_type, subtype, &value, &search, false)
         };
 
         match write_result {
@@ -481,9 +476,9 @@ pub async fn single_paste<R: Runtime>(
         (item_type == "formatted" && tauri_plugin_eco_database::config::should_paste_plain(&app_handle));
 
     let write_result = if use_plain {
-        write_to_clipboard("text", None, &search, &search)
+        write_to_clipboard(&app_handle, "text", None, &search, &search, true)
     } else {
-        write_to_clipboard(item_type, subtype, &value, &search)
+        write_to_clipboard(&app_handle, item_type, subtype, &value, &search, false)
     };
 
     match write_result {
@@ -504,11 +499,11 @@ pub async fn single_paste<R: Runtime>(
 
 #[command]
 pub async fn paste_color<R: Runtime>(
-    _app_handle: AppHandle<R>,
+    app_handle: AppHandle<R>,
     color_value: String,
 ) -> Result<(), String> {
     // 写入纯文本到剪贴板
-    let write_result = write_to_clipboard("text", None, &color_value, &color_value);
+    let write_result = write_to_clipboard(&app_handle, "text", None, &color_value, &color_value, true);
 
     match write_result {
         Ok(_) => {

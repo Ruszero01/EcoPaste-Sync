@@ -97,6 +97,70 @@ impl ClipboardManager {
     }
 }
 
+impl ClipboardManager {
+    /// 写入纯文本并记录指纹
+    pub fn write_text(&self, value: String) -> Result<(), String> {
+        let fingerprint = format!("text:{}", value);
+        self.record_write_fingerprint(fingerprint);
+
+        self.context
+            .lock()
+            .map_err(|e| e.to_string())?
+            .set_text(value)
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// 写入 HTML 格式并记录指纹
+    pub fn write_html(&self, text: String, html: String) -> Result<(), String> {
+        let fingerprint = format!("html:{}", text);
+        self.record_write_fingerprint(fingerprint);
+
+        let contents = vec![clipboard_rs::ClipboardContent::Text(text), clipboard_rs::ClipboardContent::Html(html)];
+
+        self.context
+            .lock()
+            .map_err(|e| e.to_string())?
+            .set(contents)
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// 写入 RTF 格式并记录指纹
+    pub fn write_rtf(&self, text: String, rtf: String) -> Result<(), String> {
+        let fingerprint = format!("rtf:{}", text);
+        self.record_write_fingerprint(fingerprint);
+
+        let mut contents = vec![clipboard_rs::ClipboardContent::Rtf(rtf)];
+
+        if cfg!(not(target_os = "macos")) {
+            contents.push(clipboard_rs::ClipboardContent::Text(text))
+        }
+
+        self.context
+            .lock()
+            .map_err(|e| e.to_string())?
+            .set(contents)
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// 写入图片并记录指纹
+    pub fn write_image(&self, path: String) -> Result<(), String> {
+        let fingerprint = format!("image:{}", path);
+        self.record_write_fingerprint(fingerprint);
+
+        let image = clipboard_rs::RustImageData::from_path(&path).map_err(|e| e.to_string())?;
+
+        self.context
+            .lock()
+            .map_err(|e| e.to_string())?
+            .set_image(image)
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+}
+
 struct ClipboardListen<R>
 where
     R: Runtime,
