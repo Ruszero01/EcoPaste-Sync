@@ -425,14 +425,14 @@ export const writeClipboard = async (
 				if (plain) {
 					return writeText(textValue);
 				}
-				return writeHTML(value, search);
+				return writeHTML(search, value);
 			}
 			if (subtype === "rtf") {
 				// RTF纯文本粘贴：写入纯文本内容
 				if (plain) {
 					return writeText(textValue);
 				}
-				return writeRTF(value, search);
+				return writeRTF(search, value);
 			}
 			return writeText(textValue);
 		default:

@@ -109,6 +109,48 @@ const Item: FC<ItemProps> = (props) => {
 		return val; // 返回原始值
 	};
 
+	// 辅助函数：从HTML提取保留换行的纯文本（用于拖拽）
+	const extractTextWithNewlines = (html: string): string => {
+		if (!html) return "";
+
+		try {
+			// 提取 StartFragment 和 EndFragment 之间的内容
+			const start = html.indexOf("<!--StartFragment-->");
+			const end = html.indexOf("<!--EndFragment-->");
+			let content = "";
+			if (start !== -1 && end !== -1 && end > start) {
+				content = html.substring(start + 20, end);
+			} else {
+				content = html;
+			}
+
+			// 将块级标签（div, p, br, li 等）替换为换行符
+			content = content
+				.replace(/<\/?div[^>]*>/gi, "\n")
+				.replace(/<\/?p[^>]*>/gi, "\n")
+				.replace(/<br\s*\/?>/gi, "\n")
+				.replace(/<\/?li[^>]*>/gi, "\n");
+
+			// 移除剩余标签
+			content = content.replace(/<[^>]+>/g, "");
+
+			// 解码 HTML 实体
+			const textarea = document.createElement("textarea");
+			textarea.innerHTML = content;
+			let text = textarea.value;
+
+			// 将不间断空格 (NBSP, 码点 160) 替换为普通空格
+			text = text.replace(/\u00A0/g, " ");
+
+			// 将多个连续换行替换为单个换行
+			text = text.replace(/\n\s*\n/g, "\n");
+
+			return text.trim();
+		} catch {
+			return "";
+		}
+	};
+
 	// 创建图片缩略图函数
 	const createImageThumbnail = async (imagePath: string): Promise<string> => {
 		try {
@@ -1199,15 +1241,8 @@ const Item: FC<ItemProps> = (props) => {
 
 				// 根据内容类型设置适当的格式
 				if (firstSubtype === "html") {
-					let plainTextValue = actualValue;
-					try {
-						const tempDiv = document.createElement("div");
-						tempDiv.innerHTML = actualValue;
-						plainTextValue =
-							tempDiv.textContent || tempDiv.innerText || actualValue;
-					} catch {
-						// 如果HTML解析失败，使用原值
-					}
+					// 使用保留换行的文本提取函数
+					const plainTextValue = extractTextWithNewlines(actualValue);
 
 					dataTransfer.setData("text/plain", plainTextValue);
 					dataTransfer.setData("text/html", actualValue);
@@ -1279,15 +1314,8 @@ const Item: FC<ItemProps> = (props) => {
 
 				// 格式文本类型：设置 HTML 和纯文本数据
 				if (type === "formatted") {
-					let plainTextValue = actualValue;
-					try {
-						const tempDiv = document.createElement("div");
-						tempDiv.innerHTML = actualValue;
-						plainTextValue =
-							tempDiv.textContent || tempDiv.innerText || actualValue;
-					} catch {
-						// 如果HTML解析失败，使用原值
-					}
+					// 使用保留换行的文本提取函数
+					const plainTextValue = extractTextWithNewlines(actualValue);
 
 					dataTransfer.setData("text/plain", plainTextValue);
 					dataTransfer.setData("text/html", actualValue);
@@ -1298,11 +1326,7 @@ const Item: FC<ItemProps> = (props) => {
 				dataTransfer.setData("application/x-ecopaste-clipboard", actualValue);
 
 				// 创建拖拽预览
-				let previewContent = actualValue.trim();
-				const tempDiv = document.createElement("div");
-				tempDiv.innerHTML = previewContent;
-				previewContent =
-					tempDiv.textContent || tempDiv.innerText || previewContent;
+				const previewContent = extractTextWithNewlines(actualValue.trim());
 
 				createDragPreview(event, {
 					content: previewContent,
