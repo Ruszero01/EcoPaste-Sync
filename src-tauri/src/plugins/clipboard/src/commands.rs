@@ -99,14 +99,17 @@ impl ClipboardManager {
 
 impl ClipboardManager {
     /// 写入纯文本并记录指纹
+    /// 使用 set() 并只传入 Text 以清除其他格式（如 HTML/RTF）
     pub fn write_text(&self, value: String) -> Result<(), String> {
         let fingerprint = format!("text:{}", value);
         self.record_write_fingerprint(fingerprint);
 
+        // 使用 set() 只传入 Text 格式，确保清除其他格式
+        let contents = vec![clipboard_rs::ClipboardContent::Text(value)];
         self.context
             .lock()
             .map_err(|e| e.to_string())?
-            .set_text(value)
+            .set(contents)
             .map_err(|e| e.to_string())?;
         Ok(())
     }
