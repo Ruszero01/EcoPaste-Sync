@@ -1,7 +1,7 @@
 use super::wait;
 use rdev::{simulate, EventType, Key};
 use std::sync::Mutex;
-use tauri::command;
+use tauri::{command, AppHandle, Runtime};
 use tauri_plugin_eco_window::MAIN_WINDOW_TITLE;
 use x11::xlib::{
     self, Atom, Display, XCloseDisplay, XDefaultRootWindow, XFree, XGetInputFocus,
@@ -151,4 +151,41 @@ pub async fn paste_with_focus() {
     dispatch(&EventType::KeyPress(Key::Insert));
     dispatch(&EventType::KeyRelease(Key::Insert));
     dispatch(&EventType::KeyRelease(Key::ShiftLeft));
+}
+
+// 单个粘贴命令 - Linux 存根实现
+#[command]
+pub async fn single_paste<R: Runtime>(
+    _app_handle: AppHandle<R>,
+    _id: String,
+    _plain: bool,
+) -> Result<(), String> {
+    // Linux: 剪贴板写入由 clipboard 插件处理
+    // 此处仅返回成功，由前端处理剪贴板写入
+    Ok(())
+}
+
+// 批量粘贴命令 - Linux 存根实现
+#[command]
+pub async fn batch_paste<R: Runtime>(
+    _app_handle: AppHandle<R>,
+    _ids: Vec<String>,
+    _plain: bool,
+    _skip_first: Option<bool>,
+    _prepend_newline: Option<bool>,
+) -> Result<(), String> {
+    // Linux: 剪贴板写入由 clipboard 插件处理
+    // 此处仅返回成功，由前端处理剪贴板写入
+    Ok(())
+}
+
+// 颜色粘贴命令 - Linux 存根实现
+#[command]
+pub async fn paste_color<R: Runtime>(
+    _app_handle: AppHandle<R>,
+    _color_value: String,
+) -> Result<(), String> {
+    // Linux: 剪贴板写入由 clipboard 插件处理
+    // 此处仅返回成功，由前端处理剪贴板写入
+    Ok(())
 }

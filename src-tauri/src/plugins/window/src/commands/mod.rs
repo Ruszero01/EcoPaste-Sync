@@ -1,4 +1,4 @@
-use tauri::{AppHandle, Manager, Runtime, WebviewWindow};
+use tauri::{async_runtime::spawn, AppHandle, Manager, Runtime, WebviewWindow};
 
 use tauri_plugin_eco_common::config::{get_nested, read_config};
 
@@ -300,9 +300,24 @@ pub async fn hide_window_with_behavior<R: Runtime>(
     if let Some(win) = window {
         match mode.as_str() {
             "lightweight" => {
-                // 轻量模式：直接销毁窗口
-                log::info!("[Window] 轻量模式：销毁窗口 {}", label);
-                let _ = win.destroy();
+                // 轻量模式：先隐藏窗口（用户体验：窗口不见了）
+                // 延迟 50ms 后再销毁，给后端发送命令的时间
+                log::info!("[Window] 轻量模式：隐藏窗口 {}", label);
+                let _ = win.hide();
+
+                let app_handle_clone = app_handle.clone();
+                let label_clone = label.clone();
+                spawn(async move {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+                    if let Some(win) = app_handle_clone.get_webview_window(&label_clone) {
+                        if let Ok(visible) = win.is_visible() {
+                            if !visible {
+                                let _ = win.destroy();
+                                log::info!("[Window] 轻量模式：窗口 {} 已销毁", label_clone);
+                            }
+                        }
+                    }
+                });
             }
             "resident" => {
                 // 常驻模式：隐藏窗口

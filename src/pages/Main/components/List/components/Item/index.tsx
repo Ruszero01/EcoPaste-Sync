@@ -3,7 +3,6 @@ import UnoIcon from "@/components/UnoIcon";
 import { LISTEN_KEY } from "@/constants";
 import { MainContext } from "@/pages/Main";
 import { convertColor, smartPasteClipboard } from "@/plugins/clipboard";
-import { batchPasteClipboard, writeClipboard } from "@/plugins/clipboard";
 import { backendDeleteItems, backendUpdateField } from "@/plugins/database";
 import { clipboardStore } from "@/stores/clipboard";
 import { globalStore } from "@/stores/global";
@@ -744,10 +743,9 @@ const Item: FC<ItemProps> = (props) => {
 				return;
 			}
 
-			const { writeText } = await import("@/plugins/clipboard");
-			const { pasteWithFocus } = await import("@/plugins/paste");
-			await writeText(result.value);
-			await pasteWithFocus();
+			const { pasteColor } = await import("@/plugins/paste");
+			// 异步触发，不等待完成
+			void pasteColor(result.value);
 			message.success(successMessage);
 		} catch (error) {
 			console.error("颜色格式转换失败:", error);
@@ -1362,16 +1360,10 @@ const Item: FC<ItemProps> = (props) => {
 				// 非文件类型：批量粘贴时跳过第一个项目，因为第一个项目已经通过拖拽粘贴了
 				const remainingItems = batchDragInfo.items.slice(1);
 				if (remainingItems.length > 0) {
-					// 先执行一次换行操作，因为拖拽粘贴没有换行
-					const { writeText } = await import("@/plugins/clipboard");
-					const { pasteWithFocus } = await import("@/plugins/paste");
-					await writeText("\n");
-					await pasteWithFocus();
-					// 添加短暂延迟，确保换行操作完成
-					await new Promise((resolve) => setTimeout(resolve, 50));
-
-					// 然后批量粘贴剩余的项目
-					await batchPasteClipboard(remainingItems);
+					// 提取 ID 列表，使用新的 prependNewline 参数
+					const { batchPasteByIds } = await import("@/plugins/paste");
+					const ids = remainingItems.map((item) => item.id).filter(Boolean);
+					await batchPasteByIds(ids, false, false, true); // prependNewline=true
 				}
 			}
 
@@ -1389,7 +1381,7 @@ const Item: FC<ItemProps> = (props) => {
 			// 设置激活项为第一个粘贴的项目
 			setActiveItemAfterOperation(updatedItems);
 		} catch (error) {
-			console.error("❌ 批量拖拽粘贴失败:", error);
+			console.error("批量拖拽粘贴失败:", error);
 		} finally {
 			// 清除批量拖拽信息
 			clipboardStore.batchDragInfo = {

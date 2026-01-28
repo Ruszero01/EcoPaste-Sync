@@ -4,7 +4,6 @@ import type { ClipboardPayload, ReadImage } from "@/types/plugin";
 import { getSaveImagePath } from "@/utils/path";
 import { invoke } from "@tauri-apps/api/core";
 import { fullName, metadata } from "tauri-plugin-fs-pro-api";
-import { pasteWithFocus } from "./paste";
 
 const COMMAND = {
 	STOP_LISTEN: "plugin:eco-clipboard|stop_listen",
@@ -443,29 +442,6 @@ export const writeClipboard = async (
 };
 
 /**
- * 粘贴剪贴板内容
- * 1. 写入数据到剪贴板
- * 2. 执行粘贴操作
- */
-export const pasteClipboard = async (
-	data: HistoryTablePayload,
-	plain = false,
-) => {
-	await writeClipboard(data, plain);
-
-	// 始终执行粘贴操作
-	await pasteWithFocus();
-
-	// 如果是纯文本模式且用户设置了粘贴后清空
-	if (plain) {
-		const { pastePlain } = clipboardStore.content;
-		if (pastePlain) {
-			await writeText("");
-		}
-	}
-};
-
-/**
  * 智能粘贴剪贴板数据
  */
 export const readClipboard = async (skipTypeDetection = false) => {
@@ -625,7 +601,7 @@ export const getClipboardSubtype = async (data: ClipboardPayload) => {
 };
 
 /**
- * 智能粘贴剪贴板数据
+ * 智能粘贴剪贴板数据（后端实现，轻量模式兼容）
  */
 export const smartPasteClipboard = async (
 	data?: HistoryTablePayload,
@@ -633,9 +609,10 @@ export const smartPasteClipboard = async (
 ) => {
 	if (!data) return;
 
-	// 直接使用原有逻辑，同步阶段已确保所有文件都是本地可用的
-	// 后端会通过前台窗口检测跳过 EcoPaste 自身写入的剪贴板
-	return await pasteClipboard(data, plain);
+	// 调用后端单个粘贴命令（不等待完成）
+	const { singlePasteById } = await import("./paste");
+	// 异步触发，不等待完成
+	void singlePasteById(data.id, plain);
 };
 
 /**
@@ -649,12 +626,13 @@ export const batchPasteClipboard = async (
 ) => {
 	if (!dataList || dataList.length === 0) return;
 
-	// 提取 ID 列表，调用后端批量粘贴
+	// 提取 ID 列表，调用后端批量粘贴（不等待完成）
 	const ids = dataList.map((item) => item.id).filter(Boolean);
 	if (ids.length === 0) return;
 
 	const { batchPasteByIds } = await import("./paste");
-	await batchPasteByIds(ids, plain);
+	// 异步触发，不等待完成
+	void batchPasteByIds(ids, plain);
 };
 
 /// 颜色转换类型

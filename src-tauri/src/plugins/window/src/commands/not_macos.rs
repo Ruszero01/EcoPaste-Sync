@@ -7,6 +7,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
 };
+use std::thread;
 use std::time::Instant;
 use tauri::{command, AppHandle, Manager, Runtime, WebviewWindow};
 
@@ -289,8 +290,25 @@ pub async fn create_window<R: Runtime>(
 
             match mode.as_str() {
                 "lightweight" => {
-                    // 轻量模式：直接销毁
-                    let _ = window_clone.destroy();
+                    // 轻量模式：先隐藏窗口（用户体验：窗口不见了）
+                    // 延迟 50ms 后再销毁，给后端发送命令的时间
+                    let _ = window_clone.hide();
+                    let app_handle_clone2 = app_handle_clone.clone();
+                    let label_clone2 = label_clone.clone();
+                    thread::spawn(move || {
+                        thread::sleep(std::time::Duration::from_millis(50));
+                        let rt = tokio::runtime::Runtime::new().unwrap();
+                        rt.block_on(async move {
+                            if let Some(win) = app_handle_clone2.get_webview_window(&label_clone2) {
+                                if let Ok(visible) = win.is_visible() {
+                                    if !visible {
+                                        let _ = win.destroy();
+                                        log::info!("[Window] 轻量模式：窗口 {} 已销毁", label_clone2);
+                                    }
+                                }
+                            }
+                        });
+                    });
                 }
                 "resident" => {
                     // 常驻模式：隐藏

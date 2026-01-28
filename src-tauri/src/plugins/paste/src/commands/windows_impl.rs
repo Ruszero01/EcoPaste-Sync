@@ -36,7 +36,7 @@ impl Drop for QuickPasteLockGuard {
 
 // ==================== 剪贴板写入 ====================
 
-fn write_to_clipboard(item_type: &str, value: &str, search: &str) -> Result<(), String> {
+fn write_to_clipboard(item_type: &str, subtype: Option<&str>, value: &str, search: &str) -> Result<(), String> {
     use clipboard_rs::{
         common::RustImage, Clipboard, ClipboardContent, ClipboardContext, RustImageData,
     };
@@ -53,7 +53,32 @@ fn write_to_clipboard(item_type: &str, value: &str, search: &str) -> Result<(), 
                 Ok(())
             }
         }
-        "formatted" | "html" => {
+        "formatted" => {
+            match subtype {
+                Some("rtf") => {
+                    // RTF 写入
+                    let mut contents = vec![ClipboardContent::Rtf(value.to_string())];
+                    if !cfg!(target_os = "macos") {
+                        contents.push(ClipboardContent::Text(text.to_string()));
+                    }
+                    context.set(contents).map_err(|e| e.to_string())
+                }
+                _ => {
+                    // HTML 写入（默认）
+                    if !value.is_empty() {
+                        let contents = vec![
+                            ClipboardContent::Text(text.to_string()),
+                            ClipboardContent::Html(value.to_string()),
+                        ];
+                        context.set(contents).map_err(|e| e.to_string())
+                    } else {
+                        context.set_text(text.to_string()).map_err(|e| e.to_string())
+                    }
+                }
+            }
+        }
+        "html" => {
+            // 保持旧兼容，直接写入 HTML
             if !value.is_empty() {
                 let contents = vec![
                     ClipboardContent::Text(text.to_string()),
@@ -65,6 +90,7 @@ fn write_to_clipboard(item_type: &str, value: &str, search: &str) -> Result<(), 
             }
         }
         "rtf" => {
+            // 保持旧兼容，直接写入 RTF
             let mut contents = vec![ClipboardContent::Rtf(value.to_string())];
             if !cfg!(target_os = "macos") {
                 contents.push(ClipboardContent::Text(text.to_string()));
@@ -199,20 +225,23 @@ pub async fn paste() {
 
 #[command]
 pub async fn paste_with_focus() {
-    let mut enigo = Enigo::new(&Settings::default()).unwrap();
-
+    // 使用后端缓存的窗口信息（用户最后操作的窗口）
     if let Some(info) = get_last_valid_window_info() {
         let _ = restore_focus_to_window(info.hwnd);
     }
 
+    // 等待焦点切换完成
     wait(50);
+
+    // 创建新的 Enigo 实例，避免旧连接失效
+    let mut enigo = Enigo::new(&Settings::default()).unwrap();
     release_all_modifier_keys(&mut enigo);
-    wait(10);
+    wait(20);
 
     enigo.key(Key::LShift, Press).unwrap();
-    wait(5);
+    wait(20);
     enigo.key(Key::Insert, Click).unwrap();
-    wait(5);
+    wait(20);
     enigo.key(Key::LShift, Release).unwrap();
 
     wait(20);
@@ -261,11 +290,12 @@ pub async fn quick_paste<R: Runtime>(app_handle: AppHandle<R>, index: u32) -> Re
 
     let item = &items[0];
     let item_type = item.item_type.as_deref().unwrap_or("text");
+    let subtype = item.subtype.as_deref();
     let value = item.value.clone().unwrap_or_default();
     let search = item.search.clone().unwrap_or_default();
 
     let _id = item.id.clone();
-    let write_result = write_to_clipboard(item_type, &value, &search);
+    let write_result = write_to_clipboard(item_type, subtype, &value, &search);
 
     match write_result {
         Ok(_) => {
@@ -286,6 +316,8 @@ pub async fn batch_paste<R: Runtime>(
     app_handle: AppHandle<R>,
     ids: Vec<String>,
     plain: bool,
+    skip_first: Option<bool>,
+    prepend_newline: Option<bool>,
 ) -> Result<(), String> {
     if ids.is_empty() {
         return Ok(());
@@ -332,9 +364,32 @@ pub async fn batch_paste<R: Runtime>(
         return Ok(());
     }
 
+    // 确定实际要粘贴的项目列表
+    let skip_first = skip_first.unwrap_or(false);
+    let start_index = if skip_first { 1 } else { 0 };
+    let items_to_paste: Vec<&HistoryItem> = items.iter().skip(start_index).collect();
+
+    // 如果 prepend_newline 为 true，先写入换行并粘贴
+    if prepend_newline.unwrap_or(false) {
+        let write_result = write_to_clipboard("text", None, "\n", "\n");
+        match write_result {
+            Ok(_) => {
+                let delay = get_write_delay_ms("text", 1);
+                tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                paste_with_focus().await;
+                let paste_delay = get_paste_delay_ms("text", 1);
+                tokio::time::sleep(std::time::Duration::from_millis(paste_delay)).await;
+            }
+            Err(e) => {
+                log::error!("[Paste] 写入换行失败: {}", e);
+            }
+        }
+    }
+
     // 逐个粘贴
-    for (i, item) in items.iter().enumerate() {
+    for (i, item) in items_to_paste.iter().enumerate() {
         let item_type = item.item_type.as_deref().unwrap_or("text");
+        let subtype = item.subtype.as_deref();
         let value = item.value.clone().unwrap_or_default();
         let search = item.search.clone().unwrap_or_default();
 
@@ -344,9 +399,9 @@ pub async fn batch_paste<R: Runtime>(
 
         // 写入剪贴板
         let write_result = if plain {
-            write_to_clipboard("text", &search, &search)
+            write_to_clipboard("text", None, &search, &search)
         } else {
-            write_to_clipboard(item_type, &value, &search)
+            write_to_clipboard(item_type, subtype, &value, &search)
         };
 
         match write_result {
@@ -356,7 +411,7 @@ pub async fn batch_paste<R: Runtime>(
                 tokio::time::sleep(std::time::Duration::from_millis(paste_delay)).await;
 
                 // 如果不是最后一项，模拟 Enter 键换行
-                if i < items.len() - 1 {
+                if i < items_to_paste.len() - 1 {
                     let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
                     enigo.key(Key::Return, Click).map_err(|e| e.to_string())?;
 
@@ -372,4 +427,96 @@ pub async fn batch_paste<R: Runtime>(
     }
 
     Ok(())
+}
+
+// ==================== 单个粘贴命令 ====================
+
+#[command]
+pub async fn single_paste<R: Runtime>(
+    app_handle: AppHandle<R>,
+    id: String,
+    plain: bool,
+) -> Result<(), String> {
+    let db_state = match app_handle.try_state::<DatabaseState>() {
+        Some(state) => state,
+        None => {
+            return Err("数据库插件未初始化".to_string());
+        }
+    };
+
+    let db_state_arc = Arc::clone(&db_state);
+
+    // 查询指定 ID 的项目
+    let item: Option<HistoryItem> = tokio::task::spawn_blocking(move || {
+        let db = db_state_arc.blocking_lock();
+        let options = QueryOptions {
+            only_favorites: false,
+            exclude_deleted: true,
+            limit: Some(1),
+            offset: None,
+            order_by: None,
+            where_clause: Some("id = ?".to_string()),
+            params: Some(vec![id]),
+        };
+
+        let mut items = db.query_history(options)?;
+        Ok::<Option<HistoryItem>, String>(items.pop())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| format!("查询数据库失败: {}", e))?;
+
+    let item = match item {
+        Some(item) => item,
+        None => return Ok(()),
+    };
+
+    let item_type = item.item_type.as_deref().unwrap_or("text");
+    let subtype = item.subtype.as_deref();
+    let value = item.value.clone().unwrap_or_default();
+    let search = item.search.clone().unwrap_or_default();
+
+    // 判断是否应该使用纯文本模式
+    let use_plain = plain ||
+        (item_type == "formatted" && tauri_plugin_eco_database::config::should_paste_plain(&app_handle));
+
+    let write_result = if use_plain {
+        write_to_clipboard("text", None, &search, &search)
+    } else {
+        write_to_clipboard(item_type, subtype, &value, &search)
+    };
+
+    match write_result {
+        Ok(_) => {
+            let content_size = get_content_size(item_type, &value);
+            let write_delay = get_write_delay_ms(item_type, content_size);
+            tokio::time::sleep(std::time::Duration::from_millis(write_delay)).await;
+
+            // 使用后端缓存的窗口信息
+            paste_with_focus().await;
+            Ok(())
+        }
+        Err(e) => Err(e),
+    }
+}
+
+// ==================== 颜色粘贴命令 ====================
+
+#[command]
+pub async fn paste_color<R: Runtime>(
+    _app_handle: AppHandle<R>,
+    color_value: String,
+) -> Result<(), String> {
+    // 写入纯文本到剪贴板
+    let write_result = write_to_clipboard("text", None, &color_value, &color_value);
+
+    match write_result {
+        Ok(_) => {
+            let delay = get_write_delay_ms("text", color_value.len());
+            tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+            paste_with_focus().await;
+            Ok(())
+        }
+        Err(e) => Err(e),
+    }
 }

@@ -108,3 +108,40 @@ pub async fn paste_with_focus<R: Runtime>(app_handle: AppHandle<R>, window: Webv
         .output()
         .expect("failed to execute process");
 }
+
+// 单个粘贴命令 - macOS 存根实现
+#[command]
+pub async fn single_paste<R: Runtime>(
+    _app_handle: AppHandle<R>,
+    _id: String,
+    _plain: bool,
+) -> Result<(), String> {
+    // macOS: 剪贴板写入由 clipboard 插件处理
+    // 此处仅返回成功，由前端处理剪贴板写入
+    Ok(())
+}
+
+// 批量粘贴命令 - macOS 存根实现
+#[command]
+pub async fn batch_paste<R: Runtime>(
+    _app_handle: AppHandle<R>,
+    _ids: Vec<String>,
+    _plain: bool,
+    _skip_first: Option<bool>,
+    _prepend_newline: Option<bool>,
+) -> Result<(), String> {
+    // macOS: 剪贴板写入由 clipboard 插件处理
+    // 此处仅返回成功，由前端处理剪贴板写入
+    Ok(())
+}
+
+// 颜色粘贴命令 - macOS 存根实现
+#[command]
+pub async fn paste_color<R: Runtime>(
+    _app_handle: AppHandle<R>,
+    _color_value: String,
+) -> Result<(), String> {
+    // macOS: 剪贴板写入由 clipboard 插件处理
+    // 此处仅返回成功，由前端处理剪贴板写入
+    Ok(())
+}

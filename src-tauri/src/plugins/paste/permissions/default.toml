@@ -2,5 +2,5 @@
 
 [default]
 description = "Default permissions for the plugin"
-permissions = ["allow-paste", "allow-paste-with-focus", "allow-quick-paste", "allow-batch-paste"]
+permissions = ["allow-paste", "allow-paste-with-focus", "allow-quick-paste", "allow-batch-paste", "allow-single-paste", "allow-paste-color"]
 

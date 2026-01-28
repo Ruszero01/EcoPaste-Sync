@@ -136,13 +136,8 @@ const Main = () => {
 			return;
 		}
 
-		const data = state.list.find((item) => item.id === state.activeId);
-		if (!data) {
-			return;
-		}
-
-		const { smartPasteClipboard } = await import("@/plugins/clipboard");
-		smartPasteClipboard(data, true);
+		const { singlePasteById } = await import("@/plugins/paste");
+		await singlePasteById(state.activeId, true);
 	});
 
 	// 监听搜索状态变化，自动刷新列表
