@@ -278,7 +278,7 @@ where
                             Some(rtf.clone()),
                             text.clone(),
                             text.as_ref().map(|s| s.len() as i32),
-                            None,
+                            Some("rtf".to_string()),
                             None,
                             None,
                         )
@@ -296,7 +296,7 @@ where
                             Some(html),
                             text.clone(),
                             text.as_ref().map(|s| s.len() as i32),
-                            None,
+                            Some("html".to_string()),
                             None,
                             None,
                         )
