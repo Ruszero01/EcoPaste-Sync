@@ -1,5 +1,6 @@
 import type { HistoryTablePayload } from "@/types/database";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { Flex } from "antd";
 import { type FC, memo } from "react";
 
 interface ImageProps extends Partial<HistoryTablePayload> {
@@ -13,6 +14,8 @@ const Image: FC<ImageProps> = (props) => {
 	if (!value) {
 		return null;
 	}
+
+	let imageSrc: string | null = null;
 
 	// 智能图片路径解析（支持新旧格式）
 	if (
@@ -57,37 +60,39 @@ const Image: FC<ImageProps> = (props) => {
 						imagePath.includes("/") ||
 						imagePath.includes("\\"))
 				) {
-					return <img src={convertFileSrc(imagePath)} className={className} />;
+					imageSrc = convertFileSrc(imagePath);
 				}
-
-				console.error("❌ 数组中的图片路径格式无效:", { imagePath, filePaths });
 			}
 		} catch (parseError) {
 			console.error("❌ 解析图片路径数组失败:", parseError, { value });
 		}
+	} else if (typeof value === "string") {
+		// 正常的图片显示（单个文件路径）
+		imageSrc = convertFileSrc(value);
 	}
 
-	// 如果是JSON对象格式（异常情况），返回错误提示
-	if (typeof value === "string" && value.startsWith("{")) {
-		console.error("❌ 图片组件收到JSON对象而不是文件路径:", value);
+	if (!imageSrc) {
 		return (
-			<div className="flex items-center justify-center p-4 text-red-500 text-xs">
+			<div className="flex h-full w-full items-center justify-center text-gray-400 text-xs">
 				图片数据格式错误
 			</div>
 		);
 	}
 
-	// 正常的图片显示（单个文件路径）
-	try {
-		return <img src={convertFileSrc(value)} className={className} />;
-	} catch (error) {
-		console.error("❌ 图片显示失败:", error, { value });
-		return (
-			<div className="flex items-center justify-center p-4 text-gray-400 text-xs">
-				图片加载失败
-			</div>
-		);
-	}
+	return (
+		<Flex
+			align="center"
+			justify="center"
+			className="pointer-events-none h-full w-full overflow-hidden rounded bg-gray-100"
+		>
+			<img
+				src={imageSrc}
+				className={`h-full w-full object-cover ${className}`}
+				alt=""
+				draggable={false}
+			/>
+		</Flex>
+	);
 };
 
 export default memo(Image);
