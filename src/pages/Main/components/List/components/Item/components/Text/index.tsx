@@ -1,4 +1,5 @@
 import SyntaxHighlighter from "@/components/SyntaxHighlighter";
+import Url from "@/pages/Main/components/List/components/Item/components/Url";
 import type { HistoryTablePayload } from "@/types/database";
 import { parseColorString } from "@/utils/color";
 import { Flex } from "antd";
@@ -53,6 +54,11 @@ const Text: FC<HistoryTablePayload> = (props) => {
 		// 检查是否为颜色类型（通过 subtype 判断）
 		if (subtype === "color") {
 			return renderColor();
+		}
+
+		// URL 类型
+		if (subtype === "url") {
+			return <Url value={value} />;
 		}
 
 		// 如果是代码类型，使用subtype作为语言
