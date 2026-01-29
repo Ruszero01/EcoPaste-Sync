@@ -311,6 +311,12 @@ const Main = () => {
 				params.push(`%${search}%`, `%${search}%`);
 			}
 
+			// 添加收藏条件
+			if (favorite !== undefined) {
+				whereClause += " AND favorite = ?";
+				params.push(favorite ? "1" : "0");
+			}
+
 			const list = await backendQueryHistoryWithFilter({
 				where_clause: whereClause,
 				params,
@@ -334,6 +340,12 @@ const Main = () => {
 			if (search) {
 				whereClause += " AND (search LIKE ? OR note LIKE ?)";
 				params.push(`%${search}%`, `%${search}%`);
+			}
+
+			// 添加收藏条件
+			if (favorite !== undefined) {
+				whereClause += " AND favorite = ?";
+				params.push(favorite ? "1" : "0");
 			}
 
 			const list = await backendQueryHistoryWithFilter({
