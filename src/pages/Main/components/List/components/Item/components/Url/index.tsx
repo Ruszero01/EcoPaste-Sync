@@ -30,8 +30,7 @@ const Url: FC<UrlProps> = ({ value }) => {
 		<Flex
 			align="flex-start"
 			gap={6}
-			title={value}
-			className="h-full select-text px-2 pt-2.5"
+			className="pointer-events-none h-full select-text px-2 pt-2.5"
 		>
 			{/* 网站图标 */}
 			<img

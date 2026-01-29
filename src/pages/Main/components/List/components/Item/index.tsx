@@ -1,5 +1,4 @@
 import { createDragPreview } from "@/components/DragPreview";
-import UnoIcon from "@/components/UnoIcon";
 import { LISTEN_KEY } from "@/constants";
 import { MainContext } from "@/pages/Main";
 import { convertColor, smartPasteClipboard } from "@/plugins/clipboard";
@@ -32,6 +31,7 @@ import Files from "./components/Files";
 import HTML from "./components/HTML";
 import Header from "./components/Header";
 import Image from "./components/Image";
+import Note from "./components/Note";
 import RTF from "./components/RTF";
 import SyncStatus from "./components/SyncStatus";
 import Text from "./components/Text";
@@ -1494,12 +1494,7 @@ const Item: FC<ItemProps> = (props) => {
 						},
 					)}
 				>
-					<UnoIcon
-						name="i-hugeicons:task-edit-01"
-						className="mr-0.5 translate-y-0.5"
-					/>
-
-					{note}
+					<Note value={note} />
 				</div>
 
 				<div

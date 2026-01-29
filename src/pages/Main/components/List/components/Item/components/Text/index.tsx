@@ -28,7 +28,7 @@ const Text: FC<HistoryTablePayload> = (props) => {
 			<Flex
 				align="center"
 				gap={12}
-				className="h-full translate-y-[-2.5px] select-text px-2"
+				className="pointer-events-none h-full translate-y-[-2.5px] select-text px-2"
 			>
 				{/* 颜色圆圈 */}
 				<div
