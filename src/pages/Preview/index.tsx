@@ -1,41 +1,21 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { Flex } from "antd";
-import { type FC, useEffect, useState } from "react";
+import { type FC, useMemo } from "react";
+
+// 立即从 URL 读取参数，不使用 useEffect 延迟
+function getImagePathFromUrl(): string | null {
+	const hash = window.location.hash;
+	const searchParams = new URLSearchParams(hash.split("?")[1] || "");
+	const path = searchParams.get("path");
+	return path ? decodeURIComponent(path) : null;
+}
 
 const Preview: FC = () => {
-	const [debugInfo, setDebugInfo] = useState<string>("初始化中...");
-
-	useEffect(() => {
-		// 直接从 window.location 获取 URL 参数
-		const hash = window.location.hash;
-		setDebugInfo(`Hash: ${hash}`);
-
-		// 解析 hash 中的参数 (/#/preview?path=xxx)
-		const searchParams = new URLSearchParams(hash.split("?")[1] || "");
-		const path = searchParams.get("path");
-
-		setDebugInfo(`Path: ${path || "无"}`);
-
-		if (path) {
-			// URL 解码
-			const decodedPath = decodeURIComponent(path);
-			setDebugInfo(`Decoded: ${decodedPath.substring(0, 50)}...`);
-			setImagePath(decodedPath);
-		}
-	}, []);
-
-	const [imagePath, setImagePath] = useState<string | null>(null);
+	// 使用 useMemo 缓存，避免重复计算
+	const imagePath = useMemo(() => getImagePathFromUrl(), []);
 
 	if (!imagePath) {
-		return (
-			<Flex
-				align="center"
-				justify="center"
-				className="h-full w-full bg-transparent"
-			>
-				<div className="text-gray-400 text-sm">加载中... ({debugInfo})</div>
-			</Flex>
-		);
+		return null; // 没有路径时不显示任何内容
 	}
 
 	const imageSrc = convertFileSrc(imagePath);
