@@ -628,15 +628,14 @@ pub async fn show_image_preview<R: Runtime>(
     // 检查窗口是否已存在且可见，避免重复创建
     if let Some(existing_window) = app_handle.get_webview_window(PREVIEW_WINDOW_LABEL) {
         if existing_window.is_visible().unwrap_or(false) {
-            // 窗口已存在且可见，只更新内容和位置
-            let _ = existing_window.emit("preview-image-update", serde_json::json!({
-                "path": image_path,
-            }));
+            // 窗口已存在且可见，只更新位置（内容通过URL参数传递）
             set_window_follow_cursor(&existing_window);
             return Ok(());
         }
-        // 窗口存在但不可见，销毁它
+        // 窗口存在但不可见，销毁它并等待完成
         let _ = existing_window.destroy();
+        // 等待一小段时间确保窗口完全销毁
+        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
     }
 
     // 计算窗口大小
