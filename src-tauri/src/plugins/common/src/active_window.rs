@@ -4,7 +4,25 @@
 use once_cell::sync::Lazy;
 use serde::Serialize;
 use std::ptr;
+use std::sync::mpsc;
 use std::sync::Mutex;
+
+// ==================== 窗口变化通知通道 ====================
+
+static WINDOW_CHANNEL: Lazy<Mutex<Option<mpsc::Sender<ForegroundWindowInfo>>>> =
+    Lazy::new(|| Mutex::new(None));
+
+/// 设置窗口变化通知通道
+pub fn set_window_sender(sender: mpsc::Sender<ForegroundWindowInfo>) {
+    let mut guard = WINDOW_CHANNEL.lock().unwrap();
+    *guard = Some(sender);
+}
+
+/// 获取窗口变化通知发送者
+fn get_window_sender() -> Option<mpsc::Sender<ForegroundWindowInfo>> {
+    let guard = WINDOW_CHANNEL.lock().unwrap();
+    guard.clone()
+}
 
 // ==================== 类型定义 ====================
 
@@ -158,6 +176,11 @@ mod windows_impl {
                     info.process_name,
                     window_title
                 );
+
+                // 发送窗口变化通知
+                if let Some(sender) = get_window_sender() {
+                    let _ = sender.send(info.clone());
+                }
             }
         }
     }

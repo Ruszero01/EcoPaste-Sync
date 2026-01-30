@@ -1,4 +1,4 @@
-use tauri::{async_runtime::spawn, AppHandle, Emitter, Manager, Runtime, WebviewWindow};
+use tauri::{async_runtime::spawn, AppHandle, Manager, Runtime, WebviewWindow};
 
 use tauri_plugin_eco_common::config::{get_nested, read_config};
 

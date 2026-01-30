@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use tauri::{command, AppHandle, Emitter, Runtime};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutEvent};
 
-use super::blacklist::{add_to_blacklist, clear_blacklist, get_blacklist, is_process_in_blacklist, remove_from_blacklist};
-use tauri_plugin_eco_common::{active_window::get_current_window_info, config::get_nested, paths::get_config_path};
+use super::blacklist::{add_to_blacklist, clear_blacklist, get_blacklist, remove_from_blacklist};
+use tauri_plugin_eco_common::{config::get_nested, paths::get_config_path};
 
 // 用于防止并发注册的互斥锁
 static REGISTRATION_LOCK: Mutex<()> = Mutex::new(());
@@ -66,28 +66,6 @@ fn handle_shortcut_event<R: Runtime>(
             let read_guard = map.read().unwrap();
             read_guard.get(shortcut_normalized.as_str()).cloned()
         };
-
-        // 检查是否是主快捷键 (基于配置的快捷键)
-        let is_main_shortcut = action.is_some() && matches!(action.as_deref(), Some("clipboard" | "preference"));
-
-        // 如果是主快捷键，检查黑名单
-        if is_main_shortcut {
-            match get_current_window_info() {
-                Ok(window_info) => {
-                    if is_process_in_blacklist(&window_info.process_name) {
-                        log::info!(
-                            "[Hotkey] 快捷键被黑名单拦截: {} ({})",
-                            window_info.window_title,
-                            window_info.process_name
-                        );
-                        return;
-                    }
-                }
-                Err(e) => {
-                    log::warn!("[Hotkey] 获取当前窗口信息失败: {}", e);
-                }
-            }
-        }
 
         // 根据映射的操作执行对应功能
         match action.as_deref() {
@@ -218,8 +196,6 @@ pub async fn register_all_shortcuts<R: Runtime>(
 
     // 使用 unregister_all 清除所有快捷键和回调
     let _ = global_shortcut.unregister_all();
-    // 等待注销完全生效
-    std::thread::sleep(std::time::Duration::from_millis(200));
 
     // 更新快捷键映射表
     let action_map = SHORTCUT_ACTION_MAP.get_or_init(|| RwLock::new(HashMap::new()));
@@ -274,4 +250,13 @@ pub fn remove_from_blacklist_cmd<R: Runtime>(app_handle: AppHandle<R>, process_n
 #[command]
 pub fn clear_blacklist_cmd<R: Runtime>(app_handle: AppHandle<R>) -> Result<(), String> {
     clear_blacklist(app_handle)
+}
+
+/// 注销所有快捷键
+#[command]
+pub fn unregister_all_shortcuts_cmd<R: Runtime>(app_handle: AppHandle<R>) -> Result<(), String> {
+    // 获取锁，防止与注册操作产生竞态
+    let _guard = REGISTRATION_LOCK.lock().map_err(|e| e.to_string())?;
+    let global_shortcut = app_handle.global_shortcut();
+    global_shortcut.unregister_all().map_err(|e| e.to_string())
 }
