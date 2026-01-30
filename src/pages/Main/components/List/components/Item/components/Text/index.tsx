@@ -28,16 +28,16 @@ const Text: FC<HistoryTablePayload> = (props) => {
 			<Flex
 				align="center"
 				gap={12}
-				className="pointer-events-none h-full translate-y-[-2.5px] select-text px-2"
+				className="pointer-events-none h-full select-text px-2"
 			>
 				{/* 颜色圆圈 */}
 				<div
-					className="aspect-square h-full max-h-[28px] flex-shrink-0 rounded-full border border-gray-200"
+					className="aspect-square h-full max-h-[28px] w-auto flex-shrink-0 rounded-full border-[3px] border-gray-400/25"
 					style={{ background: backgroundStyle }}
 				/>
 
 				{/* 颜色值 */}
-				<span className="translate-y-[1px] truncate font-mono text-sm uppercase leading-tight">
+				<span className="truncate font-mono text-sm uppercase leading-tight">
 					{value}
 				</span>
 			</Flex>
