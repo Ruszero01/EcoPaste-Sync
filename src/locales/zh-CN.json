@@ -79,7 +79,8 @@
 					"show_original_content": "显示原内容",
 					"show_source_app": "显示来源应用",
 					"code_detection": "代码识别",
-					"color_detection": "颜色识别"
+					"color_detection": "颜色识别",
+					"image_preview": "图片悬浮预览"
 				},
 				"hints": {
 					"auto_paste": "鼠标左键操作时，快速粘贴内容至输入位置",
@@ -93,8 +94,11 @@
 					"show_original_content": "添加备注后，鼠标悬停时是否显示原内容",
 					"show_source_app": "在剪贴板历史中显示来源应用的图标和名称",
 					"code_detection": "自动识别剪贴板中的代码内容并启用语法高亮",
-					"color_detection": "自动识别剪贴板中的RGB和RGBA颜色值，并在颜色分组中显示"
-				}
+					"color_detection": "自动识别剪贴板中的RGB和RGBA颜色值，并在颜色分组中显示",
+					"image_preview": "鼠标悬停在图片条目上时显示预览浮窗"
+				},
+				"immediate": "立即预览",
+				"3_seconds": "3秒后预览"
 			}
 		},
 		"history": {

@@ -1,4 +1,4 @@
-use tauri::{async_runtime::spawn, AppHandle, Manager, Runtime, WebviewWindow};
+use tauri::{async_runtime::spawn, AppHandle, Emitter, Manager, Runtime, WebviewWindow};
 
 use tauri_plugin_eco_common::config::{get_nested, read_config};
 
@@ -8,6 +8,16 @@ pub static MAIN_WINDOW_LABEL: &str = "main";
 pub static PREFERENCE_WINDOW_LABEL: &str = "preference";
 // 主窗口的title
 pub static MAIN_WINDOW_TITLE: &str = "EcoPaste";
+// 图片预览窗口的label
+pub static PREVIEW_WINDOW_LABEL: &str = "image-preview";
+// 图片预览窗口URL
+const PREVIEW_WINDOW_URL: &str = "index.html/#/preview";
+// 图片预览窗口路由参数格式
+const PREVIEW_WINDOW_URL_FORMAT: &str = "index.html/#/preview?path=";
+// 图片预览窗口最大宽度
+const PREVIEW_MAX_WIDTH: u32 = 600;
+// 图片预览窗口最大高度
+const PREVIEW_MAX_HEIGHT: u32 = 400;
 
 // 声明来自 not_macos 的命令
 #[cfg(not(target_os = "macos"))]
@@ -581,4 +591,109 @@ pub async fn exit_app<R: Runtime>(app_handle: AppHandle<R>) {
     allow_exit();
     log::info!("[Window] Exit command received, shutting down application");
     let _ = app_handle.exit(0);
+}
+
+// 根据图片尺寸计算预览窗口大小
+fn calculate_preview_window_size(img_width: Option<i32>, img_height: Option<i32>) -> (u32, u32) {
+    let (width, height) = match (img_width, img_height) {
+        (Some(w), Some(h)) if w > 0 && h > 0 => {
+            let ratio = w as f64 / h as f64;
+            if w > PREVIEW_MAX_WIDTH as i32 || h > PREVIEW_MAX_HEIGHT as i32 {
+                if ratio > 1.0 {
+                    (PREVIEW_MAX_WIDTH, (PREVIEW_MAX_WIDTH as f64 / ratio) as u32)
+                } else {
+                    ((PREVIEW_MAX_HEIGHT as f64 * ratio) as u32, PREVIEW_MAX_HEIGHT)
+                }
+            } else {
+                (w as u32, h as u32)
+            }
+        }
+        _ => (PREVIEW_MAX_WIDTH, PREVIEW_MAX_HEIGHT),
+    };
+    (width + 20, height + 20)
+}
+
+/// 显示图片预览窗口
+#[tauri::command]
+pub async fn show_image_preview<R: Runtime>(
+    app_handle: AppHandle<R>,
+    image_path: String,
+    width: Option<i32>,
+    height: Option<i32>,
+) -> Result<(), String> {
+    if image_path.is_empty() {
+        return Err("图片路径为空".to_string());
+    }
+
+    // 检查窗口是否已存在且可见，避免重复创建
+    if let Some(existing_window) = app_handle.get_webview_window(PREVIEW_WINDOW_LABEL) {
+        if existing_window.is_visible().unwrap_or(false) {
+            // 窗口已存在且可见，只更新内容和位置
+            let _ = existing_window.emit("preview-image-update", serde_json::json!({
+                "path": image_path,
+            }));
+            set_window_follow_cursor(&existing_window);
+            return Ok(());
+        }
+        // 窗口存在但不可见，销毁它
+        let _ = existing_window.destroy();
+    }
+
+    // 计算窗口大小
+    let (window_width, window_height) = calculate_preview_window_size(width, height);
+
+    // 构建预览窗口URL，带上图片路径作为参数
+    let preview_url = if !image_path.is_empty() {
+        // 对路径进行 URL 编码
+        let encoded_path = percent_encoding::percent_encode(
+            image_path.as_bytes(),
+            percent_encoding::NON_ALPHANUMERIC,
+        ).to_string();
+        format!("{}{}", PREVIEW_WINDOW_URL_FORMAT, encoded_path)
+    } else {
+        PREVIEW_WINDOW_URL.to_string()
+    };
+
+    let builder = tauri::WebviewWindowBuilder::new(
+        &app_handle,
+        PREVIEW_WINDOW_LABEL,
+        tauri::WebviewUrl::App(preview_url.into()),
+    )
+    .title("图片预览")
+    .inner_size(window_width as f64, window_height as f64)
+    .resizable(false)
+    .visible(false)
+    .always_on_top(true)
+    .decorations(false)
+    .transparent(true)
+    .skip_taskbar(true)
+    .focused(false)
+    .accept_first_mouse(false); // 不接受第一次鼠标事件
+
+    // 不设置父窗口，让预览窗口完全独立
+
+    let window = builder
+        .build()
+        .map_err(|e| format!("创建预览窗口失败: {}", e))?;
+
+    // 关键：设置鼠标事件穿透，让预览窗口不会干扰主窗口的鼠标事件
+    // 这样当鼠标在预览窗口上时，主窗口仍然认为鼠标在上面
+    let _ = window.set_ignore_cursor_events(true);
+
+    // 显示窗口
+    let _ = window.show();
+
+    // 设置窗口位置跟随鼠标
+    set_window_follow_cursor(&window);
+
+    Ok(())
+}
+
+/// 销毁图片预览窗口
+#[tauri::command]
+pub async fn destroy_image_preview<R: Runtime>(app_handle: AppHandle<R>) -> Result<(), String> {
+    if let Some(window) = app_handle.get_webview_window(PREVIEW_WINDOW_LABEL) {
+        let _ = window.destroy();
+    }
+    Ok(())
 }

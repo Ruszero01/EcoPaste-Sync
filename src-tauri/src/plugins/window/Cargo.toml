@@ -18,6 +18,7 @@ tokio = { version = "1.0", features = ["sync", "time"] }
 tauri-plugin-eco-common = { workspace = true }
 once_cell = "1.20"
 dirs = "5"
+percent-encoding = "2"
 
 [target."cfg(target_os = \"windows\")".dependencies]
 windows-version = "0.1"

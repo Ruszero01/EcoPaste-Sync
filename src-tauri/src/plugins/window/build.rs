@@ -7,6 +7,8 @@ const COMMANDS: &[&str] = &[
     "create_window",
     "exit_app", // Internal: only for tray plugin
     "set_window_always_on_top",
+    "show_image_preview",
+    "destroy_image_preview",
 ];
 
 fn main() {

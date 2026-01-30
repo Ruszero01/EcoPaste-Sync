@@ -70,4 +70,10 @@ export const clipboardStore = proxy<ClipboardStore>({
 
 	// 批量操作进行中标志
 	batchOperationInProgress: false,
+
+	// 图片预览配置
+	imagePreview: {
+		enabled: false,
+		delay: 3000,
+	},
 });

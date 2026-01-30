@@ -79,7 +79,8 @@
 					"show_original_content": "顯示原內容",
 					"show_source_app": "顯示來源應用",
 					"code_detection": "代碼識別",
-					"color_detection": "顏色識別"
+					"color_detection": "顏色識別",
+					"image_preview": "圖片懸浮預覽"
 				},
 				"hints": {
 					"auto_paste": "當使用滑鼠左鍵時，快速將內容貼上到輸入位置",
@@ -93,8 +94,11 @@
 					"show_original_content": "添加備註後，滑鼠懸停時是否顯示原內容",
 					"show_source_app": "在剪貼簿歷史中顯示來源應用的圖示和名稱",
 					"code_detection": "自動識別剪貼簿中的代碼內容並啟用語法高亮",
-					"color_detection": "自動識別剪貼簿中的RGB和RGBA顏色值，並在顏色分組中顯示"
-				}
+					"color_detection": "自動識別剪貼簿中的RGB和RGBA顏色值，並在顏色分組中顯示",
+					"image_preview": "滑鼠懸停在圖片條目上時顯示預覽浮窗"
+				},
+				"immediate": "立即預覽",
+				"3_seconds": "3秒後預覽"
 			}
 		},
 		"history": {

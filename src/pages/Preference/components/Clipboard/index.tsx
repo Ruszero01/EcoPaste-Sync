@@ -1,6 +1,6 @@
 import ProList from "@/components/ProList";
 import ProSwitch from "@/components/ProSwitch";
-import { Typography } from "antd";
+import { Flex, Select, Typography } from "antd";
 import { useSnapshot } from "valtio";
 import AudioSettings from "./components/AudioSettings";
 import AutoPaste from "./components/AutoPaste";
@@ -9,7 +9,7 @@ import SearchPosition from "./components/SearchPosition";
 import WindowPosition from "./components/WindowPosition";
 
 const ClipboardSettings = () => {
-	const { window, search, content } = useSnapshot(clipboardStore);
+	const { window, search, content, imagePreview } = useSnapshot(clipboardStore);
 	const { t } = useTranslation();
 
 	return (
@@ -198,6 +198,36 @@ const ClipboardSettings = () => {
 						clipboardStore.content.colorDetection = value;
 					}}
 				/>
+
+				<ProSwitch
+					title={t("preference.clipboard.content_settings.label.image_preview")}
+					description={t(
+						"preference.clipboard.content_settings.hints.image_preview",
+					)}
+					value={imagePreview.enabled}
+					onChange={(value) => {
+						clipboardStore.imagePreview.enabled = value;
+					}}
+				>
+					<Flex vertical gap={8} align="flex-end">
+						{imagePreview.enabled && (
+							<Select
+								value={imagePreview.delay}
+								onChange={(delay) => {
+									clipboardStore.imagePreview.delay = delay;
+								}}
+								style={{ width: 140 }}
+							>
+								<Select.Option value={0}>
+									{t("preference.clipboard.content_settings.immediate")}
+								</Select.Option>
+								<Select.Option value={3000}>
+									{t("preference.clipboard.content_settings.3_seconds")}
+								</Select.Option>
+							</Select>
+						)}
+					</Flex>
+				</ProSwitch>
 			</ProList>
 		</>
 	);

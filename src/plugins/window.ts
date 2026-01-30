@@ -29,6 +29,8 @@ const COMMAND = {
 	// CLEAR_MICA_EFFECT: "plugin:eco-window|clear_mica_effect",
 	// IS_MICA_SUPPORTED: "plugin:eco-window|is_mica_supported",
 	SET_ALWAYS_ON_TOP: "plugin:eco-window|set_window_always_on_top",
+	SHOW_IMAGE_PREVIEW: "plugin:eco-window|show_image_preview",
+	DESTROY_IMAGE_PREVIEW: "plugin:eco-window|destroy_image_preview",
 };
 
 export { COMMAND };
@@ -169,4 +171,22 @@ export const setWindowAlwaysOnTop = async (alwaysOnTop: boolean) => {
 		alwaysOnTop,
 		always_on_top: alwaysOnTop,
 	});
+};
+
+/**
+ * 显示图片预览浮窗
+ */
+export const showImagePreview = (
+	imagePath: string,
+	width?: number,
+	height?: number,
+) => {
+	invoke(COMMAND.SHOW_IMAGE_PREVIEW, { imagePath, width, height });
+};
+
+/**
+ * 销毁图片预览浮窗
+ */
+export const destroyImagePreview = () => {
+	invoke(COMMAND.DESTROY_IMAGE_PREVIEW);
 };

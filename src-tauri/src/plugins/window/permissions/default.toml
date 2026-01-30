@@ -9,5 +9,7 @@ permissions = [
     "allow-clear-mica-effect",
     "allow-is-mica-supported",
     "allow-create-window",
-    "allow-set-window-always-on-top"
+    "allow-set-window-always-on-top",
+    "allow-show-image-preview",
+    "allow-destroy-image-preview"
 ]

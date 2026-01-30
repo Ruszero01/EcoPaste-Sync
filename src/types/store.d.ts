@@ -174,4 +174,10 @@ export interface ClipboardStore {
 
 	// 批量操作进行中标志
 	batchOperationInProgress: boolean;
+
+	// 图片预览配置
+	imagePreview: {
+		enabled: boolean;
+		delay: number;
+	};
 }

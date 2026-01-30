@@ -79,7 +79,8 @@
 					"show_original_content": "Show Original Content",
 					"show_source_app": "Show Source App",
 					"code_detection": "Code Detection",
-					"color_detection": "Color Detection"
+					"color_detection": "Color Detection",
+					"image_preview": "Image Hover Preview"
 				},
 				"hints": {
 					"auto_paste": "Quickly paste content to input position when left mouse button is used",
@@ -93,8 +94,11 @@
 					"show_original_content": "Whether to show original content when hovering after adding notes",
 					"show_source_app": "Show source app icon and name in clipboard history",
 					"code_detection": "Automatically detect code content in clipboard and enable syntax highlighting",
-					"color_detection": "Automatically detect RGB and RGBA color values in clipboard and display them in color group"
-				}
+					"color_detection": "Automatically detect RGB and RGBA color values in clipboard and display them in color group",
+					"image_preview": "Show preview popup when hovering over image items"
+				},
+				"immediate": "Immediate Preview",
+				"3_seconds": "3 Seconds Delay"
 			}
 		},
 		"history": {

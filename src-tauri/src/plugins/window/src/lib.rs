@@ -17,6 +17,8 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::create_window,
             commands::exit_app, // Internal: only for tray plugin
             commands::set_window_always_on_top,
+            commands::show_image_preview,
+            commands::destroy_image_preview,
         ])
         .build()
 }

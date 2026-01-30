@@ -1,23 +1,27 @@
+import { destroyImagePreview, showImagePreview } from "@/plugins/window";
+import { clipboardStore } from "@/stores/clipboard";
 import type { HistoryTablePayload } from "@/types/database";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { Flex } from "antd";
-import { type FC, memo } from "react";
+import { type FC, memo, useCallback, useEffect, useRef } from "react";
+import { useSnapshot } from "valtio";
 
 interface ImageProps extends Partial<HistoryTablePayload> {
 	className?: string;
 }
 
 const Image: FC<ImageProps> = (props) => {
-	const { value, className = "max-h-full" } = props;
+	const { id, value, width, height, className = "max-h-full" } = props;
+	const { imagePreview } = useSnapshot(clipboardStore);
+	const previewTimerRef = useRef<NodeJS.Timeout | null>(null);
+	let previewImagePath: string | null = null;
 
 	// 如果没有值，返回null
 	if (!value) {
 		return null;
 	}
 
-	let imageSrc: string | null = null;
-
-	// 智能图片路径解析（支持新旧格式）
+	// 智能图片路径解析
 	if (
 		typeof value === "string" &&
 		(value.startsWith("[") || value.startsWith("{"))
@@ -28,7 +32,6 @@ const Image: FC<ImageProps> = (props) => {
 
 			if (Array.isArray(parsed)) {
 				if (parsed.length > 0 && typeof parsed[0] === "object") {
-					// 新格式：文件元数据数组，提取文件路径
 					filePaths = parsed
 						.map(
 							(item: any) =>
@@ -36,11 +39,9 @@ const Image: FC<ImageProps> = (props) => {
 						)
 						.filter((path: string) => path);
 				} else if (parsed.length > 0 && typeof parsed[0] === "string") {
-					// 旧格式：文件路径数组
 					filePaths = parsed;
 				}
 			} else if (parsed.files && Array.isArray(parsed.files)) {
-				// 新包模式：提取文件路径
 				filePaths = parsed.files
 					.map(
 						(file: any) =>
@@ -50,26 +51,14 @@ const Image: FC<ImageProps> = (props) => {
 			}
 
 			if (filePaths.length > 0) {
-				// 使用第一个文件路径显示图片
-				const imagePath = filePaths[0];
-
-				// 验证路径格式
-				if (
-					typeof imagePath === "string" &&
-					(imagePath.includes(":") ||
-						imagePath.includes("/") ||
-						imagePath.includes("\\"))
-				) {
-					imageSrc = convertFileSrc(imagePath);
-				}
+				previewImagePath = filePaths[0];
 			}
-		} catch (parseError) {
-			console.error("❌ 解析图片路径数组失败:", parseError, { value });
-		}
+		} catch {}
 	} else if (typeof value === "string") {
-		// 正常的图片显示（单个文件路径）
-		imageSrc = convertFileSrc(value);
+		previewImagePath = value;
 	}
+
+	const imageSrc = previewImagePath ? convertFileSrc(previewImagePath) : null;
 
 	if (!imageSrc) {
 		return (
@@ -79,15 +68,75 @@ const Image: FC<ImageProps> = (props) => {
 		);
 	}
 
+	// 清理定时器
+	const clearPreviewTimer = useCallback(() => {
+		if (previewTimerRef.current) {
+			clearTimeout(previewTimerRef.current);
+			previewTimerRef.current = null;
+		}
+	}, []);
+
+	// 显示预览
+	const handleMouseEnter = useCallback(() => {
+		if (!imagePreview.enabled || !previewImagePath || !id) return;
+
+		// 清除之前的定时器
+		clearPreviewTimer();
+
+		// 使用配置的延迟时间
+		const delay = imagePreview.delay || 0;
+
+		if (delay > 0) {
+			// 延迟预览
+			previewTimerRef.current = setTimeout(() => {
+				showImagePreview(
+					previewImagePath!,
+					width ?? undefined,
+					height ?? undefined,
+				);
+			}, delay);
+		} else {
+			// 立即预览
+			showImagePreview(
+				previewImagePath!,
+				width ?? undefined,
+				height ?? undefined,
+			);
+		}
+	}, [
+		imagePreview.enabled,
+		imagePreview.delay,
+		previewImagePath,
+		id,
+		width,
+		height,
+		clearPreviewTimer,
+	]);
+
+	// 隐藏预览
+	const handleMouseLeave = useCallback(() => {
+		clearPreviewTimer();
+		destroyImagePreview();
+	}, [clearPreviewTimer]);
+
+	// 组件卸载时清理
+	useEffect(() => {
+		return () => {
+			clearPreviewTimer();
+		};
+	}, [clearPreviewTimer]);
+
 	return (
 		<Flex
 			align="center"
 			justify="center"
-			className="pointer-events-none h-full w-full overflow-hidden rounded bg-gray-100"
+			className="relative h-full w-full overflow-hidden rounded bg-gray-100"
+			onMouseEnter={handleMouseEnter}
+			onMouseLeave={handleMouseLeave}
 		>
 			<img
 				src={imageSrc}
-				className={`h-full w-full object-cover ${className}`}
+				className={`pointer-events-none h-full w-full object-cover ${className}`}
 				alt=""
 				draggable={false}
 			/>
