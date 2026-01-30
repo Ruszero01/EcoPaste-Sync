@@ -97,8 +97,7 @@
 					"color_detection": "自動識別剪貼簿中的RGB和RGBA顏色值，並在顏色分組中顯示",
 					"image_preview": "滑鼠懸停在圖片條目上時顯示預覽浮窗"
 				},
-				"immediate": "立即預覽",
-				"3_seconds": "3秒後預覽"
+				"immediate": "立即預覽"
 			}
 		},
 		"history": {

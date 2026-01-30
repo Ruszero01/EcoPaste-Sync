@@ -74,6 +74,5 @@ export const clipboardStore = proxy<ClipboardStore>({
 	// 图片预览配置
 	imagePreview: {
 		enabled: false,
-		delay: 3000,
 	},
 });

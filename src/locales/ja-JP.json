@@ -97,8 +97,7 @@
 					"color_detection": "クリップボード内のRGBとRGBAカラー値を自動的に検出し、カラーグループに表示する",
 					"image_preview": "画像の上にマウスをホバーするとプレビューポップアップを表示"
 				},
-				"immediate": "即時プレビュー",
-				"3_seconds": "3秒遅延"
+				"immediate": "即時プレビュー"
 			}
 		},
 		"history": {

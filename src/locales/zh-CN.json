@@ -97,8 +97,7 @@
 					"color_detection": "自动识别剪贴板中的RGB和RGBA颜色值，并在颜色分组中显示",
 					"image_preview": "鼠标悬停在图片条目上时显示预览浮窗"
 				},
-				"immediate": "立即预览",
-				"3_seconds": "3秒后预览"
+				"immediate": "立即预览"
 			}
 		},
 		"history": {

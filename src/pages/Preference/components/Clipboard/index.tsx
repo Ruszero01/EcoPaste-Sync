@@ -1,6 +1,6 @@
 import ProList from "@/components/ProList";
 import ProSwitch from "@/components/ProSwitch";
-import { Flex, Select, Typography } from "antd";
+import { Typography } from "antd";
 import { useSnapshot } from "valtio";
 import AudioSettings from "./components/AudioSettings";
 import AutoPaste from "./components/AutoPaste";
@@ -208,26 +208,7 @@ const ClipboardSettings = () => {
 					onChange={(value) => {
 						clipboardStore.imagePreview.enabled = value;
 					}}
-				>
-					<Flex vertical gap={8} align="flex-end">
-						{imagePreview.enabled && (
-							<Select
-								value={imagePreview.delay}
-								onChange={(delay) => {
-									clipboardStore.imagePreview.delay = delay;
-								}}
-								style={{ width: 140 }}
-							>
-								<Select.Option value={0}>
-									{t("preference.clipboard.content_settings.immediate")}
-								</Select.Option>
-								<Select.Option value={3000}>
-									{t("preference.clipboard.content_settings.3_seconds")}
-								</Select.Option>
-							</Select>
-						)}
-					</Flex>
-				</ProSwitch>
+				/>
 			</ProList>
 		</>
 	);

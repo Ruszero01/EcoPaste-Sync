@@ -3,7 +3,7 @@ import { clipboardStore } from "@/stores/clipboard";
 import type { HistoryTablePayload } from "@/types/database";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { Flex } from "antd";
-import { type FC, memo, useCallback, useEffect, useRef } from "react";
+import { type FC, memo, useCallback } from "react";
 import { useSnapshot } from "valtio";
 
 interface ImageProps extends Partial<HistoryTablePayload> {
@@ -13,7 +13,6 @@ interface ImageProps extends Partial<HistoryTablePayload> {
 const Image: FC<ImageProps> = (props) => {
 	const { id, value, width, height, className = "max-h-full" } = props;
 	const { imagePreview } = useSnapshot(clipboardStore);
-	const previewTimerRef = useRef<NodeJS.Timeout | null>(null);
 	let previewImagePath: string | null = null;
 
 	// 如果没有值，返回null
@@ -68,63 +67,20 @@ const Image: FC<ImageProps> = (props) => {
 		);
 	}
 
-	// 清理定时器
-	const clearPreviewTimer = useCallback(() => {
-		if (previewTimerRef.current) {
-			clearTimeout(previewTimerRef.current);
-			previewTimerRef.current = null;
-		}
-	}, []);
-
 	// 显示预览
 	const handleMouseEnter = useCallback(() => {
 		if (!imagePreview.enabled || !previewImagePath || !id) return;
-
-		// 清除之前的定时器
-		clearPreviewTimer();
-
-		// 使用配置的延迟时间
-		const delay = imagePreview.delay || 0;
-
-		if (delay > 0) {
-			// 延迟预览
-			previewTimerRef.current = setTimeout(() => {
-				showImagePreview(
-					previewImagePath!,
-					width ?? undefined,
-					height ?? undefined,
-				);
-			}, delay);
-		} else {
-			// 立即预览
-			showImagePreview(
-				previewImagePath!,
-				width ?? undefined,
-				height ?? undefined,
-			);
-		}
-	}, [
-		imagePreview.enabled,
-		imagePreview.delay,
-		previewImagePath,
-		id,
-		width,
-		height,
-		clearPreviewTimer,
-	]);
+		showImagePreview(
+			previewImagePath!,
+			width ?? undefined,
+			height ?? undefined,
+		);
+	}, [imagePreview.enabled, previewImagePath, id, width, height]);
 
 	// 隐藏预览
 	const handleMouseLeave = useCallback(() => {
-		clearPreviewTimer();
 		destroyImagePreview();
-	}, [clearPreviewTimer]);
-
-	// 组件卸载时清理
-	useEffect(() => {
-		return () => {
-			clearPreviewTimer();
-		};
-	}, [clearPreviewTimer]);
+	}, []);
 
 	return (
 		<Flex

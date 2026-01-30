@@ -192,7 +192,7 @@ pub async fn create_window<R: Runtime>(
         .skip_taskbar(true)
         .visible_on_all_workspaces(true)
         .decorations(false) // 主窗口不显示标题栏
-        .transparent(false); // 临时禁用透明度（测试用）
+        .transparent(true); // 启用透明度
 
         // 如果有保存的位置，直接设置
         if let Some((x, y, w, h)) = initial_position {
@@ -224,7 +224,7 @@ pub async fn create_window<R: Runtime>(
         .always_on_top(true)
         .accept_first_mouse(true)
         .skip_taskbar(true)
-        .transparent(false); // 临时禁用透明度（测试用）
+        .transparent(true); // 启用透明度
 
         // 如果有保存的位置，直接设置
         if let Some((x, y, w, h)) = initial_position {

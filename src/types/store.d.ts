@@ -178,6 +178,5 @@ export interface ClipboardStore {
 	// 图片预览配置
 	imagePreview: {
 		enabled: boolean;
-		delay: number;
 	};
 }

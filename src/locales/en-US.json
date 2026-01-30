@@ -97,8 +97,7 @@
 					"color_detection": "Automatically detect RGB and RGBA color values in clipboard and display them in color group",
 					"image_preview": "Show preview popup when hovering over image items"
 				},
-				"immediate": "Immediate Preview",
-				"3_seconds": "3 Seconds Delay"
+				"immediate": "Immediate Preview"
 			}
 		},
 		"history": {
