@@ -3,7 +3,7 @@ import type { FC } from "react";
 import { memo } from "react";
 
 interface NoteProps {
-	value: string;
+	value?: string;
 }
 
 const Note: FC<NoteProps> = ({ value }) => {

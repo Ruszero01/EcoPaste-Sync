@@ -1,13 +1,16 @@
 import UnoIcon from "@/components/UnoIcon";
 // import UpdateApp from "@/components/UpdateApp"; // fork分支不需要更新功能
 import { toggleWindow } from "@/plugins/window";
+import { generateColorVars } from "@/utils/color";
 import { isWin } from "@/utils/is";
 import { emit } from "@tauri-apps/api/event";
 import { useKeyPress } from "ahooks";
 import { Flex } from "antd";
 import clsx from "clsx";
 import { MacScrollbar } from "mac-scrollbar";
+import { useEffect } from "react";
 import { useSnapshot } from "valtio";
+import { subscribeKey } from "valtio/utils";
 import About from "./components/About";
 import Backup from "./components/Backup";
 import Clipboard from "./components/Clipboard";
@@ -21,6 +24,49 @@ const Preference = () => {
 	const { appearance } = useSnapshot(globalStore);
 	const [activeKey, setActiveKey] = useState("clipboard");
 	const contentRef = useRef<HTMLElement>(null);
+
+	// 初始化主题 - 确保同步 globalStore 的值到 DOM
+	useEffect(() => {
+		// 强制同步一次主题状态
+		const syncTheme = () => {
+			const isDark = globalStore.appearance.isDark;
+			if (isDark) {
+				document.documentElement.classList.add("dark");
+			} else {
+				document.documentElement.classList.remove("dark");
+			}
+			generateColorVars();
+		};
+
+		// 如果是 auto 模式，获取系统主题
+		const initTheme = async () => {
+			if (globalStore.appearance.theme === "auto") {
+				try {
+					const { getCurrentWebviewWindow } = await import(
+						"@tauri-apps/api/webviewWindow"
+					);
+					const appWindow = getCurrentWebviewWindow();
+					const actualTheme = await appWindow.theme();
+					globalStore.appearance.isDark = actualTheme === "dark";
+				} catch {
+					// 默认使用浅色
+					globalStore.appearance.isDark = false;
+				}
+			}
+		};
+
+		// 立即执行一次
+		syncTheme();
+		initTheme();
+
+		// 监听 globalStore 变化
+		const unsubscribe = subscribeKey(
+			globalStore.appearance,
+			"isDark",
+			syncTheme,
+		);
+		return unsubscribe;
+	}, []);
 
 	// ESC 销毁窗口
 	useKeyPress("esc", () => {

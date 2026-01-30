@@ -1462,7 +1462,7 @@ const Item: FC<ItemProps> = (props) => {
 			data-item-id={id}
 			className={clsx(
 				className,
-				"group antd-input! b-color-2 absolute inset-0 mx-0 h-full rounded-md p-1.5",
+				"antd-input! group absolute inset-0 mx-0 h-full rounded-md border-[#bfbfbf] bg-[#fafafa] p-1.5",
 				{
 					// 只在非多选状态下显示单选聚焦框
 					"antd-input-focus!":

@@ -79,6 +79,8 @@ const App = () => {
 		} else {
 			document.documentElement.classList.remove("dark");
 		}
+		// 重新生成颜色变量
+		generateColorVars();
 	});
 
 	// 数据库插件现在由后端自动管理，无需手动关闭
@@ -122,8 +124,8 @@ const App = () => {
 			colorBgLayout: "#ececec", // 布局背景
 			colorText: "#262626", // 文字颜色，使用更深的灰色
 			colorTextSecondary: "#595959", // 次要文字颜色
-			colorBorder: "#d9d9d9", // 边框颜色
-			colorBorderSecondary: "#e8e8e8", // 次要边框颜色
+			colorBorder: "#bfbfbf", // 边框颜色
+			colorBorderSecondary: "#bfbfbf", // 次要边框颜色
 		},
 	};
 

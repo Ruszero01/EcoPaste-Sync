@@ -7,6 +7,12 @@ const { getDesignToken, darkAlgorithm } = theme;
  * 生成 antd 的颜色变量
  */
 export const generateColorVars = () => {
+	// 清除旧的样式
+	const oldStyles = document.head.querySelectorAll("style[data-theme]");
+	for (const style of oldStyles) {
+		style.remove();
+	}
+
 	const colors = [
 		getDesignToken(),
 		getDesignToken({ algorithm: darkAlgorithm }),

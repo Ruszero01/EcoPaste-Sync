@@ -9,7 +9,6 @@ html {
 
   body {
     --uno: text-sm;
-    background-color: transparent; /* 透明背景，由窗口颜色控制 */
     margin: 0;
     padding: 0;
     min-height: 100vh;
@@ -23,9 +22,14 @@ html {
     }
   }
 
+  /* 亮色主题下设置 body 背景色 */
+  body {
+    background-color: #eeeeee;
+  }
+
   /* 暗色主题下设置 body 背景色 */
   &.dark body {
-    background-color: #1f1f1f !important;
+    background-color: #1f1f1f;
   }
 
   /* Hide webkit scrollbars */

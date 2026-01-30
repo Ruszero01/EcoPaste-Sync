@@ -96,6 +96,7 @@ const Search: FC<HTMLAttributes<HTMLDivElement>> = (props) => {
 					) : null
 				}
 				size="small"
+				className="bg-[#d9d9d9]!"
 				placeholder={t("clipboard.hints.search_placeholder")}
 				onCompositionStart={setTrue}
 				onCompositionEnd={setFalse}

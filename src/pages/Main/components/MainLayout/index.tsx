@@ -30,7 +30,6 @@ const MainLayout = () => {
 		<div
 			className={clsx("flex h-screen flex-col", {
 				"bg-color-1": !isWin,
-				"bg-transparent": isWin,
 			})}
 		>
 			{/* 主内容区 - 分组和搜索栏固定，只有列表滚动 */}

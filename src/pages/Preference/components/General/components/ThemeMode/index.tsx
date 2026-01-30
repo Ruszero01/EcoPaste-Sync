@@ -1,5 +1,6 @@
 import ProSelect from "@/components/ProSelect";
 import type { Theme } from "@/types/store";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useSnapshot } from "valtio";
 
 interface Option {
@@ -58,8 +59,34 @@ const ThemeMode = () => {
 			title={t("preference.settings.appearance_settings.label.theme")}
 			value={appearance.theme}
 			options={options}
-			onChange={(value) => {
+			onChange={async (value) => {
 				globalStore.appearance.theme = value;
+
+				// 设置窗口主题
+				try {
+					const appWindow = getCurrentWebviewWindow();
+					const themeToSet = value === "auto" ? null : value;
+					await (appWindow as any).setTheme?.(themeToSet);
+				} catch {
+					// 忽略错误，某些平台可能不支持
+				}
+
+				// 同步更新 isDark
+				if (value === "light") {
+					globalStore.appearance.isDark = false;
+				} else if (value === "dark") {
+					globalStore.appearance.isDark = true;
+				} else if (value === "auto") {
+					// 获取系统主题
+					try {
+						const appWindow = getCurrentWebviewWindow();
+						const actualTheme = await appWindow.theme();
+						globalStore.appearance.isDark = actualTheme === "dark";
+					} catch {
+						// 默认使用浅色
+						globalStore.appearance.isDark = false;
+					}
+				}
 			}}
 		/>
 	);
