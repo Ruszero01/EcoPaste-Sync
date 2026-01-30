@@ -25,11 +25,12 @@ const Preview: FC = () => {
 			align="center"
 			justify="center"
 			className="h-full w-full overflow-hidden bg-transparent p-2"
+			style={{ overflow: "hidden" }}
 		>
 			<img
 				src={imageSrc}
 				alt="Preview"
-				className="max-h-full max-w-full rounded object-contain shadow-lg"
+				className="h-full w-auto rounded object-contain shadow-lg"
 			/>
 		</Flex>
 	);

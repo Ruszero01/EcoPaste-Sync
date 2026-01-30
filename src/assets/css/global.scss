@@ -7,11 +7,25 @@ html {
     color-scheme: dark;
   }
 
+  /* 隐藏滚动条 - 解决透明窗口滚动条轨道问题 */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+
   body {
     --uno: text-sm;
     margin: 0;
     padding: 0;
     min-height: 100vh;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
 
     img {
       -webkit-user-drag: none;
