@@ -316,8 +316,20 @@ const Item: FC<ItemProps> = (props) => {
 	// 复制
 	const copy = async () => {
 		try {
-			// 写入剪贴板，后端去重时会自动更新时间戳
+			// 写入剪贴板
 			await writeClipboard(data);
+
+			// 复制后更新 time 字段（position 由后端根据 autoSort 设置决定是否更新）
+			const index = findIndex(state.list, { id });
+			if (index !== -1) {
+				const currentTime = Date.now();
+
+				// 更新本地状态
+				state.list[index] = { ...state.list[index], time: currentTime };
+
+				// 更新数据库
+				await backendUpdateField(id, "time", currentTime.toString());
+			}
 		} catch (error) {
 			// 如果是图片复制失败且文件不存在，提示用户
 			if (data.type === "image" && error instanceof Error) {
