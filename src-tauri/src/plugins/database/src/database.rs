@@ -383,13 +383,14 @@ impl DatabaseManager {
             // 更新
             conn.execute(
                 "UPDATE history SET
-                    type = ?1, value = ?2, favorite = ?3, note = ?4,
-                    syncStatus = ?5, deleted = ?6, time = ?7, count = ?8, subtype = ?9,
-                    width = ?10, height = ?11
-                WHERE id = ?12",
+                    type = ?1, value = ?2, search = ?3, favorite = ?4, note = ?5,
+                    syncStatus = ?6, deleted = ?7, time = ?8, count = ?9, subtype = ?10,
+                    width = ?11, height = ?12
+                WHERE id = ?13",
                 params![
                     item.item_type,
                     item.value,
+                    item.search,
                     item.favorite,
                     item.note,
                     "synced",
@@ -406,12 +407,13 @@ impl DatabaseManager {
         } else {
             // 插入
             conn.execute(
-                "INSERT INTO history (id, type, value, favorite, note, time, syncStatus, deleted, count, subtype, width, height)
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                "INSERT INTO history (id, type, value, search, favorite, note, time, syncStatus, deleted, count, subtype, width, height)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
                 params![
                     item.id,
                     item.item_type,
                     item.value,
+                    item.search,
                     item.favorite,
                     item.note,
                     item.time,

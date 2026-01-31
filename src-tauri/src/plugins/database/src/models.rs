@@ -61,6 +61,7 @@ pub struct SyncDataItem {
     pub item_type: String,
     pub subtype: Option<String>,
     pub value: Option<String>,
+    pub search: Option<String>,
     pub favorite: bool,
     pub note: Option<String>,
     pub time: i64,
@@ -73,6 +74,7 @@ impl From<HistoryItem> for SyncDataItem {
             item_type: item.item_type.unwrap_or_else(|| "text".to_string()),
             subtype: item.subtype, // 从历史数据中提取 subtype
             value: item.value,
+            search: item.search,
             favorite: item.favorite == 1,
             note: item.note,
             time: item.time,

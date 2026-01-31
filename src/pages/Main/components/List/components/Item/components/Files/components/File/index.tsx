@@ -1,6 +1,6 @@
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { sep } from "@tauri-apps/api/path";
 import { Flex } from "antd";
-import clsx from "clsx";
 import type { FC } from "react";
 import { type Metadata, icon, metadata } from "tauri-plugin-fs-pro-api";
 import Image from "../../../Image";
@@ -35,24 +35,41 @@ const File: FC<FileProps> = (props) => {
 		}
 	}, [path]);
 
+	const renderFileIcon = () => {
+		const iconSrc = state.iconPath ? convertFileSrc(state.iconPath) : null;
+
+		return (
+			<div className="aspect-square h-full flex-shrink-0">
+				{state.isExist && iconSrc ? (
+					<img src={iconSrc} className="h-full w-full object-contain" alt="" />
+				) : (
+					<div className="flex h-full w-full items-center justify-center">
+						<span className="text-gray-400 text-xs">?</span>
+					</div>
+				)}
+			</div>
+		);
+	};
+
 	const renderContent = () => {
 		const height = 100 / Math.min(count, 3);
 
-		if (state.isExist && count === 1) {
-			if (isImage(path)) {
-				return <Image value={path} />;
-			}
+		// 单个图片文件显示缩略图
+		if (state.isExist && count === 1 && isImage(path)) {
+			return <Image value={path} />;
 		}
 
+		// 文件/文件夹显示图标+名称
 		return (
-			<Flex align="center" gap={4} style={{ height: `${height}%` }}>
-				{state.isExist && <Image value={state.iconPath} className="h-full" />}
+			<Flex
+				align="center"
+				gap={6}
+				className="pointer-events-none h-full select-text px-2"
+				style={{ height: `${height}%` }}
+			>
+				{renderFileIcon()}
 
-				<span
-					className={clsx("truncate", {
-						"text-danger line-through": !state.isExist,
-					})}
-				>
+				<span className="truncate text-gray-700 text-sm leading-tight dark:text-gray-300">
 					{state.fullName}
 				</span>
 			</Flex>

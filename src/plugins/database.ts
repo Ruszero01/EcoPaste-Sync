@@ -35,6 +35,7 @@ export interface SyncDataItem {
 	item_type: string;
 	checksum: string;
 	value: string;
+	search?: string;
 	favorite: boolean;
 	note?: string;
 	time: number;
