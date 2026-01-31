@@ -394,6 +394,11 @@ async fn hide_with_behavior<R: Runtime>(
     app_handle: &AppHandle<R>,
     label: &str,
 ) -> Result<(), String> {
+    // 如果是主窗口，隐藏前先销毁预览窗口
+    if label == MAIN_WINDOW_LABEL {
+        destroy_image_preview(app_handle.clone()).await.ok();
+    }
+
     let (mode, _delay_seconds) = get_window_behavior_from_config(&app_handle);
 
     if let Some(win) = app_handle.get_webview_window(label) {
