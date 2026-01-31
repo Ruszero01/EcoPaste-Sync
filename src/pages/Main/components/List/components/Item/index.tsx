@@ -76,7 +76,7 @@ const Item: FC<ItemProps> = (props) => {
 		height,
 		time,
 	} = data;
-	const { state } = useContext(MainContext);
+	const { state, forceRefreshList } = useContext(MainContext);
 	const { t, i18n: i18nInstance } = useTranslation();
 	const { env } = useSnapshot(globalStore);
 	const { content, multiSelect } = useSnapshot(clipboardStore);
@@ -329,6 +329,9 @@ const Item: FC<ItemProps> = (props) => {
 
 				// 更新数据库
 				await backendUpdateField(id, "time", currentTime.toString());
+
+				// 刷新列表以更新排序位置（autoSort 开启时后端会更新 position）
+				forceRefreshList?.();
 			}
 		} catch (error) {
 			// 如果是图片复制失败且文件不存在，提示用户
@@ -372,6 +375,9 @@ const Item: FC<ItemProps> = (props) => {
 		try {
 			// 调用database插件更新收藏状态（后端会自动标记为已变更）
 			await backendUpdateField(id, "favorite", nextFavorite.toString());
+
+			// 刷新列表以更新排序位置（autoSort 开启时后端会更新 position）
+			forceRefreshList?.();
 		} catch (error) {
 			console.error("收藏状态更新失败:", error);
 			// 如果数据库更新失败，恢复本地状态
@@ -517,6 +523,9 @@ const Item: FC<ItemProps> = (props) => {
 					backendUpdateField(id, "favorite", newFavoriteStatus.toString()),
 				);
 				await Promise.all(promises);
+
+				// 刷新列表以更新排序位置（autoSort 开启时后端会更新 position）
+				forceRefreshList?.();
 
 				// 更新本地状态 - 只更新收藏状态，不更新时间戳和位置
 				for (const selectedId of selectedIds) {
@@ -773,6 +782,9 @@ const Item: FC<ItemProps> = (props) => {
 
 				// 更新数据库（后端根据 autoSort 决定是否更新 position）
 				await backendUpdateField(id, "time", currentTime.toString());
+
+				// 刷新列表以更新排序位置（autoSort 开启时后端会更新 position）
+				forceRefreshList?.();
 
 				// 无论是否在多选状态，都清除多选状态，确保聚焦框正常显示
 				clearMultiSelectState();

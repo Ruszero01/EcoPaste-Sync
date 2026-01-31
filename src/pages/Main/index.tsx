@@ -271,6 +271,11 @@ const Main = () => {
 		}
 		// 直接调用getList而不是使用防抖，避免延迟
 		getList();
+
+		// 只有在自动排序开启时，才滚动到顶部（因为位置会改变）
+		if (clipboardStore.content.autoSort) {
+			emit(LISTEN_KEY.ACTIVATE_BACK_TOP, "updated-content");
+		}
 	};
 
 	// 获取剪切板内容（优化版本，带缓存）

@@ -14,7 +14,7 @@ interface FormFields {
 }
 
 const NoteModal = forwardRef<NoteModalRef>((_, ref) => {
-	const { state } = useContext(MainContext);
+	const { state, forceRefreshList } = useContext(MainContext);
 	const { t } = useTranslation();
 	const [open, { toggle }] = useBoolean();
 	const [item, setItem] = useState<HistoryTablePayload>();
@@ -48,11 +48,17 @@ const NoteModal = forwardRef<NoteModalRef>((_, ref) => {
 			// 调用database插件更新备注（后端会自动标记为已变更）
 			await backendUpdateField(id, "note", note);
 
+			// 刷新列表以更新排序位置（autoSort 开启时后端会更新 position）
+			forceRefreshList?.();
+
 			if (clipboardStore.content.autoFavorite && !favorite) {
 				item.favorite = true;
 
 				// 调用database插件更新收藏状态（后端会自动标记为已变更）
 				await backendUpdateField(id, "favorite", "true");
+
+				// 刷新列表以更新排序位置（autoSort 开启时后端会更新 position）
+				forceRefreshList?.();
 			}
 		}
 

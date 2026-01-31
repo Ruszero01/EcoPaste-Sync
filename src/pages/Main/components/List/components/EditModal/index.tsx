@@ -95,7 +95,7 @@ const CODE_LANGUAGE_OPTIONS = [
 
 const EditModal = forwardRef<EditModalRef>((_, ref) => {
 	const { t } = useTranslation();
-	const { state } = useContext(MainContext);
+	const { state, forceRefreshList } = useContext(MainContext);
 	const { isDark } = useAppTheme();
 	const [open, { toggle }] = useBoolean();
 	const [item, setItem] = useState<HistoryTablePayload>();
@@ -271,14 +271,21 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 					// 其他类型：search 等于 value
 					await backendUpdateField(id, "search", formContent);
 				}
+
+				// 刷新列表以更新排序位置（autoSort 开启时后端会更新 position）
+				forceRefreshList?.();
 			}
 
 			// 2. 更新类型和子类型
 			if (originalType !== updateType) {
 				await backendUpdateField(id, "type", updateType);
+				// 刷新列表以更新排序位置（autoSort 开启时后端会更新 position）
+				forceRefreshList?.();
 			}
 			if (originalSubtype !== updateSubtype) {
 				await backendUpdateField(id, "subtype", updateSubtype || "");
+				// 刷新列表以更新排序位置（autoSort 开启时后端会更新 position）
+				forceRefreshList?.();
 			}
 
 			// 如果自动收藏功能开启，更新收藏状态
@@ -287,6 +294,9 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 
 				// 调用database插件更新收藏状态
 				await backendUpdateField(id, "favorite", "true");
+
+				// 刷新列表以更新排序位置（autoSort 开启时后端会更新 position）
+				forceRefreshList?.();
 			}
 		}
 
