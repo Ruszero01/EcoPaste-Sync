@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 // 数据库配置接口
 export interface DatabaseConfig {
@@ -117,16 +118,21 @@ export const backendDeleteItems = (ids: string[]) => {
  * 统一字段更新
  * 通过 field 和 value 参数决定更新哪个字段
  */
-export const backendUpdateField = (
+export const backendUpdateField = async (
 	id: string,
 	field: string,
 	value: string,
 ) => {
-	return invoke<void>(COMMAND.UPDATE_FIELD, {
-		id,
-		field,
-		value,
-	});
+	const appWindow = getCurrentWebviewWindow();
+	return invoke<void>(
+		COMMAND.UPDATE_FIELD,
+		{
+			id,
+			field,
+			value,
+		},
+		{ window: appWindow },
+	);
 };
 
 /**

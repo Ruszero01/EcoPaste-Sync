@@ -2,6 +2,8 @@
 //! 提供前端调用的完整 API
 
 use crate::{DatabaseState, HistoryItem, InsertItem, InsertResult, QueryOptions, SyncDataItem};
+use crate::config::should_auto_sort;
+use rusqlite::params;
 use tauri::State;
 
 /// 查询历史记录
@@ -90,14 +92,16 @@ pub fn delete_items(
 /// 统一字段更新命令
 /// 通过 field 和 value 参数决定更新哪个字段
 #[tauri::command]
-pub fn update_field(
+pub fn update_field<R: tauri::Runtime>(
     id: String,
     field: String,
     value: String,
     state: State<'_, DatabaseState>,
+    app_handle: tauri::AppHandle<R>,
 ) -> Result<(), String> {
     let db = state.blocking_lock();
     let current_time = chrono::Utc::now().timestamp_millis();
+    let auto_sort = should_auto_sort(&app_handle);
 
     // 验证字段名并更新
     match field.as_str() {
@@ -105,6 +109,17 @@ pub fn update_field(
             let bool_value = value == "1" || value.to_lowercase() == "true";
             db.update_field(&id, "favorite", if bool_value { "1" } else { "0" })?;
             db.update_field(&id, "time", &current_time.to_string())?;
+            if auto_sort {
+                let conn = db.get_connection()?;
+                let max_position: i32 = conn
+                    .query_row(
+                        "SELECT COALESCE(MAX(position), 0) FROM history",
+                        params![],
+                        |row| row.get(0),
+                    )
+                    .unwrap_or(0);
+                db.update_field(&id, "position", &(max_position + 1).to_string())?;
+            }
             let conn = db.get_connection()?;
             db.get_change_tracker()
                 .mark_item_changed(&conn, &id, "favorite", false)?;
@@ -112,6 +127,17 @@ pub fn update_field(
         "note" => {
             db.update_field(&id, "note", &value)?;
             db.update_field(&id, "time", &current_time.to_string())?;
+            if auto_sort {
+                let conn = db.get_connection()?;
+                let max_position: i32 = conn
+                    .query_row(
+                        "SELECT COALESCE(MAX(position), 0) FROM history",
+                        params![],
+                        |row| row.get(0),
+                    )
+                    .unwrap_or(0);
+                db.update_field(&id, "position", &(max_position + 1).to_string())?;
+            }
             let conn = db.get_connection()?;
             db.get_change_tracker()
                 .mark_item_changed(&conn, &id, "note", false)?;
@@ -120,6 +146,17 @@ pub fn update_field(
             db.update_field(&id, "value", &value)?;
             db.update_field(&id, "count", &value.len().to_string())?;
             db.update_field(&id, "time", &current_time.to_string())?;
+            if auto_sort {
+                let conn = db.get_connection()?;
+                let max_position: i32 = conn
+                    .query_row(
+                        "SELECT COALESCE(MAX(position), 0) FROM history",
+                        params![],
+                        |row| row.get(0),
+                    )
+                    .unwrap_or(0);
+                db.update_field(&id, "position", &(max_position + 1).to_string())?;
+            }
             let conn = db.get_connection()?;
             db.get_change_tracker()
                 .mark_item_changed(&conn, &id, "content", false)?;
@@ -127,6 +164,17 @@ pub fn update_field(
         "search" => {
             db.update_field(&id, "search", &value)?;
             db.update_field(&id, "time", &current_time.to_string())?;
+            if auto_sort {
+                let conn = db.get_connection()?;
+                let max_position: i32 = conn
+                    .query_row(
+                        "SELECT COALESCE(MAX(position), 0) FROM history",
+                        params![],
+                        |row| row.get(0),
+                    )
+                    .unwrap_or(0);
+                db.update_field(&id, "position", &(max_position + 1).to_string())?;
+            }
             let conn = db.get_connection()?;
             db.get_change_tracker()
                 .mark_item_changed(&conn, &id, "search", false)?;
@@ -134,6 +182,17 @@ pub fn update_field(
         "type" => {
             db.update_field(&id, "type", &value)?;
             db.update_field(&id, "time", &current_time.to_string())?;
+            if auto_sort {
+                let conn = db.get_connection()?;
+                let max_position: i32 = conn
+                    .query_row(
+                        "SELECT COALESCE(MAX(position), 0) FROM history",
+                        params![],
+                        |row| row.get(0),
+                    )
+                    .unwrap_or(0);
+                db.update_field(&id, "position", &(max_position + 1).to_string())?;
+            }
             let conn = db.get_connection()?;
             db.get_change_tracker()
                 .mark_item_changed(&conn, &id, "type", false)?;
@@ -141,12 +200,35 @@ pub fn update_field(
         "subtype" => {
             db.update_field(&id, "subtype", &value)?;
             db.update_field(&id, "time", &current_time.to_string())?;
+            if auto_sort {
+                let conn = db.get_connection()?;
+                let max_position: i32 = conn
+                    .query_row(
+                        "SELECT COALESCE(MAX(position), 0) FROM history",
+                        params![],
+                        |row| row.get(0),
+                    )
+                    .unwrap_or(0);
+                db.update_field(&id, "position", &(max_position + 1).to_string())?;
+            }
             let conn = db.get_connection()?;
             db.get_change_tracker()
                 .mark_item_changed(&conn, &id, "subtype", false)?;
         }
         "time" => {
             db.update_field(&id, "time", &value)?;
+            // 复制等操作更新时间戳时，根据 auto_sort 设置决定是否更新 position
+            if auto_sort {
+                let conn = db.get_connection()?;
+                let max_position: i32 = conn
+                    .query_row(
+                        "SELECT COALESCE(MAX(position), 0) FROM history",
+                        params![],
+                        |row| row.get(0),
+                    )
+                    .unwrap_or(0);
+                db.update_field(&id, "position", &(max_position + 1).to_string())?;
+            }
             // 时间戳更新不标记为待同步（无实质内容变更）
             let conn = db.get_connection()?;
             db.get_change_tracker()
