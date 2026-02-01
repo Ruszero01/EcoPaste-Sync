@@ -1,6 +1,7 @@
 import ProList from "@/components/ProList";
 import ProSwitch from "@/components/ProSwitch";
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
+import { useEffect } from "react";
 import { useSnapshot } from "valtio";
 import Language from "./components/Language";
 import MacosPermissions from "./components/MacosPermissions";
@@ -11,6 +12,17 @@ import WindowBehavior from "./components/WindowBehavior";
 const General = () => {
 	const { app } = useSnapshot(globalStore);
 	const { t } = useTranslation();
+
+	// 初始化时同步自启状态
+	useEffect(() => {
+		const syncAutoStart = async () => {
+			const enabled = await isEnabled();
+			if (globalStore.app.autoStart !== enabled) {
+				globalStore.app.autoStart = enabled;
+			}
+		};
+		syncAutoStart();
+	}, []);
 
 	// 监听自动启动变更
 	useImmediateKey(globalStore.app, "autoStart", async (value) => {
