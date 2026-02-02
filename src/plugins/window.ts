@@ -187,6 +187,6 @@ export const showImagePreview = (
 /**
  * 销毁图片预览浮窗
  */
-export const destroyImagePreview = () => {
-	invoke(COMMAND.DESTROY_IMAGE_PREVIEW);
+export const destroyImagePreview = async () => {
+	await invoke(COMMAND.DESTROY_IMAGE_PREVIEW);
 };

@@ -196,7 +196,10 @@ const Main = () => {
 			void appWindow.isVisible().then((isVisible) => {
 				if (!isVisible) return;
 
-				toggleWindow("main", undefined);
+				// 轻量模式下窗口销毁是异步的，延迟处理确保窗口完全销毁
+				setTimeout(() => {
+					toggleWindow("main", undefined);
+				}, 50);
 			});
 		},
 	});

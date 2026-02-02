@@ -3,21 +3,29 @@ import { clipboardStore } from "@/stores/clipboard";
 import type { HistoryTablePayload } from "@/types/database";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { Flex } from "antd";
-import { type FC, memo, useCallback, useRef } from "react";
+import { type FC, memo, useCallback, useEffect, useRef } from "react";
 import { useSnapshot } from "valtio";
 
 interface ImageProps extends Partial<HistoryTablePayload> {
 	className?: string;
 }
 
-// 防抖时间（毫秒）
-const PREVIEW_DEBOUNCE_MS = 100;
+// 鼠标悬浮后延迟显示的时间（毫秒）
+// 500ms 延迟可以过滤快速划过，只在用户真正想预览时显示
+const PREVIEW_DELAY_MS = 500;
 
 const Image: FC<ImageProps> = (props) => {
 	const { id, value, width, height, className = "max-h-full" } = props;
 	const { imagePreview } = useSnapshot(clipboardStore);
-	const lastPreviewTime = useRef(0);
+	const previewTimeoutRef = useRef<NodeJS.Timeout>();
 	let previewImagePath: string | null = null;
+
+	// 组件卸载时清除定时器（主窗口关闭时可能鼠标还在图片上）
+	useEffect(() => {
+		return () => {
+			clearTimeout(previewTimeoutRef.current);
+		};
+	}, []);
 
 	// 如果没有值，返回null
 	if (!value) {
@@ -71,25 +79,28 @@ const Image: FC<ImageProps> = (props) => {
 		);
 	}
 
-	// 显示预览（带防抖）
+	// 显示预览（延迟触发）
 	const handleMouseEnter = useCallback(() => {
 		if (!imagePreview.enabled || !previewImagePath || !id) return;
 
-		const now = Date.now();
-		if (now - lastPreviewTime.current < PREVIEW_DEBOUNCE_MS) {
-			return; // 防抖：短时间内忽略重复请求
-		}
-		lastPreviewTime.current = now;
+		// 清除之前的预览超时
+		clearTimeout(previewTimeoutRef.current);
 
-		showImagePreview(
-			previewImagePath!,
-			width ?? undefined,
-			height ?? undefined,
-		);
+		// 延迟触发预览
+		previewTimeoutRef.current = setTimeout(() => {
+			showImagePreview(
+				previewImagePath!,
+				width ?? undefined,
+				height ?? undefined,
+			);
+		}, PREVIEW_DELAY_MS);
 	}, [imagePreview.enabled, previewImagePath, id, width, height]);
 
 	// 隐藏预览
 	const handleMouseLeave = useCallback(() => {
+		// 清除挂起的预览
+		clearTimeout(previewTimeoutRef.current);
+		// 销毁预览
 		destroyImagePreview();
 	}, []);
 

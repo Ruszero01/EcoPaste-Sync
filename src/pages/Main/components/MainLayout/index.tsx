@@ -1,4 +1,5 @@
 import UnoIcon from "@/components/UnoIcon";
+import { toggleWindow } from "@/plugins/window";
 import { clipboardStore } from "@/stores/clipboard";
 import { isWin } from "@/utils/is";
 import { Flex } from "antd";
