@@ -165,9 +165,45 @@ impl SyncCore {
         let local_ids: std::collections::HashSet<&str> =
             local_data.iter().map(|item| item.id.as_str()).collect();
 
+        // 收藏模式下，获取已取消收藏的条目ID（本地 favorite=0 但云端有数据）
+        let canceled_favorites: Vec<String> = if mode_config.only_favorites {
+            let db = database_state.lock().await;
+            db.query_canceled_favorites(&cloud_data.iter().map(|i| i.id.as_str()).collect::<Vec<&str>>())
+                .unwrap_or_default()
+        } else {
+            vec![]
+        };
+
+        // 处理取消收藏的条目：只从云端删除，不删除本地数据
+        let mut deleted_from_cloud = Vec::new();
+        if !canceled_favorites.is_empty() {
+            match self
+                .delete_from_cloud_only(&canceled_favorites, &cloud_data)
+                .await
+            {
+                Ok(deleted) => {
+                    let deleted_count = deleted.len();
+                    deleted_from_cloud = deleted;
+                    log::info!("[Sync] 从云端删除 {} 项（已取消收藏）", deleted_count);
+
+                    // 直接更新本地同步状态为 not_synced（因为云端已删除，本地不再同步）
+                    let db = database_state.lock().await;
+                    let _ = db.batch_update_sync_status(&canceled_favorites, "not_synced");
+                    log::info!("[Sync] 更新 {} 项本地同步状态为 not_synced", canceled_favorites.len());
+                }
+                Err(e) => {
+                    log::error!("[Sync] 从云端删除取消收藏项失败: {}", e);
+                }
+            }
+        }
+
         let items_to_download: Vec<String> = filtered_cloud
             .iter()
-            .filter(|item| !local_ids.contains(item.id.as_str()))
+            .filter(|item| {
+                !local_ids.contains(item.id.as_str())
+                    && !deleted_from_cloud.contains(&item.id)
+                    && !canceled_favorites.contains(&item.id)
+            })
             .map(|item| item.id.clone())
             .collect();
 
@@ -863,6 +899,17 @@ impl SyncCore {
 
         for item_id in items {
             if let Some(cloud_item) = cloud_data.iter().find(|i| i.id == *item_id) {
+                // 保护措施：检查本地是否已存在且 favorite=0（收藏模式下已取消收藏）
+                let db = database_state.lock().await;
+                if let Ok(Some(local_item)) = db.query_by_id(item_id) {
+                    if local_item.favorite == 0 {
+                        // 已取消收藏，跳过下载
+                        log::info!("[Sync] 跳过下载已取消收藏的条目: {}", item_id);
+                        continue;
+                    }
+                }
+                drop(db);
+
                 let mut db_item = cloud_item.clone();
                 db_item.time = chrono::Utc::now().timestamp_millis();
 
@@ -962,5 +1009,40 @@ impl SyncCore {
         }
 
         Ok((deleted_ids, files_to_delete, updated_cloud_data))
+    }
+
+    /// 只从云端删除索引，不删除本地数据
+    /// 用于收藏模式下取消收藏的条目处理
+    async fn delete_from_cloud_only(
+        &self,
+        items: &[String],
+        cloud_data: &[SyncDataItem],
+    ) -> Result<Vec<String>, String> {
+        if items.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let webdav_client = self.webdav_client.clone();
+        let client = webdav_client.lock().await;
+
+        let mut updated_cloud_data = cloud_data.to_vec();
+        let original_count = updated_cloud_data.len();
+        updated_cloud_data.retain(|item| !items.contains(&item.id));
+
+        if updated_cloud_data.len() < original_count {
+            let updated_json = serde_json::to_string(&updated_cloud_data)
+                .map_err(|e| format!("序列化删除数据失败: {}", e))?;
+
+            if let Err(e) = client
+                .upload_sync_data("sync-data.json", &updated_json)
+                .await
+            {
+                return Err(format!("更新云端索引失败: {}", e));
+            }
+
+            log::info!("[Sync] 已从云端删除 {} 项", original_count - updated_cloud_data.len());
+        }
+
+        Ok(items.to_vec())
     }
 }
