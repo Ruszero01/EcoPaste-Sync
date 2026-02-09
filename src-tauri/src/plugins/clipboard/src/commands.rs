@@ -16,7 +16,7 @@ mod utils;
 pub use audio::play_copy_audio;
 pub use utils::{save_clipboard_image, schedule_ocr_task};
 
-use tauri_plugin_eco_common::{file::is_all_images, id::generate_id};
+use tauri_plugin_eco_common::id::generate_id;
 
 // 引入 database 插件
 use tauri_plugin_eco_database::{DatabaseState, InsertItem};
@@ -231,8 +231,16 @@ where
             let has_image = context.has(ContentFormat::Image);
             let has_files = context.has(ContentFormat::Files);
 
-            // 如果有图片数据，优先作为图片处理
+            // 类型判断规则：
+            // - has_image=true → 优先使用截图数据保存为 image 类型
+            // - has_files=true, count=1, !has_image → 1张图片文件 → 保存为 image 类型
+            // - has_files=true, count>1 或 has_image=true → 多张图片或混合 → 保存为 files 类型
+
+            // 获取文件列表（需要同时获取用于判断）
+            let files = context.get_files().unwrap_or_default();
+
             if has_image {
+                // 有截图数据 → 优先保存为 image 类型
                 match context.get_image() {
                     Ok(image) => match save_clipboard_image(&app_handle, Some(&image), None) {
                         Ok((image_path, file_size, width, height)) => {
@@ -253,32 +261,68 @@ where
                                 Some(height as i32),
                             )
                         }
-                        Err(_) => return,
+                        Err(_) => {
+                            // 如果截图保存失败，检查是否有文件兜底
+                            if has_files && files.len() == 1 {
+                                if let Some(first_file) = files.first() {
+                                    match save_clipboard_image(&app_handle, None, Some(first_file)) {
+                                        Ok((image_path, file_size, width, height)) => {
+                                            let item_id = generate_id();
+                                            let image_path_str = image_path.to_string_lossy().to_string();
+                                            schedule_ocr_task(&app_handle, &image_path, &item_id);
+                                            (
+                                                "image".to_string(),
+                                                "image".to_string(),
+                                                Some(image_path_str),
+                                                None,
+                                                Some(file_size),
+                                                Some("image".to_string()),
+                                                Some(width as i32),
+                                                Some(height as i32),
+                                            )
+                                        }
+                                        Err(_) => (
+                                            "files".to_string(),
+                                            "files".to_string(),
+                                            serde_json::to_string(&files).ok(),
+                                            Some(files.join(" ")),
+                                            Some(0),
+                                            None,
+                                            None,
+                                            None,
+                                        ),
+                                    }
+                                } else {
+                                    (
+                                        "files".to_string(),
+                                        "files".to_string(),
+                                        None,
+                                        Some(String::new()),
+                                        Some(0),
+                                        None,
+                                        None,
+                                        None,
+                                    )
+                                }
+                            } else {
+                                return;
+                            }
+                        }
                     },
-                    Err(_) => return,
-                }
-            } else if has_files {
-                // 检查是否都是图片文件
-                match context.get_files() {
-                    Ok(files) => {
-                        let is_all = is_all_images(&files);
-
-                        if is_all {
-                            // 所有文件都是图片，保存第一张作为主图片
+                    Err(_) => {
+                        // 如果读取截图数据失败，检查是否有文件兜底
+                        if has_files && files.len() == 1 {
                             if let Some(first_file) = files.first() {
                                 match save_clipboard_image(&app_handle, None, Some(first_file)) {
                                     Ok((image_path, file_size, width, height)) => {
                                         let item_id = generate_id();
                                         let image_path_str = image_path.to_string_lossy().to_string();
-
-                                        // 安排OCR任务（如果OCR功能开启）
                                         schedule_ocr_task(&app_handle, &image_path, &item_id);
-
                                         (
                                             "image".to_string(),
                                             "image".to_string(),
                                             Some(image_path_str),
-                                            None, // search 留空，由OCR完成后更新
+                                            None,
                                             Some(file_size),
                                             Some("image".to_string()),
                                             Some(width as i32),
@@ -297,7 +341,6 @@ where
                                     ),
                                 }
                             } else {
-                                // 空文件列表，返回默认值
                                 (
                                     "files".to_string(),
                                     "files".to_string(),
@@ -310,26 +353,72 @@ where
                                 )
                             }
                         } else {
-                            // 有非图片文件，当作文件处理
-                            // count 存储第一个文件的大小
-                            let count = files
-                                .first()
-                                .and_then(|f| std::fs::metadata(f).ok().map(|m| m.len() as i32))
-                                .unwrap_or(1);
+                            return;
+                        }
+                    }
+                }
+            } else if has_files {
+                let files_count = files.len();
 
-                            (
+                if files_count == 1 {
+                    // 只有1个图片文件 → 保存为 image 类型
+                    if let Some(first_file) = files.first() {
+                        match save_clipboard_image(&app_handle, None, Some(first_file)) {
+                            Ok((image_path, file_size, width, height)) => {
+                                let item_id = generate_id();
+                                let image_path_str = image_path.to_string_lossy().to_string();
+                                schedule_ocr_task(&app_handle, &image_path, &item_id);
+                                (
+                                    "image".to_string(),
+                                    "image".to_string(),
+                                    Some(image_path_str),
+                                    None,
+                                    Some(file_size),
+                                    Some("image".to_string()),
+                                    Some(width as i32),
+                                    Some(height as i32),
+                                )
+                            }
+                            Err(_) => (
                                 "files".to_string(),
                                 "files".to_string(),
                                 serde_json::to_string(&files).ok(),
                                 Some(files.join(" ")),
-                                Some(count),
+                                Some(0),
                                 None,
                                 None,
                                 None,
-                            )
+                            ),
                         }
+                    } else {
+                        (
+                            "files".to_string(),
+                            "files".to_string(),
+                            None,
+                            Some(String::new()),
+                            Some(0),
+                            None,
+                            None,
+                            None,
+                        )
                     }
-                    Err(_) => return,
+                } else {
+                    // 多张文件 → 保存为 files 类型
+                    let count = files
+                        .first()
+                        .and_then(|f| std::fs::metadata(f).ok().map(|m| m.len() as i32))
+                        .unwrap_or(1);
+
+                    (
+                        "files".to_string(),
+                        "files".to_string(),
+                        serde_json::to_string(&files).ok(),
+                        Some(files.join(" ")),
+                        Some(count),
+                        None,
+                        None,
+                        None,
+                    )
                 }
             } else if !copy_plain
                 && !context.has(ContentFormat::Html)
