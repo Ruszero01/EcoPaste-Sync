@@ -457,6 +457,48 @@ impl DatabaseManager {
         Ok(())
     }
 
+    /// 根据ID查询单个历史记录
+    ///
+    /// # Arguments
+    /// * `id` - 项目ID
+    pub fn query_by_id(&self, id: &str) -> Result<Option<HistoryItem>, String> {
+        let conn = self.get_connection()?;
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, type, [group], value, search, count, width, height, favorite, time, note, subtype, deleted, syncStatus, sourceAppName, sourceAppIcon, position
+             FROM history WHERE id = ?1",
+            )
+            .map_err(|e| format!("准备查询失败: {}", e))?;
+
+        let mut rows = stmt.query(params![id]).map_err(|e| format!("查询失败: {}", e))?;
+
+        if let Some(row) = rows.next().map_err(|e| format!("读取行失败: {}", e))? {
+            let item = HistoryItem {
+                id: row.get(0).map_err(|e| format!("读取id失败: {}", e))?,
+                item_type: row.get(1).ok(),
+                group: row.get(2).ok(),
+                value: row.get(3).ok(),
+                search: row.get(4).ok(),
+                count: row.get(5).ok(),
+                width: row.get(6).ok(),
+                height: row.get(7).ok(),
+                favorite: row.get(8).unwrap_or(0),
+                time: row.get(9).unwrap_or(0),
+                note: row.get(10).ok(),
+                subtype: row.get(11).ok(),
+                deleted: row.get(12).ok(),
+                sync_status: row.get(13).ok(),
+                source_app_name: row.get(14).ok().flatten(),
+                source_app_icon: row.get(15).ok().flatten(),
+                position: row.get(16).ok().flatten(),
+            };
+            Ok(Some(item))
+        } else {
+            Ok(None)
+        }
+    }
+
     /// 获取统计信息
     pub fn get_statistics(&self) -> Result<DatabaseStatistics, String> {
         let conn = self.get_connection()?;
@@ -850,6 +892,39 @@ impl DatabaseManager {
         log::info!("[Database] 迁移标记已写入: {:?}", marker_path);
 
         Ok(())
+    }
+
+    /// 查询收藏模式下已取消收藏的条目（本地 favorite=0 但云端存在）
+    /// 用于收藏模式同步时，处理用户取消收藏的条目
+    ///
+    /// # Arguments
+    /// * `cloud_ids` - 云端存在的条目ID列表
+    pub fn query_canceled_favorites(&self, cloud_ids: &[&str]) -> Result<Vec<String>, String> {
+        if cloud_ids.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let placeholders: Vec<String> = cloud_ids.iter().map(|_| "?".to_string()).collect();
+        let sql = format!(
+            "SELECT id FROM history WHERE id IN ({}) AND favorite = 0",
+            placeholders.join(",")
+        );
+
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare(&sql).map_err(|e| format!("准备查询失败: {}", e))?;
+
+        let mut ids = Vec::new();
+        let mut row_iter = stmt
+            .query(rusqlite::params_from_iter(cloud_ids.iter()))
+            .map_err(|e| format!("查询失败: {}", e))?;
+
+        while let Ok(Some(row)) = row_iter.next() {
+            if let Ok(id_val) = row.get::<_, String>(0) {
+                ids.push(id_val);
+            }
+        }
+
+        Ok(ids)
     }
 }
 
