@@ -23,6 +23,8 @@ export interface SyncModeConfig {
 	includeImages: boolean;
 	/// 是否包含文件
 	includeFiles: boolean;
+	/// 是否包含书签
+	includeBookmarks: boolean;
 	/// 内容类型设置
 	contentTypes: {
 		includeText: boolean;

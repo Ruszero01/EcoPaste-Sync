@@ -25,6 +25,7 @@ const getDefaultSyncModeConfig = (): SyncModeConfig => {
 		onlyFavorites: false,
 		includeImages: false,
 		includeFiles: false,
+		includeBookmarks: false,
 		contentTypes: {
 			includeText: true,
 			includeHtml: true,
@@ -154,6 +155,7 @@ const CloudSync = () => {
 				onlyFavorites: storeSyncModeConfig.settings.onlyFavorites,
 				includeImages: storeSyncModeConfig.settings.includeImages,
 				includeFiles: storeSyncModeConfig.settings.includeFiles,
+				includeBookmarks: storeSyncModeConfig.settings.includeBookmarks,
 				contentTypes: {
 					includeText: storeSyncModeConfig.settings.includeText,
 					includeHtml: storeSyncModeConfig.settings.includeHtml,
