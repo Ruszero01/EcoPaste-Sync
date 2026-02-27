@@ -250,6 +250,7 @@ const CloudSync = () => {
 						includeImages: newConfig.includeImages,
 						includeFiles: newConfig.includeFiles,
 						onlyFavorites: enabled,
+						includeBookmarks: newConfig.includeBookmarks,
 					},
 				};
 
@@ -269,6 +270,7 @@ const CloudSync = () => {
 							only_favorites: enabled,
 							include_images: newConfig.includeImages,
 							include_files: newConfig.includeFiles,
+							include_bookmarks: newConfig.includeBookmarks,
 							timeout: 30000,
 						});
 					} catch (updateError) {
@@ -326,6 +328,7 @@ const CloudSync = () => {
 						includeImages: enabled,
 						includeFiles: enabled,
 						onlyFavorites: newConfig.onlyFavorites,
+						includeBookmarks: newConfig.includeBookmarks,
 					},
 				};
 
@@ -345,6 +348,7 @@ const CloudSync = () => {
 							only_favorites: newConfig.onlyFavorites,
 							include_images: enabled,
 							include_files: enabled,
+							include_bookmarks: newConfig.includeBookmarks,
 							timeout: 30000,
 						});
 					} catch (updateError) {
@@ -361,6 +365,80 @@ const CloudSync = () => {
 			} catch (error) {
 				console.error("处理文件模式变更失败", error);
 				appMessage.error("更新配置失败");
+			}
+		},
+		[
+			syncModeConfig,
+			connectionStatus,
+			webdavConfig,
+			autoSyncEnabled,
+			syncInterval,
+			appMessage,
+			t,
+		],
+	);
+
+	// 处理书签同步开关变更
+	const handleBookmarkSyncChange = useCallback(
+		async (enabled: boolean) => {
+			try {
+				// 检查状态是否已经相同，避免不必要的更新
+				if (syncModeConfig.includeBookmarks === enabled) {
+					return;
+				}
+
+				const currentConfig = syncModeConfig;
+				const newConfig = {
+					...currentConfig,
+					includeBookmarks: enabled,
+				};
+
+				// 直接更新globalStore中的同步模式配置
+				globalStore.cloudSync.syncModeConfig = {
+					settings: {
+						includeText: newConfig.contentTypes.includeText,
+						includeHtml: newConfig.contentTypes.includeHtml,
+						includeRtf: newConfig.contentTypes.includeRtf,
+						includeMarkdown: newConfig.contentTypes.includeMarkdown,
+						includeImages: newConfig.includeImages,
+						includeFiles: newConfig.includeFiles,
+						onlyFavorites: newConfig.onlyFavorites,
+						includeBookmarks: enabled,
+					},
+				};
+
+				// 更新组件状态
+				setSyncModeConfig(newConfig);
+
+				// 更新后端同步配置
+				if (connectionStatus === "success" && webdavConfig) {
+					try {
+						await backendSync.backendUpdateSyncConfig({
+							server_url: webdavConfig.url,
+							username: webdavConfig.username,
+							password: webdavConfig.password,
+							path: webdavConfig.path,
+							auto_sync: autoSyncEnabled,
+							auto_sync_interval_minutes: syncInterval,
+							only_favorites: newConfig.onlyFavorites,
+							include_images: newConfig.includeImages,
+							include_files: newConfig.includeFiles,
+							include_bookmarks: enabled,
+							timeout: 30000,
+						});
+					} catch (updateError) {
+						console.error("更新后端配置失败:", updateError);
+					}
+				}
+
+				appMessage.success(
+					enabled
+						? t("preference.cloud_sync.bookmark_sync_enabled")
+						: t("preference.cloud_sync.bookmark_sync_disabled"),
+				);
+			} catch (error) {
+				console.error("处理书签同步变更失败:", error);
+				appMessage.error(t("preference.cloud_sync.update_config_failed"));
 			}
 		},
 		[
@@ -1020,6 +1098,17 @@ const CloudSync = () => {
 							</Flex>
 						)}
 					</Flex>
+				</ProListItem>
+
+				{/* 书签同步 */}
+				<ProListItem
+					title={t("preference.cloud_sync.bookmark_sync")}
+					description={t("preference.cloud_sync.bookmark_sync_desc")}
+				>
+					<Switch
+						checked={syncModeConfig.includeBookmarks}
+						onChange={handleBookmarkSyncChange}
+					/>
 				</ProListItem>
 
 				{/* 间隔同步 */}

@@ -61,6 +61,7 @@ export const globalStore = proxy<GlobalStore>({
 				includeImages: false, // 文件模式开关，默认关闭
 				includeFiles: false, // 文件模式开关，默认关闭
 				onlyFavorites: false, // 收藏模式开关，默认关闭
+				includeBookmarks: false, // 书签同步开关，默认关闭
 			},
 		},
 		// 文件同步设置

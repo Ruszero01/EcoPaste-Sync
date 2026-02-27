@@ -3,6 +3,7 @@
 
 use crate::webdav::WebDAVClientState;
 use serde::{Deserialize, Serialize};
+use tauri_plugin_eco_common::paths::get_data_path;
 
 /// 书签分组
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -159,11 +160,38 @@ impl BookmarkSyncManager {
 
         if cloud_data.time > local_data.time {
             log::info!("[Bookmark] 云端更新，下载本地");
+            // 实际下载并保存数据
+            drop(client); // 释放锁，避免与下载死锁
+            match self.download_bookmarks().await {
+                Ok(Some(cloud_data)) => {
+                    if let Err(e) = self.save_bookmark_data_to_file(&cloud_data).await {
+                        log::error!("[Bookmark] 保存本地文件失败: {}", e);
+                        return Ok(BookmarkSyncResult {
+                            success: false,
+                            need_upload: false,
+                            need_download: false,
+                            message: format!("保存失败: {}", e),
+                        });
+                    }
+                }
+                Ok(None) => {
+                    log::warn!("[Bookmark] 云端无书签数据");
+                }
+                Err(e) => {
+                    log::error!("[Bookmark] 下载失败: {}", e);
+                    return Ok(BookmarkSyncResult {
+                        success: false,
+                        need_upload: false,
+                        need_download: false,
+                        message: format!("下载失败: {}", e),
+                    });
+                }
+            }
             return Ok(BookmarkSyncResult {
                 success: true,
                 need_upload: false,
                 need_download: true,
-                message: "云端数据更新，已下载到本地".to_string(),
+                message: "已下载并保存书签数据".to_string(),
             });
         }
 
@@ -174,11 +202,38 @@ impl BookmarkSyncManager {
         if local_hash != cloud_hash {
             // 时间戳相同但内容不同：以云端为准（云端数据通常更可靠）
             log::warn!("[Bookmark] 时间戳相同但内容不同，以云端为准");
+            // 实际下载并保存数据
+            drop(client); // 释放锁，避免与下载死锁
+            match self.download_bookmarks().await {
+                Ok(Some(cloud_data)) => {
+                    if let Err(e) = self.save_bookmark_data_to_file(&cloud_data).await {
+                        log::error!("[Bookmark] 保存本地文件失败: {}", e);
+                        return Ok(BookmarkSyncResult {
+                            success: false,
+                            need_upload: false,
+                            need_download: false,
+                            message: format!("保存失败: {}", e),
+                        });
+                    }
+                }
+                Ok(None) => {
+                    log::warn!("[Bookmark] 云端无书签数据");
+                }
+                Err(e) => {
+                    log::error!("[Bookmark] 下载失败: {}", e);
+                    return Ok(BookmarkSyncResult {
+                        success: false,
+                        need_upload: false,
+                        need_download: false,
+                        message: format!("下载失败: {}", e),
+                    });
+                }
+            }
             return Ok(BookmarkSyncResult {
                 success: true,
                 need_upload: false,
                 need_download: true,
-                message: "时间戳相同但内容不同，以云端数据为准".to_string(),
+                message: "时间戳相同但内容不同，已下载云端数据".to_string(),
             });
         }
 
@@ -241,6 +296,47 @@ impl BookmarkSyncManager {
         Ok(Some(data))
     }
 
+    /// 保存书签数据到本地文件
+    async fn save_bookmark_data_to_file(
+        &self,
+        data: &BookmarkSyncData,
+    ) -> Result<(), String> {
+        let data_dir = get_data_path().ok_or_else(|| "无法获取数据目录".to_string())?;
+        let bookmark_path = data_dir.join("bookmark-data.json");
+
+        // 确保目录存在
+        if let Some(parent) = bookmark_path.parent() {
+            if !parent.exists() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| format!("创建目录失败: {}", e))?;
+            }
+        }
+
+        // 转换为与 load_bookmark_data_local 兼容的格式保存
+        // 使用 last_modified 字段
+        #[derive(Debug, Clone, Serialize)]
+        struct LocalBookmarkData {
+            last_modified: i64,
+            groups: Vec<BookmarkGroup>,
+        }
+
+        let local_data = LocalBookmarkData {
+            last_modified: data.time,
+            groups: data.groups.clone(),
+        };
+
+        let json = serde_json::to_string_pretty(&local_data)
+            .map_err(|e| format!("序列化失败: {}", e))?;
+        std::fs::write(&bookmark_path, json).map_err(|e| format!("写入失败: {}", e))?;
+
+        log::info!(
+            "[Bookmark] 已保存本地文件 ({} 个分组)",
+            local_data.groups.len()
+        );
+
+        Ok(())
+    }
+
     /// 计算书签数据的哈希值，用于内容比较
     fn calculate_bookmark_hash(&self, data: &BookmarkSyncData) -> String {
         // 创建数据字符串
@@ -256,9 +352,9 @@ impl BookmarkSyncManager {
         // 简单的哈希函数
         let mut hash: i64 = 0;
         for byte in data_string.as_bytes() {
-            hash = (hash << 5) - hash + (*byte as i64);
-            hash = hash & hash; // 转换为32位整数
+            hash = (hash << 5).wrapping_sub(hash).wrapping_add(*byte as i64);
         }
+        // 使用标准的哈希值，不做额外的位运算
         hash.to_string()
     }
 

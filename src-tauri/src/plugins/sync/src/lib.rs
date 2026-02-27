@@ -113,6 +113,10 @@ pub fn read_sync_config_from_file<R: tauri::Runtime>(
                             .and_then(|v| v.get("includeFiles"))
                             .and_then(|v| v.as_bool())
                             .unwrap_or(false);
+                        let include_bookmarks = sync_mode_settings
+                            .and_then(|v| v.get("includeBookmarks"))
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false);
 
                         Some(types::SyncConfig {
                             server_url: server_config
@@ -144,6 +148,7 @@ pub fn read_sync_config_from_file<R: tauri::Runtime>(
                             only_favorites,
                             include_images,
                             include_files,
+                            include_bookmarks,
                         })
                     } else {
                         None

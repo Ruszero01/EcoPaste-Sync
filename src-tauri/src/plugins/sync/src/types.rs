@@ -26,11 +26,13 @@ mod tests {
             only_favorites: false,
             include_images: false,
             include_files: false,
+            include_bookmarks: false,
             timeout: 30000,
         };
         assert!(!config.auto_sync);
         assert!(!config.only_favorites);
         assert!(!config.include_files);
+        assert!(!config.include_bookmarks);
         assert_eq!(config.auto_sync_interval_minutes, 5);
         assert_eq!(config.timeout, 30000);
     }
@@ -128,6 +130,8 @@ pub struct SyncConfig {
     pub include_images: bool,
     /// 是否包含文件同步
     pub include_files: bool,
+    /// 是否包含书签同步
+    pub include_bookmarks: bool,
     /// 连接超时（毫秒）
     #[serde(default = "default_timeout")]
     pub timeout: u64,

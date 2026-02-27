@@ -11,6 +11,7 @@ export interface BackendSyncConfig {
 	only_favorites: boolean;
 	include_images: boolean;
 	include_files: boolean;
+	include_bookmarks: boolean;
 	timeout: number;
 }
 

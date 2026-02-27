@@ -82,6 +82,7 @@ export interface GlobalStore {
 				includeImages: boolean;
 				includeFiles: boolean;
 				onlyFavorites: boolean;
+				includeBookmarks: boolean;
 			};
 		};
 		// 文件同步设置

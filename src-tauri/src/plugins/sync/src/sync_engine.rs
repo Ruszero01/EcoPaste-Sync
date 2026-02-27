@@ -13,7 +13,7 @@ use crate::sync_core::{SyncCore, SyncModeConfig, SyncProcessResult};
 use crate::types::*;
 use crate::webdav::WebDAVClientState;
 use std::sync::Arc;
-use tauri::{AppHandle, Runtime};
+use tauri::{AppHandle, Emitter, Runtime};
 use tauri_plugin_eco_common::server_config::{get_last_sync_time, update_last_sync_time};
 use tauri_plugin_eco_database::DatabaseState;
 use tokio::sync::Mutex;
@@ -278,6 +278,7 @@ impl CloudSyncEngine {
             only_favorites,
             include_images: include_files, // 图片使用 include_files 配置
             include_files,
+            include_bookmarks: config.include_bookmarks,
         };
 
         log::info!(
@@ -287,12 +288,13 @@ impl CloudSyncEngine {
         );
 
         // 直接执行同步，让 perform_sync 负责所有数据库操作
+        // 克隆 mode_config 以便后续检查 include_bookmarks
         let result = core
-            .perform_sync(mode_config, database_state, app_handle)
+            .perform_sync(mode_config.clone(), database_state, app_handle)
             .await;
 
-        // 执行书签同步（只在主同步成功时）
-        if result.is_ok() {
+        // 执行书签同步（只在主同步成功时且书签同步已启用）
+        if result.is_ok() && mode_config.include_bookmarks {
             log::info!("[Bookmark] 开始同步...");
 
             // 先加载本地书签数据
@@ -320,6 +322,8 @@ impl CloudSyncEngine {
                     Ok(sync_result) => {
                         if sync_result.success {
                             log::info!("[Bookmark] 同步完成");
+                            // 通知前端书签数据已更改
+                            let _ = app_handle.emit("bookmark-data-changed", ());
                         } else {
                             log::warn!("[Bookmark] 同步失败");
                         }
@@ -331,6 +335,8 @@ impl CloudSyncEngine {
             } else {
                 log::info!("[Bookmark] 本地无数据，跳过同步");
             }
+        } else if !mode_config.include_bookmarks {
+            log::info!("[Bookmark] 书签同步已关闭，跳过同步");
         }
 
         self.status = SyncStatus::Idle;

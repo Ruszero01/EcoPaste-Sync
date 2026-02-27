@@ -30,6 +30,8 @@ pub struct SyncModeConfig {
     pub include_images: bool,
     /// 是否包含文件
     pub include_files: bool,
+    /// 是否包含书签
+    pub include_bookmarks: bool,
 }
 
 /// 同步结果
