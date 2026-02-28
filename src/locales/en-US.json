@@ -525,6 +525,7 @@
 		}
 	},
 	"toolbar": {
-		"url_encode_decode": "URL Encode/Decode"
+		"url_encode_decode": "URL Encode/Decode",
+		"base64_encode_decode": "Base64 Encode/Decode"
 	}
 }

@@ -512,6 +512,7 @@
 		}
 	},
 	"toolbar": {
-		"url_encode_decode": "URL 編解碼"
+		"url_encode_decode": "URL 編解碼",
+		"base64_encode_decode": "Base64 編解碼"
 	}
 }

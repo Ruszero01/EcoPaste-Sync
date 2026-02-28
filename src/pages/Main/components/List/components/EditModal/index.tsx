@@ -6,7 +6,7 @@ import { convertColor } from "@/plugins/clipboard";
 import { backendUpdateField } from "@/plugins/database";
 import { clipboardStore } from "@/stores/clipboard";
 import type { HistoryTablePayload } from "@/types/database";
-import { EditOutlined, RetweetOutlined } from "@ant-design/icons";
+import { CodeOutlined, EditOutlined, RetweetOutlined } from "@ant-design/icons";
 import MDEditor from "@uiw/react-md-editor";
 import { useBoolean } from "ahooks";
 import { Button, Flex, Form, Input, Modal, Select } from "antd";
@@ -204,6 +204,22 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 		}
 	};
 
+	// Base64编解码处理
+	const handleBase64EncodeDecode = () => {
+		try {
+			// 尝试解码
+			const decoded = atob(content);
+			// 解码成功
+			setContent(decoded);
+			form.setFieldsValue({ content: decoded });
+		} catch {
+			// 解码失败，进行编码
+			const encoded = btoa(content);
+			setContent(encoded);
+			form.setFieldsValue({ content: encoded });
+		}
+	};
+
 	// 获取当前代码语言
 	const getCurrentCodeLanguage = () => {
 		if (selectedType.startsWith("code|") && selectedCodeLanguage) {
@@ -375,13 +391,21 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 								placeholder="选择语言"
 							/>
 						) : showToolbar() ? (
-							<div className="flex items-center rounded-lg border border-neutral-200 bg-neutral-50 px-1.5 py-1 dark:border-neutral-700 dark:bg-neutral-800/50">
+							<div className="flex items-center gap-1 rounded-lg border border-neutral-200 bg-neutral-50 px-1.5 py-1 dark:border-neutral-700 dark:bg-neutral-800/50">
 								<Button
 									type="text"
 									size="small"
 									icon={<RetweetOutlined />}
 									onClick={handleUrlEncodeDecode}
 									title={t("toolbar.url_encode_decode") || "URL编解码"}
+									className="text-neutral-500 hover:text-primary dark:text-neutral-400"
+								/>
+								<Button
+									type="text"
+									size="small"
+									icon={<CodeOutlined />}
+									onClick={handleBase64EncodeDecode}
+									title={t("toolbar.base64_encode_decode") || "Base64编解码"}
 									className="text-neutral-500 hover:text-primary dark:text-neutral-400"
 								/>
 							</div>

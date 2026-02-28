@@ -521,6 +521,7 @@
 		}
 	},
 	"toolbar": {
-		"url_encode_decode": "URL 编解码"
+		"url_encode_decode": "URL 编解码",
+		"base64_encode_decode": "Base64 编解码"
 	}
 }
