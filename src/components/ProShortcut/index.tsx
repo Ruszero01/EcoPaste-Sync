@@ -42,7 +42,9 @@ const ProShortcut: FC<ProShortcutProps> = (props) => {
 
 	const isFocusing = useFocusWithin(containerRef, {
 		onFocus: () => {
+			// 点击录制框时，先清空旧值并触发 onChange，通知后端注销旧快捷键
 			state.value = [];
+			onChange?.("");
 		},
 		onBlur: () => {
 			if (!isValidShortcut()) {
