@@ -6,10 +6,10 @@ import { convertColor } from "@/plugins/clipboard";
 import { backendUpdateField } from "@/plugins/database";
 import { clipboardStore } from "@/stores/clipboard";
 import type { HistoryTablePayload } from "@/types/database";
-import { RetweetOutlined } from "@ant-design/icons";
+import { EditOutlined, RetweetOutlined } from "@ant-design/icons";
 import MDEditor from "@uiw/react-md-editor";
 import { useBoolean } from "ahooks";
-import { Button, Form, Input, Modal, Select } from "antd";
+import { Button, Flex, Form, Input, Modal, Select } from "antd";
 import { find } from "lodash-es";
 import { forwardRef, useContext, useImperativeHandle, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -263,15 +263,6 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 			const originalType = item.type;
 			const originalSubtype = item.subtype;
 
-			// 更新本地数据
-			item.type = updateType;
-			item.subtype = updateSubtype;
-			item.value = formContent;
-			item.time = currentTime;
-			// 更新字符计数
-			item.count = formContent.length;
-			// 注意：不设置syncStatus，让后端变更跟踪器处理
-
 			// 立即更新本地状态中的对应项，确保前端显示立即更新
 			const itemIndex = state.list.findIndex(
 				(listItem) => listItem.id === item.id,
@@ -281,7 +272,17 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 				// 只在原状态为已同步时才设置为 changed，保持与后端 change_tracker 逻辑一致
 				const newSyncStatus =
 					item.syncStatus === "synced" ? "changed" : item.syncStatus;
-				state.list[itemIndex] = { ...item, syncStatus: newSyncStatus };
+				// 使用新对象替换，确保 value 和其他字段都被正确更新
+				const updatedItem = {
+					...item,
+					value: formContent,
+					type: updateType,
+					subtype: updateSubtype,
+					time: currentTime,
+					count: formContent.length,
+					syncStatus: newSyncStatus,
+				};
+				state.list[itemIndex] = updatedItem;
 			}
 
 			// 调用database插件更新数据库
@@ -326,10 +327,10 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 
 				// 调用database插件更新收藏状态
 				await backendUpdateField(id, "favorite", "true");
-
-				// 刷新列表以更新排序位置（autoSort 开启时后端会更新 position）
-				forceRefreshList?.();
 			}
+
+			// 统一刷新列表，确保预览区域更新
+			forceRefreshList?.();
 		}
 
 		toggle();
@@ -339,35 +340,33 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 		<Modal
 			forceRender
 			centered
-			title={t("component.edit_modal.label.edit")}
+			title={
+				<Flex align="center" gap={6}>
+					<EditOutlined className="text-color-2 text-sm" />
+					<span className="text-color-2 text-sm">
+						{t("component.edit_modal.label.edit")}
+					</span>
+				</Flex>
+			}
 			open={open}
 			onOk={handleOk}
 			onCancel={toggle}
 			width={900}
 		>
 			<Form form={form} initialValues={{ content }} onFinish={handleOk}>
-				{/* 工具栏 - 仅纯文本类型显示 */}
-				{showToolbar() && (
-					<Form.Item className="mb-2">
-						<Button
-							type="text"
-							icon={<RetweetOutlined />}
-							onClick={handleUrlEncodeDecode}
-							title={t("toolbar.url_encode_decode") || "URL编解码"}
-						/>
-					</Form.Item>
-				)}
-
-				{/* 类型选择区域 */}
+				{/* 类型选择 + 工具栏区域 */}
 				<Form.Item className="mb-4">
-					<div className="flex gap-2">
+					<div className="flex items-center gap-2">
+						{/* 类型选择 */}
 						<Select
 							value={selectedType}
 							onChange={handleTypeChange}
 							style={{ width: 120 }}
 							options={TEXT_TYPE_OPTIONS}
 						/>
-						{selectedType.startsWith("code|") && (
+
+						{/* 代码类型：显示语言选择 | 其他类型：显示工具栏 */}
+						{selectedType.startsWith("code|") ? (
 							<Select
 								value={selectedCodeLanguage}
 								onChange={handleCodeLanguageChange}
@@ -375,7 +374,18 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 								options={CODE_LANGUAGE_OPTIONS}
 								placeholder="选择语言"
 							/>
-						)}
+						) : showToolbar() ? (
+							<div className="flex items-center rounded-lg border border-neutral-200 bg-neutral-50 px-1.5 py-1 dark:border-neutral-700 dark:bg-neutral-800/50">
+								<Button
+									type="text"
+									size="small"
+									icon={<RetweetOutlined />}
+									onClick={handleUrlEncodeDecode}
+									title={t("toolbar.url_encode_decode") || "URL编解码"}
+									className="text-neutral-500 hover:text-primary dark:text-neutral-400"
+								/>
+							</div>
+						) : null}
 					</div>
 				</Form.Item>
 
