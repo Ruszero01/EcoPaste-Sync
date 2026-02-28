@@ -510,5 +510,8 @@
 				"input_content": "請輸入內容"
 			}
 		}
+	},
+	"toolbar": {
+		"url_encode_decode": "URL 編解碼"
 	}
 }

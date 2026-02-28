@@ -523,5 +523,8 @@
 				"input_content": "Please enter content"
 			}
 		}
+	},
+	"toolbar": {
+		"url_encode_decode": "URL Encode/Decode"
 	}
 }

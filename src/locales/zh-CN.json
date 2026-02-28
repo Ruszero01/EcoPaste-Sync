@@ -519,5 +519,8 @@
 				"input_content": "请输入内容"
 			}
 		}
+	},
+	"toolbar": {
+		"url_encode_decode": "URL 编解码"
 	}
 }

@@ -510,5 +510,8 @@
 				"input_content": "内容を入力してください"
 			}
 		}
+	},
+	"toolbar": {
+		"url_encode_decode": "URL エンコード/デコード"
 	}
 }
