@@ -6,9 +6,10 @@ import { convertColor } from "@/plugins/clipboard";
 import { backendUpdateField } from "@/plugins/database";
 import { clipboardStore } from "@/stores/clipboard";
 import type { HistoryTablePayload } from "@/types/database";
+import { RetweetOutlined } from "@ant-design/icons";
 import MDEditor from "@uiw/react-md-editor";
 import { useBoolean } from "ahooks";
-import { Form, Input, Modal, Select } from "antd";
+import { Button, Form, Input, Modal, Select } from "antd";
 import { find } from "lodash-es";
 import { forwardRef, useContext, useImperativeHandle, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -172,6 +173,37 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 		return selectedType === "text|color";
 	};
 
+	// 判断是否显示工具栏（纯文本类型，排除代码/格式文本/颜色）
+	const showToolbar = () => {
+		if (selectedType.startsWith("code|")) return false;
+		if (selectedType.startsWith("formatted|")) return false;
+		if (selectedType === "text|color") return false;
+		return true;
+	};
+
+	// URL编解码处理
+	const handleUrlEncodeDecode = () => {
+		try {
+			// 尝试解码
+			const decoded = decodeURIComponent(content);
+			// 如果解码后内容与原内容不同，说明是URL编码
+			if (decoded !== content) {
+				setContent(decoded);
+				form.setFieldsValue({ content: decoded });
+			} else {
+				// 否则进行编码
+				const encoded = encodeURIComponent(content);
+				setContent(encoded);
+				form.setFieldsValue({ content: encoded });
+			}
+		} catch {
+			// 解码失败，进行编码
+			const encoded = encodeURIComponent(content);
+			setContent(encoded);
+			form.setFieldsValue({ content: encoded });
+		}
+	};
+
 	// 获取当前代码语言
 	const getCurrentCodeLanguage = () => {
 		if (selectedType.startsWith("code|") && selectedCodeLanguage) {
@@ -314,6 +346,18 @@ const EditModal = forwardRef<EditModalRef>((_, ref) => {
 			width={900}
 		>
 			<Form form={form} initialValues={{ content }} onFinish={handleOk}>
+				{/* 工具栏 - 仅纯文本类型显示 */}
+				{showToolbar() && (
+					<Form.Item className="mb-2">
+						<Button
+							type="text"
+							icon={<RetweetOutlined />}
+							onClick={handleUrlEncodeDecode}
+							title={t("toolbar.url_encode_decode") || "URL编解码"}
+						/>
+					</Form.Item>
+				)}
+
 				{/* 类型选择区域 */}
 				<Form.Item className="mb-4">
 					<div className="flex gap-2">
