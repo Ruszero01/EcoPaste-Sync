@@ -5,7 +5,7 @@
 		"name": "Rains",
 		"email": "Rains@foxmail.com"
 	},
-	"version": "0.8.0",
+	"version": "0.8.1",
 	"type": "module",
 	"scripts": {
 		"dev": "run-s build:icon dev:vite",
