@@ -145,3 +145,14 @@ pub async fn paste_color<R: Runtime>(
     // 此处仅返回成功，由前端处理剪贴板写入
     Ok(())
 }
+
+// 快速粘贴命令 - macOS 存根实现
+#[command]
+pub async fn quick_paste<R: Runtime>(
+    _app_handle: AppHandle<R>,
+    _index: u32,
+) -> Result<(), String> {
+    // macOS: 快速粘贴逻辑由前端处理
+    // 此处仅返回成功
+    Ok(())
+}

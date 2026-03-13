@@ -1,4 +1,4 @@
-use tauri::{async_runtime::spawn, AppHandle, Manager, Runtime, WebviewWindow};
+use tauri::{async_runtime::spawn, command, AppHandle, Manager, Runtime, WebviewWindow};
 
 use tauri_plugin_eco_common::config::{get_nested, read_config};
 
@@ -42,9 +42,6 @@ pub use macos::*;
 
 #[cfg(not(target_os = "macos"))]
 pub use not_macos::*;
-
-#[cfg(target_os = "macos")]
-use crate::plugins::window::commands::macos::{set_macos_panel, MacOSPanelStatus};
 
 // 获取窗口状态文件的路径
 fn get_window_state_path<R: Runtime>(
@@ -101,6 +98,155 @@ pub fn shared_show_window<R: Runtime>(window: &WebviewWindow<R>) {
     let _ = window.show();
     let _ = window.unminimize();
     let _ = window.set_focus();
+}
+
+// 共享隐藏窗口的方法
+pub fn shared_hide_window<R: Runtime>(window: &WebviewWindow<R>) {
+    let _ = window.hide();
+}
+
+// 窗口配置
+const MAIN_WINDOW_URL: &str = "index.html/#/";
+const MAIN_WINDOW_WIDTH: u32 = 360;
+const MAIN_WINDOW_HEIGHT: u32 = 600;
+const PREFERENCE_WINDOW_URL: &str = "index.html/#/preference";
+const PREFERENCE_WINDOW_WIDTH: u32 = 700;
+const PREFERENCE_WINDOW_HEIGHT: u32 = 480;
+
+// macOS 版本的 create_window 函数
+#[cfg(target_os = "macos")]
+#[command]
+pub async fn create_window<R: Runtime>(
+    app_handle: AppHandle<R>,
+    label: String,
+    position_mode: Option<&str>,
+) -> Result<(), String> {
+    // 先检查窗口是否已存在，如果存在则销毁旧窗口
+    if let Some(existing_window) = app_handle.get_webview_window(&label) {
+        let _ = existing_window.destroy();
+    }
+
+    let is_main = label == MAIN_WINDOW_LABEL;
+
+    // 根据 position_mode 计算初始位置
+    let initial_position = match position_mode {
+        Some("remember") => {
+            if let Ok(Some(state)) = get_saved_window_state(&app_handle, &label) {
+                let (x, y, width, height) = state;
+                Some((x as f64, y as f64, width as f64, height as f64))
+            } else {
+                None
+            }
+        }
+        Some("follow") => {
+            if let Ok(cursor_pos) = app_handle.cursor_position() {
+                let window_width = if is_main {
+                    MAIN_WINDOW_WIDTH
+                } else {
+                    PREFERENCE_WINDOW_WIDTH
+                };
+                let window_height = if is_main {
+                    MAIN_WINDOW_HEIGHT
+                } else {
+                    PREFERENCE_WINDOW_HEIGHT
+                };
+
+                let (safe_x, safe_y) =
+                    match find_monitor_at_position(&app_handle, cursor_pos.x, cursor_pos.y) {
+                        Some(monitor) => calculate_safe_position_in_monitor(
+                            cursor_pos.x as i32,
+                            cursor_pos.y as i32,
+                            window_width,
+                            window_height,
+                            &monitor,
+                        ),
+                        None => (cursor_pos.x as i32, cursor_pos.y as i32),
+                    };
+
+                Some((
+                    safe_x as f64,
+                    safe_y as f64,
+                    window_width as f64,
+                    window_height as f64,
+                ))
+            } else {
+                None
+            }
+        }
+        Some("center") | None | Some(_) => None,
+    };
+
+    let builder = if is_main {
+        let url = MAIN_WINDOW_URL;
+        let width = MAIN_WINDOW_WIDTH;
+        let height = MAIN_WINDOW_HEIGHT;
+
+        let mut builder = tauri::WebviewWindowBuilder::new(
+            &app_handle,
+            &label,
+            tauri::WebviewUrl::App(url.into()),
+        )
+        .title("EcoPaste-Sync")
+        .inner_size(width as f64, height as f64)
+        .min_inner_size(width as f64, height as f64)
+        .resizable(false)
+        .visible(false)
+        .always_on_top(true)
+        .accept_first_mouse(true)
+        .skip_taskbar(true)
+        .visible_on_all_workspaces(true)
+        .decorations(false)
+        .transparent(true);
+
+        if let Some((x, y, w, h)) = initial_position {
+            builder = builder.position(x, y);
+            if w > 0.0 && h > 0.0 {
+                builder = builder.inner_size(w, h);
+            }
+        } else {
+            builder = builder.center();
+        }
+
+        builder
+    } else if label == PREFERENCE_WINDOW_LABEL {
+        let url = PREFERENCE_WINDOW_URL;
+        let width = PREFERENCE_WINDOW_WIDTH;
+        let height = PREFERENCE_WINDOW_HEIGHT;
+
+        let mut builder = tauri::WebviewWindowBuilder::new(
+            &app_handle,
+            &label,
+            tauri::WebviewUrl::App(url.into()),
+        )
+        .title("EcoPaste-Sync 设置")
+        .inner_size(width as f64, height as f64)
+        .min_inner_size(width as f64, height as f64)
+        .resizable(false)
+        .visible(false)
+        .always_on_top(true)
+        .accept_first_mouse(true)
+        .skip_taskbar(true)
+        .transparent(true);
+
+        if let Some((x, y, w, h)) = initial_position {
+            builder = builder.position(x, y);
+            if w > 0.0 && h > 0.0 {
+                builder = builder.inner_size(w, h);
+            }
+        } else {
+            builder = builder.center();
+        }
+
+        builder
+    } else {
+        return Err(format!("未知窗口类型: {}", label));
+    };
+
+    let _window = builder
+        .build()
+        .map_err(|e| format!("创建窗口失败: {}", e))?;
+
+    Ok(())
 }
 
 // 设置窗口位置为跟随鼠标（支持多显示器环境）
@@ -303,7 +449,7 @@ pub async fn hide_window_with_behavior<R: Runtime>(
     label: String,
 ) -> Result<(), String> {
     // 从配置文件读取窗口行为设置
-    let (mode, _delay_seconds) = get_window_behavior_from_config(&app_handle);
+    let (mode, delay_seconds) = get_window_behavior_from_config(&app_handle);
 
     let window = app_handle.get_webview_window(&label);
 
@@ -399,7 +545,7 @@ async fn hide_with_behavior<R: Runtime>(
         destroy_image_preview(app_handle.clone()).await.ok();
     }
 
-    let (mode, _delay_seconds) = get_window_behavior_from_config(&app_handle);
+    let (mode, delay_seconds) = get_window_behavior_from_config(&app_handle);
 
     if let Some(win) = app_handle.get_webview_window(label) {
         match mode.as_str() {
@@ -407,6 +553,7 @@ async fn hide_with_behavior<R: Runtime>(
                 log::info!("[Window] Lightweight mode: destroying window {}", label);
                 let _ = win.destroy();
                 // 清除隐藏标记，防止回收器误操作
+                #[cfg(not(target_os = "macos"))]
                 clear_hidden_mark(label);
             }
             "resident" => {
@@ -530,17 +677,9 @@ async fn show_with_position<R: Runtime>(
 
         #[cfg(target_os = "macos")]
         {
-            if is_main_window(&window) {
-                if let Ok(mac) = app_handle.try_state::<super::macos::MacOSPanelState>() {
-                    let state = mac.lock().unwrap();
-                    if let Some(panel) = &state.panel {
-                        let _ = panel.set_visible(true);
-                    }
-                }
-            } else {
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
+            // macOS 上显示窗口
+            let _ = window.show();
+            let _ = window.set_focus();
         }
         #[cfg(not(target_os = "macos"))]
         {

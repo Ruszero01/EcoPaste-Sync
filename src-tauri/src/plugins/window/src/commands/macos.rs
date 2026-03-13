@@ -1,6 +1,6 @@
 use super::{is_main_window, set_window_follow_cursor, shared_hide_window, shared_show_window};
 use crate::MAIN_WINDOW_LABEL;
-use tauri::{command, AppHandle, Runtime, WebviewWindow};
+use tauri::{command, AppHandle, Manager, Runtime, WebviewWindow};
 use tauri_nspanel::ManagerExt;
 
 pub enum MacOSPanelStatus {
@@ -79,7 +79,7 @@ pub async fn hide_window<R: Runtime>(app_handle: AppHandle<R>, window: WebviewWi
         // 当前是最后一个可见窗口，隐藏当前窗口 + 隐藏所有其他已隐藏的窗口
         for (label, _) in other_windows {
             if label == MAIN_WINDOW_LABEL {
-                if let Some(panel) = app_handle.get_webview_panel(label) {
+                if let Ok(panel) = app_handle.get_webview_panel(label) {
                     panel.order_out(None);
                     log::info!("[Window] 隐藏已隐藏窗口: {}", label);
                 }
